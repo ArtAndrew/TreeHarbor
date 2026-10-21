@@ -1,12 +1,17 @@
 //! Trusted local node: durable file preparation only. No code executes here.
+mod execution;
 mod private;
 mod storage;
+mod volumes;
 mod worker;
 pub use storage::{Identity, Node};
+pub use volumes::VolumeRegistration;
 pub use worker::Prepare;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    #[error("node runtime boundary failed")]
+    Runtime(#[from] treeharbor_runtime::Error),
     #[error("node filesystem operation failed")]
     Io(#[from] std::io::Error),
     #[error("node metadata operation failed")]

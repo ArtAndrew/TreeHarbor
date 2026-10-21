@@ -1,0 +1,1 @@
+{"version":1,"storage":"00000000-0000-0000-0000-000000000002","slot":"00000000-0000-0000-0000-000000000003","volume":{"mount":"/srv/volume","files":"/srv/volume/placement","device":1234,"mount_inode":2,"files_inode":14,"mount_id":31,"capacity_bytes":120000000,"limit_bytes":134217728}}

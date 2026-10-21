@@ -25,6 +25,9 @@ pub enum Action {
         node: Arguments,
         #[arg(long, default_value_t=4_294_967_296, value_parser=clap::value_parser!(u64).range(1..=68_719_476_736))]
         max_workspace_bytes: u64,
+        /// Use an operator-registered bounded volume for a future sandbox run.
+        #[arg(long)]
+        slot: Option<Uuid>,
     },
     /// Reopen an acknowledged placement without changing agent files.
     Prepared {
@@ -32,6 +35,26 @@ pub enum Action {
         node: Arguments,
         #[arg(long)]
         workspace: Uuid,
+    },
+    /// Register an empty placement on an existing bounded ext4 mount (Linux).
+    VolumeRegister {
+        #[command(flatten)]
+        node: Arguments,
+        #[arg(long)]
+        slot: Uuid,
+        #[arg(long)]
+        mount: PathBuf,
+        #[arg(long)]
+        placement: PathBuf,
+        #[arg(long, value_parser=clap::value_parser!(u64).range(67_108_864..=68_719_476_736))]
+        limit_bytes: u64,
+    },
+    /// Execute or recover one persisted run using a trusted local Docker/runsc.
+    RunOnce {
+        #[command(flatten)]
+        node: Arguments,
+        #[arg(long)]
+        engine_socket: PathBuf,
     },
 }
 #[derive(Args)]
@@ -61,14 +84,11 @@ pub async fn run(action: Action) -> Result<bool> {
         );
         return Ok(true);
     }
-    let (args, workspace, max_workspace_bytes) = match action {
-        Action::PrepareOnce {
-            node,
-            max_workspace_bytes,
-        } => (node, None, max_workspace_bytes),
-        Action::Prepared { node, workspace } => {
-            (node, Some(workspace), Limits::default().max_workspace_bytes)
-        }
+    let args = match &action {
+        Action::PrepareOnce { node, .. }
+        | Action::Prepared { node, .. }
+        | Action::VolumeRegister { node, .. }
+        | Action::RunOnce { node, .. } => node,
         Action::Initialize { .. } => unreachable!(),
     };
     let config = Config::load(&args.config)?;
@@ -91,42 +111,113 @@ pub async fn run(action: Action) -> Result<bool> {
         args.storage,
         args.parallelism,
     )?;
-    let limits = Limits {
-        max_workspace_bytes,
-        ..Limits::default()
-    };
-    let (workspace, tree) = if let Some(workspace) = workspace {
-        (
-            workspace,
-            node.open_prepared(&mut session.metadata, &auth, workspace, limits)
-                .await?,
-        )
-    } else {
-        let storage = config.storage.as_ref().ok_or(Error::Config)?;
-        let store = ManagedStore::open(
-            &storage.root,
-            TenantId::new(credential.scope.tenant()).map_err(|_| Error::Config)?,
-            &storage.backend,
-        )
-        .map_err(|_| Error::Config)?;
-        let mut heartbeat = database.connect(true).await?;
-        let Some(plan) = node.claim(&mut session.metadata, &auth).await? else {
-            println!("{}", json!({"state":"idle"}));
+    let (workspace, tree) = match action {
+        Action::VolumeRegister {
+            slot,
+            mount,
+            placement,
+            limit_bytes,
+            ..
+        } => {
+            let registration = node.register_volume(slot, &mount, &placement, limit_bytes)?;
+            session
+                .metadata
+                .register_runtime_volume(
+                    credential.scope.tenant(),
+                    auth.principal(),
+                    &treeharbor_metadata::runs::RuntimeVolume {
+                        slot: treeharbor_metadata::preparations::StorageSlot {
+                            storage: registration.storage(),
+                            slot,
+                        },
+                        digest: registration.digest()?,
+                        limit_bytes,
+                    },
+                    &format!("local-uid:{}", rustix::process::geteuid().as_raw()),
+                )
+                .await
+                .map_err(|_| Error::Administration)?;
+            println!(
+                "{}",
+                json!({"state":"registered","slot":slot.to_string(),"volume_digest":treeharbor_core::ObjectId::from_bytes(registration.digest()?).to_string()})
+            );
             return Ok(true);
-        };
-        let tree = node
-            .prepare(
-                &mut session.metadata,
-                &mut heartbeat.metadata,
-                Prepare {
-                    authorization: &auth,
-                    plan: &plan,
-                    store: &store,
+        }
+        Action::RunOnce { engine_socket, .. } => {
+            let Some(plan) = node.claim_run(&mut session.metadata, &auth).await? else {
+                println!("{}", json!({"state":"idle"}));
+                return Ok(true);
+            };
+            let mut heartbeat = database.connect(true).await?;
+            let limits = Limits {
+                max_workspace_bytes: plan.profile().definition().workspace_bytes,
+                ..Limits::default()
+            };
+            let result = node
+                .execute_run(
+                    &mut session.metadata,
+                    &mut heartbeat.metadata,
+                    &auth,
+                    &plan,
+                    &engine_socket,
                     limits,
-                },
+                )
+                .await?;
+            println!("{result}");
+            return Ok(true);
+        }
+        Action::Prepared { workspace, .. } => (
+            workspace,
+            node.open_prepared(&mut session.metadata, &auth, workspace, Limits::default())
+                .await?,
+        ),
+        Action::PrepareOnce {
+            max_workspace_bytes,
+            slot,
+            ..
+        } => {
+            let max_workspace_bytes = if let Some(slot) = slot {
+                max_workspace_bytes.min(node.registered_volume(slot)?.limit_bytes())
+            } else {
+                max_workspace_bytes
+            };
+            let limits = Limits {
+                max_workspace_bytes,
+                ..Limits::default()
+            };
+            let storage = config.storage.as_ref().ok_or(Error::Config)?;
+            let store = ManagedStore::open(
+                &storage.root,
+                TenantId::new(credential.scope.tenant()).map_err(|_| Error::Config)?,
+                &storage.backend,
             )
-            .await?;
-        (plan.workspace(), tree)
+            .map_err(|_| Error::Config)?;
+            let mut heartbeat = database.connect(true).await?;
+            let claimed = if let Some(slot) = slot {
+                node.claim_on_slot(&mut session.metadata, &auth, slot)
+                    .await?
+            } else {
+                node.claim(&mut session.metadata, &auth).await?
+            };
+            let Some(plan) = claimed else {
+                println!("{}", json!({"state":"idle"}));
+                return Ok(true);
+            };
+            let tree = node
+                .prepare(
+                    &mut session.metadata,
+                    &mut heartbeat.metadata,
+                    Prepare {
+                        authorization: &auth,
+                        plan: &plan,
+                        store: &store,
+                        limits,
+                    },
+                )
+                .await?;
+            (plan.workspace(), tree)
+        }
+        Action::Initialize { .. } => unreachable!(),
     };
     println!(
         "{}",

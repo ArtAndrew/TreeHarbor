@@ -356,7 +356,8 @@ impl Metadata {
         if count != 1 {
             return Err(Error::ExecutionState);
         }
-        tx.tx.execute("UPDATE th_agent_runs SET state='stopping' WHERE tenant=$1 AND repository=$2 AND workspace=$3 AND state='running'",&[&scope.tenant,&scope.repository,&workspace]).await?;
+        tx.tx.execute("UPDATE th_agent_runs SET state='stopping' WHERE tenant=$1 AND repository=$2 AND workspace=$3 AND state IN ('requested','launching','running')",&[&scope.tenant,&scope.repository,&workspace]).await?;
+        tx.tx.execute("UPDATE th_managed_runs m SET stop_requested=true FROM th_agent_runs r WHERE m.tenant=r.tenant AND m.repository=r.repository AND m.run=r.run AND r.tenant=$1 AND r.repository=$2 AND r.workspace=$3 AND NOT m.removed",&[&scope.tenant,&scope.repository,&workspace]).await?;
         tx.tx.execute("UPDATE th_workspace_preparations SET state='draining' WHERE tenant=$1 AND repository=$2 AND workspace=$3 AND state<>'draining'",&[&scope.tenant,&scope.repository,&workspace]).await?;
         let result =
             json!({"workspace":workspace.to_string(),"generation":next,"state":"draining"});

@@ -3,13 +3,20 @@
 Updated: 2026-10-21. This file describes implemented behavior and remaining release
 gates. A foundation milestone does not complete either mode.
 
+Development increment: [managed AgentRun](managed-runs.md) requests, owner-bound
+status/cancellation, immutable runtime policy/placement records and terminal receipt
+replay now have real PostgreSQL tests. Schema 8 preserves existing runs and reserved
+preparations. The node execution adapter and CLI are present, but their complete
+service-to-gVisor flow is still awaiting Linux integration evidence. Do not infer
+that evidence from the earlier standalone controller tests below.
+
 | Component | Evidence | Remaining |
 |---|---|---|
 | Canonical SHA-256 object format | Versioned framing, independent golden vectors, strict decoder | Compatibility policy for later formats |
 | Immutable directory trees and operations | Exact expected-before checks, structural sharing, explicit deletes | Native merge/rebase, Git import/export |
 | Local object store | Atomic no-clobber writes, digest verification, file/directory fsync, tenant directories, physical generations and upload receipts | S3, backup/restore, kill fault campaign |
 | Native DAG queries | All-parent traversal, multiple best merge bases, bounds | Native refs, integration, policy and full no-Git end-to-end test |
-| PostgreSQL metadata and outbox | Real database transaction/idempotency/lease tests; repository authority/epoch checks; populated schema upgrades through v7; local service pool and crash/replay | Remote service integration and full server restore |
+| PostgreSQL metadata and outbox | Real database transaction/idempotency/lease tests; repository authority/epoch checks; populated schema upgrades through v8; local service pool and crash/replay | Remote service integration and full server restore |
 | Native ChangeSet intake | Computed immutable versions, base/run lineage, atomic graph pins and replay; worker process-kill test | Git base import, remote API, review/validation/merge admission and retention |
 | Protected incremental source reads | Pinned sessions, verified frontiers, bounded prefix batches and descriptors surviving local GC; authenticated workspace-root sessions | Per-tenant service quotas, bulk node delivery and S3 |
 | Native file materialization | Private copies from exact snapshots, full/sparse selection, staged expansion preserving edits/deletions, bounded IO and filesystem checks; exact baseline loading and guarded atomic node publication | Runtime-proven quiescence, cache/reflink, changed-file sealing and Git-compatible format |
@@ -37,8 +44,8 @@ macOS arm64, Rust 1.99.1, 2026-10-21:
 
 ```text
 cargo test --workspace --locked --offline
-78 tests passed without external services: core 15, local storage 8, native history 3, metadata input/auth/protocol 3, validation 9, materializer 14, node identity/format/IO lifetime 4, service configuration/files/CLI/pack/read transport 12, runtime argument/host guards and controller profile/journal/mount contracts 10.
-91 PostgreSQL integration tests passed explicitly against local PostgreSQL 18.6: transactions 7, object catalog 12, intake 9, protected reads 9, materializer 10, access/commands/source sessions 10, source profiles/upgrade 2, source uploads/upgrade 7, preparation ownership/upgrade 8, node preparation/recovery 7, service process/transport 10.
+80 tests passed without external services: core 15, local storage 8, native history 3, metadata input/auth/protocol/run-binding 4, validation 9, materializer 14, node identity/format/IO lifetime 5, service configuration/files/CLI/pack/read transport 12, runtime argument/host guards and controller profile/journal/mount contracts 10.
+98 PostgreSQL integration tests passed explicitly against local PostgreSQL 18.6: transactions 7, object catalog 12, intake 9, protected reads 9, materializer 10, access/commands/source sessions 10, source profiles/upgrade 2, source uploads/upgrade 7, preparation/run ownership/upgrade 15, node preparation/recovery 7, service process/transport 10.
 The combined run uses cargo test --workspace --locked --offline -- --include-ignored with both test database URLs set.
 cargo clippy --workspace --all-targets --locked --offline -- -D warnings
 Passed.
@@ -64,8 +71,8 @@ the Rust controller around create/start/remove, checks independent task volumes,
 retains uncertain starts and refuses configuration drift. Local tests verify its
 canonical profile/intent vectors, journal exclusion and invalid recovery records.
 Linux runtime evidence comes from the required CI job, not macOS tests. This controller is not
-yet wired into authoritative AgentRun records, node leases, source sealing or
-workspace deletion; it cannot grant repository admission or trusted Validation.
+yet proven through the new authoritative AgentRun/node-lease adapter. Source sealing
+and workspace deletion remain absent; it cannot grant repository admission or trusted Validation.
 
 The real runtime run above passed isolation, rejected invalid bootstrap settings,
 primary exit and descendant teardown, PID-1 signal/proc attacks, timeout after the

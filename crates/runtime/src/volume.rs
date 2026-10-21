@@ -61,6 +61,29 @@ impl Volume {
     pub fn files(&self) -> &Path {
         &self.identity.files
     }
+    /// Keep the same exclusive mount ownership while selecting a descendant
+    /// directory to expose to a task. Duplicated descriptors share the lock.
+    pub fn for_files(&self, files: &Path) -> Result<Self> {
+        self.verify()?;
+        let files = files.canonicalize()?;
+        if files == self.identity.files || !files.starts_with(&self.identity.files) {
+            return Err(Error::Invalid);
+        }
+        let mount = self.mount.try_clone()?;
+        let files_fd = directory(&files)?;
+        let identity = inspect(
+            &self.identity.mount,
+            &files,
+            &mount,
+            &files_fd,
+            self.identity.limit_bytes,
+        )?;
+        Ok(Self {
+            identity,
+            mount,
+            files: files_fd,
+        })
+    }
     pub fn verify(&self) -> Result<()> {
         let current_mount = directory(&self.identity.mount)?;
         let current_files = directory(&self.identity.files)?;

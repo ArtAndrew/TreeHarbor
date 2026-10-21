@@ -44,11 +44,13 @@ struct Intent {
     revision: String,
     snapshot: String,
     profile: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    volume: Option<String>,
 }
 impl Intent {
     fn plan(p: &Preparation) -> Self {
         Self {
-            version: 1,
+            version: if p.volume_digest().is_some() { 2 } else { 1 },
             tenant: p.scope().tenant().into(),
             repository: p.scope().repository().to_string(),
             node: p.node().into(),
@@ -62,11 +64,14 @@ impl Intent {
             revision: p.revision().to_string(),
             snapshot: p.snapshot().to_string(),
             profile: p.profile().id().to_string(),
+            volume: p
+                .volume_digest()
+                .map(|v| treeharbor_core::ObjectId::from_bytes(v).to_string()),
         }
     }
     fn ready(p: &PreparedWorkspace) -> Self {
         Self {
-            version: 1,
+            version: if p.volume_digest.is_some() { 2 } else { 1 },
             tenant: p.scope.tenant().into(),
             repository: p.scope.repository().to_string(),
             node: p.node.clone(),
@@ -80,6 +85,9 @@ impl Intent {
             revision: p.revision.to_string(),
             snapshot: p.snapshot.to_string(),
             profile: p.profile.id().to_string(),
+            volume: p
+                .volume_digest
+                .map(|v| treeharbor_core::ObjectId::from_bytes(v).to_string()),
         }
     }
     fn binding(&self) -> Result<[u8; 32]> {
@@ -104,6 +112,26 @@ impl Node {
         db: &mut Metadata,
         auth: &Authorization,
     ) -> Result<Option<Preparation>> {
+        self.claim_selected(db, auth, None).await
+    }
+    pub async fn claim_on_slot(
+        &self,
+        db: &mut Metadata,
+        auth: &Authorization,
+        slot: Uuid,
+    ) -> Result<Option<Preparation>> {
+        let owned = self.operation(slot).await?;
+        if owned.volume.is_none() {
+            return Err(Error::Configuration);
+        }
+        self.claim_selected(db, auth, Some(slot)).await
+    }
+    async fn claim_selected(
+        &self,
+        db: &mut Metadata,
+        auth: &Authorization,
+        selected: Option<Uuid>,
+    ) -> Result<Option<Preparation>> {
         self.check_auth(auth)?;
         self.storage.verify()?;
         let Some(job) = db
@@ -121,9 +149,12 @@ impl Node {
                 .as_str()
                 .and_then(|s| Uuid::parse_str(s).ok())
                 .ok_or(Error::Incomplete)?,
-            Err(treeharbor_metadata::Error::NotFound) => Uuid::new_v4(),
+            Err(treeharbor_metadata::Error::NotFound) => selected.unwrap_or_else(Uuid::new_v4),
             Err(error) => return Err(error.into()),
         };
+        if selected.is_some_and(|id| id != slot) {
+            return Err(Error::Identity);
+        }
         Ok(Some(
             db.reserve_preparation(
                 auth,
@@ -178,6 +209,9 @@ impl Node {
         }
         let work = async {
             let operation = self.operation(plan.slot().slot).await?;
+            if operation.volume_digest != plan.volume_digest() {
+                return Err(Error::Identity);
+            }
             // Waiting on another local operation can outlive a database lease.
             match db.renew_preparation(auth, plan, 60).await {
                 Ok(()) => (),
@@ -232,7 +266,7 @@ impl Node {
                     )
                     .await?
             };
-            operation.storage.verify()?;
+            operation.verify()?;
             let receipt = PublicationReceipt::load(
                 tree.manifest_path().parent().ok_or(Error::Incomplete)?,
                 binding,
@@ -308,16 +342,15 @@ impl Node {
         intent.check(self)?;
         let binding = intent.binding()?;
         let operation = self.operation(ready.slot.slot).await?;
-        let root = self
-            .storage
-            .root
-            .join("slots")
-            .join(ready.slot.slot.to_string());
+        if operation.volume_digest != ready.volume_digest {
+            return Err(Error::Identity);
+        }
+        let root = operation.root.clone();
         let expected = serde_json::to_vec(&intent)?;
         let root_for_read = root.clone();
         let owned = operation.clone();
         tokio::task::spawn_blocking(move || {
-            owned.storage.verify()?;
+            owned.verify()?;
             check_intent(&root_for_read, &expected)
         })
         .await??;
@@ -342,16 +375,46 @@ impl Node {
         {
             return Err(Error::Identity);
         }
-        operation.storage.verify()?;
+        operation.verify()?;
         Ok(tree)
     }
-    fn check_auth(&self, auth: &Authorization) -> Result<()> {
+    pub(crate) fn check_auth(&self, auth: &Authorization) -> Result<()> {
         if auth.scope().tenant() != self.identity().tenant()
             || auth.principal() != self.identity().node()
         {
             return Err(Error::Identity);
         }
         Ok(())
+    }
+    pub(crate) async fn open_run_files(
+        &self,
+        operation: Arc<Operation>,
+        ready: &PreparedWorkspace,
+        limits: Limits,
+    ) -> Result<MaterializedTree> {
+        let intent = Intent::ready(ready);
+        intent.check(self)?;
+        if operation.volume_digest != ready.volume_digest || operation.volume.is_none() {
+            return Err(Error::Identity);
+        }
+        let binding = intent.binding()?;
+        operation.verify()?;
+        check_intent(&operation.root, &serde_json::to_vec(&intent)?)?;
+        let receipt = PublicationReceipt::load(&operation.root.join("tree"), binding)?;
+        if receipt.manifest_digest()? != ready.manifest_digest {
+            return Err(Error::Identity);
+        }
+        let path = operation.root.join("tree");
+        self.load_published(
+            operation,
+            path,
+            ready.scope.clone(),
+            ready.snapshot,
+            ready.profile.clone(),
+            binding,
+            limits,
+        )
+        .await
     }
     #[allow(clippy::too_many_arguments)]
     async fn load_published(
@@ -365,7 +428,7 @@ impl Node {
         limits: Limits,
     ) -> Result<MaterializedTree> {
         tokio::task::spawn_blocking(move || {
-            operation.storage.verify()?;
+            operation.verify()?;
             let source_parent = path
                 .parent()
                 .ok_or(Error::Incomplete)?
@@ -405,8 +468,8 @@ fn check_intent(root: &Path, expected: &[u8]) -> Result<()> {
     Ok(())
 }
 fn initialize_attempt(operation: &Operation, intent: &Intent) -> Result<PathBuf> {
-    operation.storage.verify()?;
-    let root = operation.storage.root.join("slots").join(&intent.slot);
+    operation.verify()?;
+    let root = operation.root.clone();
     private::make_directory(&root)?;
     let expected = serde_json::to_vec(intent)?;
     let path = root.join("intent.json");
@@ -432,7 +495,7 @@ fn initialize_attempt(operation: &Operation, intent: &Intent) -> Result<PathBuf>
     Ok(root)
 }
 fn clear_unpublished(operation: &Operation, staging: &Path, tenant: &str) -> Result<()> {
-    operation.storage.verify()?;
+    operation.verify()?;
     private::make_directory(staging)?;
     // Staging has never been published or mounted into an agent. All old writers
     // have exited before the OS/operation guards can be acquired. Unknown data is
@@ -478,7 +541,7 @@ mod tests {
     use super::*;
     #[test]
     fn intent_v1_has_independent_bytes_and_binding() {
-        let intent = Intent {
+        let mut intent = Intent {
             version: 1,
             tenant: "tenant".into(),
             repository: Uuid::from_u128(1).to_string(),
@@ -493,6 +556,7 @@ mod tests {
             revision: format!("native:sha256:{}", "11".repeat(32)),
             snapshot: format!("sha256:{}", "22".repeat(32)),
             profile: format!("sha256:{}", "33".repeat(32)),
+            volume: None,
         };
         assert_eq!(
             serde_json::to_vec(&intent).unwrap(),
@@ -501,6 +565,22 @@ mod tests {
         assert_eq!(
             treeharbor_core::ObjectId::from_bytes(intent.binding().unwrap()).to_string(),
             "sha256:bf3f38a95aac00da06f5185ae8a100b49fb9c0b313700b36d94547b90f02e6bd"
+        );
+        intent.version = 2;
+        intent.volume = Some(format!(
+            "sha256:{}",
+            include_str!("../tests/fixtures/volume-v1.sha256").trim()
+        ));
+        assert_eq!(
+            serde_json::to_vec(&intent).unwrap(),
+            include_bytes!("../tests/fixtures/intent-v2.json")
+        );
+        assert_eq!(
+            treeharbor_core::ObjectId::from_bytes(intent.binding().unwrap()).to_string(),
+            format!(
+                "sha256:{}",
+                include_str!("../tests/fixtures/intent-v2.sha256").trim()
+            )
         );
     }
 }
