@@ -3,7 +3,8 @@
 This development transport works on Linux/macOS. It exposes the existing
 authenticated commands over HTTP/1.1 on an owner-private Unix socket. It does not
 bind a TCP port. Neither Connected nor Standalone is an end-to-end release yet.
-There is no packaged installer, remote TLS connector, MCP adapter or runtime worker.
+There is no packaged installer, remote TLS connector or MCP adapter. A separate
+experimental [managed-run worker](managed-runs.md) supports Linux/gVisor execution.
 
 ## Build and exercise repository access
 
@@ -112,8 +113,9 @@ authenticated binary HTTP/CLI commands when a storage backend is configured.
 For ordinary files, [native directory import](native-import.md) now captures
 explicit paths and resumes uploads using a durable local pack and journal.
 The [local node](local-node.md) now materializes and acknowledges native workspace
-files with durable placement and recovery. Git import, scheduling and runtime
-launch remain pending.
+files with durable placement and recovery. [Managed runs](managed-runs.md) add
+operator-approved bounded runtime execution. Git import and automatic scheduling
+remain pending.
 After creation, [source-list and source-file](source-reads.md) read the exact
 baseline using the owner credential, workspace generation and repository epoch.
 

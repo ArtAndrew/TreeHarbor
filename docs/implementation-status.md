@@ -6,9 +6,10 @@ gates. A foundation milestone does not complete either mode.
 Development increment: [managed AgentRun](managed-runs.md) requests, owner-bound
 status/cancellation, immutable runtime policy/placement records and terminal receipt
 replay now have real PostgreSQL tests. Schema 8 preserves existing runs and reserved
-preparations. The node execution adapter and CLI are present, but their complete
-service-to-gVisor flow is still awaiting Linux integration evidence. Do not infer
-that evidence from the earlier standalone controller tests below.
+preparations. The actual service/CLI-to-gVisor path passed in
+[CI 39641169748](https://github.com/ArtAndrew/TreeHarbor/actions/runs/39641169748):
+native import, bounded preparation, simultaneous isolated agents, cancellation/drain,
+resource outcomes and worker-loss recovery. No complete authority mode is implied.
 
 | Component | Evidence | Remaining |
 |---|---|---|
@@ -23,16 +24,16 @@ that evidence from the earlier standalone controller tests below.
 | Object catalog and retention | Receipt-bound publication, typed edges, atomic persistent pins, read holds, generation-safe retirement/retry; independent reachability model | Automatic GC/reconciliation/dry-run, abandoned-upload cleanup, S3 and full restore |
 | Exact validation predicate | Context binding, stale-target rejection, trusted issuer filtering, revocation and conflicting receipt tests | Authenticated collectors, durable evidence, review and atomic publication checks |
 | Credentials and agent commands | Repository-scoped opaque tokens, transactional revocation, distinct actor classes, owner-bound reads and strict command dispatch | Remote transport, MCP, production identity/admission integration |
-| Local HTTP service and CLI | Actual Unix-socket server/client, trusted admin and file-preparation node CLI, private credentials, bounded HTTP/pool, strict startup schema, SIGKILL replay, cancellation/rollback, reconnect and graceful shutdown tests | Git import, runtime integration, TLS/remote access, packaged installation |
+| Local HTTP service and CLI | Actual Unix-socket server/client, trusted admin and file-preparation node CLI, private credentials, bounded HTTP/pool, strict startup schema, SIGKILL replay, cancellation/rollback, reconnect and graceful shutdown tests | Git import, TLS/remote access, packaged installation |
 | Workspace baseline API | Owner/generation/epoch-bound directory pages and verified blob download, repeated authorization, final revocation/drain rejection, bounded response ownership, actual CLI/HTTP tests | Bulk delivery to nodes, remote streaming, persistent cache and runtime binding |
 | Source graph uploads | Authenticated scoped sessions, child membership, fixed deadlines/budgets, backend identity, binary HTTP/CLI, concurrent retry, restart and schema-v5 upgrade tests | Git import, incremental reuse, streaming/batching and automatic cleanup |
 | Native directory import | Explicit selection, descriptor-relative capture, durable pack/journal v1, independent vector, actual CLI-to-server partial-upload recovery and completed replay with Git absent from PATH | Git history import, incremental reuse, automatic spool cleanup and runtime-proven snapshots |
 | Source delivery profiles | Canonical full/sparse format with independent vectors, immutable scoped definitions, workspace foreign-key binding, v4 upgrade, authenticated CLI/HTTP and exact node use | Profile retention and generation-aware expansion |
-| Workspaces and runtime | Logical workspace/run state, drain fencing and separate filesystem preparation implemented; node identity checks | Real node/runtime observation, sandbox binding and lifecycle recovery |
-| Runtime task supervisor | Linux namespace init, privilege guards, environment clearing, guest process limit, child reaping and deadline; real gVisor CI harness | Durable node binding, trusted results and complete lifecycle |
-| Local runtime controller | Versioned immutable profiles, restricted Engine API, bounded ext4 identity, exclusive durable volume assignment and create/start/remove journal; real-runtime fault harness | Service-managed AgentRun/epoch binding, provisioning, host/engine replacement recovery and cleanup integration |
-| Workspace preparation reservations | Operator-registered node storage, scoped job claims, immutable source/slot/attempt identity, renewal/reclaim, exact file-ready observation and drain retention; real PostgreSQL race/upgrade tests | Separate runtime attempts, actual drain/removal and resource release |
-| Local preparation node | Private physical root identity/OS lock, durable placement intent, exact no-replace publication, independent concurrent slots, current authorization and file-ready acknowledgment; actual process-kill recovery and import-to-files CLI tests | Scheduler/daemon, runtime binding, disk quotas, remote workers, fenced volume migration and safe published-tree cleanup |
+| Workspaces and runtime | Owner-bound requests, exact source/runtime bindings, trusted actual observations, drain and terminal replay; real CLI/PostgreSQL/gVisor recovery tests | Stopped-file sealing, automatic resource release, scheduling and host replacement |
+| Runtime task supervisor | Linux namespace init, privilege guards, environment clearing, guest process limit, child reaping and deadline; real gVisor CI harness | Trusted validation collection and complete workspace cleanup |
+| Local runtime controller | Versioned immutable profiles, restricted Engine API, bounded ext4 identity, exclusive durable volume assignment and create/start/remove journal; real-runtime fault harness and managed-run adapter | Provisioning, host/engine replacement recovery and workspace cleanup |
+| Workspace preparation reservations | Operator-registered node storage, scoped job claims, immutable source/slot/attempt identity, renewal/reclaim, exact file-ready observation and drain retention; real PostgreSQL race/upgrade tests | Automatic source/slot release after runtime removal |
+| Local preparation node | Private physical root identity/OS lock, durable placement intent, exact no-replace publication, independent concurrent slots, current authorization and file-ready acknowledgment; actual process-kill recovery and import-to-files CLI tests | Scheduler/daemon, automated volume provisioning, remote workers, fenced volume migration and safe published-tree cleanup |
 | MCP adapter | Planned; not implemented | Shared-service adapter, scoped tools and real client interoperability tests |
 | Connected | Not implemented | Real GitHub PR/checks/merge queue and credential separation |
 | Standalone S2 | Not implemented | Durable native admission and publication without Git processes |
@@ -61,18 +62,20 @@ The separate `gVisor task supervision` CI job exercises the
 It is not run by the ordinary local test command, and the macOS checks do not
 provide sandbox evidence. The harness includes namespace teardown, a launcher
 which exits before completion, guest PID limits, memory exhaustion and a dedicated
-persistent disk capacity. This is not yet a service-managed workspace or a proof
-of restart/DB reconciliation. No READY or Validation receipt is produced by the
-supervisor tests.
+persistent disk capacity. These supervisor-only cases do not produce READY or
+Validation receipts; the separate managed-run harness covers the service boundary.
 
 The [local runtime controller](runtime-controller.md) now has a separate real-engine
 fault harness in the same required job. It delays actual Engine traffic and kills
 the Rust controller around create/start/remove, checks independent task volumes,
 retains uncertain starts and refuses configuration drift. Local tests verify its
 canonical profile/intent vectors, journal exclusion and invalid recovery records.
-Linux runtime evidence comes from the required CI job, not macOS tests. This controller is not
-yet proven through the new authoritative AgentRun/node-lease adapter. Source sealing
-and workspace deletion remain absent; it cannot grant repository admission or trusted Validation.
+Linux runtime evidence comes from the required CI job, not macOS tests. The additional
+managed-run harness uses actual owner CLI requests, native import and volume-backed
+preparation. It covers independent same-path writers, owner-bound results, nonzero/OOM/
+deadline/disk outcomes, cancellation/drain and real worker death around Engine RPCs.
+Permission changes on the task directory cannot disable cleanup. Source sealing and
+workspace deletion remain absent; task results cannot grant trusted Validation.
 
 The real runtime run above passed isolation, rejected invalid bootstrap settings,
 primary exit and descendant teardown, PID-1 signal/proc attacks, timeout after the
@@ -93,7 +96,7 @@ database completion, and published-v1 schema upgrade. Native intake now commits 
 ChangeSet version, lineage, graph pins, response and outbox atomically, and recovers
 the same receipt after a worker process is killed. ChangeSet submission remains a
 library operation; local HTTP/CLI exposes repository/workspace commands only.
-Remote transport, physical workspace/runtime binding, full application
+Remote transport, stopped-file sealing, full application
 failure injection, fenced restore and automatic maintenance remain release gates.
 
 Protected local reads now resolve only requested object frontiers and retain opened
@@ -101,8 +104,8 @@ file descriptors across GC without holding a database transaction during content
 verification. Tests include expired sessions, complete physical collection, generation
 reuse, corrupt bytes, resource limits and selective reads without loading commit
 parents. Authenticated workspace baseline reads now expose directory pages and verified file
-bytes through the local CLI/HTTP service. Bulk node delivery, scheduling and runtime
-isolation remain absent. See [source reads](source-reads.md) for the wire format,
+bytes through the local CLI/HTTP service. Bulk node delivery and scheduling remain
+absent; runtime isolation is provided by the separate managed-run boundary. See [source reads](source-reads.md) for the wire format,
 read limits and the precise revocation boundary.
 
 Native filesystem preparation now consumes these reads and returns a private tree
@@ -136,8 +139,9 @@ files retain their inode and local edits/deletions/untracked files survive reope
 Concurrent workspaces, queued-IO cancellation, real lease renewal and renewal
 blocked behind the completion transaction are exercised. The CLI/HTTP test runs
 native import through file preparation and new-process reopening with Git absent.
-No runtime is launched. Production runtime binding, scheduling, physical disk
-quotas and safe published-tree removal remain unimplemented.
+That file-only test launches no runtime. The separate managed-run harness exercises
+bounded volumes and actual runtime execution. Automatic scheduling, volume provisioning
+and safe published-tree removal remain unimplemented.
 
 Repository credentials and the [agent command library](agent-commands.md) now check
 permission, principal kind, token expiry/revocation and current grants in the
@@ -152,7 +156,7 @@ mutation response followed by server kill/restart and exact receipt replay,
 duplicate-server exclusion, stale sockets, revocation, malformed/chunked HTTP,
 connection/header deadlines, schema mismatch, pool reconnection and transaction
 rollback before pool reuse. See the [local guide](local-service.md).
-MCP, remote TLS transport, per-tenant service admission, runtime binding and complete
+MCP, remote TLS transport, per-tenant service admission and complete
 product workflows remain absent. A Unix socket and private files do not isolate
 untrusted code running as the server's OS user.
 

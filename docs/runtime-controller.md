@@ -26,6 +26,12 @@ outside the writable volume. Privileged provisioning and recovery after host
 remount/replacement are not automated. Hostile privileged mount changes are outside
 this trust boundary.
 
+The task may change permissions on its own bound directory. Linux identity checks
+use `O_PATH` for that directory, including mode `000`, so this cannot disable
+exact-container cleanup. Its operator-controlled mount ancestor must remain private;
+type, owner, device and inode checks still apply. This does not authorize changing
+the mount or replacing the directory with a different inode.
+
 The controller verifies image, deterministic name, attempt/binding/profile labels,
 command, capabilities, network, root filesystem, resource and log limits, restart
 policy, and the exact workspace mount before adoption or execution. It then acts

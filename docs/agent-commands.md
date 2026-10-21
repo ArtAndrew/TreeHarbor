@@ -29,6 +29,9 @@ agent-controlled JSON.
 | `workspace_create` | `key`, `authority`, `epoch`, `workspace`, `base`, `profile_digest` | `workspace.write` | Logical `requested` workspace and durable preparation event |
 | `workspace_status` | `workspace` | `read` | Caller-owned workspace state and generation |
 | `workspace_delete` | `key`, `authority`, `epoch`, `workspace`, `generation` | `workspace.write` | Caller-owned workspace enters `draining`; files and pins are not deleted |
+| `run_request` | `key`, `authority`, `epoch`, `run`, `workspace`, `generation`, `profile_digest`, `argv`, `agent`, `task` | `workspace.write` | Caller-owned durable request from prepared files and an approved runtime profile |
+| `run_status` | `run` | `read` | Caller-owned run state, exact generation and observed outcome |
+| `run_stop` | `key`, `authority`, `epoch`, `run` | `workspace.write` | Request removal of the caller-owned runtime; retains files/pins |
 | `operation_status` | `key` | `read` | Caller-owned committed command receipt |
 
 `base` must currently be a registered `native:sha256:<64 lowercase hex>` commit.
@@ -69,8 +72,10 @@ receipt; revoked credentials cannot recover it. These checks do not terminate
 already running code or erase data previously returned to a client.
 
 Node observations bind the node identity to its workspace assignment; agent-run
-ownership remains with the workspace owner. Actual runtime observation, sandbox
-isolation, remote transport and per-tenant service rate limits still need integration.
+ownership remains with the workspace owner. [Managed runs](managed-runs.md) bind
+actual Linux/gVisor observations through the trusted node; task exit is not Validation.
+Their `profile_digest` selects a runtime policy, distinct from a source profile.
+Remote transport and per-tenant service rate limits still need integration.
 The local CLI writes owner-private credential files; the server bounds connections,
 headers, bodies, timeouts and its database pool. Administrative and
 `CommandContext::trusted` methods are trusted operations only; the admin CLI uses a

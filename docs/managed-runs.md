@@ -1,10 +1,12 @@
 # Managed AgentRun development contract
 
 Schema 8 connects owner requests, prepared source identities and the local runtime
-controller. The metadata/API path has PostgreSQL contracts. The node/CLI execution
-adapter is under integration testing: a complete service-to-gVisor demonstration
-is still required before treating this increment as usable execution infrastructure.
-The earlier controller harness proves its own runtime boundary, not this wiring.
+controller. The metadata/API path has PostgreSQL contracts. The actual Linux
+CLI/import/preparation/gVisor path passed in
+[CI 39641169748](https://github.com/ArtAndrew/TreeHarbor/actions/runs/39641169748),
+including simultaneous agents, cancellation/drain, resource exhaustion and worker
+loss. This is an experimental local execution path, not a complete authority mode,
+production scheduler or release. Provisioning and recovery limitations below apply.
 
 ## Permissions and placement
 
@@ -145,3 +147,14 @@ Metadata tests exercise real PostgreSQL, concurrent duplicate delivery, stale
 claims, terminal replay, mid-transaction lease expiry, owner revocation locks,
 policy fences and populated schema upgrade. Their synthetic trusted preparation/
 removal inputs do not substitute for a service-to-real-runtime integration test.
+
+`scripts/test-managed-runs.py` provides that separate integration boundary on a
+disposable Linux host. It uses the real public CLI, native source import and private
+bounded volume preparation, then runs real gVisor tasks. The Engine fault proxy
+only delays/drops actual requests/responses; it never invents an Engine success.
+After killing a worker the fixture explicitly expires its database lease to exercise
+reclaim without waiting a full minute. This is disclosed fault injection, not a
+production lease-bypass feature. Different node roots enable CLI concurrency;
+`run-once` is a single-job worker, and two processes cannot own the same node root.
+Changing task-directory permissions, including mode `000`, does not prevent cleanup;
+the private mount ancestor and exact physical identity remain checked.

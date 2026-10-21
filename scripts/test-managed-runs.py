@@ -192,7 +192,8 @@ class Harness:
         assert first["state"] == "requested"
         attempt = self.sql(f"SELECT attempt FROM th_managed_runs WHERE run='{run}'")
         case = {"node": assigned, "credential": credential, "workspace": workspace, "run": run,
-                "attempt": attempt, "files": files, "mount": mount, "request": request, "first": first}
+                "attempt": attempt, "files": files, "mount": mount, "request": request, "first": first,
+                "profile": digest, "node_index": node}
         self.cases.append(case)
         return case
 
@@ -293,6 +294,10 @@ class Harness:
             self.finish(case, self.start(case))
             assert (case["files"] / "executions").read_bytes() == b"one execution\n"
         case = self.case("once")
+        self.fault(case, "before-start", release="drop")
+        self.finish(case, self.start(case), "lost", None)
+        assert not (case["files"] / "executions").exists()
+        case = self.case("once")
         self.fault(case, "before-start", drain=True)
         self.finish(case, self.start(case), "cancelled", None)
         assert (case["files"] / "executions").read_bytes() == b"one execution\n"
@@ -306,12 +311,52 @@ class Harness:
         assert (case["files"] / "executions").read_bytes() == b"one execution\n"
         print("PASS managed recovery: worker death, lost create/remove responses, late admitted start after drain; no duplicate execution", flush=True)
 
+        case = self.case("once", timeout=7777)
+        self.admin("runtime-profile-revoke", *self.scope, "--profile-digest", case["profile"])
+        self.finish(case, self.start(case), "cancelled", None)
+        assert not (case["files"] / "executions").exists()
+        case = self.case("heartbeat", timeout=20000)
+        worker = self.start(case)
+        wait_until(lambda: self.status(case)["state"] == "running" and (case["files"] / "heartbeat").exists())
+        old_credential = case["node"]["credential"]
+        token_id = json.loads(old_credential.read_text())["token_id"]
+        self.admin("token-revoke", *self.scope, "--token-id", token_id)
+        worker.communicate(timeout=40)
+        assert worker.returncode != 0
+        assert docker("inspect", "treeharbor-" + case["attempt"], check=False).returncode != 0
+        assert not self.status(case)["runtime_removed"]  # revoked node cannot publish a completion
+        count = (case["files"] / "heartbeat").stat().st_size
+        time.sleep(0.2)
+        assert (case["files"] / "heartbeat").stat().st_size == count
+        rotated = self.root / "node-rotated.json"
+        self.admin("token-issue", *self.scope, "--principal", f"node-{case['node_index']}",
+                   "--permission", "runtime.control", "--output", rotated)
+        case["node"]["credential"] = rotated
+        self.expire_dead_worker(case)
+        self.finish(case, self.start(case), "lost", None)
+        print("PASS managed policy: revoked profile never starts, revoked node stops writers and fresh authorization reconciles", flush=True)
+
         case = self.case("permissions")
         self.finish(case, self.start(case))
         # Operator restores access only after independently confirmed runtime removal.
         case["files"].chmod(0o700)
         assert (case["files"] / "before-chmod").read_bytes() == b"saved"
         print("PASS task chmod cannot prevent exact runtime cleanup", flush=True)
+
+    def diagnostics(self):
+        # Fixture identifiers/state only; no credential files, source bytes or
+        # unbounded container logs are printed into CI output.
+        for case in self.cases[-3:]:
+            try:
+                print(self.sql(f"SELECT jsonb_build_object('run',r.run,'state',r.state,'stop',m.stop_requested,'container',m.container,'exit',m.exit_code,'oom',m.oom_killed,'removed',m.removed) FROM th_agent_runs r JOIN th_managed_runs m USING(tenant,repository,run) WHERE r.run='{case['run']}'"), flush=True)
+                observed = docker("inspect", "treeharbor-" + case["attempt"], check=False)
+                if observed.returncode == 0:
+                    value = json.loads(observed.stdout)[0]
+                    print(json.dumps({"id": value["Id"], "state": value["State"]}), flush=True)
+            except Exception as error:
+                print(f"Diagnostic unavailable: {type(error).__name__}", flush=True)
+        if self.proxy and (self.root / "proxy.log").exists():
+            print((self.root / "proxy.log").read_text()[-2000:], flush=True)
 
     def cleanup(self):
         for child in self.children:
@@ -339,5 +384,8 @@ if __name__ == "__main__":
     try:
         harness.setup()
         harness.exercise()
+    except Exception:
+        harness.diagnostics()
+        raise
     finally:
         harness.cleanup()
