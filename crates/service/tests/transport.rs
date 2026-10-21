@@ -1528,7 +1528,10 @@ async fn connection_limit_header_deadline_and_graceful_shutdown_release_socket()
     f.save_config();
     let mut server = f.start().await;
     let health = b"GET /healthz HTTP/1.1\r\nHost: treeharbor.local\r\n\r\n";
-    assert!(f.raw(health).await.starts_with(b"HTTP/1.1 200 "));
+    // This must be the first connection. EOF from a preceding health request
+    // does not prove its server task has already dropped the sole permit: that
+    // race can reject `held`, then admit `excess`. start() only observes a log.
+    let held_at = Instant::now();
     let mut held = UnixStream::connect(&f.config.socket).await.unwrap();
     held.write_all(b"POST /v1/commands HTTP/1.1\r\nHost: treeharbor.local\r\n")
         .await
@@ -1551,7 +1554,37 @@ async fn connection_limit_header_deadline_and_graceful_shutdown_release_socket()
     assert!(
         result.is_ok() || result.is_err_and(|e| e.kind() == std::io::ErrorKind::ConnectionReset)
     );
-    assert!(f.raw(health).await.starts_with(b"HTTP/1.1 200 "));
+    assert!(held_at.elapsed() >= Duration::from_secs(4));
+    // After EOF, observe capacity becoming available instead of assuming that
+    // the server has already completed the task which owned this connection.
+    let available_by = Instant::now() + Duration::from_secs(3);
+    loop {
+        let probe = async {
+            let mut stream = UnixStream::connect(&f.config.socket).await?;
+            stream.write_all(health).await?;
+            let mut response = Vec::new();
+            stream.take(1024).read_to_end(&mut response).await?;
+            Ok::<_, std::io::Error>(response)
+        };
+        match tokio::time::timeout(Duration::from_secs(2), probe)
+            .await
+            .unwrap()
+        {
+            Ok(response) if response.starts_with(b"HTTP/1.1 200 ") => break,
+            Ok(response) if response.is_empty() => {}
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    std::io::ErrorKind::ConnectionReset | std::io::ErrorKind::BrokenPipe
+                ) => {}
+            other => panic!("unexpected health response after release: {other:?}"),
+        }
+        assert!(
+            Instant::now() < available_by,
+            "connection permit not released"
+        );
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
     rustix::process::kill_process(
         rustix::process::Pid::from_raw(server.0.id() as i32).unwrap(),
         rustix::process::Signal::TERM,
