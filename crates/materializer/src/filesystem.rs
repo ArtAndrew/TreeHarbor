@@ -37,6 +37,7 @@ pub(crate) struct Stage {
     actual: BTreeSet<Vec<u8>>,
     directories: BTreeSet<Vec<u8>>,
     links: BTreeMap<Vec<u8>, Vec<u8>>,
+    pub publication: Option<crate::Publication>,
 }
 impl Stage {
     #[allow(clippy::too_many_arguments)]
@@ -75,6 +76,7 @@ impl Stage {
             actual: BTreeSet::new(),
             directories: BTreeSet::from([vec![]]),
             links: BTreeMap::new(),
+            publication: None,
         };
         if let Some(previous) = previous {
             stage.copy_stopped(&previous.path())?;
@@ -377,7 +379,13 @@ impl Stage {
     pub fn publish(self) -> Result<MaterializedTree> {
         // No node registry or runtime can discover this directory through a
         // returned receipt before completion. Parent fsync precedes that receipt.
-        let root = self.temp.keep();
+        let root = if let Some(publication) = &self.publication {
+            let root = publication.publish(self.temp.path())?;
+            let _ = self.temp.keep();
+            root
+        } else {
+            self.temp.keep()
+        };
         Ok(MaterializedTree {
             root,
             manifest: Arc::new(self.manifest),

@@ -20,10 +20,11 @@ in **Standalone** mode. Both share one Rust engine.
 > same scoped service, with exact workspace context and verified blob content.
 > A development HTTP server over a private Unix socket and a CLI now expose the
 > authenticated command boundary. An experimental [task supervisor](docs/runtime-supervisor.md)
-> adds a process-lifetime primitive for an external Linux sandbox. Runtime binding, node recovery, optimized caching,
+> adds a process-lifetime primitive for an external Linux sandbox. Runtime binding, optimized caching,
 > remote transport and MCP integration are still pending.
 > [Preparation reservations](docs/workspace-preparations.md) now persist node/storage
-> ownership and fence retries before physical work; the node worker is still pending.
+> ownership and fence retries before physical work. The [local preparation node](docs/local-node.md)
+> now materializes files, acknowledges exact placements and recovers them after process loss.
 > Neither end-to-end mode is released. No packaged installation is available yet.
 > See [implementation status](docs/implementation-status.md) for evidence and gaps.
 
@@ -62,7 +63,8 @@ runtime isolation.
 
 To build and exercise the local server and credential administration, follow the
 [local service guide](docs/local-service.md). It requires PostgreSQL and currently
-exercises the control plane; it does not launch agents or prepare a usable workspace.
+exercises the control plane. The [local node guide](docs/local-node.md) prepares native
+workspace files; launching agents in a runtime remains pending.
 
 ## Architecture and modes
 

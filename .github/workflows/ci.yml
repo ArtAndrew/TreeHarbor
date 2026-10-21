@@ -54,7 +54,7 @@ jobs:
         env:
           TH_TEST_DATABASE_URL: host=127.0.0.1 user=treeharbor_test password=disposable-ci-only dbname=treeharbor_test
           TH_SERVICE_TEST_DATABASE_URL: host=/var/run/treeharbor-test-pg user=treeharbor_test password=disposable-ci-only dbname=treeharbor_test
-        run: cargo test -p treeharbor-metadata -p treeharbor-materializer -p treeharbor-service --locked -- --ignored
+        run: cargo test -p treeharbor-metadata -p treeharbor-materializer -p treeharbor-node -p treeharbor-service --locked -- --ignored
   runtime:
     name: gVisor task supervision
     runs-on: ubuntu-24.04

@@ -82,6 +82,23 @@ pub struct PreparedFiles {
     pub manifest_digest: [u8; 32],
 }
 
+/// Authorized current file-ready placement. This is inspection, not a job lease
+/// or permission to start an execution. Runtime binding must still be absent.
+pub struct PreparedWorkspace {
+    pub scope: Scope,
+    pub attempt: Uuid,
+    pub workspace: Uuid,
+    pub generation: i64,
+    pub epoch: i64,
+    pub authority: Authority,
+    pub node: String,
+    pub slot: StorageSlot,
+    pub revision: RevisionRef,
+    pub snapshot: ObjectId,
+    pub profile: SourceProfile,
+    pub manifest_digest: [u8; 32],
+}
+
 async fn authorize(tx: &Transaction<'_>, auth: &Authorization) -> Result<()> {
     auth.check_transaction(
         tx,
@@ -172,6 +189,56 @@ async fn bound_preparation(
 }
 
 impl Metadata {
+    pub async fn prepared_workspace(
+        &mut self,
+        auth: &Authorization,
+        workspace: Uuid,
+    ) -> Result<PreparedWorkspace> {
+        let tx = self.client.transaction().await?;
+        settings(&tx).await?;
+        let scope = auth.scope();
+        repository_lock(&tx, scope, false).await?;
+        authorize(&tx, auth).await?;
+        let storage = registered_storage(&tx, auth).await?;
+        let row = tx.query_opt(r#"SELECT p.attempt,p.generation,p.epoch,p.slot,p.base_revision,p.snapshot,p.profile,f.definition,p.manifest_digest
+            FROM th_workspace_preparations p
+            JOIN th_workspaces w ON w.tenant=p.tenant AND w.repository=p.repository AND w.workspace=p.workspace
+            JOIN th_bases b ON b.tenant=p.tenant AND b.repository=p.repository AND b.revision=p.base_revision
+            JOIN th_source_profiles f ON f.tenant=p.tenant AND f.repository=p.repository AND f.digest=p.profile
+            WHERE p.tenant=$1 AND p.repository=$2 AND p.workspace=$3 AND p.node=$4 AND p.storage_instance=$5
+              AND p.state='prepared' AND w.state='ready' AND w.runtime IS NULL AND w.node=p.node
+              AND w.generation=p.generation AND w.epoch=p.epoch AND w.base_revision=p.base_revision
+              AND w.resolved_profile=p.profile AND b.snapshot=p.snapshot"#,
+            &[&scope.tenant(), &scope.repository(), &workspace, &auth.principal(), &storage])
+            .await?.ok_or(Error::ExecutionState)?;
+        let epoch = row.get(2);
+        let authority = current_authority(&tx, scope, epoch).await?;
+        let profile = SourceProfile::decode(&row.get::<_, Vec<u8>>(7))?;
+        if profile.id().as_bytes() != &digest(row.get(6))? {
+            return Err(Error::SchemaMismatch);
+        }
+        let result = PreparedWorkspace {
+            scope: scope.clone(),
+            attempt: row.get(0),
+            workspace,
+            generation: row.get(1),
+            epoch,
+            authority,
+            node: auth.principal().into(),
+            slot: StorageSlot {
+                storage,
+                slot: row.get(3),
+            },
+            revision: row.get::<_, String>(4).parse()?,
+            snapshot: ObjectId::from_bytes(digest(row.get(5))?),
+            profile,
+            manifest_digest: digest(row.get(8))?,
+        };
+        authorize(&tx, auth).await?;
+        tx.commit().await?;
+        Ok(result)
+    }
+
     /// Trusted administration only. Register an existing Node principal and its
     /// persistent storage UUID; neither the UUID nor its owner can be remapped.
     pub async fn register_node_storage(

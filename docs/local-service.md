@@ -60,7 +60,7 @@ use, choose a short owner-private directory that survives reboots.
 
 `admin` is a trusted local operator interface using database privileges directly;
 it is not available through HTTP. It provides migrate, repository-create,
-principal-create, access-set, token-issue, token-revoke and principal-disable.
+principal-create, access-set, token-issue, token-revoke, principal-disable and node-register.
 Use `--help` for exact arguments. Principal roles and permissions are separate;
 for example, an agent cannot be granted validator or host-publisher power.
 
@@ -111,7 +111,9 @@ native commit. [Native graph uploads](source-uploads.md) now register a base thr
 authenticated binary HTTP/CLI commands when a storage backend is configured.
 For ordinary files, [native directory import](native-import.md) now captures
 explicit paths and resumes uploads using a durable local pack and journal.
-Git import and automatic node/runtime preparation remain pending.
+The [local node](local-node.md) now materializes and acknowledges native workspace
+files with durable placement and recovery. Git import, scheduling and runtime
+launch remain pending.
 After creation, [source-list and source-file](source-reads.md) read the exact
 baseline using the owner credential, workspace generation and repository epoch.
 

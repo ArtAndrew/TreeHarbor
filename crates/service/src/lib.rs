@@ -7,6 +7,7 @@ pub mod database;
 pub mod download;
 pub mod files;
 pub mod import;
+mod node_cli;
 pub mod pack;
 pub mod server;
 mod source;
@@ -14,6 +15,8 @@ mod source_read;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    #[error("node operation failed: {0}")]
+    Node(#[from] treeharbor_node::Error),
     #[error("local filesystem or socket operation failed")]
     Io(#[from] std::io::Error),
     #[error("configuration is invalid; use a private Unix PostgreSQL socket and valid limits")]
