@@ -9,7 +9,7 @@ gates. A foundation milestone does not complete either mode.
 | Immutable directory trees and operations | Exact expected-before checks, structural sharing, explicit deletes | Native merge/rebase, Git import/export |
 | Local object store | Atomic no-clobber writes, digest verification, file/directory fsync, tenant directories, physical generations and upload receipts | S3, backup/restore, kill fault campaign |
 | Native DAG queries | All-parent traversal, multiple best merge bases, bounds | Native refs, integration, policy and full no-Git end-to-end test |
-| PostgreSQL metadata and outbox | Real database transaction/idempotency/lease tests; repository authority/epoch checks; populated schema upgrades through v6; local service pool and crash/replay | Remote service integration and full server restore |
+| PostgreSQL metadata and outbox | Real database transaction/idempotency/lease tests; repository authority/epoch checks; populated schema upgrades through v7; local service pool and crash/replay | Remote service integration and full server restore |
 | Native ChangeSet intake | Computed immutable versions, base/run lineage, atomic graph pins and replay; worker process-kill test | Git base import, remote API, review/validation/merge admission and retention |
 | Protected incremental source reads | Pinned sessions, verified frontiers, bounded prefix batches and descriptors surviving local GC; authenticated workspace-root sessions | Per-tenant service quotas, bulk node delivery and S3 |
 | Native file materialization | Private copies from exact snapshots, full/sparse selection, staged expansion preserving edits/deletions, bounded IO and filesystem checks | Runtime-proven quiescence, node binding/recovery, cache/reflink, seal and Git-compatible format |
@@ -23,6 +23,7 @@ gates. A foundation milestone does not complete either mode.
 | Source delivery profiles | Canonical full/sparse format with independent vectors, immutable scoped definitions, workspace foreign-key binding, v4 upgrade, authenticated CLI/HTTP and restart tests | Automatic worker use, profile retention and generation-aware expansion |
 | Workspaces and runtime | Logical workspace/run state, drain fencing and separate filesystem preparation implemented; node identity checks | Real node/runtime observation, sandbox binding and lifecycle recovery |
 | Runtime task supervisor | Linux namespace init, privilege guards, environment clearing, guest process limit, child reaping and deadline; real gVisor CI harness | Production controller, durable node binding, volume ownership, reconciliation, trusted results and complete lifecycle |
+| Workspace preparation reservations | Operator-registered node storage, scoped job claims, immutable source/slot/attempt identity, renewal/reclaim, exact file-ready observation and drain retention; real PostgreSQL race/upgrade tests | Physical storage identity, materializer binding/recovery, separate runtime attempts, actual drain/removal and resource release |
 | MCP adapter | Planned; not implemented | Shared-service adapter, scoped tools and real client interoperability tests |
 | Connected | Not implemented | Real GitHub PR/checks/merge queue and credential separation |
 | Standalone S2 | Not implemented | Durable native admission and publication without Git processes |
@@ -35,7 +36,7 @@ macOS arm64, Rust 1.99.1, 2026-10-21:
 ```text
 cargo test --workspace --locked --offline
 54 tests passed without external services: core 15, local storage 8, native history 3, metadata input/auth/protocol 3, validation 9, materializer 2, service configuration/files/CLI/pack/read transport 12, runtime argument/host guards 2.
-74 PostgreSQL integration tests passed explicitly against local PostgreSQL 18.6: transactions 7, object catalog 12, intake 9, protected reads 9, materializer 9, access/commands/source sessions 10, source profiles/upgrade 2, source uploads/upgrade 7, service process/transport 9.
+82 PostgreSQL integration tests passed explicitly against local PostgreSQL 18.6: transactions 7, object catalog 12, intake 9, protected reads 9, materializer 9, access/commands/source sessions 10, source profiles/upgrade 2, source uploads/upgrade 7, preparation ownership/upgrade 8, service process/transport 9.
 cargo clippy --workspace --all-targets --locked --offline -- -D warnings
 Passed.
 cargo fmt --all
@@ -92,6 +93,15 @@ are tested using actual files and PostgreSQL. See [manifest v1](workspace-manife
 The caller must still prove runtime
 quiescence, fence/persist the new generation and bind the result before READY;
 none of those steps is implied by a materializer receipt.
+
+[Preparation reservations](workspace-preparations.md) now persist the source,
+node and slot identity before physical work, with scoped claims, current lease/
+authorization checks and immutable completion observations. This new path records
+file readiness with an empty runtime binding; it cannot start an agent through
+the legacy running callback. Real PostgreSQL tests cover concurrent retry,
+restart/reclaim, expiry during insertion, cross-node/tenant denial, revocation,
+drain retention and populated-v6 upgrade. Physical node recovery and a separate
+runtime-attempt controller remain unimplemented.
 
 Repository credentials and the [agent command library](agent-commands.md) now check
 permission, principal kind, token expiry/revocation and current grants in the
