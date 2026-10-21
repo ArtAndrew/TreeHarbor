@@ -97,6 +97,12 @@ struct Fixture {
 impl Fixture {
     async fn new() -> Self {
         let (schema, scope, mut db) = setup().await;
+        db.put_source_profile(
+            &context(&scope, "full-profile"),
+            &treeharbor_core::SourceProfile::full(),
+        )
+        .await
+        .unwrap();
         let stage_root = private_temp();
         let depot_root = private_temp();
         let tenant = TenantId::new(scope.tenant()).unwrap();
@@ -151,7 +157,7 @@ impl Fixture {
                 &WorkspaceSpec {
                     id: workspace,
                     base: self.revision,
-                    profile: [0; 32],
+                    profile: *treeharbor_core::SourceProfile::full().id().as_bytes(),
                     format: WorkspaceFormat::Native,
                 },
             )
@@ -519,7 +525,7 @@ async fn stale_preparation_worker_cannot_mark_workspace_ready() {
         &WorkspaceSpec {
             id: workspace,
             base: f.revision,
-            profile: [4; 32],
+            profile: *treeharbor_core::SourceProfile::full().id().as_bytes(),
             format: WorkspaceFormat::Native,
         },
     )

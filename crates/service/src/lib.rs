@@ -21,6 +21,8 @@ pub enum Error {
     Database,
     #[error("credential file is invalid")]
     Credential,
+    #[error("invalid source profile; use full selection or bounded repository-relative paths")]
+    Profile,
     #[error("request or response exceeds its size limit")]
     Size,
     #[error("request timed out; its outcome may be unknown, retry with the same idempotency key")]

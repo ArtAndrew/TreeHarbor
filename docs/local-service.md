@@ -92,10 +92,23 @@ no token was issued. Secrets are not promised to be zeroized from process memory
 
 ## Workspace commands and retry
 
-The CLI supports workspace-create, workspace-status, workspace-delete and
-operation-status. Creation requires an already registered native commit and a
-profile digest. Production graph import/upload, profile registration and automatic
-preparation are not wired into this transport yet. Tests seed an actual immutable
+The CLI supports profile-put/profile-get, workspace-create, workspace-status,
+workspace-delete and operation-status. Register full selection or explicit paths:
+
+```sh
+./target/debug/treeharbor client --socket "$TH_STATE/service.sock" \
+  --credential-file "$TH_STATE/agent.json" profile-put \
+  --key full-selection-v1 --authority standalone --epoch 1 --full
+./target/debug/treeharbor client --socket "$TH_STATE/service.sock" \
+  --credential-file "$TH_STATE/agent.json" profile-put \
+  --key src-selection-v1 --authority standalone --epoch 1 --path src --path tests
+```
+
+Each response returns a computed `profile_digest`. Use it with `profile-get` or
+workspace-create. [Profiles](source-profile-v1.md) are immutable and repository-scoped;
+they select delivery, not permissions. Creation also requires an already registered
+native commit. Production graph import/upload and automatic preparation are not
+wired into this transport yet. Tests seed an actual immutable
 graph through the storage/catalog APIs; this is not a user-facing import command.
 
 ```sh

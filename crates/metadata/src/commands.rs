@@ -6,7 +6,7 @@ use crate::intake::{WorkspaceFormat, WorkspaceSpec};
 use crate::{Authority, Error, Metadata, Scope};
 use serde::Deserialize;
 use serde_json::{Value, json};
-use treeharbor_core::{ObjectId, RevisionRef};
+use treeharbor_core::{ProfileId, RepoPath, RevisionRef, SourceProfile};
 use uuid::Uuid;
 
 pub const MAX_REQUEST_BYTES: usize = 64 * 1024;
@@ -56,6 +56,15 @@ struct Envelope {
 #[serde(tag = "method", rename_all = "snake_case", deny_unknown_fields)]
 enum Command {
     RepositoryInfo {},
+    SourceProfilePut {
+        key: String,
+        authority: Mode,
+        epoch: i64,
+        profile: ProfileWire,
+    },
+    SourceProfileGet {
+        profile_digest: String,
+    },
     WorkspaceCreate {
         key: String,
         authority: Mode,
@@ -78,6 +87,43 @@ enum Command {
         key: String,
     },
 }
+#[derive(Deserialize)]
+#[serde(tag = "kind", rename_all = "lowercase", deny_unknown_fields)]
+enum ProfileWire {
+    Full {},
+    Sparse { paths_hex: Vec<String> },
+}
+impl ProfileWire {
+    fn decode(self) -> Result<SourceProfile, CommandError> {
+        match self {
+            Self::Full {} => Ok(SourceProfile::full()),
+            Self::Sparse { paths_hex } => {
+                if paths_hex.len() > treeharbor_core::MAX_PROFILE_PATHS {
+                    return Err(CommandError::InvalidRequest);
+                }
+                let mut paths = Vec::with_capacity(paths_hex.len());
+                for value in paths_hex {
+                    if value.len() % 2 != 0
+                        || !value
+                            .bytes()
+                            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+                    {
+                        return Err(CommandError::InvalidRequest);
+                    }
+                    let bytes = (0..value.len())
+                        .step_by(2)
+                        .map(|i| {
+                            u8::from_str_radix(&value[i..i + 2], 16)
+                                .map_err(|_| CommandError::InvalidRequest)
+                        })
+                        .collect::<Result<Vec<_>, _>>()?;
+                    paths.push(RepoPath::new(bytes).map_err(|_| CommandError::InvalidRequest)?);
+                }
+                SourceProfile::sparse(paths).map_err(|_| CommandError::InvalidRequest)
+            }
+        }
+    }
+}
 #[derive(Clone, Copy, Deserialize)]
 #[serde(rename_all = "lowercase")]
 enum Mode {
@@ -95,9 +141,9 @@ impl From<Mode> for Authority {
 impl Command {
     fn permission(&self) -> Permission {
         match self {
-            Self::WorkspaceCreate { .. } | Self::WorkspaceDelete { .. } => {
-                Permission::WorkspaceWrite
-            }
+            Self::WorkspaceCreate { .. }
+            | Self::WorkspaceDelete { .. }
+            | Self::SourceProfilePut { .. } => Permission::WorkspaceWrite,
             _ => Permission::Read,
         }
     }
@@ -136,6 +182,25 @@ impl Metadata {
             .await?;
         let result = match request.command {
             Command::RepositoryInfo {} => self.authorized_repository_info(&auth).await?,
+            Command::SourceProfilePut {
+                key,
+                authority,
+                epoch,
+                profile,
+            } => {
+                self.put_source_profile(
+                    &auth.context(key, authority.into(), epoch),
+                    &profile.decode()?,
+                )
+                .await?
+            }
+            Command::SourceProfileGet { profile_digest } => {
+                let id: ProfileId = profile_digest
+                    .parse()
+                    .map_err(|_| CommandError::InvalidRequest)?;
+                let profile = self.authorized_source_profile(&auth, id).await?;
+                json!({"profile_digest":id.to_string(),"profile":crate::profiles::describe(&profile)})
+            }
             Command::WorkspaceStatus { workspace } => {
                 self.authorized_workspace_status(&auth, uuid(&workspace)?)
                     .await?
@@ -157,7 +222,7 @@ impl Metadata {
                 if !matches!(base, RevisionRef::Native(_)) {
                     return Err(CommandError::InvalidRequest);
                 }
-                let profile: ObjectId = profile_digest
+                let profile: ProfileId = profile_digest
                     .parse()
                     .map_err(|_| CommandError::InvalidRequest)?;
                 let spec = WorkspaceSpec {

@@ -308,7 +308,7 @@ impl Fixture {
     }
 }
 fn create(base: RevisionRef, id: Uuid, key: &str) -> Value {
-    json!({"method":"workspace_create","workspace":id.to_string(),"key":key,"authority":"standalone","epoch":1,"base":base.to_string(),"profile_digest":format!("sha256:{}","00".repeat(32))})
+    json!({"method":"workspace_create","workspace":id.to_string(),"key":key,"authority":"standalone","epoch":1,"base":base.to_string(),"profile_digest":treeharbor_core::SourceProfile::full().id().to_string()})
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -317,6 +317,20 @@ async fn real_cli_bootstrap_workspace_replay_crash_restart_and_revocation() {
     let f = Fixture::new().await;
     let base = f.seed().await;
     let server = f.start().await;
+    assert!(
+        f.cli(&[
+            "profile-put",
+            "--key",
+            "full-profile",
+            "--authority",
+            "standalone",
+            "--epoch",
+            "1",
+            "--full"
+        ])
+        .status
+        .success()
+    );
     let info = f.cli(&["repository-info"]);
     assert!(info.status.success());
     let value: Value = serde_json::from_slice(&info.stdout).unwrap();
@@ -577,6 +591,20 @@ async fn request_timeout_rolls_back_before_pool_reuse_and_same_key_can_retry() {
     f.save_config();
     f.sql.batch_execute("CREATE SEQUENCE reached_effect; CREATE FUNCTION slow_workspace() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN PERFORM nextval('reached_effect'); PERFORM pg_sleep(1); RETURN NEW; END $$; CREATE TRIGGER slow_workspace BEFORE INSERT ON th_workspaces FOR EACH ROW EXECUTE FUNCTION slow_workspace()").await.unwrap();
     let server = f.start().await;
+    assert!(
+        f.cli(&[
+            "profile-put",
+            "--key",
+            "full-profile",
+            "--authority",
+            "standalone",
+            "--epoch",
+            "1",
+            "--full"
+        ])
+        .status
+        .success()
+    );
     let command = create(base, Uuid::new_v4(), "cancelled-request");
     let reply = f.send(command.clone()).await;
     assert_eq!(reply.status.as_u16(), 504);
@@ -682,6 +710,103 @@ async fn connection_limit_header_deadline_and_graceful_shutdown_release_socket()
     drop(server);
     let server = f.start().await;
     assert!(f.cli(&["repository-info"]).status.success());
+    drop(server);
+    f.cleanup().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires disposable PostgreSQL over a Unix socket; runs in database CI"]
+async fn cli_profile_roundtrip_survives_restart_and_workspace_rejects_unknown_definition() {
+    let f = Fixture::new().await;
+    let base = f.seed().await;
+    let server = f.start().await;
+    let args = [
+        "profile-put",
+        "--key",
+        "sparse-selection",
+        "--authority",
+        "standalone",
+        "--epoch",
+        "1",
+        "--path",
+        "src/lib.rs",
+        "--path",
+        "src",
+    ];
+    let output = f.cli(&args);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let receipt: Value = serde_json::from_slice(&output.stdout).unwrap();
+    let profile = treeharbor_core::SourceProfile::sparse(vec![
+        treeharbor_core::RepoPath::new(b"src".to_vec()).unwrap(),
+    ])
+    .unwrap();
+    assert_eq!(
+        receipt["result"]["profile_digest"],
+        profile.id().to_string()
+    );
+    assert_eq!(receipt["result"]["profile"]["paths_hex"], json!(["737263"]));
+    assert_eq!(
+        serde_json::from_slice::<Value>(&f.cli(&args).stdout).unwrap(),
+        receipt
+    );
+    let get = f.cli(&["profile-get", "--profile-digest", &profile.id().to_string()]);
+    assert!(get.status.success());
+    assert_eq!(
+        serde_json::from_slice::<Value>(&get.stdout).unwrap(),
+        receipt
+    );
+    let workspace = Uuid::new_v4();
+    let mut command = create(base, workspace, "profile-workspace");
+    // Full profile is not registered here. An arbitrary digest is not enough.
+    let rejected = f.send(command.clone()).await;
+    assert_eq!(rejected.status.as_u16(), 404);
+    let count: i64 = f
+        .sql
+        .query_one("SELECT count(*) FROM th_workspaces", &[])
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(count, 0);
+    command["profile_digest"] = json!(profile.id().to_string());
+    assert!(f.send(command).await.status.is_success());
+    let status = f
+        .send(json!({"method":"workspace_status","workspace":workspace.to_string()}))
+        .await;
+    assert_eq!(status.body["result"]["profile_resolved"], true);
+    assert!(
+        f.sql
+            .execute(
+                "DELETE FROM th_source_profiles WHERE digest=$1",
+                &[&profile.id().as_bytes().as_slice()]
+            )
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        status.body["result"]["profile_digest"],
+        profile.id().to_string()
+    );
+    for invalid in [
+        json!({"kind":"full","paths_hex":[]}),
+        json!({"kind":"sparse","paths_hex":[]}),
+        json!({"kind":"sparse","paths_hex":["2e2e"]}),
+        json!({"kind":"sparse","paths_hex":["FF"]}),
+    ] {
+        let reply=f.send(json!({"method":"source_profile_put","key":"invalid","authority":"standalone","epoch":1,"profile":invalid})).await;
+        assert_eq!(reply.status.as_u16(), 400);
+    }
+    drop(server);
+    let server = f.start().await;
+    let get = f.cli(&["profile-get", "--profile-digest", &profile.id().to_string()]);
+    assert!(get.status.success());
+    assert_eq!(
+        serde_json::from_slice::<Value>(&get.stdout).unwrap(),
+        receipt
+    );
     drop(server);
     f.cleanup().await;
 }
