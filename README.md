@@ -27,7 +27,9 @@ in **Standalone** mode. Both share one Rust engine.
 > [Immutable change proposals](docs/change-proposals.md) add resumable blob uploads
 > and server-computed ChangeSets through the local API/CLI, with original run lineage.
 > A [native merge library](docs/native-merge.md) now computes bounded three-way
-> snapshot results and structured conflicts; queue integration is still pending.
+> snapshot results and structured conflicts. [Native integration](docs/native-integration.md)
+> adds durable refs, serial admission, scoped checks/reviews and atomic publication
+> through CLI/API. CI execution and automatic queue scheduling are still pending.
 > Optimized caching, remote transport and MCP integration are still pending.
 > [Preparation reservations](docs/workspace-preparations.md) now persist node/storage
 > ownership and fence retries before physical work. The [local preparation node](docs/local-node.md)

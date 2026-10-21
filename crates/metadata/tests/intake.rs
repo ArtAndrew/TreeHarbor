@@ -1,4 +1,6 @@
 mod common;
+#[path = "intake/integration.rs"]
+mod integration;
 #[path = "intake/proposals.rs"]
 mod proposals;
 use common::{cleanup, connection, setup};
@@ -98,7 +100,10 @@ struct Fixture {
 }
 impl Fixture {
     async fn new() -> Self {
-        let (schema, scope, mut db) = setup().await;
+        let (schema, scope, db) = setup().await;
+        Self::from_db(schema, scope, db).await
+    }
+    async fn from_db(schema: String, scope: Scope, mut db: Metadata) -> Self {
         db.put_source_profile(
             &context(&scope, "full-profile"),
             &treeharbor_core::SourceProfile::full(),

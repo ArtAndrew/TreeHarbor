@@ -3,17 +3,25 @@
 Updated: 2026-10-21. This file describes implemented behavior and remaining release
 gates. A foundation milestone does not complete either mode.
 
-New computation increment: [native snapshot merge](native-merge.md) combines exact
+New admission increment: [native integration](native-integration.md) adds durable
+policies/refs, a serial queue, immutable proposal/integration commits, scoped check
+runs and human reviews, exact final admission and atomic publication. Schema10
+preserves accepted schema9 data. Actual CLI/server restart tests merge compatible
+same-file changes and report a conflicting third proposal without Git on PATH.
+Validation outcomes in these transport tests are trusted fixtures; automatic CI
+execution/collection, queue scheduling and a complete Standalone release remain open.
+
+The [native snapshot merge](native-merge.md) combines exact
 base/current/proposed trees, preserves original inputs and reports structured
 conflicts. Real-Git reference fixtures and a no-Git local-storage test pass locally.
-The library has explicit conservative limits; it is not yet connected to admission.
+The library has explicit conservative limits; its output now feeds native admission.
 
 New increment: [immutable change proposals](change-proposals.md) expose owner-scoped
 resumable blobs and server-computed result trees through HTTP/CLI. Schema9 adds
 purpose-specific upload state; accepted proposals preserve original run/base lineage.
 Local PostgreSQL/transport tests passed, including server process loss and exact
 replay. The required Linux harness also submits overlapping real managed-agent output.
-Filesystem sealing, validation collection and integration are separate unfinished steps.
+Filesystem sealing and actual CI execution/collection remain unfinished.
 
 Development increment: [managed AgentRun](managed-runs.md) requests, owner-bound
 status/cancellation, immutable runtime policy/placement records and terminal receipt
@@ -26,15 +34,15 @@ resource outcomes and worker-loss recovery. No complete authority mode is implie
 | Component | Evidence | Remaining |
 |---|---|---|
 | Canonical SHA-256 object format | Versioned framing, independent golden vectors, strict decoder | Compatibility policy for later formats |
-| Immutable directory trees and operations | Exact expected-before checks, structural sharing, explicit deletes; bounded native merge library and Git reference matrix | Candidate/rebase commits, broader rename/base support, Git import/export |
+| Immutable directory trees and operations | Exact expected-before checks, structural sharing, explicit deletes; bounded native merge library and Git reference matrix | General history rebase, broader rename/base support, Git import/export |
 | Local object store | Atomic no-clobber writes, digest verification, file/directory fsync, tenant directories, physical generations and upload receipts | S3, backup/restore, kill fault campaign |
-| Native DAG queries | All-parent traversal, multiple best merge bases, bounds | Native refs, integration, policy and full no-Git end-to-end test |
-| PostgreSQL metadata and outbox | Real database transaction/idempotency/lease tests; repository authority/epoch checks; populated schema upgrades through v9; local service pool and crash/replay | Remote service integration and full server restore |
-| Native ChangeSet intake | HTTP/CLI immutable proposals, session-owned blobs, computed versions, running/removed-run lineage, atomic pins/session completion/outbox and process-loss replay | Filesystem sealing, Git base import, remote transport, review/validation/merge admission and retention |
+| Native DAG and admission | All-parent traversal, persisted refs/policies/queue/checks/reviews, verified candidate commits, final transactional admission and no-Git CLI/process-loss tests | Actual CI executor, automatic scheduling, full native lifecycle, recovery and export |
+| PostgreSQL metadata and outbox | Real database transaction/idempotency/lease tests; repository authority/epoch checks; populated schema upgrades through v10; local service pool and crash/replay | Remote service integration and full server restore |
+| Native ChangeSet intake | HTTP/CLI immutable proposals, session-owned blobs, computed versions, running/removed-run lineage, atomic pins/session completion/outbox and process-loss replay | Filesystem sealing, Git base import, remote transport and retention |
 | Protected incremental source reads | Pinned sessions, verified frontiers, bounded prefix batches and descriptors surviving local GC; authenticated workspace-root sessions | Per-tenant service quotas, bulk node delivery and S3 |
 | Native file materialization | Private copies from exact snapshots, full/sparse selection, staged expansion preserving edits/deletions, bounded IO and filesystem checks; exact baseline loading and guarded atomic node publication | Runtime-proven quiescence, cache/reflink, changed-file sealing and Git-compatible format |
 | Object catalog and retention | Receipt-bound publication, typed edges, atomic persistent pins, read holds, generation-safe retirement/retry; independent reachability model | Automatic GC/reconciliation/dry-run, abandoned-upload cleanup, S3 and full restore |
-| Exact validation predicate | Context binding, stale-target rejection, trusted issuer filtering, revocation and conflicting receipt tests | Authenticated collectors, durable evidence, review and atomic publication checks |
+| Exact validation and native publication | Context binding, immutable scoped receipts, current check runs, reviewer policy, final target/policy/revocation checks and atomic ref/audit/queue/pin commit | Actual CI execution binding, evidence artifact retention, review UI |
 | Credentials and agent commands | Repository-scoped opaque tokens, transactional revocation, distinct actor classes, owner-bound reads and strict command dispatch | Remote transport, MCP, production identity/admission integration |
 | Local HTTP service and CLI | Actual Unix-socket server/client, trusted admin and file-preparation node CLI, private credentials, bounded HTTP/pool, strict startup schema, SIGKILL replay, cancellation/rollback, reconnect and graceful shutdown tests | Git import, TLS/remote access, packaged installation |
 | Workspace baseline API | Owner/generation/epoch-bound directory pages and verified blob download, repeated authorization, final revocation/drain rejection, bounded response ownership, actual CLI/HTTP tests | Bulk delivery to nodes, remote streaming, persistent cache and runtime binding |
@@ -48,7 +56,7 @@ resource outcomes and worker-loss recovery. No complete authority mode is implie
 | Local preparation node | Private physical root identity/OS lock, durable placement intent, exact no-replace publication, independent concurrent slots, current authorization and file-ready acknowledgment; actual process-kill recovery and import-to-files CLI tests | Scheduler/daemon, automated volume provisioning, remote workers, fenced volume migration and safe published-tree cleanup |
 | MCP adapter | Planned; not implemented | Shared-service adapter, scoped tools and real client interoperability tests |
 | Connected | Not implemented | Real GitHub PR/checks/merge queue and credential separation |
-| Standalone S2 | Not implemented | Durable native admission and publication without Git processes |
+| Standalone S2 | Partial: durable native admission/publication through CLI/API without Git, explicit validator/runtime transport fixtures | Actual CI executor, rebase/history CLI, full lifecycle, cutover, restore and export |
 | Release and benchmarks | Not released or measured | Clean installation, artifacts, SBOM/provenance, comparison and operating cost |
 
 ## Local verification
@@ -57,9 +65,10 @@ macOS arm64, Rust 1.99.1, 2026-10-21:
 
 ```text
 cargo test --workspace --locked --offline
-97 tests passed without external services: core 15, local storage 8, native history 3, native merge 16, metadata input/auth/protocol/identity 5, validation 9, materializer 14, node identity/format/IO lifetime 5, service configuration/files/CLI/pack/read transport 12, runtime argument/host guards and controller profile/journal/mount contracts 10. The merge reference suite invokes Git only as an independent test oracle.
-106 PostgreSQL integration tests passed explicitly against local PostgreSQL 18.6: transactions 7, object catalog 12, intake 14, protected reads 9, materializer 10, access/commands/source sessions 10, source profiles/upgrade 2, source uploads/upgrade 7, preparation/run ownership/upgrade 17, node preparation/recovery 7, service process/transport 11.
-The PostgreSQL results above precede the isolated merge-library increment; that increment changes no metadata/service code or schema. The combined run uses cargo test --workspace --locked --offline -- --include-ignored with both test database URLs set.
+100 tests passed without external services, including independent policy/reservation vectors, candidate parent/delta verification and the real-Git merge oracle.
+113 PostgreSQL integration tests passed explicitly against local PostgreSQL 18.6: transactions 7, catalog 12, intake/admission 20, protected reads 9, materializer 10, access/commands 10, profiles/upgrade 2, uploads/upgrade 7, preparation/run ownership/upgrade 17, node recovery 7, service process/transport 12.
+The native admission suite covers missing/stale/ambiguous/revoked evidence, separate roles/owners, concurrent publication, cancellation, repository boundaries, populated schema9 upgrade and retained graph roots. The CLI test kills the actual server before object catalog publication and after candidate commit, then retries the same request. It independently reads persisted merged content and both-parent ancestry.
+Both database URL variables are required for the explicit ignored integration suites.
 cargo clippy --workspace --all-targets --locked --offline -- -D warnings
 Passed.
 cargo fmt --all

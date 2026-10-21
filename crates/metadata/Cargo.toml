@@ -19,6 +19,8 @@ getrandom.workspace = true
 treeharbor-core.workspace = true
 treeharbor-storage.workspace = true
 treeharbor-runtime.workspace = true
+treeharbor-merge.workspace = true
+treeharbor-validation.workspace = true
 
 [dev-dependencies]
 tokio.workspace = true

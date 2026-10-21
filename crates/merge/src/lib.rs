@@ -2,12 +2,14 @@
 //! No Git process, checkout, repository configuration, hooks or merge drivers.
 //! See docs/native-merge.md for the deliberately bounded compatibility profile.
 
+mod candidate;
 mod engine;
 mod renames;
 
 use treeharbor_core::{Object, ObjectId, ObjectStore, RepoPath};
 use treeharbor_history::History;
 
+pub use candidate::{CandidateInput, CandidateOutcome, PreparedCandidate, prepare_candidate};
 pub use engine::merge_snapshots;
 
 /// A behavior change or merge-library upgrade requires a new profile identity.

@@ -16,6 +16,7 @@
 - Authenticated workspace baseline listing and verified file download with lifecycle fences.
 - Managed isolated agent execution with durable requests, resource limits and process-loss recovery.
 - Resumable immutable ChangeSet API/CLI with server-computed trees and exact run/base lineage.
+- Native policies, refs and serial integration queue with exact candidate checks/reviews, atomic publication and crash-safe CLI/API replay.
 - Contract tests and product documentation.
 
 There is no installable product release yet.

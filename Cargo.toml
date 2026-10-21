@@ -16,6 +16,8 @@ thiserror = "2"
 tempfile = "3"
 treeharbor-core = { path = "crates/core" }
 treeharbor-history = { path = "crates/history" }
+treeharbor-merge = { path = "crates/merge" }
+treeharbor-validation = { path = "crates/validation" }
 treeharbor-storage = { path = "crates/storage" }
 treeharbor-metadata = { path = "crates/metadata" }
 treeharbor-materializer = { path = "crates/materializer" }

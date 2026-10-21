@@ -2,7 +2,8 @@
 
 `treeharbor-merge` computes a three-way result from the immutable base snapshot,
 current target snapshot and proposed snapshot. It is a Rust library development
-increment. It is not yet connected to the service, CLI or integration queue.
+increment. The [native integration service](native-integration.md) now constructs
+durable candidates and exposes admission through CLI/API.
 
 The engine uses native directories and blobs, with pinned `diffy` 0.5.2 for byte
 text merging. It does not create a Git mirror, invoke Git, execute hooks or apply
@@ -24,7 +25,9 @@ candidate construction must bind that identity before checks are dispatched.
 Unrelated histories and multiple bases are explicit errors. It does not arbitrarily
 choose one ancestor or infer ancestry from timestamps. The explicit snapshot API
 also provides the tree computation needed to rebase an immutable proposal from
-its original base onto a current target; it does not yet create a rebased commit.
+its original base onto a current target. `prepare_candidate` creates a verified
+integration delta plus proposal/integration commits; a general history-rebase API
+is still unfinished.
 
 Inputs must be service-controlled, verified source graphs protected from GC.
 Fetched objects are checked against their identities. Unchanged blobs are reused

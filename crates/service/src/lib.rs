@@ -7,6 +7,7 @@ pub mod database;
 pub mod download;
 pub mod files;
 pub mod import;
+mod native;
 mod node_cli;
 pub mod pack;
 mod proposals;

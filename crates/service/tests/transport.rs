@@ -1,4 +1,6 @@
 #![cfg(unix)]
+#[path = "transport/native.rs"]
+mod native;
 #[path = "transport/proposals.rs"]
 mod proposals;
 use serde_json::{Value, json};
@@ -1043,6 +1045,7 @@ impl Fixture {
     async fn start(&self) -> Process {
         let log = fs::File::create(self.dir.path().join("server.log")).unwrap();
         let child = Command::new(env!("CARGO_BIN_EXE_treeharbor"))
+            .env("PATH", "/treeharbor-test-no-executables")
             .arg("serve")
             .arg("--config")
             .arg(&self.config_path)

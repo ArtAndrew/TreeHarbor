@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "policy": {
+    "version": 1,
+    "checks": [
+      {
+        "name": "tests",
+        "definition": "sha256:0707070707070707070707070707070707070707070707070707070707070707",
+        "environment": "sha256:0808080808080808080808080808080808080808080808080808080808080808",
+        "toolchain": "sha256:0909090909090909090909090909090909090909090909090909090909090909",
+        "dependencies": "sha256:0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a",
+        "validators": [
+          "ci-a",
+          "ci-b"
+        ]
+      }
+    ],
+    "reviewers": [
+      "reviewer-a",
+      "reviewer-b"
+    ],
+    "approvals": 1
+  },
+  "canonical": "{\"version\":1,\"checks\":[{\"name\":\"tests\",\"definition\":\"sha256:0707070707070707070707070707070707070707070707070707070707070707\",\"environment\":\"sha256:0808080808080808080808080808080808080808080808080808080808080808\",\"toolchain\":\"sha256:0909090909090909090909090909090909090909090909090909090909090909\",\"dependencies\":\"sha256:0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a\",\"validators\":[\"ci-a\",\"ci-b\"]}],\"reviewers\":[\"reviewer-a\",\"reviewer-b\"],\"approvals\":1}",
+  "policy_digest": "627b4593699a1e8b03e7735f3526584f28230ce2f0ba7015e7b061fcbfc60127",
+  "tenant": "native-vector",
+  "repository": "00112233-4455-6677-8899-aabbccddeeff",
+  "candidate": "ffeeddcc-bbaa-9988-7766-554433221100",
+  "object": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+  "hold_token": "2331d833-c646-ec37-8582-4b05773c6276"
+}

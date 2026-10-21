@@ -12,6 +12,7 @@ pub mod access;
 pub mod catalog;
 pub mod commands;
 pub mod intake;
+pub mod integration;
 pub mod preparations;
 pub mod profiles;
 pub mod proposals;
@@ -29,6 +30,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/007_workspace_preparations.sql"),
     include_str!("../migrations/008_managed_runs.sql"),
     include_str!("../migrations/009_change_uploads.sql"),
+    include_str!("../migrations/010_native_integration.sql"),
 ];
 const MAX_JSON: usize = 1024 * 1024;
 
@@ -80,6 +82,12 @@ pub enum Error {
     UploadLimit,
     #[error("source upload does not contain all referenced objects")]
     UploadMembership,
+    #[error("native integration state is not ready for this operation")]
+    IntegrationState,
+    #[error("native target head, generation or policy changed")]
+    StaleCandidate,
+    #[error("native candidate lacks current checks or review authorization")]
+    AdmissionBlocked,
 }
 pub type Result<T> = std::result::Result<T, Error>;
 

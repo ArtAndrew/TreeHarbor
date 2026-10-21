@@ -14,6 +14,7 @@ path = "src/main.rs"
 
 [dependencies]
 treeharbor-core.workspace = true
+treeharbor-merge.workspace = true
 treeharbor-storage.workspace = true
 treeharbor-metadata.workspace = true
 treeharbor-node.workspace = true

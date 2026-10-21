@@ -452,3 +452,47 @@ pub fn merge_snapshots(
     }
     Ok(receipt(snapshot))
 }
+
+pub(crate) fn snapshot_delta(
+    store: &impl ObjectStore,
+    before: ObjectId,
+    after: ObjectId,
+    limits: Limits,
+) -> Result<treeharbor_core::Changes> {
+    use treeharbor_core::{ChangeOperation, Changes};
+    let mut cx = Context {
+        store,
+        limits,
+        directories: 0,
+        entries: 0,
+        path_bytes: 0,
+        read_bytes: 0,
+        write_bytes: 0,
+        diff_work: 0,
+        staged: BTreeMap::new(),
+        order: Vec::new(),
+    };
+    let b = cx.root(before)?;
+    let a = cx.root(after)?;
+    if b == a {
+        return Ok(Changes::new(vec![])?);
+    }
+    let before = cx.flatten(b)?;
+    let after = cx.flatten(a)?;
+    let paths: BTreeSet<_> = before.keys().chain(after.keys()).collect();
+    let mut operations = Vec::new();
+    for path in paths {
+        let expected = before.get(path).copied();
+        let replacement = after.get(path).copied();
+        if expected != replacement {
+            operations.push(ChangeOperation {
+                path: path.clone(),
+                expected,
+                replacement,
+            });
+        }
+    }
+    // Existing v1 leaf operations cannot represent an ancestor/descendant
+    // replacement atomically. Reject it; never write an empty invented delta.
+    Ok(Changes::new(operations)?)
+}

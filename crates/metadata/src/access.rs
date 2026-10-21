@@ -18,6 +18,9 @@ pub enum Permission {
     RuntimeControl,
     ValidationReport,
     HostPublish,
+    Review,
+    PolicyWrite,
+    IntegrationControl,
 }
 impl Permission {
     pub fn as_str(self) -> &'static str {
@@ -30,10 +33,25 @@ impl Permission {
             Self::RuntimeControl => "runtime.control",
             Self::ValidationReport => "validation.report",
             Self::HostPublish => "host.publish",
+            Self::Review => "review",
+            Self::PolicyWrite => "policy.write",
+            Self::IntegrationControl => "integration.control",
         }
     }
     pub(crate) fn for_command(kind: &str) -> Result<Self> {
         match kind {
+            "native.policy.put.v1" | "native.ref.policy.v1" => Ok(Self::PolicyWrite),
+            "native.ref.create.v1" => Ok(Self::RepositoryWrite),
+            "native.queue.enqueue.v1" | "native.queue.cancel.v1" => Ok(Self::QueueRequest),
+            "native.candidate.start.v1"
+            | "native.candidate.prepare.v1"
+            | "native.candidate.fail.v1"
+            | "native.check.assign.v1"
+            | "native.candidate.land.v1" => Ok(Self::IntegrationControl),
+            "native.validation.report.v1" | "native.validation.revoke.v1" => {
+                Ok(Self::ValidationReport)
+            }
+            "native.review.record.v1" | "native.review.revoke.v1" => Ok(Self::Review),
             "base.register.v1" | "source.begin.v1" | "source.finish.v1" | "source.abort.v1" => {
                 Ok(Self::RepositoryWrite)
             }
@@ -57,6 +75,7 @@ pub enum PrincipalKind {
     Node,
     Validator,
     Bridge,
+    Integrator,
 }
 impl PrincipalKind {
     pub fn as_str(self) -> &'static str {
@@ -66,6 +85,7 @@ impl PrincipalKind {
             Self::Node => "node",
             Self::Validator => "validator",
             Self::Bridge => "bridge",
+            Self::Integrator => "integrator",
         }
     }
     fn parse(value: &str) -> Result<Self> {
@@ -75,6 +95,7 @@ impl PrincipalKind {
             "node" => Ok(Self::Node),
             "validator" => Ok(Self::Validator),
             "bridge" => Ok(Self::Bridge),
+            "integrator" => Ok(Self::Integrator),
             _ => Err(Error::SchemaMismatch),
         }
     }
@@ -88,6 +109,8 @@ impl PrincipalKind {
             Permission::RuntimeControl => self == Self::Node,
             Permission::ValidationReport => self == Self::Validator,
             Permission::HostPublish => self == Self::Bridge,
+            Permission::Review | Permission::PolicyWrite => self == Self::Human,
+            Permission::IntegrationControl => self == Self::Integrator,
         }
     }
 }
@@ -163,6 +186,9 @@ impl Authorization {
     }
     pub fn principal(&self) -> &str {
         &self.principal
+    }
+    pub(crate) fn token_id(&self) -> Uuid {
+        self.token
     }
     pub fn context(&self, key: String, authority: Authority, epoch: i64) -> CommandContext {
         CommandContext::authenticated(self.clone(), key, authority, epoch)

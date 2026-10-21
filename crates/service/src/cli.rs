@@ -110,6 +110,7 @@ enum Kind {
     Node,
     Validator,
     Bridge,
+    Integrator,
 }
 impl From<Kind> for PrincipalKind {
     fn from(value: Kind) -> Self {
@@ -119,6 +120,7 @@ impl From<Kind> for PrincipalKind {
             Kind::Node => Self::Node,
             Kind::Validator => Self::Validator,
             Kind::Bridge => Self::Bridge,
+            Kind::Integrator => Self::Integrator,
         }
     }
 }
@@ -139,6 +141,11 @@ enum Grant {
     ValidationReport,
     #[value(name = "host.publish")]
     HostPublish,
+    Review,
+    #[value(name = "policy.write")]
+    PolicyWrite,
+    #[value(name = "integration.control")]
+    IntegrationControl,
 }
 impl From<Grant> for Permission {
     fn from(value: Grant) -> Self {
@@ -151,6 +158,9 @@ impl From<Grant> for Permission {
             Grant::RuntimeControl => Self::RuntimeControl,
             Grant::ValidationReport => Self::ValidationReport,
             Grant::HostPublish => Self::HostPublish,
+            Grant::Review => Self::Review,
+            Grant::PolicyWrite => Self::PolicyWrite,
+            Grant::IntegrationControl => Self::IntegrationControl,
         }
     }
 }
@@ -270,7 +280,21 @@ impl SourceContext {
 }
 #[derive(Subcommand)]
 enum Agent {
+    /// Compute a durable merge candidate from server-owned, immutable inputs.
+    NativePrepare {
+        #[arg(long)]
+        key: String,
+        #[arg(long,value_parser=clap::value_parser!(i64).range(1..))]
+        epoch: i64,
+        #[arg(long)]
+        candidate: Uuid,
+    },
     RepositoryInfo,
+    /// Execute one native policy/ref/queue/review/check operation from private JSON.
+    Native {
+        #[arg(long)]
+        request: PathBuf,
+    },
     /// Request a run from exactly prepared files and an operator-approved profile.
     RunRequest {
         #[command(flatten)]
@@ -467,6 +491,16 @@ enum Agent {
 impl Agent {
     fn json(self) -> Result<Value> {
         Ok(match self {
+            Self::Native { request } => {
+                let bytes = files::read_private(
+                    &request,
+                    treeharbor_metadata::commands::MAX_REQUEST_BYTES,
+                )?;
+                let value: Value = serde_json::from_slice(&bytes).map_err(|_| Error::Config)?;
+                let _: treeharbor_metadata::integration::WireCommand =
+                    serde_json::from_slice(&bytes).map_err(|_| Error::Config)?;
+                json!({"method":"native","request":value})
+            }
             Self::RepositoryInfo => json!({"method":"repository_info"}),
             Self::ChangeBegin {
                 mutation,
@@ -486,7 +520,9 @@ impl Agent {
             Self::ChangeAbort { mutation, upload } => {
                 json!({"method":"change_abort","key":mutation.key,"authority":Authority::from(mutation.authority).as_str(),"epoch":mutation.epoch,"upload":upload.to_string()})
             }
-            Self::ChangePut { .. } | Self::ChangeSubmit { .. } => return Err(Error::Config),
+            Self::NativePrepare { .. } | Self::ChangePut { .. } | Self::ChangeSubmit { .. } => {
+                return Err(Error::Config);
+            }
             Self::RunRequest {
                 mutation,
                 run,
@@ -704,6 +740,23 @@ pub async fn run(cli: Cli) -> Result<bool> {
                     ttl_seconds,
                     timeout: Duration::from_millis(timeout_ms),
                 })
+                .await?;
+                println!("{}", reply.body);
+                return Ok(reply.status.is_success());
+            }
+            if let Agent::NativePrepare {
+                key,
+                epoch,
+                candidate,
+            } = action
+            {
+                let body=json!({"version":1,"tenant":credential.scope.tenant(),"repository":credential.scope.repository().to_string(),"key":key,"epoch":epoch,"candidate":candidate.to_string()}).to_string().into_bytes();
+                let reply = client::send_native_prepare(
+                    &socket,
+                    &credential.token,
+                    body,
+                    Duration::from_millis(timeout_ms),
+                )
                 .await?;
                 println!("{}", reply.body);
                 return Ok(reply.status.is_success());

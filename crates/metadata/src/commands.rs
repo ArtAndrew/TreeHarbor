@@ -38,6 +38,9 @@ impl CommandError {
             Self::Metadata(Error::UploadMembership) => "upload_membership",
             Self::Metadata(Error::ObjectBusy) => "object_busy",
             Self::Metadata(Error::StaleLease) => "lease_expired",
+            Self::Metadata(Error::IntegrationState) => "integration_state_changed",
+            Self::Metadata(Error::StaleCandidate) => "candidate_stale",
+            Self::Metadata(Error::AdmissionBlocked) => "admission_blocked",
             Self::Metadata(Error::Invalid(_)) => "invalid_request",
             Self::Metadata(_) => "internal_error",
         }
@@ -60,6 +63,9 @@ struct Envelope {
 #[derive(Deserialize)]
 #[serde(tag = "method", rename_all = "snake_case", deny_unknown_fields)]
 enum Command {
+    Native {
+        request: crate::integration::WireCommand,
+    },
     RepositoryInfo {},
     ChangeBegin {
         key: String,
@@ -212,6 +218,7 @@ impl From<Mode> for Authority {
 impl Command {
     fn permission(&self) -> Permission {
         match self {
+            Self::Native { request } => request.permission(),
             Self::ChangeBegin { .. } | Self::ChangeStatus { .. } | Self::ChangeAbort { .. } => {
                 Permission::ChangeWrite
             }
@@ -271,6 +278,7 @@ impl Metadata {
             .authorize(credential, &scope, request.command.permission())
             .await?;
         let result = match request.command {
+            Command::Native { request } => request.execute(self, &auth).await?,
             Command::RepositoryInfo {} => self.authorized_repository_info(&auth).await?,
             Command::ChangeBegin {
                 key,

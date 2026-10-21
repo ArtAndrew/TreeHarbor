@@ -25,8 +25,8 @@ The database layer currently provides repository fencing, idempotent receipts,
 leased outbox primitives, an object catalog, persistent root pins and manual
 generation-safe retirement. Catalog tests include real files, a reference
 reachability model and concurrent upload/collection. Migrations verify the
-published checksum chain; the suite tests upgrading v1 and populated v2/v3/v4/v5/v6 databases
-to current schema v7, retaining pins, workspaces, receipts and credentials. Migration
+published checksum chain; the suite tests upgrading v1 and populated v2/v3/v4/v5/v6/v7/v8/v9 databases
+to current schema v10, retaining pins, workspaces, receipts and credentials. Migration
 005 adds immutable source profiles; historical unresolved profiles remain inspectable
 and drainable. See [profile format and upgrade behavior](source-profile-v1.md). Migration 006 adds
 [source upload sessions and backend identity](source-uploads.md).
@@ -70,8 +70,9 @@ schema drift, pool reconnection and graceful shutdown. CI mounts the disposable
 PostgreSQL service's socket directory into the runner; production TCP connections
 are rejected by this development connector, not silently downgraded to plaintext.
 
-Native refs/admission, remote service transport, runtime binding/lifecycle and
-automatic GC/reconciliation are still unimplemented. Restore must stop/fence existing
+[Native refs/admission](native-integration.md) now persist exact candidates, checks,
+reviews and atomic publication. Remote transport, automatic CI/queue scheduling,
+full workspace cleanup and automatic GC/reconciliation are still unimplemented. Restore must stop/fence existing
 workers before replacing metadata or objects. An outbox
 worker must use the repository's current authority/epoch when executing its
 effect, and must reconcile external effects after a crash. A valid delivery lease
