@@ -49,6 +49,9 @@ fn main() {
                 .unwrap();
             file.write_all(b"one execution\n").unwrap();
             file.sync_all().unwrap();
+            if let Some(delay) = args.get(2) {
+                thread::sleep(Duration::from_millis(delay.parse().unwrap()));
+            }
         }
         "isolation" => {
             assert!(std::env::var_os("TH_TEST_SECRET").is_none());
@@ -72,6 +75,15 @@ fn main() {
             );
             fs::write("same.txt", args[2].as_bytes()).unwrap();
             assert_eq!(fs::read("same.txt").unwrap(), args[2].as_bytes());
+            if let Some(delay) = args.get(4) {
+                thread::sleep(Duration::from_millis(delay.parse().unwrap()));
+            }
+        }
+        "permissions" => {
+            use std::os::unix::fs::PermissionsExt;
+            fs::write("before-chmod", b"saved").unwrap();
+            fs::set_permissions("/workspace", fs::Permissions::from_mode(0o000)).unwrap();
+            thread::sleep(Duration::from_millis(1000));
         }
         "exit" => std::process::exit(args[2].parse().unwrap()),
         "idle" => loop {

@@ -42,7 +42,7 @@ impl Volume {
             return Err(Error::Invalid);
         }
         let mount_fd = directory(&mount)?;
-        let files_fd = directory(&files)?;
+        let files_fd = files_directory(&files)?;
         rustix::fs::flock(
             &mount_fd,
             rustix::fs::FlockOperation::NonBlockingLockExclusive,
@@ -70,7 +70,7 @@ impl Volume {
             return Err(Error::Invalid);
         }
         let mount = self.mount.try_clone()?;
-        let files_fd = directory(&files)?;
+        let files_fd = files_directory(&files)?;
         let identity = inspect(
             &self.identity.mount,
             &files,
@@ -86,7 +86,7 @@ impl Volume {
     }
     pub fn verify(&self) -> Result<()> {
         let current_mount = directory(&self.identity.mount)?;
-        let current_files = directory(&self.identity.files)?;
+        let current_files = files_directory(&self.identity.files)?;
         let current = inspect(
             &self.identity.mount,
             &self.identity.files,
@@ -113,6 +113,24 @@ fn directory(path: &Path) -> Result<File> {
         || meta.uid() != rustix::process::geteuid().as_raw()
         || meta.mode() & 0o077 != 0
     {
+        return Err(Error::Mismatch);
+    }
+    Ok(file)
+}
+// The task owns the bound directory and can chmod it, including mode 000.
+// Its private mount ancestor remains operator-owned and is checked separately.
+// Linux O_PATH verifies type/owner/inode without requiring read/search permission
+// on that final directory; task permissions must not disable exact-ID teardown.
+fn files_directory(path: &Path) -> Result<File> {
+    let flags = OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::NONBLOCK;
+    #[cfg(target_os = "linux")]
+    let flags = flags | OFlags::PATH;
+    let file = OpenOptions::new()
+        .read(true)
+        .custom_flags(flags.bits() as i32)
+        .open(path)?;
+    let meta = file.metadata()?;
+    if !meta.is_dir() || meta.uid() != rustix::process::geteuid().as_raw() {
         return Err(Error::Mismatch);
     }
     Ok(file)
