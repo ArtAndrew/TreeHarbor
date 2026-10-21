@@ -1,0 +1,15 @@
+[package]
+name = "treeharbor-history"
+description = "Bounded native history queries independent of Git and host services"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+treeharbor-core.workspace = true
+
+[lints]
+workspace = true

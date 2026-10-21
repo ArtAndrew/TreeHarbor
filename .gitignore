@@ -1,0 +1,10 @@
+/target/
+/.treeharbor/
+/.env
+*.pem
+*.key
+.DS_Store
+
+# Internal planning documents belong outside the public repository.
+/docs/specs/
+/docs/adr/
