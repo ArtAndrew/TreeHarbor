@@ -1,0 +1,22 @@
+[package]
+name = "treeharbor-merge"
+description = "Bounded native three-way tree merging for TreeHarbor"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+treeharbor-core.workspace = true
+treeharbor-history.workspace = true
+thiserror.workspace = true
+diffy = { version = "=0.5.2", default-features = false }
+
+[dev-dependencies]
+tempfile.workspace = true
+treeharbor-storage.workspace = true
+
+[lints]
+workspace = true

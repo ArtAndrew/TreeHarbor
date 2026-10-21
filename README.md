@@ -26,6 +26,8 @@ in **Standalone** mode. Both share one Rust engine.
 > owner requests to prepared files, bounded gVisor execution and recoverable results.
 > [Immutable change proposals](docs/change-proposals.md) add resumable blob uploads
 > and server-computed ChangeSets through the local API/CLI, with original run lineage.
+> A [native merge library](docs/native-merge.md) now computes bounded three-way
+> snapshot results and structured conflicts; queue integration is still pending.
 > Optimized caching, remote transport and MCP integration are still pending.
 > [Preparation reservations](docs/workspace-preparations.md) now persist node/storage
 > ownership and fence retries before physical work. The [local preparation node](docs/local-node.md)
@@ -60,7 +62,9 @@ cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --locked -- -D warnings
 ```
 
-The core tests need neither GitHub credentials nor a Git subprocess. The separate
+The core tests need neither GitHub credentials nor a Git subprocess. The merge
+reference tests use the installed Git as an independent oracle; the native engine
+does not invoke it. The separate
 [database suite](docs/database-development.md) requires disposable PostgreSQL. They exercise
 immutable trees, change preconditions, binary paths, malformed objects, local
 storage races, catalog retention and native DAG ancestry. They do not prove server durability or

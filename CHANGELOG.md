@@ -5,6 +5,7 @@
 - Versioned canonical objects, immutable directory trees and exact change preconditions.
 - Local immutable object storage with digest checks and no-clobber publication.
 - Bounded native history traversal and all best merge bases.
+- Bounded native snapshot merge with exact sibling renames, structured conflicts and real-Git reference tests.
 - PostgreSQL idempotent transactions, repository fencing and leased outbox.
 - Exact validation-context binding and fail-closed evidence evaluation.
 - Object catalog, durable upload receipts, persistent root pins and generation-safe retirement.
