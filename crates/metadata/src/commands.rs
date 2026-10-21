@@ -113,6 +113,27 @@ enum Command {
         workspace: String,
         generation: i64,
     },
+    RunRequest {
+        key: String,
+        authority: Mode,
+        epoch: i64,
+        run: String,
+        workspace: String,
+        generation: i64,
+        profile_digest: String,
+        argv: Vec<String>,
+        agent: String,
+        task: String,
+    },
+    RunStatus {
+        run: String,
+    },
+    RunStop {
+        key: String,
+        authority: Mode,
+        epoch: i64,
+        run: String,
+    },
     OperationStatus {
         key: String,
     },
@@ -177,6 +198,8 @@ impl Command {
             | Self::SourceStatus { .. } => Permission::RepositoryWrite,
             Self::WorkspaceCreate { .. }
             | Self::WorkspaceDelete { .. }
+            | Self::RunRequest { .. }
+            | Self::RunStop { .. }
             | Self::SourceProfilePut { .. } => Permission::WorkspaceWrite,
             _ => Permission::Read,
         }
@@ -226,6 +249,45 @@ impl Metadata {
             .await?;
         let result = match request.command {
             Command::RepositoryInfo {} => self.authorized_repository_info(&auth).await?,
+            Command::RunRequest {
+                key,
+                authority,
+                epoch,
+                run,
+                workspace,
+                generation,
+                profile_digest,
+                argv,
+                agent,
+                task,
+            } => {
+                let profile: ObjectId = profile_digest
+                    .parse()
+                    .map_err(|_| CommandError::InvalidRequest)?;
+                self.request_run(
+                    &auth.context(key, authority.into(), epoch),
+                    &crate::runs::RunRequest {
+                        run: uuid(&run)?,
+                        workspace: uuid(&workspace)?,
+                        generation,
+                        profile: *profile.as_bytes(),
+                        argv,
+                        agent,
+                        task,
+                    },
+                )
+                .await?
+            }
+            Command::RunStatus { run } => self.run_status(&auth, uuid(&run)?).await?,
+            Command::RunStop {
+                key,
+                authority,
+                epoch,
+                run,
+            } => {
+                self.stop_run(&auth.context(key, authority.into(), epoch), uuid(&run)?)
+                    .await?
+            }
             Command::SourceBegin {
                 key,
                 authority,

@@ -61,12 +61,25 @@ impl Storage {
 }
 pub(crate) struct Operation {
     pub storage: Arc<Storage>,
+    pub root: PathBuf,
+    pub volume: Option<treeharbor_runtime::Volume>,
+    pub volume_digest: Option<[u8; 32]>,
     _slot: OwnedMutexGuard<()>,
     _capacity: OwnedSemaphorePermit,
+}
+impl Operation {
+    pub fn verify(&self) -> Result<()> {
+        self.storage.verify()?;
+        if let Some(volume) = &self.volume {
+            volume.verify()?;
+        }
+        Ok(())
+    }
 }
 #[derive(Clone)]
 pub struct Node {
     pub(crate) storage: Arc<Storage>,
+    pub(crate) volume_registration: Arc<Mutex<()>>,
     capacity: Arc<Semaphore>,
     slots: Arc<Mutex<BTreeMap<Uuid, Weak<AsyncMutex<()>>>>>,
 }
@@ -148,6 +161,7 @@ impl Node {
     fn from_storage(storage: Storage, concurrent: usize) -> Self {
         Self {
             storage: Arc::new(storage),
+            volume_registration: Arc::new(Mutex::new(())),
             capacity: Arc::new(Semaphore::new(concurrent)),
             slots: Arc::new(Mutex::new(BTreeMap::new())),
         }
@@ -155,8 +169,8 @@ impl Node {
     pub fn identity(&self) -> &Identity {
         &self.storage.identity
     }
-    pub(crate) async fn operation(&self, slot: Uuid) -> Result<Arc<Operation>> {
-        let lock = {
+    pub(crate) fn slot_lock(&self, slot: Uuid) -> Result<Arc<AsyncMutex<()>>> {
+        Ok({
             let mut slots = self.slots.lock().map_err(|_| Error::Busy)?;
             slots.retain(|_, lock| lock.strong_count() != 0);
             if let Some(lock) = slots.get(&slot).and_then(Weak::upgrade) {
@@ -166,8 +180,11 @@ impl Node {
                 slots.insert(slot, Arc::downgrade(&lock));
                 lock
             }
-        };
-        let slot = lock.lock_owned().await;
+        })
+    }
+    pub(crate) async fn operation(&self, slot: Uuid) -> Result<Arc<Operation>> {
+        let lock = self.slot_lock(slot)?;
+        let slot_guard = lock.lock_owned().await;
         let capacity = self
             .capacity
             .clone()
@@ -175,9 +192,18 @@ impl Node {
             .await
             .map_err(|_| Error::Busy)?;
         self.storage.verify()?;
+        let (root, volume) = self.placement(slot)?;
+        let volume_digest = if volume.is_some() {
+            Some(self.registered_volume(slot)?.digest()?)
+        } else {
+            None
+        };
         Ok(Arc::new(Operation {
             storage: self.storage.clone(),
-            _slot: slot,
+            root,
+            volume,
+            volume_digest,
+            _slot: slot_guard,
             _capacity: capacity,
         }))
     }

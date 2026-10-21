@@ -1,4 +1,6 @@
 mod common;
+#[path = "preparations/managed_runs.rs"]
+mod managed_runs;
 use common::{cleanup, connection, setup};
 use serde_json::json;
 use sha2::{Digest, Sha256};

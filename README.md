@@ -22,8 +22,9 @@ in **Standalone** mode. Both share one Rust engine.
 > authenticated command boundary. An experimental [task supervisor](docs/runtime-supervisor.md)
 > adds a process-lifetime primitive for an external Linux sandbox. An experimental
 > [runtime controller](docs/runtime-controller.md) adds durable local create/start/remove
-> intents and verified external execution. Service-managed runtime binding, optimized caching,
-> remote transport and MCP integration are still pending.
+> intents and verified external execution. [Managed runs](docs/managed-runs.md) now bind
+> owner requests to prepared files, bounded gVisor execution and recoverable results.
+> Optimized caching, remote transport and MCP integration are still pending.
 > [Preparation reservations](docs/workspace-preparations.md) now persist node/storage
 > ownership and fence retries before physical work. The [local preparation node](docs/local-node.md)
 > now materializes files, acknowledges exact placements and recovers them after process loss.
@@ -66,7 +67,8 @@ runtime isolation.
 To build and exercise the local server and credential administration, follow the
 [local service guide](docs/local-service.md). It requires PostgreSQL and currently
 exercises the control plane. The [local node guide](docs/local-node.md) prepares native
-workspace files; launching agents in a runtime remains pending.
+workspace files. [Managed runs](docs/managed-runs.md) add experimental Linux execution
+with explicitly provisioned bounded volumes and approved runtime profiles.
 
 ## Architecture and modes
 

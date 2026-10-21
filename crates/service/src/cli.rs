@@ -28,7 +28,7 @@ pub struct Cli {
 }
 #[derive(Subcommand)]
 enum Command {
-    /// Trusted local file-preparation node. Does not execute agent code.
+    /// Trusted local preparation and bounded runtime node.
     Node {
         #[command(subcommand)]
         action: crate::node_cli::Action,
@@ -156,6 +156,20 @@ impl From<Grant> for Permission {
 }
 #[derive(Subcommand)]
 enum Admin {
+    /// Approve an immutable runtime image and resource policy for a repository.
+    RuntimeProfileRegister {
+        #[command(flatten)]
+        scope: Repository,
+        #[arg(long)]
+        file: PathBuf,
+    },
+    /// Fence future starts and request cleanup of runs using this profile.
+    RuntimeProfileRevoke {
+        #[command(flatten)]
+        scope: Repository,
+        #[arg(long)]
+        profile_digest: String,
+    },
     /// Bind an existing Node principal to its initialized storage UUID.
     NodeRegister {
         #[arg(long)]
@@ -257,6 +271,37 @@ impl SourceContext {
 #[derive(Subcommand)]
 enum Agent {
     RepositoryInfo,
+    /// Request a run from exactly prepared files and an operator-approved profile.
+    RunRequest {
+        #[command(flatten)]
+        mutation: Mutation,
+        #[arg(long)]
+        run: Uuid,
+        #[arg(long)]
+        workspace: Uuid,
+        #[arg(long, value_parser=clap::value_parser!(i64).range(1..))]
+        generation: i64,
+        #[arg(long)]
+        profile_digest: String,
+        #[arg(long)]
+        agent: String,
+        #[arg(long)]
+        task: String,
+        /// Explicit command after --; evaluated only inside the approved sandbox.
+        #[arg(last=true, required=true, num_args=1..=128)]
+        argv: Vec<String>,
+    },
+    RunStatus {
+        #[arg(long)]
+        run: Uuid,
+    },
+    /// Request cancellation; files remain pinned until runtime removal is observed.
+    RunStop {
+        #[command(flatten)]
+        mutation: Mutation,
+        #[arg(long)]
+        run: Uuid,
+    },
     /// Read a baseline file (or link bytes) into a new private regular file.
     SourceFile {
         #[command(flatten)]
@@ -376,6 +421,24 @@ impl Agent {
     fn json(self) -> Result<Value> {
         Ok(match self {
             Self::RepositoryInfo => json!({"method":"repository_info"}),
+            Self::RunRequest {
+                mutation,
+                run,
+                workspace,
+                generation,
+                profile_digest,
+                agent,
+                task,
+                argv,
+            } => {
+                json!({"method":"run_request","key":mutation.key,"authority":Authority::from(mutation.authority).as_str(),"epoch":mutation.epoch,
+                    "run":run.to_string(),"workspace":workspace.to_string(),"generation":generation,
+                    "profile_digest":profile_digest,"agent":agent,"task":task,"argv":argv})
+            }
+            Self::RunStatus { run } => json!({"method":"run_status","run":run.to_string()}),
+            Self::RunStop { mutation, run } => {
+                json!({"method":"run_stop","key":mutation.key,"authority":Authority::from(mutation.authority).as_str(),"epoch":mutation.epoch,"run":run.to_string()})
+            }
             Self::SourceBegin {
                 mutation,
                 upload,
@@ -621,6 +684,27 @@ pub async fn run(cli: Cli) -> Result<bool> {
             let operator = format!("local-uid:{}", rustix::process::geteuid().as_raw());
             let db = &mut session.metadata;
             let value = match action {
+                Admin::RuntimeProfileRegister { scope, file } => {
+                    let bytes = files::read_private(&file, 4096)?;
+                    let definition = serde_json::from_slice(&bytes).map_err(|_| Error::Config)?;
+                    let profile =
+                        treeharbor_runtime::Profile::new(definition).map_err(|_| Error::Config)?;
+                    db.register_runtime_profile(&scope.scope()?, &profile, &operator)
+                        .await
+                        .map_err(|_| Error::Administration)?;
+                    json!({"status":"registered","profile_digest":treeharbor_core::ObjectId::from_bytes(profile.digest()).to_string()})
+                }
+                Admin::RuntimeProfileRevoke {
+                    scope,
+                    profile_digest,
+                } => {
+                    let profile: treeharbor_core::ObjectId =
+                        profile_digest.parse().map_err(|_| Error::Config)?;
+                    db.revoke_runtime_profile(&scope.scope()?, *profile.as_bytes(), &operator)
+                        .await
+                        .map_err(|_| Error::Administration)?;
+                    json!({"status":"revoked","profile_digest":profile.to_string()})
+                }
                 Admin::NodeRegister {
                     tenant,
                     principal,

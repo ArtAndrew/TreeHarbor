@@ -18,6 +18,7 @@ treeharbor-storage.workspace = true
 treeharbor-metadata.workspace = true
 treeharbor-node.workspace = true
 treeharbor-materializer.workspace = true
+treeharbor-runtime.workspace = true
 tokio.workspace = true
 tokio-postgres.workspace = true
 serde.workspace = true

@@ -18,6 +18,7 @@ thiserror.workspace = true
 getrandom.workspace = true
 treeharbor-core.workspace = true
 treeharbor-storage.workspace = true
+treeharbor-runtime.workspace = true
 
 [dev-dependencies]
 tokio.workspace = true

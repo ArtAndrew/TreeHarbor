@@ -2,8 +2,10 @@
 
 The development node now connects native workspace reservations to real files and
 database acknowledgment. It runs on Linux/macOS using the same Rust CLI, local
-PostgreSQL and local object backend as the server. It does not execute agent code.
-There is no persistent scheduler, remote node transport or runtime launcher yet.
+PostgreSQL and local object backend as the server. The commands in this guide only
+prepare files. Linux [managed runs](managed-runs.md) add bounded runtime execution
+through a separate operator-approved profile and registered ext4 volume. There is
+no persistent scheduler or remote node transport yet.
 
 ## Prepare an existing native workspace
 

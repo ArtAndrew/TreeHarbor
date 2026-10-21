@@ -105,6 +105,9 @@ impl Container {
     pub fn id(&self) -> &str {
         &self.id
     }
+    pub fn binding(&self) -> [u8; 32] {
+        self.binding
+    }
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum RuntimeState {

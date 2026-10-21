@@ -33,6 +33,7 @@ pub struct Preparation {
     snapshot: ObjectId,
     profile: SourceProfile,
     holder: String,
+    volume_digest: Option<[u8; 32]>,
 }
 impl Preparation {
     pub fn attempt(&self) -> Uuid {
@@ -71,6 +72,9 @@ impl Preparation {
     pub fn source_holder(&self) -> &str {
         &self.holder
     }
+    pub fn volume_digest(&self) -> Option<[u8; 32]> {
+        self.volume_digest
+    }
 }
 
 /// Trusted node observation of fully published, durable files. It proves no
@@ -85,6 +89,7 @@ pub struct PreparedFiles {
 /// Authorized current file-ready placement. This is inspection, not a job lease
 /// or permission to start an execution. Runtime binding must still be absent.
 pub struct PreparedWorkspace {
+    pub volume_digest: Option<[u8; 32]>,
     pub scope: Scope,
     pub attempt: Uuid,
     pub workspace: Uuid,
@@ -111,7 +116,7 @@ async fn authorize(tx: &Transaction<'_>, auth: &Authorization) -> Result<()> {
 
 async fn registered_storage(tx: &Transaction<'_>, auth: &Authorization) -> Result<Uuid> {
     tx.query_opt(
-        "SELECT storage_instance FROM th_node_storage WHERE tenant=$1 AND node=$2",
+        "SELECT storage_instance FROM th_node_storage WHERE tenant=$1 AND node=$2 FOR SHARE",
         &[&auth.scope().tenant(), &auth.principal()],
     )
     .await?
@@ -200,11 +205,12 @@ impl Metadata {
         repository_lock(&tx, scope, false).await?;
         authorize(&tx, auth).await?;
         let storage = registered_storage(&tx, auth).await?;
-        let row = tx.query_opt(r#"SELECT p.attempt,p.generation,p.epoch,p.slot,p.base_revision,p.snapshot,p.profile,f.definition,p.manifest_digest
+        let row = tx.query_opt(r#"SELECT p.attempt,p.generation,p.epoch,p.slot,p.base_revision,p.snapshot,p.profile,f.definition,p.manifest_digest,v.identity_digest
             FROM th_workspace_preparations p
             JOIN th_workspaces w ON w.tenant=p.tenant AND w.repository=p.repository AND w.workspace=p.workspace
             JOIN th_bases b ON b.tenant=p.tenant AND b.repository=p.repository AND b.revision=p.base_revision
             JOIN th_source_profiles f ON f.tenant=p.tenant AND f.repository=p.repository AND f.digest=p.profile
+            LEFT JOIN th_node_volumes v ON v.storage_instance=p.storage_instance AND v.slot=p.slot
             WHERE p.tenant=$1 AND p.repository=$2 AND p.workspace=$3 AND p.node=$4 AND p.storage_instance=$5
               AND p.state='prepared' AND w.state='ready' AND w.runtime IS NULL AND w.node=p.node
               AND w.generation=p.generation AND w.epoch=p.epoch AND w.base_revision=p.base_revision
@@ -233,6 +239,7 @@ impl Metadata {
             snapshot: ObjectId::from_bytes(digest(row.get(5))?),
             profile,
             manifest_digest: digest(row.get(8))?,
+            volume_digest: row.get::<_, Option<Vec<u8>>>(9).map(digest).transpose()?,
         };
         authorize(&tx, auth).await?;
         tx.commit().await?;
@@ -350,12 +357,13 @@ impl Metadata {
         }
         let (workspace, generation, epoch) = live_job(&tx, auth, job).await?;
         let authority = current_authority(&tx, scope, epoch).await?;
-        let row=tx.query_opt(r#"SELECT w.base_revision,b.snapshot,w.resolved_profile,p.definition,w.pin_holder
+        let row=tx.query_opt(r#"SELECT w.base_revision,b.snapshot,w.resolved_profile,p.definition,w.pin_holder,v.identity_digest
             FROM th_workspaces w JOIN th_bases b ON b.tenant=w.tenant AND b.repository=w.repository AND b.revision=w.base_revision
             JOIN th_source_profiles p ON p.tenant=w.tenant AND p.repository=w.repository AND p.digest=w.resolved_profile
+            LEFT JOIN th_node_volumes v ON v.storage_instance=$7 AND v.slot=$8 AND v.tenant=w.tenant AND v.node=$6
             WHERE w.tenant=$1 AND w.repository=$2 AND w.workspace=$3 AND w.generation=$4 AND w.epoch=$5
             AND w.state='requested' AND w.format='native' AND w.runtime IS NULL AND (w.node IS NULL OR w.node=$6)"#,
-            &[&scope.tenant(),&scope.repository(),&workspace,&generation,&epoch,&auth.principal()]).await?.ok_or(Error::ExecutionState)?;
+            &[&scope.tenant(),&scope.repository(),&workspace,&generation,&epoch,&auth.principal(),&slot.storage,&slot.slot]).await?.ok_or(Error::ExecutionState)?;
         let revision: String = row.get(0);
         let parsed_revision = revision.parse()?;
         let snapshot = digest(row.get(1))?;
@@ -365,6 +373,7 @@ impl Metadata {
             return Err(Error::SchemaMismatch);
         }
         let holder: String = row.get(4);
+        let volume_digest = row.get::<_, Option<Vec<u8>>>(5).map(digest).transpose()?;
         tx.execute(r#"INSERT INTO th_workspace_preparations(attempt,tenant,repository,workspace,generation,epoch,node,storage_instance,slot,job_id,base_revision,snapshot,profile,state)
             VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'reserved') ON CONFLICT DO NOTHING"#,
             &[&Uuid::new_v4(),&scope.tenant(),&scope.repository(),&workspace,&generation,&epoch,&auth.principal(),&slot.storage,&slot.slot,&job.id,&revision,&snapshot.as_slice(),&profile_bytes.as_slice()]).await?;
@@ -400,6 +409,7 @@ impl Metadata {
             snapshot: ObjectId::from_bytes(snapshot),
             profile,
             holder,
+            volume_digest,
         })
     }
 
