@@ -40,8 +40,8 @@ cargo clippy --workspace --all-targets --locked --offline -- -D warnings
 Passed.
 cargo fmt --all
 Applied before the checks above.
-Published baseline CI (Linux, macOS and PostgreSQL):
-https://github.com/ArtAndrew/TreeHarbor/actions/runs/39599299568
+Published CI evidence (Linux, macOS, PostgreSQL and gVisor; commit 53cfd98):
+https://github.com/ArtAndrew/TreeHarbor/actions/runs/39605940651
 ```
 
 The separate `gVisor task supervision` CI job exercises the
@@ -52,6 +52,15 @@ which exits before completion, guest PID limits, memory exhaustion and a dedicat
 persistent disk capacity. This is not yet a service-managed workspace or a proof
 of restart/DB reconciliation. No READY or Validation receipt is produced by the
 supervisor tests.
+
+The real runtime run above passed isolation, rejected invalid bootstrap settings,
+primary exit and descendant teardown, PID-1 signal/proc attacks, timeout after the
+launcher exits, and external cancellation. Exhaustion at task budgets 4/16/64
+observed exactly 4/16/64 live tasks including the primary, repeated after reaping;
+attempts to raise the hard limit failed. Actual memory exhaustion stopped the
+sandbox with an OOM observation. The 128 MiB workspace filled without changing
+the separate neighboring volume. These are correctness observations for the
+pinned test profile, not throughput measurements or complete node integration.
 
 Test stores used for pure model tests are not a server implementation. Local
 storage tests use actual files; they have not yet proved power-loss behavior on
