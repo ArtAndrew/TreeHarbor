@@ -55,3 +55,30 @@ jobs:
           TH_TEST_DATABASE_URL: host=127.0.0.1 user=treeharbor_test password=disposable-ci-only dbname=treeharbor_test
           TH_SERVICE_TEST_DATABASE_URL: host=/var/run/treeharbor-test-pg user=treeharbor_test password=disposable-ci-only dbname=treeharbor_test
         run: cargo test -p treeharbor-metadata -p treeharbor-materializer -p treeharbor-service --locked -- --ignored
+  runtime:
+    name: gVisor task supervision
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Install static Rust target
+        run: |
+          rustup toolchain install 1.99.1 --profile minimal --target x86_64-unknown-linux-musl
+          sudo apt-get update -qq
+          sudo apt-get install -y musl-tools
+      - name: Install pinned gVisor including sidecar binaries
+        working-directory: ${{ runner.temp }}
+        run: |
+          curl --fail --location --retry 3 --output gvisor.tar.bz2 https://github.com/google/gvisor/releases/download/release-20261012.0/gvisor-x86_64.tar.bz2
+          echo '9606445eed5aedfcf05310e7ccef61d994089914c6622fc82624c24d2b18db1b2210f40e40a7be27b8b7772859de7d95c501b4eba66423053c960bf671377c5e  gvisor.tar.bz2' | sha512sum --check --strict
+          sudo tar -xjf gvisor.tar.bz2 -C /usr/local/bin
+          sudo /usr/local/bin/runsc install
+          sudo systemctl restart docker
+          /usr/local/bin/runsc --version
+          docker info
+      - name: Build trusted init and adversarial fixture
+        run: cargo build -p treeharbor-runtime --locked --target x86_64-unknown-linux-musl --bins --examples
+      - name: Exercise real runtime, resources and process teardown
+        run: python3 scripts/test-runtime.py

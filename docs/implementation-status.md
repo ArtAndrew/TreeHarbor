@@ -22,6 +22,7 @@ gates. A foundation milestone does not complete either mode.
 | Native directory import | Explicit selection, descriptor-relative capture, durable pack/journal v1, independent vector, actual CLI-to-server partial-upload recovery and completed replay with Git absent from PATH | Git history import, incremental reuse, automatic spool cleanup and runtime-proven snapshots |
 | Source delivery profiles | Canonical full/sparse format with independent vectors, immutable scoped definitions, workspace foreign-key binding, v4 upgrade, authenticated CLI/HTTP and restart tests | Automatic worker use, profile retention and generation-aware expansion |
 | Workspaces and runtime | Logical workspace/run state, drain fencing and separate filesystem preparation implemented; node identity checks | Real node/runtime observation, sandbox binding and lifecycle recovery |
+| Runtime task supervisor | Linux namespace init, privilege guards, environment clearing, guest process limit, child reaping and deadline; real gVisor CI harness | Production controller, durable node binding, volume ownership, reconciliation, trusted results and complete lifecycle |
 | MCP adapter | Planned; not implemented | Shared-service adapter, scoped tools and real client interoperability tests |
 | Connected | Not implemented | Real GitHub PR/checks/merge queue and credential separation |
 | Standalone S2 | Not implemented | Durable native admission and publication without Git processes |
@@ -33,7 +34,7 @@ macOS arm64, Rust 1.99.1, 2026-10-21:
 
 ```text
 cargo test --workspace --locked --offline
-52 tests passed without external services: core 15, local storage 8, native history 3, metadata input/auth/protocol 3, validation 9, materializer 2, service configuration/files/CLI/pack/read transport 12.
+54 tests passed without external services: core 15, local storage 8, native history 3, metadata input/auth/protocol 3, validation 9, materializer 2, service configuration/files/CLI/pack/read transport 12, runtime argument/host guards 2.
 74 PostgreSQL integration tests passed explicitly against local PostgreSQL 18.6: transactions 7, object catalog 12, intake 9, protected reads 9, materializer 9, access/commands/source sessions 10, source profiles/upgrade 2, source uploads/upgrade 7, service process/transport 9.
 cargo clippy --workspace --all-targets --locked --offline -- -D warnings
 Passed.
@@ -42,6 +43,15 @@ Applied before the checks above.
 Published baseline CI (Linux, macOS and PostgreSQL):
 https://github.com/ArtAndrew/TreeHarbor/actions/runs/39599299568
 ```
+
+The separate `gVisor task supervision` CI job exercises the
+[runtime supervisor](runtime-supervisor.md) on a real disposable Linux runtime.
+It is not run by the ordinary local test command, and the macOS checks do not
+provide sandbox evidence. The harness includes namespace teardown, a launcher
+which exits before completion, guest PID limits, memory exhaustion and a dedicated
+persistent disk capacity. This is not yet a service-managed workspace or a proof
+of restart/DB reconciliation. No READY or Validation receipt is produced by the
+supervisor tests.
 
 Test stores used for pure model tests are not a server implementation. Local
 storage tests use actual files; they have not yet proved power-loss behavior on

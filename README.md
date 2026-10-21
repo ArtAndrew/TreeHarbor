@@ -19,7 +19,8 @@ in **Standalone** mode. Both share one Rust engine.
 > Owners can [list and download baseline files](docs/source-reads.md) through the
 > same scoped service, with exact workspace context and verified blob content.
 > A development HTTP server over a private Unix socket and a CLI now expose the
-> authenticated command boundary. Runtime binding, node recovery, optimized caching,
+> authenticated command boundary. An experimental [task supervisor](docs/runtime-supervisor.md)
+> adds a process-lifetime primitive for an external Linux sandbox. Runtime binding, node recovery, optimized caching,
 > remote transport and MCP integration are still pending.
 > Neither end-to-end mode is released. No packaged installation is available yet.
 > See [implementation status](docs/implementation-status.md) for evidence and gaps.
