@@ -2,8 +2,9 @@
 
 The Rust entry point `Metadata::execute_agent_command` accepts a credential and a
 versioned JSON request. It currently supports repository information, workspace
-requests/status/drain and operation status. This is a **library interface**;
-there is no HTTP listener, CLI or MCP server yet, and neither product mode is released.
+requests/status/drain and operation status. The [local HTTP server and CLI](local-service.md)
+use this same boundary. There is no MCP server or remote transport yet, and neither
+end-to-end product mode is released.
 
 Requests are limited to 64 KiB. Unknown fields, duplicate fields, unsupported
 versions and commands are rejected. UUIDs use lowercase hyphenated form. A tenant
@@ -66,7 +67,8 @@ already running code or erase data previously returned to a client.
 
 Node observations bind the node identity to its workspace assignment; agent-run
 ownership remains with the workspace owner. Actual runtime observation, sandbox
-isolation, credential-file management, secure network transport and service-wide
-rate limits still need integration. Administrative and `CommandContext::trusted`
-methods are for trusted in-process code only and must never be routed from agent
-requests.
+isolation, remote transport and per-tenant service rate limits still need integration.
+The local CLI writes owner-private credential files; the server bounds connections,
+headers, bodies, timeouts and its database pool. Administrative and
+`CommandContext::trusted` methods are trusted operations only; the admin CLI uses a
+separate database connection. They must never be routed from agent requests.

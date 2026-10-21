@@ -12,9 +12,10 @@ in **Standalone** mode. Both share one Rust engine.
 > PostgreSQL transaction/outbox primitives, object retention, durable native ChangeSet
 > intake, protected source reads, native file preparation/sparse expansion and exact
 > validation predicates, repository-scoped credentials and authenticated command handling.
-> These are libraries; runtime binding, node recovery, optimized caching and HTTP/CLI/MCP
-> integration are still pending.
-> Neither end-to-end mode is released. There is no installable server or CLI yet.
+> A development HTTP server over a private Unix socket and a CLI now expose the
+> authenticated command boundary. Runtime binding, node recovery, optimized caching,
+> remote transport and MCP integration are still pending.
+> Neither end-to-end mode is released. No packaged installation is available yet.
 > See [implementation status](docs/implementation-status.md) for evidence and gaps.
 
 ## Why build this?
@@ -49,6 +50,10 @@ The core tests need neither GitHub credentials nor a Git subprocess. The separat
 immutable trees, change preconditions, binary paths, malformed objects, local
 storage races, catalog retention and native DAG ancestry. They do not prove server durability or
 runtime isolation.
+
+To build and exercise the local server and credential administration, follow the
+[local service guide](docs/local-service.md). It requires PostgreSQL and currently
+exercises the control plane; it does not launch agents or prepare a usable workspace.
 
 ## Architecture and modes
 

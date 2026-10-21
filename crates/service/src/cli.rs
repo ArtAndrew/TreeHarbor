@@ -1,0 +1,394 @@
+//! Trusted local administration is deliberately separate from agent HTTP commands.
+use crate::{
+    Error, Result,
+    client::{self, Credential},
+    config::Config,
+    database::Database,
+    files,
+    server::Server,
+};
+use clap::{Args, Parser, Subcommand, ValueEnum};
+use serde_json::{Value, json};
+use std::{path::PathBuf, time::Duration};
+use treeharbor_metadata::{
+    Authority, Scope,
+    access::{Permission, PrincipalKind},
+};
+use uuid::Uuid;
+
+#[derive(Parser)]
+#[command(
+    name = "treeharbor",
+    version,
+    about = "TreeHarbor development transport (local Unix socket)"
+)]
+pub struct Cli {
+    #[command(subcommand)]
+    command: Command,
+}
+#[derive(Subcommand)]
+enum Command {
+    /// Serve authenticated commands. Requires an explicitly migrated database.
+    Serve {
+        #[arg(long)]
+        config: PathBuf,
+    },
+    /// Trusted database administration; never expose this command to an agent.
+    Admin {
+        #[arg(long)]
+        config: PathBuf,
+        #[command(subcommand)]
+        action: Admin,
+    },
+    /// Use a repository-scoped credential without database access.
+    Client {
+        #[arg(long)]
+        socket: PathBuf,
+        #[arg(long)]
+        credential_file: PathBuf,
+        #[arg(long, default_value_t=15_000, value_parser=clap::value_parser!(u64).range(100..=60_000))]
+        timeout_ms: u64,
+        #[command(subcommand)]
+        action: Agent,
+    },
+}
+#[derive(Args)]
+struct Repository {
+    #[arg(long)]
+    tenant: String,
+    #[arg(long)]
+    repository: Uuid,
+}
+impl Repository {
+    fn scope(&self) -> Result<Scope> {
+        Scope::new(&self.tenant, self.repository).map_err(|_| Error::Config)
+    }
+}
+#[derive(Clone, Copy, ValueEnum)]
+enum Mode {
+    Connected,
+    Standalone,
+}
+impl From<Mode> for Authority {
+    fn from(value: Mode) -> Self {
+        match value {
+            Mode::Connected => Self::Connected,
+            Mode::Standalone => Self::Standalone,
+        }
+    }
+}
+#[derive(Clone, Copy, ValueEnum)]
+enum Kind {
+    Human,
+    Agent,
+    Node,
+    Validator,
+    Bridge,
+}
+impl From<Kind> for PrincipalKind {
+    fn from(value: Kind) -> Self {
+        match value {
+            Kind::Human => Self::Human,
+            Kind::Agent => Self::Agent,
+            Kind::Node => Self::Node,
+            Kind::Validator => Self::Validator,
+            Kind::Bridge => Self::Bridge,
+        }
+    }
+}
+#[derive(Clone, Copy, ValueEnum)]
+enum Grant {
+    Read,
+    #[value(name = "workspace.write")]
+    WorkspaceWrite,
+    #[value(name = "change.write")]
+    ChangeWrite,
+    #[value(name = "queue.request")]
+    QueueRequest,
+    #[value(name = "repository.write")]
+    RepositoryWrite,
+    #[value(name = "runtime.control")]
+    RuntimeControl,
+    #[value(name = "validation.report")]
+    ValidationReport,
+    #[value(name = "host.publish")]
+    HostPublish,
+}
+impl From<Grant> for Permission {
+    fn from(value: Grant) -> Self {
+        match value {
+            Grant::Read => Self::Read,
+            Grant::WorkspaceWrite => Self::WorkspaceWrite,
+            Grant::ChangeWrite => Self::ChangeWrite,
+            Grant::QueueRequest => Self::QueueRequest,
+            Grant::RepositoryWrite => Self::RepositoryWrite,
+            Grant::RuntimeControl => Self::RuntimeControl,
+            Grant::ValidationReport => Self::ValidationReport,
+            Grant::HostPublish => Self::HostPublish,
+        }
+    }
+}
+#[derive(Subcommand)]
+enum Admin {
+    /// Install/upgrade the checked schema in the configured, existing schema.
+    Migrate,
+    RepositoryCreate {
+        #[command(flatten)]
+        scope: Repository,
+        #[arg(long, value_enum)]
+        authority: Mode,
+    },
+    PrincipalCreate {
+        #[arg(long)]
+        tenant: String,
+        #[arg(long)]
+        principal: String,
+        #[arg(long, value_enum)]
+        kind: Kind,
+    },
+    /// Replace permissions. Revoking all requires an explicit flag.
+    AccessSet {
+        #[command(flatten)]
+        scope: Repository,
+        #[arg(long)]
+        principal: String,
+        #[arg(
+            long,
+            value_enum,
+            required_unless_present = "revoke_all",
+            conflicts_with = "revoke_all"
+        )]
+        permission: Vec<Grant>,
+        #[arg(long)]
+        revoke_all: bool,
+    },
+    /// Write a new credential file (0600), never a secret on stdout or argv.
+    TokenIssue {
+        #[command(flatten)]
+        scope: Repository,
+        #[arg(long)]
+        principal: String,
+        #[arg(long, value_enum, required = true)]
+        permission: Vec<Grant>,
+        #[arg(long, default_value_t=3600, value_parser=clap::value_parser!(i32).range(1..=7_776_000))]
+        ttl_seconds: i32,
+        #[arg(long)]
+        output: PathBuf,
+    },
+    TokenRevoke {
+        #[command(flatten)]
+        scope: Repository,
+        #[arg(long)]
+        token_id: Uuid,
+    },
+    PrincipalDisable {
+        #[arg(long)]
+        tenant: String,
+        #[arg(long)]
+        principal: String,
+    },
+}
+#[derive(Args)]
+struct Mutation {
+    /// Preserve this key on retry, including after a timeout or restart.
+    #[arg(long)]
+    key: String,
+    #[arg(long, value_enum)]
+    authority: Mode,
+    #[arg(long, value_parser=clap::value_parser!(i64).range(1..))]
+    epoch: i64,
+}
+#[derive(Subcommand)]
+enum Agent {
+    RepositoryInfo,
+    /// Enqueue preparation from a registered native base; does not imply READY.
+    WorkspaceCreate {
+        #[command(flatten)]
+        mutation: Mutation,
+        #[arg(long)]
+        workspace: Uuid,
+        #[arg(long)]
+        base: String,
+        #[arg(long)]
+        profile_digest: String,
+    },
+    WorkspaceStatus {
+        #[arg(long)]
+        workspace: Uuid,
+    },
+    /// Begin draining; physical deletion needs the later runtime binding.
+    WorkspaceDelete {
+        #[command(flatten)]
+        mutation: Mutation,
+        #[arg(long)]
+        workspace: Uuid,
+        #[arg(long, value_parser=clap::value_parser!(i64).range(1..))]
+        generation: i64,
+    },
+    OperationStatus {
+        #[arg(long)]
+        key: String,
+    },
+}
+impl Agent {
+    fn json(self) -> Value {
+        match self {
+            Self::RepositoryInfo => json!({"method":"repository_info"}),
+            Self::WorkspaceStatus { workspace } => {
+                json!({"method":"workspace_status","workspace":workspace.to_string()})
+            }
+            Self::OperationStatus { key } => json!({"method":"operation_status","key":key}),
+            Self::WorkspaceCreate {
+                mutation,
+                workspace,
+                base,
+                profile_digest,
+            } => {
+                json!({"method":"workspace_create","key":mutation.key,"authority":Authority::from(mutation.authority).as_str(),"epoch":mutation.epoch,"workspace":workspace.to_string(),"base":base,"profile_digest":profile_digest})
+            }
+            Self::WorkspaceDelete {
+                mutation,
+                workspace,
+                generation,
+            } => {
+                json!({"method":"workspace_delete","key":mutation.key,"authority":Authority::from(mutation.authority).as_str(),"epoch":mutation.epoch,"workspace":workspace.to_string(),"generation":generation})
+            }
+        }
+    }
+}
+pub async fn run(cli: Cli) -> Result<bool> {
+    match cli.command {
+        Command::Serve { config } => {
+            let config = Config::load(&config)?;
+            let mut terminate =
+                tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
+            let mut interrupt =
+                tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt())?;
+            let server = Server::bind(config).await?;
+            println!("{}", json!({"status":"listening","socket":server.socket()}));
+            server
+                .run(async {
+                    tokio::select! { _=terminate.recv()=>{}, _=interrupt.recv()=>{} }
+                })
+                .await?;
+            Ok(true)
+        }
+        Command::Client {
+            socket,
+            credential_file,
+            timeout_ms,
+            action,
+        } => {
+            let credential = Credential::load(&credential_file)?;
+            let body = credential.request(action.json()).to_string().into_bytes();
+            let reply = client::send(
+                &socket,
+                &credential.token,
+                body,
+                Duration::from_millis(timeout_ms),
+            )
+            .await?;
+            println!("{}", reply.body);
+            Ok(reply.status.is_success())
+        }
+        Command::Admin { config, action } => {
+            let database = Database::new(Config::load(&config)?)?;
+            let mut session = database.connect(!matches!(&action, Admin::Migrate)).await?;
+            // The DB role and private config are the trust boundary; this audit
+            // label records the local OS uid, not an authenticated human name.
+            let operator = format!("local-uid:{}", rustix::process::geteuid().as_raw());
+            let db = &mut session.metadata;
+            let value = match action {
+                Admin::Migrate => {
+                    db.migrate().await.map_err(|_| Error::Administration)?;
+                    json!({"status":"migrated"})
+                }
+                Admin::RepositoryCreate { scope, authority } => {
+                    db.create_repository(&scope.scope()?, authority.into())
+                        .await
+                        .map_err(|_| Error::Administration)?;
+                    json!({"status":"provisioned","repository":scope.repository.to_string()})
+                }
+                Admin::PrincipalCreate {
+                    tenant,
+                    principal,
+                    kind,
+                } => {
+                    db.provision_principal(&tenant, &principal, kind.into(), &operator)
+                        .await
+                        .map_err(|_| Error::Administration)?;
+                    json!({"status":"provisioned","principal":principal})
+                }
+                Admin::AccessSet {
+                    scope,
+                    principal,
+                    permission,
+                    ..
+                } => {
+                    let permissions: Vec<_> = permission.into_iter().map(Into::into).collect();
+                    db.set_repository_access(&scope.scope()?, &principal, &permissions, &operator)
+                        .await
+                        .map_err(|_| Error::Administration)?;
+                    json!({"status":"access_replaced"})
+                }
+                Admin::TokenIssue {
+                    scope,
+                    principal,
+                    permission,
+                    ttl_seconds,
+                    output,
+                } => {
+                    // Validate the destination before minting; atomic no-clobber
+                    // publication still handles a racing creation safely.
+                    files::private_directory(output.parent().ok_or(Error::UnsafeFile)?)?;
+                    match std::fs::symlink_metadata(&output) {
+                        Ok(_) => return Err(Error::UnsafeFile),
+                        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                        Err(error) => return Err(error.into()),
+                    }
+                    let scope = scope.scope()?;
+                    let permissions: Vec<_> = permission.into_iter().map(Into::into).collect();
+                    let issued = db
+                        .issue_repository_token(
+                            &scope,
+                            &principal,
+                            &permissions,
+                            ttl_seconds,
+                            &operator,
+                        )
+                        .await
+                        .map_err(|_| Error::Administration)?;
+                    let document = json!({"version":1,"tenant":scope.tenant(),"repository":scope.repository().to_string(),"token_id":issued.id.to_string(),"token":issued.secret.expose()});
+                    if files::write_private(&output, document.to_string().as_bytes()).is_err() {
+                        return Err(
+                            if db
+                                .revoke_repository_token(&scope, issued.id, &operator)
+                                .await
+                                .is_ok()
+                            {
+                                Error::CredentialWriteRevoked { token: issued.id }
+                            } else {
+                                Error::CredentialWriteUncertain { token: issued.id }
+                            },
+                        );
+                    }
+                    json!({"status":"issued","token_id":issued.id.to_string(),"credential_file":output})
+                }
+                Admin::TokenRevoke { scope, token_id } => {
+                    db.revoke_repository_token(&scope.scope()?, token_id, &operator)
+                        .await
+                        .map_err(|_| Error::Administration)?;
+                    json!({"status":"revoked","token_id":token_id.to_string()})
+                }
+                Admin::PrincipalDisable { tenant, principal } => {
+                    db.disable_principal(&tenant, &principal, &operator)
+                        .await
+                        .map_err(|_| Error::Administration)?;
+                    json!({"status":"disabled","principal":principal})
+                }
+            };
+            println!("{value}");
+            Ok(true)
+        }
+    }
+}
