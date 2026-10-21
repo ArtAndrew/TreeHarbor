@@ -12,7 +12,7 @@ gates. A foundation milestone does not complete either mode.
 | PostgreSQL metadata and outbox | Real database transaction/idempotency/lease tests; repository authority/epoch checks; populated schema upgrades through v7; local service pool and crash/replay | Remote service integration and full server restore |
 | Native ChangeSet intake | Computed immutable versions, base/run lineage, atomic graph pins and replay; worker process-kill test | Git base import, remote API, review/validation/merge admission and retention |
 | Protected incremental source reads | Pinned sessions, verified frontiers, bounded prefix batches and descriptors surviving local GC; authenticated workspace-root sessions | Per-tenant service quotas, bulk node delivery and S3 |
-| Native file materialization | Private copies from exact snapshots, full/sparse selection, staged expansion preserving edits/deletions, bounded IO and filesystem checks | Runtime-proven quiescence, node binding/recovery, cache/reflink, seal and Git-compatible format |
+| Native file materialization | Private copies from exact snapshots, full/sparse selection, staged expansion preserving edits/deletions, bounded IO and filesystem checks; exact observed baseline loading across process restart | Runtime-proven quiescence, durable node publication/reconciliation, cache/reflink, seal and Git-compatible format |
 | Object catalog and retention | Receipt-bound publication, typed edges, atomic persistent pins, read holds, generation-safe retirement/retry; independent reachability model | Automatic GC/reconciliation/dry-run, abandoned-upload cleanup, S3 and full restore |
 | Exact validation predicate | Context binding, stale-target rejection, trusted issuer filtering, revocation and conflicting receipt tests | Authenticated collectors, durable evidence, review and atomic publication checks |
 | Credentials and agent commands | Repository-scoped opaque tokens, transactional revocation, distinct actor classes, owner-bound reads and strict command dispatch | Remote transport, MCP, production identity/admission integration |
@@ -35,14 +35,14 @@ macOS arm64, Rust 1.99.1, 2026-10-21:
 
 ```text
 cargo test --workspace --locked --offline
-54 tests passed without external services: core 15, local storage 8, native history 3, metadata input/auth/protocol 3, validation 9, materializer 2, service configuration/files/CLI/pack/read transport 12, runtime argument/host guards 2.
+64 tests passed without external services: core 15, local storage 8, native history 3, metadata input/auth/protocol 3, validation 9, materializer 12, service configuration/files/CLI/pack/read transport 12, runtime argument/host guards 2.
 82 PostgreSQL integration tests passed explicitly against local PostgreSQL 18.6: transactions 7, object catalog 12, intake 9, protected reads 9, materializer 9, access/commands/source sessions 10, source profiles/upgrade 2, source uploads/upgrade 7, preparation ownership/upgrade 8, service process/transport 9.
 cargo clippy --workspace --all-targets --locked --offline -- -D warnings
 Passed.
 cargo fmt --all
 Applied before the checks above.
-Published CI evidence (Linux, macOS, PostgreSQL and gVisor; commit 53cfd98):
-https://github.com/ArtAndrew/TreeHarbor/actions/runs/39605940651
+Published CI evidence (Linux, macOS, PostgreSQL and gVisor; commit 7452910):
+https://github.com/ArtAndrew/TreeHarbor/actions/runs/39609963544
 ```
 
 The separate `gVisor task supervision` CI job exercises the
@@ -90,6 +90,13 @@ with a sibling baseline manifest. Sparse expansion copies a previously stopped
 tree into a new candidate, preserves edits/deletions/untracked files and adds source
 paths without modifying the old tree. Limits, symlink/case behavior and cancellation
 are tested using actual files and PostgreSQL. See [manifest v1](workspace-manifest-v1.md).
+The bounded baseline loader verifies an independently recorded exact manifest hash,
+scope, snapshot and canonical profile, rejects unsafe private-file provenance and
+malformed metadata, and preserves current agent files. Tests cover a new process,
+the independent v1 bytes/hash and expansion of a reopened catalog-backed tree with
+local edits/deletions/untracked files. Historical preparation counters are explicitly
+unavailable after loading. This is a baseline recovery primitive, not a node daemon
+or proof that physical preparation survived every crash boundary.
 The caller must still prove runtime
 quiescence, fence/persist the new generation and bind the result before READY;
 none of those steps is implied by a materializer receipt.

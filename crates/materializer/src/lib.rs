@@ -4,7 +4,9 @@
 compile_error!("The native materializer currently supports Unix only");
 
 mod filesystem;
+mod recovery;
 mod selection;
+pub use recovery::BaselineExpectation;
 pub use selection::Selection;
 
 use filesystem::{Manifest, Stage};
@@ -46,6 +48,8 @@ pub enum Error {
     WrongSnapshot,
     #[error("invalid materializer configuration")]
     Configuration,
+    #[error("invalid, changed or incorrectly bound workspace baseline")]
+    InvalidBaseline,
 }
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -100,7 +104,7 @@ pub struct Statistics {
 pub struct MaterializedTree {
     root: PathBuf,
     manifest: Arc<Manifest>,
-    stats: Statistics,
+    stats: Option<Statistics>,
 }
 impl MaterializedTree {
     pub fn path(&self) -> PathBuf {
@@ -112,7 +116,14 @@ impl MaterializedTree {
     pub fn snapshot(&self) -> ObjectId {
         self.manifest.snapshot
     }
-    pub fn statistics(&self) -> Statistics {
+    /// Whether materialization copied previous local state. False does not mean
+    /// the files have remained unchanged since their initial preparation.
+    pub fn preserved_local_state(&self) -> bool {
+        self.manifest.preserved_local_state
+    }
+    /// Preparation counters are unavailable after restart; they are not current
+    /// disk usage and must not be reconstructed as fabricated zero measurements.
+    pub fn statistics(&self) -> Option<Statistics> {
         self.stats
     }
     pub fn includes(&self, path: &RepoPath) -> bool {
