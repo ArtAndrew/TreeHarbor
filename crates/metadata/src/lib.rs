@@ -222,6 +222,35 @@ impl Metadata {
         }
         Ok(Self { client })
     }
+    /// Check a pooled connection after any dropped request transaction has queued
+    /// its rollback; command ordering on the connection completes that first.
+    pub async fn ping(&self) -> Result<()> {
+        self.client.simple_query("SELECT 1").await?;
+        Ok(())
+    }
+    /// Serving requires the exact current schema. Upgrade is an explicit admin
+    /// action, never a side effect of an incoming agent request.
+    pub async fn check_schema(&self) -> Result<()> {
+        let row = self
+            .client
+            .query_opt(
+                "SELECT version,migration_digest FROM th_schema_version WHERE singleton",
+                &[],
+            )
+            .await?
+            .ok_or(Error::SchemaMismatch)?;
+        let mut digest = Vec::new();
+        for migration in MIGRATIONS {
+            let mut hash = Sha256::new();
+            hash.update(digest);
+            hash.update(migration.as_bytes());
+            digest = hash.finalize().to_vec();
+        }
+        if row.get::<_, i32>(0) != MIGRATIONS.len() as i32 || row.get::<_, Vec<u8>>(1) != digest {
+            return Err(Error::SchemaMismatch);
+        }
+        Ok(())
+    }
     pub async fn migrate(&mut self) -> Result<()> {
         let tx = self.client.transaction().await?;
         tx.batch_execute(

@@ -9,13 +9,14 @@ gates. A foundation milestone does not complete either mode.
 | Immutable directory trees and operations | Exact expected-before checks, structural sharing, explicit deletes | Native merge/rebase, Git import/export |
 | Local object store | Atomic no-clobber writes, digest verification, file/directory fsync, tenant directories, physical generations and upload receipts | S3, backend configuration validation, backup/restore, kill fault campaign |
 | Native DAG queries | All-parent traversal, multiple best merge bases, bounds | Native refs, integration, policy and full no-Git end-to-end test |
-| PostgreSQL metadata and outbox | Real database transaction/idempotency/lease tests; repository authority/epoch checks; populated schema upgrades through v4 | Network service integration and full server crash/restore |
+| PostgreSQL metadata and outbox | Real database transaction/idempotency/lease tests; repository authority/epoch checks; populated schema upgrades through v4; local service pool and crash/replay | Remote service integration and full server restore |
 | Native ChangeSet intake | Computed immutable versions, base/run lineage, atomic graph pins and replay; worker process-kill test | Git base import, remote API, review/validation/merge admission and retention |
 | Protected incremental source reads | Pinned sessions, verified frontiers, bounded prefix batches and descriptors surviving local GC | Authenticated API, service-wide quotas and S3 |
 | Native file materialization | Private copies from exact snapshots, full/sparse selection, staged expansion preserving edits/deletions, bounded IO and filesystem checks | Runtime-proven quiescence, node binding/recovery, cache/reflink, seal and Git-compatible format |
 | Object catalog and retention | Receipt-bound publication, typed edges, atomic persistent pins, read holds, generation-safe retirement/retry; independent reachability model | Automatic GC/reconciliation/dry-run, abandoned-upload cleanup, S3 and full restore |
 | Exact validation predicate | Context binding, stale-target rejection, trusted issuer filtering, revocation and conflicting receipt tests | Authenticated collectors, durable evidence, review and atomic publication checks |
-| Credentials and agent commands | Repository-scoped opaque tokens, transactional revocation, distinct actor classes, owner-bound reads and strict command dispatch | HTTP/CLI/MCP transports, credential storage, admission limits and admin workflow |
+| Credentials and agent commands | Repository-scoped opaque tokens, transactional revocation, distinct actor classes, owner-bound reads and strict command dispatch | Remote transport, MCP, production identity/admission integration |
+| Local HTTP service and CLI | Actual Unix-socket server/client, trusted admin CLI, private credential files, bounded HTTP/pool, strict startup schema, SIGKILL replay, cancellation/rollback, reconnect and graceful shutdown tests | Graph upload/profile registration, source-stream/node integration, TLS/remote access, packaged installation |
 | Workspaces and runtime | Logical workspace/run state, drain fencing and separate filesystem preparation implemented; node identity checks | Real node/runtime observation, sandbox binding and lifecycle recovery |
 | MCP adapter | Planned; not implemented | Shared-service adapter, scoped tools and real client interoperability tests |
 | Connected | Not implemented | Real GitHub PR/checks/merge queue and credential separation |
@@ -28,8 +29,8 @@ macOS arm64, Rust 1.99.1, 2026-10-21:
 
 ```text
 cargo test --workspace --locked --offline
-37 tests passed without external services: core 12, local storage 8, native history 3, metadata input/auth/protocol 3, validation 9, materializer 2.
-54 PostgreSQL integration tests passed explicitly against local PostgreSQL 18.6: transactions 7, object catalog 12, intake 9, protected reads 9, materializer 9, access/commands 8.
+40 tests passed without external services: core 12, local storage 8, native history 3, metadata input/auth/protocol 3, validation 9, materializer 2, service configuration/files/CLI 3.
+59 PostgreSQL integration tests passed explicitly against local PostgreSQL 18.6: transactions 7, object catalog 12, intake 9, protected reads 9, materializer 9, access/commands 8, service process/transport 5.
 cargo clippy --workspace --all-targets --locked --offline -- -D warnings
 Passed.
 cargo fmt --all
@@ -46,8 +47,9 @@ The catalog tests use real files and PostgreSQL, including simultaneous pin/GC,
 duplicate hold tokens, deletion retries, a crash boundary between deletion and
 database completion, and published-v1 schema upgrade. Native intake now commits a
 ChangeSet version, lineage, graph pins, response and outbox atomically, and recovers
-the same receipt after a worker process is killed. These commands remain libraries:
-network transport, physical workspace/runtime binding, full application
+the same receipt after a worker process is killed. ChangeSet submission remains a
+library operation; local HTTP/CLI exposes repository/workspace commands only.
+Remote transport, physical workspace/runtime binding, full application
 failure injection, fenced restore and automatic maintenance remain release gates.
 
 Protected local reads now resolve only requested object frontiers and retain opened
@@ -72,8 +74,16 @@ transaction that accepts a write, including receipt replay. Tests exercise
 revocation racing with a blocked write, expiry after workspace effects and before
 commit, token rotation, scope/identity injection, owner-only reads, node observations,
 authenticated ChangeSet acceptance and a populated v3-to-v4 upgrade. Role checks
-do not prove that a sandbox ran or that a validation result is true. HTTP, CLI and
-MCP adapters, full service admission limits and credential management remain absent.
+do not prove that a sandbox ran or that a validation result is true. The local
+HTTP/CLI adapter now uses this boundary and provides private credential-file
+management plus trusted database administration. Real process tests cover a lost
+mutation response followed by server kill/restart and exact receipt replay,
+duplicate-server exclusion, stale sockets, revocation, malformed/chunked HTTP,
+connection/header deadlines, schema mismatch, pool reconnection and transaction
+rollback before pool reuse. See the [local guide](local-service.md).
+MCP, remote TLS transport, per-tenant service admission, runtime binding and complete
+product workflows remain absent. A Unix socket and private files do not isolate
+untrusted code running as the server's OS user.
 
 ## Release gate ledger
 

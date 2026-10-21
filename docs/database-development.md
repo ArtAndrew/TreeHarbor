@@ -42,9 +42,24 @@ or update workspace READY state.
 Access tests cover scoped credentials, transactional revocation/expiry, exact
 receipt replay, owner checks and node/agent identity separation. Bootstrap admin
 methods are trusted in-process operations, not public agent commands. The
-[command library](agent-commands.md) has no network listener yet.
+[command library](agent-commands.md) is also used by the [local service](local-service.md).
 
-Native refs/admission, network authorization, node/runtime integration and
+The service process/socket tests require a **Unix** PostgreSQL connection explicitly:
+
+```sh
+export TH_SERVICE_TEST_DATABASE_URL='host=/var/run/postgresql user=treeharbor_test dbname=treeharbor_test'
+cargo test -p treeharbor-service --locked -- --ignored
+```
+
+These tests launch the real binary, use private temporary Unix sockets, kill only
+their own server processes and terminate only an identified connection from their
+own pool. They cover bootstrap/credentials, unknown-response retry across process
+loss, stale-socket recovery, revocation, HTTP bounds, request cancellation/rollback,
+schema drift, pool reconnection and graceful shutdown. CI mounts the disposable
+PostgreSQL service's socket directory into the runner; production TCP connections
+are rejected by this development connector, not silently downgraded to plaintext.
+
+Native refs/admission, remote service transport, node/runtime integration and
 automatic GC/reconciliation are still unimplemented. Restore must stop/fence existing
 workers before replacing metadata or objects. An outbox
 worker must use the repository's current authority/epoch when executing its
