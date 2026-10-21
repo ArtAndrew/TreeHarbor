@@ -47,11 +47,15 @@ impl ReadNode {
 #[derive(Debug)]
 pub struct ReadObject {
     object: Object,
+    encoded_length: u64,
     key: ObjectKey,
     anchor: ObjectKey,
     token: Uuid,
 }
 impl ReadObject {
+    pub fn encoded_length(&self) -> u64 {
+        self.encoded_length
+    }
     pub fn object(&self) -> &Object {
         &self.object
     }
@@ -92,18 +96,26 @@ pub struct ReadBatch {
     token: Uuid,
 }
 impl ReadBatch {
+    pub fn len(&self) -> usize {
+        self.objects.len()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.objects.is_empty()
+    }
     /// Blocking verification, intended for a bounded coordinator IO pool. No bytes
     /// or derived nodes escape until every requested object passes verification.
     pub fn read(self) -> Result<Vec<ReadObject>> {
         self.objects
             .into_iter()
             .map(|pending| {
+                let encoded_length = pending.file.length();
                 let object = pending.file.read()?;
                 if object.kind() != pending.kind {
                     return Err(Error::ReceiptMismatch);
                 }
                 Ok(ReadObject {
                     object,
+                    encoded_length,
                     key: pending.key,
                     anchor: self.anchor.clone(),
                     token: self.token,
@@ -152,6 +164,31 @@ impl Metadata {
         store: &ManagedStore,
         nodes: &[ReadNode],
         byte_limit: u64,
+    ) -> Result<ReadBatch> {
+        self.open_read_batch_inner(session, store, nodes, byte_limit, false)
+            .await
+    }
+
+    /// Opens a nonempty prefix fitting the byte budget. `batch.len()` advances
+    /// the caller's frontier without repeatedly querying oversized combinations.
+    pub async fn open_read_prefix(
+        &mut self,
+        session: &ReadSession,
+        store: &ManagedStore,
+        nodes: &[ReadNode],
+        byte_limit: u64,
+    ) -> Result<ReadBatch> {
+        self.open_read_batch_inner(session, store, nodes, byte_limit, true)
+            .await
+    }
+
+    async fn open_read_batch_inner(
+        &mut self,
+        session: &ReadSession,
+        store: &ManagedStore,
+        nodes: &[ReadNode],
+        byte_limit: u64,
+        prefix: bool,
     ) -> Result<ReadBatch> {
         if nodes.is_empty()
             || nodes.len() > MAX_READ_OBJECTS
@@ -223,6 +260,9 @@ impl Metadata {
             let length = u64::try_from(length).map_err(|_| Error::SchemaMismatch)?;
             total = total.checked_add(length).ok_or(Error::ReadLimit)?;
             if total > byte_limit {
+                if prefix && !descriptors.is_empty() {
+                    break;
+                }
                 return Err(Error::ReadLimit);
             }
             descriptors.push((

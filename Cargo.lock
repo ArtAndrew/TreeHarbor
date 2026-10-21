@@ -702,6 +702,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "treeharbor-materializer"
+version = "0.1.0-dev"
+dependencies = [
+ "serde_json",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "tokio-postgres",
+ "treeharbor-core",
+ "treeharbor-metadata",
+ "treeharbor-storage",
+ "uuid",
+]
+
+[[package]]
 name = "treeharbor-metadata"
 version = "0.1.0-dev"
 dependencies = [

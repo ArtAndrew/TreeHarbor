@@ -51,4 +51,4 @@ jobs:
       - name: Run real database contracts (not mocks)
         env:
           TH_TEST_DATABASE_URL: host=127.0.0.1 user=treeharbor_test password=disposable-ci-only dbname=treeharbor_test
-        run: cargo test -p treeharbor-metadata --locked -- --ignored
+        run: cargo test -p treeharbor-metadata -p treeharbor-materializer --locked -- --ignored
