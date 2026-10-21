@@ -4,12 +4,14 @@ mod codec;
 mod identity;
 mod object;
 mod path;
+mod profile;
 mod proposal;
 mod tree;
 
 pub use identity::{GitOid, ObjectId, RevisionRef};
 pub use object::{ChangeOperation, Changes, Commit, Directory, Entry, EntryMode, EntryRef, Object};
 pub use path::{Name, RepoPath};
+pub use profile::{MAX_PROFILE_BYTES, MAX_PROFILE_PATHS, ProfileId, SourceProfile};
 pub use proposal::{AppliedChange, prepare_change};
 pub use tree::{apply_changes, lookup, validate_graph};
 

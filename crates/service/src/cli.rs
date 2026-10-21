@@ -9,7 +9,7 @@ use crate::{
 };
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use serde_json::{Value, json};
-use std::{path::PathBuf, time::Duration};
+use std::{ffi::OsString, os::unix::ffi::OsStrExt, path::PathBuf, time::Duration};
 use treeharbor_metadata::{
     Authority, Scope,
     access::{Permission, PrincipalKind},
@@ -201,6 +201,19 @@ struct Mutation {
 #[derive(Subcommand)]
 enum Agent {
     RepositoryInfo,
+    /// Store a full or explicit sparse source-delivery profile.
+    ProfilePut {
+        #[command(flatten)]
+        mutation: Mutation,
+        #[arg(long, required_unless_present = "paths", conflicts_with = "paths")]
+        full: bool,
+        #[arg(long = "path", required_unless_present = "full")]
+        paths: Vec<OsString>,
+    },
+    ProfileGet {
+        #[arg(long)]
+        profile_digest: String,
+    },
     /// Enqueue preparation from a registered native base; does not imply READY.
     WorkspaceCreate {
         #[command(flatten)]
@@ -231,9 +244,29 @@ enum Agent {
     },
 }
 impl Agent {
-    fn json(self) -> Value {
-        match self {
+    fn json(self) -> Result<Value> {
+        Ok(match self {
             Self::RepositoryInfo => json!({"method":"repository_info"}),
+            Self::ProfilePut {
+                mutation,
+                full,
+                paths,
+            } => {
+                let profile = if full {
+                    treeharbor_core::SourceProfile::full()
+                } else {
+                    let paths = paths
+                        .into_iter()
+                        .map(|path| treeharbor_core::RepoPath::new(path.as_bytes().to_vec()))
+                        .collect::<treeharbor_core::Result<Vec<_>>>()
+                        .map_err(|_| Error::Profile)?;
+                    treeharbor_core::SourceProfile::sparse(paths).map_err(|_| Error::Profile)?
+                };
+                json!({"method":"source_profile_put","key":mutation.key,"authority":Authority::from(mutation.authority).as_str(),"epoch":mutation.epoch,"profile":treeharbor_metadata::profiles::describe(&profile)})
+            }
+            Self::ProfileGet { profile_digest } => {
+                json!({"method":"source_profile_get","profile_digest":profile_digest})
+            }
             Self::WorkspaceStatus { workspace } => {
                 json!({"method":"workspace_status","workspace":workspace.to_string()})
             }
@@ -253,7 +286,7 @@ impl Agent {
             } => {
                 json!({"method":"workspace_delete","key":mutation.key,"authority":Authority::from(mutation.authority).as_str(),"epoch":mutation.epoch,"workspace":workspace.to_string(),"generation":generation})
             }
-        }
+        })
     }
 }
 pub async fn run(cli: Cli) -> Result<bool> {
@@ -280,7 +313,7 @@ pub async fn run(cli: Cli) -> Result<bool> {
             action,
         } => {
             let credential = Credential::load(&credential_file)?;
-            let body = credential.request(action.json()).to_string().into_bytes();
+            let body = credential.request(action.json()?).to_string().into_bytes();
             let reply = client::send(
                 &socket,
                 &credential.token,

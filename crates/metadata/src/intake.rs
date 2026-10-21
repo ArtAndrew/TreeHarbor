@@ -49,7 +49,7 @@ impl CommandContext {
             authorization: Some(std::sync::Arc::new(auth)),
         }
     }
-    fn request(&self, kind: &str, command: Value) -> Result<Request> {
+    pub(crate) fn request(&self, kind: &str, command: Value) -> Result<Request> {
         // Only service-built, versioned arrays are hashed; no arbitrary result or
         // command digest from the client can bypass an idempotency comparison.
         let mut request = Request::new(
@@ -193,10 +193,15 @@ impl Metadata {
             )
             .await?
             .ok_or(Error::NotFound)?;
+        let profile_row=tx.tx.query_opt("SELECT definition FROM th_source_profiles WHERE tenant=$1 AND repository=$2 AND digest=$3", &[&scope.tenant,&scope.repository,&spec.profile.as_slice()]).await?.ok_or(Error::NotFound)?;
+        let profile = treeharbor_core::SourceProfile::decode(&profile_row.get::<_, Vec<u8>>(0))?;
+        if profile.id().as_bytes() != &spec.profile {
+            return Err(Error::SchemaMismatch);
+        }
         let holder = workspace_pin(spec.id);
         tx.copy_root_pin(&row.get::<_, String>(0), &holder).await?;
-        tx.tx.execute(r#"INSERT INTO th_workspaces (tenant,repository,workspace,base_revision,principal,profile,format,state,epoch,pin_holder)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,'requested',$8,$9)"#,
+        tx.tx.execute(r#"INSERT INTO th_workspaces (tenant,repository,workspace,base_revision,principal,profile,format,state,epoch,pin_holder,resolved_profile)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,'requested',$8,$9,$6)"#,
             &[&scope.tenant,&scope.repository,&spec.id,&revision,&ctx.principal,&spec.profile.as_slice(),&spec.format.name(),&ctx.epoch,&holder]).await?;
         let result = json!({"workspace":spec.id.to_string(),"generation":1,"state":"requested","base":revision});
         tx.complete(
@@ -241,7 +246,7 @@ impl Metadata {
         tx.check_preparation_job(job, ready).await?;
         let scope = &ctx.scope;
         let changed=tx.tx.execute(r#"UPDATE th_workspaces SET state='ready',node=$4,runtime=$5
-            WHERE tenant=$1 AND repository=$2 AND workspace=$3 AND generation=$6 AND epoch=$7 AND state='requested'"#,
+            WHERE tenant=$1 AND repository=$2 AND workspace=$3 AND generation=$6 AND epoch=$7 AND state='requested' AND resolved_profile IS NOT NULL"#,
             &[&scope.tenant,&scope.repository,&ready.id,&ready.node,&ready.runtime,&ready.generation,&ctx.epoch]).await?;
         if changed != 1 {
             return Err(Error::ExecutionState);
@@ -295,7 +300,7 @@ impl Metadata {
             .query_opt(
                 r#"UPDATE th_workspaces SET state='in_use'
             WHERE tenant=$1 AND repository=$2 AND workspace=$3 AND generation=$4 AND epoch=$5
-            AND state='ready' AND runtime=$6
+            AND state='ready' AND runtime=$6 AND resolved_profile IS NOT NULL
             AND ($7::text IS NULL OR node=$7) AND ($8::text IS NULL OR principal=$8)
             RETURNING principal"#,
                 &[
@@ -407,7 +412,7 @@ impl Metadata {
             JOIN th_bases b ON b.tenant=w.tenant AND b.repository=w.repository AND b.revision=w.base_revision
             WHERE r.tenant=$1 AND r.repository=$2 AND r.run=$3 AND r.principal=$4 AND w.principal=$4
             AND r.state='running' AND w.state='in_use' AND r.epoch=$5 AND w.epoch=$5
-            AND r.workspace_generation=$6 AND w.generation=$6 AND r.runtime=w.runtime"#,
+            AND r.workspace_generation=$6 AND w.generation=$6 AND r.runtime=w.runtime AND w.resolved_profile IS NOT NULL"#,
             &[&scope.tenant,&scope.repository,&change.run,&ctx.principal,&ctx.epoch,&change.workspace_generation]).await?.ok_or(Error::ExecutionState)?;
         if row.get::<_, Vec<u8>>(1) != applied.base_snapshot().as_bytes() {
             return Err(Error::ReceiptMismatch);

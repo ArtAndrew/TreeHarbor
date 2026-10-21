@@ -21,7 +21,19 @@ struct Fixture {
 }
 impl Fixture {
     async fn new() -> Self {
-        let (schema, scope, db) = setup().await;
+        let (schema, scope, mut db) = setup().await;
+        db.put_source_profile(
+            &CommandContext::trusted(
+                scope.clone(),
+                "full-profile".into(),
+                "bootstrap".into(),
+                Authority::Standalone,
+                1,
+            ),
+            &treeharbor_core::SourceProfile::full(),
+        )
+        .await
+        .unwrap();
         Self::from_database(schema, scope, db).await
     }
     async fn from_database(schema: String, scope: Scope, mut db: Metadata) -> Self {
@@ -113,7 +125,7 @@ impl Fixture {
         WorkspaceSpec {
             id: Uuid::new_v4(),
             base: self.base,
-            profile: [0; 32],
+            profile: *treeharbor_core::SourceProfile::full().id().as_bytes(),
             format: WorkspaceFormat::Native,
         }
     }
@@ -662,7 +674,8 @@ async fn published_v3_upgrade_retains_workspace_pins_and_receipts_without_granti
         .await
         .unwrap();
     let mut f = Fixture::from_database(schema, scope, db).await;
-    let spec = f.spec();
+    let mut spec = f.spec();
+    spec.profile = [0; 32]; // Published v3 allowed an unresolved caller-supplied digest.
     let trusted = CommandContext::trusted(
         f.scope.clone(),
         "legacy-create".into(),
@@ -670,7 +683,45 @@ async fn published_v3_upgrade_retains_workspace_pins_and_receipts_without_granti
         Authority::Standalone,
         1,
     );
-    let old = f.db.create_workspace(&trusted, &spec).await.unwrap();
+    // Replay the published v3 creation contract against the actual v3 schema,
+    // rather than asking current code to operate on an unsupported old schema.
+    let RevisionRef::Native(base_id) = spec.base else {
+        panic!()
+    };
+    let lease =
+        f.db.lease_pinned_root(
+            &f.scope,
+            &format!("base:{}", base_id.hex()),
+            Uuid::new_v4(),
+            60,
+        )
+        .await
+        .unwrap();
+    let request = treeharbor_metadata::Request::new(
+        f.scope.clone(),
+        &trusted.key,
+        &trusted.principal,
+        "workspace.create.v1",
+        Authority::Standalone,
+        1,
+        serde_json::json!([
+            1,
+            spec.id.to_string(),
+            spec.base.to_string(),
+            spec.profile,
+            "native"
+        ])
+        .to_string()
+        .as_bytes(),
+    )
+    .unwrap();
+    let treeharbor_metadata::Begin::Fresh(tx) = f.db.begin(request).await.unwrap() else {
+        panic!()
+    };
+    let holder = format!("workspace:{}", spec.id);
+    tx.pin_object(&holder, &lease).await.unwrap();
+    tx.transaction().execute("INSERT INTO th_workspaces(tenant,repository,workspace,base_revision,principal,profile,format,state,epoch,pin_holder) VALUES($1,$2,$3,$4,'legacy',$5,'native','requested',1,$6)",&[&f.scope.tenant(),&f.scope.repository(),&spec.id,&spec.base.to_string(),&spec.profile.as_slice(),&holder]).await.unwrap();
+    let old=tx.complete(serde_json::json!({"workspace":spec.id.to_string(),"generation":1,"state":"requested","base":spec.base.to_string()}),vec![treeharbor_metadata::Event{kind:"workspace.prepare".into(),payload:serde_json::json!({"workspace":spec.id.to_string(),"generation":1,"epoch":1})}]).await.unwrap();
     let pins_before: i64 = raw
         .query_one("SELECT count(*) FROM th_object_pins", &[])
         .await
@@ -683,7 +734,7 @@ async fn published_v3_upgrade_retains_workspace_pins_and_receipts_without_granti
             .await
             .unwrap()
             .get::<_, i32>(0),
-        4
+        5
     );
     assert_eq!(
         raw.query_one("SELECT count(*) FROM th_access_tokens", &[])
@@ -721,6 +772,59 @@ async fn published_v3_upgrade_retains_workspace_pins_and_receipts_without_granti
             .get::<_, i64>(0),
         1
     );
+    let unresolved: bool = raw
+        .query_one(
+            "SELECT resolved_profile IS NULL FROM th_workspaces WHERE workspace=$1",
+            &[&spec.id],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    assert!(unresolved);
+    assert!(matches!(
+        f.db.create_workspace(
+            &ctx(&auth, "new-legacy-create"),
+            &WorkspaceSpec {
+                id: Uuid::new_v4(),
+                base: spec.base,
+                profile: spec.profile,
+                format: WorkspaceFormat::Native
+            }
+        )
+        .await,
+        Err(Error::NotFound)
+    ));
+    let job =
+        f.db.claim(f.scope.tenant(), Uuid::new_v4(), 60)
+            .await
+            .unwrap()
+            .unwrap();
+    assert!(matches!(
+        f.db.record_workspace_ready(
+            &CommandContext::trusted(
+                f.scope.clone(),
+                "legacy-ready".into(),
+                "legacy".into(),
+                Authority::Standalone,
+                1
+            ),
+            &WorkspaceReady {
+                id: spec.id,
+                generation: 1,
+                node: "old-node".into(),
+                runtime: "old-runtime".into()
+            },
+            &job
+        )
+        .await,
+        Err(Error::ExecutionState)
+    ));
+    assert_eq!(
+        f.db.drain_workspace(&ctx(&auth, "legacy-drain"), spec.id, 1)
+            .await
+            .unwrap()["state"],
+        "draining"
+    );
     cleanup(&f.schema).await;
 }
 
@@ -736,7 +840,7 @@ async fn shared_agent_commands_enforce_authentication_replay_fencing_and_drain_s
     let envelope = |command: serde_json::Value| {
         json!({"version":1,"tenant":f.scope.tenant(),"repository":f.scope.repository().to_string(),"command":command}).to_string()
     };
-    let command = json!({"method":"workspace_create","key":"api-create","authority":"standalone","epoch":1,"workspace":spec.id.to_string(),"base":spec.base.to_string(),"profile_digest":format!("sha256:{}","00".repeat(32))});
+    let command = json!({"method":"workspace_create","key":"api-create","authority":"standalone","epoch":1,"workspace":spec.id.to_string(),"base":spec.base.to_string(),"profile_digest":treeharbor_core::SourceProfile::full().id().to_string()});
     let create = envelope(command.clone());
     let receipt =
         f.db.execute_agent_command(&token.secret, create.as_bytes())

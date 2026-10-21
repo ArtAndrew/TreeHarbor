@@ -1,5 +1,5 @@
-use crate::{Error, Result};
-use treeharbor_core::RepoPath;
+use crate::Result;
+use treeharbor_core::{RepoPath, SourceProfile};
 
 #[derive(Clone, Debug)]
 pub struct Selection {
@@ -10,21 +10,14 @@ impl Selection {
         Self { paths: None }
     }
     /// Explicit path/subtree selection; no glob or inferred build dependencies.
-    pub fn sparse(mut paths: Vec<RepoPath>) -> Result<Self> {
-        if paths.is_empty() || paths.len() > 1024 {
-            return Err(Error::Configuration);
+    pub fn sparse(paths: Vec<RepoPath>) -> Result<Self> {
+        Ok(Self::from_profile(&SourceProfile::sparse(paths)?))
+    }
+    /// Use the exact persisted profile; no node-local reinterpretation of its ID.
+    pub fn from_profile(profile: &SourceProfile) -> Self {
+        Self {
+            paths: profile.paths().map(<[RepoPath]>::to_vec),
         }
-        paths.sort();
-        paths.dedup();
-        let mut normalized: Vec<RepoPath> = Vec::new();
-        for path in paths {
-            if !normalized.iter().any(|p| p.is_ancestor_of(&path)) {
-                normalized.push(path);
-            }
-        }
-        Ok(Self {
-            paths: Some(normalized),
-        })
     }
     pub(crate) fn relevant(&self, path: &RepoPath) -> bool {
         self.paths.as_ref().is_none_or(|paths| {

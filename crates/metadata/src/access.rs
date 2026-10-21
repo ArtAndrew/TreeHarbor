@@ -35,7 +35,9 @@ impl Permission {
     pub(crate) fn for_command(kind: &str) -> Result<Self> {
         match kind {
             "base.register.v1" => Ok(Self::RepositoryWrite),
-            "workspace.create.v1" | "workspace.drain.v1" => Ok(Self::WorkspaceWrite),
+            "workspace.create.v1" | "workspace.drain.v1" | "profile.put.v1" => {
+                Ok(Self::WorkspaceWrite)
+            }
             "workspace.ready.v1" | "run.running.v1" => Ok(Self::RuntimeControl),
             "change.accept.v1" => Ok(Self::ChangeWrite),
             _ => Err(Error::Forbidden),
@@ -218,7 +220,11 @@ fn permissions(values: &[Permission]) -> Result<Vec<&'static str>> {
     }
     Ok(unique.into_iter().map(Permission::as_str).collect())
 }
-async fn repository_lock(tx: &Transaction<'_>, scope: &Scope, write: bool) -> Result<()> {
+pub(crate) async fn repository_lock(
+    tx: &Transaction<'_>,
+    scope: &Scope,
+    write: bool,
+) -> Result<()> {
     let sql = if write {
         "SELECT repository FROM th_repositories WHERE tenant=$1 AND repository=$2 FOR UPDATE"
     } else {
@@ -516,8 +522,8 @@ impl Metadata {
         repository_lock(&tx, &auth.scope, false).await?;
         auth.check_transaction(&tx, &auth.scope, &auth.principal, Permission::Read)
             .await?;
-        let row = tx.query_opt("SELECT base_revision,state,generation,epoch,format FROM th_workspaces WHERE tenant=$1 AND repository=$2 AND workspace=$3 AND principal=$4", &[&auth.scope.tenant,&auth.scope.repository,&workspace,&auth.principal]).await?.ok_or(Error::NotFound)?;
-        let result = serde_json::json!({"workspace":workspace.to_string(),"base":row.get::<_,String>(0),"state":row.get::<_,String>(1),"generation":row.get::<_,i64>(2),"epoch":row.get::<_,i64>(3),"format":row.get::<_,String>(4)});
+        let row = tx.query_opt("SELECT base_revision,state,generation,epoch,format,profile,resolved_profile IS NOT NULL FROM th_workspaces WHERE tenant=$1 AND repository=$2 AND workspace=$3 AND principal=$4", &[&auth.scope.tenant,&auth.scope.repository,&workspace,&auth.principal]).await?.ok_or(Error::NotFound)?;
+        let result = serde_json::json!({"workspace":workspace.to_string(),"base":row.get::<_,String>(0),"state":row.get::<_,String>(1),"generation":row.get::<_,i64>(2),"epoch":row.get::<_,i64>(3),"format":row.get::<_,String>(4),"profile_digest":treeharbor_core::ObjectId::from_bytes(row.get::<_,Vec<u8>>(5).try_into().map_err(|_|Error::SchemaMismatch)?).to_string(),"profile_resolved":row.get::<_,bool>(6)});
         auth.check_transaction(&tx, &auth.scope, &auth.principal, Permission::Read)
             .await?;
         tx.commit().await?;

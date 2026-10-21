@@ -1,7 +1,7 @@
 # Agent command library
 
 The Rust entry point `Metadata::execute_agent_command` accepts a credential and a
-versioned JSON request. It currently supports repository information, workspace
+versioned JSON request. It currently supports repository information, source profiles, workspace
 requests/status/drain and operation status. The [local HTTP server and CLI](local-service.md)
 use this same boundary. There is no MCP server or remote transport yet, and neither
 end-to-end product mode is released.
@@ -24,14 +24,17 @@ agent-controlled JSON.
 | Method | Additional command fields | Required permission | Current result |
 |---|---|---|---|
 | `repository_info` | None | `read` | Authority, state and epoch |
+| `source_profile_put` | `key`, `authority`, `epoch`, `profile` | `workspace.write` | Immutable normalized profile and computed digest |
+| `source_profile_get` | `profile_digest` | `read` | Registered profile in this repository |
 | `workspace_create` | `key`, `authority`, `epoch`, `workspace`, `base`, `profile_digest` | `workspace.write` | Logical `requested` workspace and durable preparation event |
 | `workspace_status` | `workspace` | `read` | Caller-owned workspace state and generation |
 | `workspace_delete` | `key`, `authority`, `epoch`, `workspace`, `generation` | `workspace.write` | Caller-owned workspace enters `draining`; files and pins are not deleted |
 | `operation_status` | `key` | `read` | Caller-owned committed command receipt |
 
 `base` must currently be a registered `native:sha256:<64 lowercase hex>` commit.
-`profile_digest` is `sha256:<64 lowercase hex>` and binds the declared source profile;
-profile registration and automatic worker preparation are not implemented. The
+`profile_digest` is `sha256:<64 lowercase hex>` and must identify a registered
+[source profile](source-profile-v1.md) in the same repository. Automatic worker
+preparation is not implemented. The
 command currently requests the native filesystem format. A requested workspace
 is not a prepared directory or a running sandbox. Missing operation status does
 not prove an uncertain request failed: retry with the same key and identical input.

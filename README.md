@@ -11,7 +11,8 @@ in **Standalone** mode. Both share one Rust engine.
 > the immutable object engine, local object storage, native history queries,
 > PostgreSQL transaction/outbox primitives, object retention, durable native ChangeSet
 > intake, protected source reads, native file preparation/sparse expansion and exact
-> validation predicates, repository-scoped credentials and authenticated command handling.
+> validation predicates, repository-scoped credentials, immutable source profiles
+> and authenticated command handling.
 > A development HTTP server over a private Unix socket and a CLI now expose the
 > authenticated command boundary. Runtime binding, node recovery, optimized caching,
 > remote transport and MCP integration are still pending.
