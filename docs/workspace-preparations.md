@@ -2,16 +2,17 @@
 
 The metadata library can now reserve a workspace's physical preparation before a
 node touches its files. This is an internal, authenticated Rust control-plane
-interface. The service does **not** yet run a node worker, allocate physical disks,
-or expose these operations as HTTP/CLI commands.
+interface. The [local node CLI](local-node.md) now drives this interface through
+real file preparation and restart recovery. It does not allocate bounded physical
+disks, launch runtimes, schedule continuously or expose remote node operations.
 
 ## Identity and ownership
 
 An operator registers an existing `Node` principal with a persistent storage UUID
 using `Metadata::register_node_storage`. Retrying the same registration succeeds;
 changing its UUID or assigning that UUID to another node fails. A storage UUID is
-an identifier, not proof of filesystem ownership or isolation. The node controller
-must eventually verify it against private durable local state.
+an identifier, not proof of filesystem ownership or isolation. The local node also
+verifies its private durable identity, physical root and exclusive OS lock.
 
 Each reservation binds:
 
@@ -37,6 +38,7 @@ token revocation/expiry and relevant fences inside their transactions.
 | `reserve_preparation(auth, job, slot)` | Persist ownership before filesystem work and return the exact source context |
 | `renew_preparation(auth, plan, ttl)` | Extend only a current reservation whose workspace has not begun draining |
 | `preparation_status(auth, workspace)` | Inspect this node's durable assignment for recovery planning; does not issue a live lease |
+| `prepared_workspace(auth, workspace)` | Inspect a current file-ready placement with the exact source/profile/manifest and no runtime binding; does not authorize execution |
 | `complete_preparation(auth, plan, files)` | Record a durable manifest observation and atomically complete the event |
 
 Claims use the actual stored event, including worker, generation, payload and
@@ -92,8 +94,9 @@ upgrade. A database lock pauses insertion after initial lease validation; expiry
 before publication rolls back the entire reservation. These are metadata tests,
 not evidence of a complete physical node or runtime recovery path.
 
-Remaining integration work includes actual volume identity/capacity enforcement,
-materializer publication and recovery, separate runtime launch attempts, process
-stop observations, safe drain/removal and release of retained resources. See the
+The local node separately tests materializer publication and physical recovery.
+Remaining integration work includes actual volume capacity enforcement, separate
+runtime launch attempts, process stop observations, safe drain/removal and release
+of retained resources. See the
 [runtime supervisor](runtime-supervisor.md) for the independently exercised
 external process-lifetime primitive.

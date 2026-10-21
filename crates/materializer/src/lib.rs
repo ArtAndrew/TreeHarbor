@@ -4,8 +4,10 @@
 compile_error!("The native materializer currently supports Unix only");
 
 mod filesystem;
+mod publication;
 mod recovery;
 mod selection;
+pub use publication::{Publication, PublicationReceipt};
 pub use recovery::BaselineExpectation;
 pub use selection::Selection;
 
@@ -158,7 +160,22 @@ impl Materializer {
         store: &ManagedStore,
         request: Preparation<'_>,
     ) -> Result<MaterializedTree> {
-        self.build(db, store, request, None).await
+        self.build(db, store, request, None, None).await
+    }
+
+    /// Trusted controller path. The supplied lifetime guard stays alive in all
+    /// blocking stages even when the awaiting future is cancelled. Publication
+    /// is atomic/no-clobber, carries an exact binding receipt and never replaces
+    /// an existing directory. This does not authorize execution or update the DB.
+    pub async fn prepare_published(
+        &self,
+        db: &mut Metadata,
+        store: &ManagedStore,
+        request: Preparation<'_>,
+        publication: Publication,
+    ) -> Result<MaterializedTree> {
+        self.build(db, store, request, None, Some(publication))
+            .await
     }
 
     /// Internal controller operation. ALL writers to `previous` must already be
@@ -178,7 +195,8 @@ impl Materializer {
         {
             return Err(Error::WrongSnapshot);
         }
-        self.build(db, store, request, Some(previous.clone())).await
+        self.build(db, store, request, Some(previous.clone()), None)
+            .await
     }
 
     async fn build(
@@ -187,6 +205,7 @@ impl Materializer {
         store: &ManagedStore,
         request: Preparation<'_>,
         previous: Option<MaterializedTree>,
+        publication: Option<Publication>,
     ) -> Result<MaterializedTree> {
         let limits = request.limits.validate()?;
         let selection = match &previous {
@@ -204,9 +223,11 @@ impl Materializer {
         let tenant = request.scope.tenant().to_owned();
         let repository = request.scope.repository().to_string();
         let stage = tokio::task::spawn_blocking(move || {
-            Stage::new(
+            let mut stage = Stage::new(
                 parent, tenant, repository, snapshot, selection, limits, permit, previous,
-            )
+            )?;
+            stage.publication = publication;
+            Ok::<_, Error>(stage)
         })
         .await??;
         let session = db
@@ -216,9 +237,15 @@ impl Materializer {
         let close = db.close_read_session(session).await;
         let stage = result?;
         close?;
-        // Publication is synchronous only after awaiting all IO and closing the
-        // session, so cancellation cannot leave a background publisher behind.
-        stage.publish()
+        if stage.publication.is_some() {
+            // A controller-owned publisher retains its lifetime guard and has a
+            // deterministic recovery path, including a cancelled awaiting task.
+            tokio::task::spawn_blocking(move || stage.publish()).await?
+        } else {
+            // Legacy unregistered results have no recovery identity; never leave
+            // an unobserved background publisher behind on this path.
+            stage.publish()
+        }
     }
 }
 

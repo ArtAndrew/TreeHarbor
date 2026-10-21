@@ -28,6 +28,11 @@ pub struct Cli {
 }
 #[derive(Subcommand)]
 enum Command {
+    /// Trusted local file-preparation node. Does not execute agent code.
+    Node {
+        #[command(subcommand)]
+        action: crate::node_cli::Action,
+    },
     /// Capture explicitly selected files from a stopped native source directory.
     SourcePack {
         #[arg(long)]
@@ -151,6 +156,15 @@ impl From<Grant> for Permission {
 }
 #[derive(Subcommand)]
 enum Admin {
+    /// Bind an existing Node principal to its initialized storage UUID.
+    NodeRegister {
+        #[arg(long)]
+        tenant: String,
+        #[arg(long)]
+        principal: String,
+        #[arg(long)]
+        storage: Uuid,
+    },
     /// Install/upgrade the checked schema in the configured, existing schema.
     Migrate,
     RepositoryCreate {
@@ -432,6 +446,7 @@ impl Agent {
 }
 pub async fn run(cli: Cli) -> Result<bool> {
     match cli.command {
+        Command::Node { action } => crate::node_cli::run(action).await,
         Command::SourcePack {
             directory,
             output,
@@ -606,6 +621,16 @@ pub async fn run(cli: Cli) -> Result<bool> {
             let operator = format!("local-uid:{}", rustix::process::geteuid().as_raw());
             let db = &mut session.metadata;
             let value = match action {
+                Admin::NodeRegister {
+                    tenant,
+                    principal,
+                    storage,
+                } => {
+                    db.register_node_storage(&tenant, &principal, storage, &operator)
+                        .await
+                        .map_err(|_| Error::Administration)?;
+                    json!({"status":"registered","storage":storage.to_string(),"principal":principal})
+                }
                 Admin::Migrate => {
                     db.migrate().await.map_err(|_| Error::Administration)?;
                     json!({"status":"migrated"})

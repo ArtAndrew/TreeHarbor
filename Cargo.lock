@@ -973,6 +973,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "treeharbor-node"
+version = "0.1.0-dev"
+dependencies = [
+ "rustix",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "tokio-postgres",
+ "treeharbor-core",
+ "treeharbor-materializer",
+ "treeharbor-metadata",
+ "treeharbor-storage",
+ "uuid",
+]
+
+[[package]]
 name = "treeharbor-runtime"
 version = "0.1.0-dev"
 dependencies = [
@@ -997,7 +1016,9 @@ dependencies = [
  "tokio",
  "tokio-postgres",
  "treeharbor-core",
+ "treeharbor-materializer",
  "treeharbor-metadata",
+ "treeharbor-node",
  "treeharbor-storage",
  "uuid",
 ]
@@ -1072,6 +1093,7 @@ checksum = "7cc1186384beb7dd8eedea376413fd654937285ea6c9cfbb928dc3043ea4b606"
 dependencies = [
  "getrandom",
  "js-sys",
+ "serde_core",
  "wasm-bindgen",
 ]
 

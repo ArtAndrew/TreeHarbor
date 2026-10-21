@@ -23,6 +23,182 @@ use treeharbor_storage::{ManagedStore, PreparedObject, TenantId};
 use uuid::Uuid;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires disposable PostgreSQL; exercises actual node CLI"]
+async fn native_import_to_node_files_and_reopen_work_with_git_absent() {
+    let mut f = Fixture::new().await;
+    f.importer();
+    let source = f.dir.path().join("node-source");
+    fs::create_dir(&source).unwrap();
+    fs::write(source.join("main.rs"), b"fn main() {}\n").unwrap();
+    let pack = f.dir.path().join("node-pack");
+    let packed = Command::new(env!("CARGO_BIN_EXE_treeharbor"))
+        .env("PATH", "/treeharbor-test-no-executables")
+        .args(["source-pack", "--directory"])
+        .arg(&source)
+        .arg("--output")
+        .arg(&pack)
+        .args([
+            "--path",
+            "main.rs",
+            "--author-name",
+            "Test",
+            "--author-email",
+            "test@example.invalid",
+        ])
+        .output()
+        .unwrap();
+    assert!(packed.status.success());
+    let server = f.start().await;
+    let imported = f.cli(&[
+        "source-import",
+        "--pack",
+        pack.to_str().unwrap(),
+        "--state",
+        f.dir.path().join("node-import.json").to_str().unwrap(),
+        "--authority",
+        "standalone",
+        "--epoch",
+        "1",
+    ]);
+    assert!(
+        imported.status.success(),
+        "{}",
+        String::from_utf8_lossy(&imported.stderr)
+    );
+    let imported: Value = serde_json::from_slice(&imported.stdout).unwrap();
+    let profile = f.cli(&[
+        "profile-put",
+        "--key",
+        "node-full",
+        "--authority",
+        "standalone",
+        "--epoch",
+        "1",
+        "--full",
+    ]);
+    assert!(profile.status.success());
+    let profile: Value = serde_json::from_slice(&profile.stdout).unwrap();
+    let workspace = Uuid::new_v4().to_string();
+    let created = f.cli(&[
+        "workspace-create",
+        "--key",
+        "node-workspace",
+        "--authority",
+        "standalone",
+        "--epoch",
+        "1",
+        "--workspace",
+        &workspace,
+        "--base",
+        imported["result"]["revision"].as_str().unwrap(),
+        "--profile-digest",
+        profile["result"]["profile_digest"].as_str().unwrap(),
+    ]);
+    assert!(created.status.success());
+    let root = f.dir.path().join("node");
+    let initialized = Command::new(env!("CARGO_BIN_EXE_treeharbor"))
+        .args(["node", "initialize", "--root"])
+        .arg(&root)
+        .args(["--tenant", f.scope.tenant(), "--principal", "node-local"])
+        .output()
+        .unwrap();
+    assert!(
+        initialized.status.success(),
+        "{}",
+        String::from_utf8_lossy(&initialized.stderr)
+    );
+    let identity: Value = serde_json::from_slice(&initialized.stdout).unwrap();
+    let storage = identity["storage"].as_str().unwrap();
+    f.admin_ok(&[
+        "principal-create",
+        "--tenant",
+        f.scope.tenant(),
+        "--principal",
+        "node-local",
+        "--kind",
+        "node",
+    ]);
+    f.admin_ok(&[
+        "node-register",
+        "--tenant",
+        f.scope.tenant(),
+        "--principal",
+        "node-local",
+        "--storage",
+        storage,
+    ]);
+    f.admin_ok(&[
+        "access-set",
+        "--tenant",
+        f.scope.tenant(),
+        "--repository",
+        &f.scope.repository().to_string(),
+        "--principal",
+        "node-local",
+        "--permission",
+        "runtime.control",
+    ]);
+    let node_credential = f.dir.path().join("node-credential.json");
+    f.admin_ok(&[
+        "token-issue",
+        "--tenant",
+        f.scope.tenant(),
+        "--repository",
+        &f.scope.repository().to_string(),
+        "--principal",
+        "node-local",
+        "--permission",
+        "runtime.control",
+        "--output",
+        node_credential.to_str().unwrap(),
+    ]);
+    let node_cli = |action: &str, extra: &[&str], credential: &std::path::Path| {
+        Command::new(env!("CARGO_BIN_EXE_treeharbor"))
+            .env("PATH", "/treeharbor-test-no-executables")
+            .args(["node", action, "--config"])
+            .arg(&f.config_path)
+            .arg("--credential-file")
+            .arg(credential)
+            .arg("--root")
+            .arg(&root)
+            .args(["--storage", storage])
+            .args(extra)
+            .output()
+            .unwrap()
+    };
+    let refused = node_cli("prepare-once", &[], &f.credential_path);
+    assert!(!refused.status.success());
+    let prepared = node_cli("prepare-once", &[], &node_credential);
+    assert!(
+        prepared.status.success(),
+        "{}",
+        String::from_utf8_lossy(&prepared.stderr)
+    );
+    assert!(!String::from_utf8_lossy(&prepared.stdout).contains("thv1_"));
+    let prepared: Value = serde_json::from_slice(&prepared.stdout).unwrap();
+    assert_eq!(prepared["state"], "files_ready");
+    assert_eq!(prepared["workspace"], workspace);
+    assert!(prepared["runtime"].is_null());
+    let files = PathBuf::from(prepared["path"].as_str().unwrap());
+    assert_eq!(fs::read(files.join("main.rs")).unwrap(), b"fn main() {}\n");
+    fs::write(files.join("main.rs"), b"saved edit").unwrap();
+    let reopened = node_cli("prepared", &["--workspace", &workspace], &node_credential);
+    assert!(reopened.status.success());
+    let reopened: Value = serde_json::from_slice(&reopened.stdout).unwrap();
+    assert_eq!(reopened["path"], prepared["path"]);
+    assert_eq!(reopened["recovered_baseline"], true);
+    assert_eq!(fs::read(files.join("main.rs")).unwrap(), b"saved edit");
+    let idle = node_cli("prepare-once", &[], &node_credential);
+    assert!(idle.status.success());
+    assert_eq!(
+        serde_json::from_slice::<Value>(&idle.stdout).unwrap()["state"],
+        "idle"
+    );
+    drop(server);
+    f.cleanup().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires disposable PostgreSQL; runs in database CI"]
 async fn native_source_cli_lists_pages_and_reads_verified_files_without_following_links() {
     use std::os::unix::ffi::OsStrExt;
@@ -1352,7 +1528,10 @@ async fn connection_limit_header_deadline_and_graceful_shutdown_release_socket()
     f.save_config();
     let mut server = f.start().await;
     let health = b"GET /healthz HTTP/1.1\r\nHost: treeharbor.local\r\n\r\n";
-    assert!(f.raw(health).await.starts_with(b"HTTP/1.1 200 "));
+    // This must be the first connection. EOF from a preceding health request
+    // does not prove its server task has already dropped the sole permit: that
+    // race can reject `held`, then admit `excess`. start() only observes a log.
+    let held_at = Instant::now();
     let mut held = UnixStream::connect(&f.config.socket).await.unwrap();
     held.write_all(b"POST /v1/commands HTTP/1.1\r\nHost: treeharbor.local\r\n")
         .await
@@ -1375,7 +1554,37 @@ async fn connection_limit_header_deadline_and_graceful_shutdown_release_socket()
     assert!(
         result.is_ok() || result.is_err_and(|e| e.kind() == std::io::ErrorKind::ConnectionReset)
     );
-    assert!(f.raw(health).await.starts_with(b"HTTP/1.1 200 "));
+    assert!(held_at.elapsed() >= Duration::from_secs(4));
+    // After EOF, observe capacity becoming available instead of assuming that
+    // the server has already completed the task which owned this connection.
+    let available_by = Instant::now() + Duration::from_secs(3);
+    loop {
+        let probe = async {
+            let mut stream = UnixStream::connect(&f.config.socket).await?;
+            stream.write_all(health).await?;
+            let mut response = Vec::new();
+            stream.take(1024).read_to_end(&mut response).await?;
+            Ok::<_, std::io::Error>(response)
+        };
+        match tokio::time::timeout(Duration::from_secs(2), probe)
+            .await
+            .unwrap()
+        {
+            Ok(response) if response.starts_with(b"HTTP/1.1 200 ") => break,
+            Ok(response) if response.is_empty() => {}
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    std::io::ErrorKind::ConnectionReset | std::io::ErrorKind::BrokenPipe
+                ) => {}
+            other => panic!("unexpected health response after release: {other:?}"),
+        }
+        assert!(
+            Instant::now() < available_by,
+            "connection permit not released"
+        );
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
     rustix::process::kill_process(
         rustix::process::Pid::from_raw(server.0.id() as i32).unwrap(),
         rustix::process::Signal::TERM,

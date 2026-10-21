@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/core", "crates/storage", "crates/history", "crates/metadata", "crates/validation", "crates/materializer", "crates/service", "crates/runtime"]
+members = ["crates/core", "crates/storage", "crates/history", "crates/metadata", "crates/validation", "crates/materializer", "crates/node", "crates/service", "crates/runtime"]
 resolver = "3"
 
 [workspace.package]
@@ -17,11 +17,13 @@ tempfile = "3"
 treeharbor-core = { path = "crates/core" }
 treeharbor-storage = { path = "crates/storage" }
 treeharbor-metadata = { path = "crates/metadata" }
+treeharbor-materializer = { path = "crates/materializer" }
+treeharbor-node = { path = "crates/node" }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "time", "sync", "net", "signal", "io-util"] }
 tokio-postgres = { version = "0.7.18", features = ["with-serde_json-1", "with-uuid-1"] }
 serde_json = "1"
 serde = { version = "1", features = ["derive"] }
-uuid = { version = "1", features = ["v4"] }
+uuid = { version = "1", features = ["v4", "serde"] }
 getrandom = "0.4.3"
 hyper = { version = "1.12.0", features = ["server", "client", "http1"] }
 hyper-util = { version = "0.1", features = ["tokio"] }

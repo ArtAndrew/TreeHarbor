@@ -12,18 +12,19 @@ gates. A foundation milestone does not complete either mode.
 | PostgreSQL metadata and outbox | Real database transaction/idempotency/lease tests; repository authority/epoch checks; populated schema upgrades through v7; local service pool and crash/replay | Remote service integration and full server restore |
 | Native ChangeSet intake | Computed immutable versions, base/run lineage, atomic graph pins and replay; worker process-kill test | Git base import, remote API, review/validation/merge admission and retention |
 | Protected incremental source reads | Pinned sessions, verified frontiers, bounded prefix batches and descriptors surviving local GC; authenticated workspace-root sessions | Per-tenant service quotas, bulk node delivery and S3 |
-| Native file materialization | Private copies from exact snapshots, full/sparse selection, staged expansion preserving edits/deletions, bounded IO and filesystem checks; exact observed baseline loading across process restart | Runtime-proven quiescence, durable node publication/reconciliation, cache/reflink, seal and Git-compatible format |
+| Native file materialization | Private copies from exact snapshots, full/sparse selection, staged expansion preserving edits/deletions, bounded IO and filesystem checks; exact baseline loading and guarded atomic node publication | Runtime-proven quiescence, cache/reflink, changed-file sealing and Git-compatible format |
 | Object catalog and retention | Receipt-bound publication, typed edges, atomic persistent pins, read holds, generation-safe retirement/retry; independent reachability model | Automatic GC/reconciliation/dry-run, abandoned-upload cleanup, S3 and full restore |
 | Exact validation predicate | Context binding, stale-target rejection, trusted issuer filtering, revocation and conflicting receipt tests | Authenticated collectors, durable evidence, review and atomic publication checks |
 | Credentials and agent commands | Repository-scoped opaque tokens, transactional revocation, distinct actor classes, owner-bound reads and strict command dispatch | Remote transport, MCP, production identity/admission integration |
-| Local HTTP service and CLI | Actual Unix-socket server/client, trusted admin CLI, private credential files, bounded HTTP/pool, strict startup schema, SIGKILL replay, cancellation/rollback, reconnect and graceful shutdown tests | Git import, node/runtime integration, TLS/remote access, packaged installation |
+| Local HTTP service and CLI | Actual Unix-socket server/client, trusted admin and file-preparation node CLI, private credentials, bounded HTTP/pool, strict startup schema, SIGKILL replay, cancellation/rollback, reconnect and graceful shutdown tests | Git import, runtime integration, TLS/remote access, packaged installation |
 | Workspace baseline API | Owner/generation/epoch-bound directory pages and verified blob download, repeated authorization, final revocation/drain rejection, bounded response ownership, actual CLI/HTTP tests | Bulk delivery to nodes, remote streaming, persistent cache and runtime binding |
 | Source graph uploads | Authenticated scoped sessions, child membership, fixed deadlines/budgets, backend identity, binary HTTP/CLI, concurrent retry, restart and schema-v5 upgrade tests | Git import, incremental reuse, streaming/batching and automatic cleanup |
 | Native directory import | Explicit selection, descriptor-relative capture, durable pack/journal v1, independent vector, actual CLI-to-server partial-upload recovery and completed replay with Git absent from PATH | Git history import, incremental reuse, automatic spool cleanup and runtime-proven snapshots |
-| Source delivery profiles | Canonical full/sparse format with independent vectors, immutable scoped definitions, workspace foreign-key binding, v4 upgrade, authenticated CLI/HTTP and restart tests | Automatic worker use, profile retention and generation-aware expansion |
+| Source delivery profiles | Canonical full/sparse format with independent vectors, immutable scoped definitions, workspace foreign-key binding, v4 upgrade, authenticated CLI/HTTP and exact node use | Profile retention and generation-aware expansion |
 | Workspaces and runtime | Logical workspace/run state, drain fencing and separate filesystem preparation implemented; node identity checks | Real node/runtime observation, sandbox binding and lifecycle recovery |
 | Runtime task supervisor | Linux namespace init, privilege guards, environment clearing, guest process limit, child reaping and deadline; real gVisor CI harness | Production controller, durable node binding, volume ownership, reconciliation, trusted results and complete lifecycle |
-| Workspace preparation reservations | Operator-registered node storage, scoped job claims, immutable source/slot/attempt identity, renewal/reclaim, exact file-ready observation and drain retention; real PostgreSQL race/upgrade tests | Physical storage identity, materializer binding/recovery, separate runtime attempts, actual drain/removal and resource release |
+| Workspace preparation reservations | Operator-registered node storage, scoped job claims, immutable source/slot/attempt identity, renewal/reclaim, exact file-ready observation and drain retention; real PostgreSQL race/upgrade tests | Separate runtime attempts, actual drain/removal and resource release |
+| Local preparation node | Private physical root identity/OS lock, durable placement intent, exact no-replace publication, independent concurrent slots, current authorization and file-ready acknowledgment; actual process-kill recovery and import-to-files CLI tests | Scheduler/daemon, runtime binding, disk quotas, remote workers, fenced volume migration and safe published-tree cleanup |
 | MCP adapter | Planned; not implemented | Shared-service adapter, scoped tools and real client interoperability tests |
 | Connected | Not implemented | Real GitHub PR/checks/merge queue and credential separation |
 | Standalone S2 | Not implemented | Durable native admission and publication without Git processes |
@@ -35,14 +36,16 @@ macOS arm64, Rust 1.99.1, 2026-10-21:
 
 ```text
 cargo test --workspace --locked --offline
-64 tests passed without external services: core 15, local storage 8, native history 3, metadata input/auth/protocol 3, validation 9, materializer 12, service configuration/files/CLI/pack/read transport 12, runtime argument/host guards 2.
-82 PostgreSQL integration tests passed explicitly against local PostgreSQL 18.6: transactions 7, object catalog 12, intake 9, protected reads 9, materializer 9, access/commands/source sessions 10, source profiles/upgrade 2, source uploads/upgrade 7, preparation ownership/upgrade 8, service process/transport 9.
+70 tests passed without external services: core 15, local storage 8, native history 3, metadata input/auth/protocol 3, validation 9, materializer 14, node identity/format/IO lifetime 4, service configuration/files/CLI/pack/read transport 12, runtime argument/host guards 2.
+91 PostgreSQL integration tests passed explicitly against local PostgreSQL 18.6: transactions 7, object catalog 12, intake 9, protected reads 9, materializer 10, access/commands/source sessions 10, source profiles/upgrade 2, source uploads/upgrade 7, preparation ownership/upgrade 8, node preparation/recovery 7, service process/transport 10.
+The combined run uses cargo test --workspace --locked --offline -- --include-ignored with both test database URLs set.
 cargo clippy --workspace --all-targets --locked --offline -- -D warnings
 Passed.
 cargo fmt --all
 Applied before the checks above.
-Published CI evidence (Linux, macOS, PostgreSQL and gVisor; commit 7452910):
-https://github.com/ArtAndrew/TreeHarbor/actions/runs/39609963544
+Earlier published CI evidence (Linux, macOS, PostgreSQL and gVisor; commit c086d3a):
+https://github.com/ArtAndrew/TreeHarbor/actions/runs/39624242714
+The node increment adds its real database suite to the required PostgreSQL CI job.
 ```
 
 The separate `gVisor task supervision` CI job exercises the
@@ -96,7 +99,7 @@ malformed metadata, and preserves current agent files. Tests cover a new process
 the independent v1 bytes/hash and expansion of a reopened catalog-backed tree with
 local edits/deletions/untracked files. Historical preparation counters are explicitly
 unavailable after loading. This is a baseline recovery primitive, not a node daemon
-or proof that physical preparation survived every crash boundary.
+or proof of execution readiness.
 The caller must still prove runtime
 quiescence, fence/persist the new generation and bind the result before READY;
 none of those steps is implied by a materializer receipt.
@@ -107,8 +110,17 @@ authorization checks and immutable completion observations. This new path record
 file readiness with an empty runtime binding; it cannot start an agent through
 the legacy running callback. Real PostgreSQL tests cover concurrent retry,
 restart/reclaim, expiry during insertion, cross-node/tenant denial, revocation,
-drain retention and populated-v6 upgrade. Physical node recovery and a separate
-runtime-attempt controller remain unimplemented.
+drain retention and populated-v6 upgrade. The [local node](local-node.md) now binds
+these reservations to a private physical storage identity and exact local intent.
+It publishes a synced tree with a placement-bound baseline receipt, then records
+file readiness in PostgreSQL. Actual worker kills before publication, after
+publication and after acknowledgment recover the same attempt/path; published
+files retain their inode and local edits/deletions/untracked files survive reopen.
+Concurrent workspaces, queued-IO cancellation, real lease renewal and renewal
+blocked behind the completion transaction are exercised. The CLI/HTTP test runs
+native import through file preparation and new-process reopening with Git absent.
+No runtime is launched. Production runtime binding, scheduling, physical disk
+quotas and safe published-tree removal remain unimplemented.
 
 Repository credentials and the [agent command library](agent-commands.md) now check
 permission, principal kind, token expiry/revocation and current grants in the
