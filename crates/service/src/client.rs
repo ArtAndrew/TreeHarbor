@@ -82,11 +82,33 @@ pub async fn send_object(
     frame: Vec<u8>,
     timeout: Duration,
 ) -> Result<Reply> {
+    send_uploaded_object(socket, credential, upload, id, frame, timeout, false).await
+}
+pub async fn send_change_blob(
+    socket: &Path,
+    credential: &Credential,
+    upload: Uuid,
+    id: treeharbor_core::ObjectId,
+    frame: Vec<u8>,
+    timeout: Duration,
+) -> Result<Reply> {
+    send_uploaded_object(socket, credential, upload, id, frame, timeout, true).await
+}
+async fn send_uploaded_object(
+    socket: &Path,
+    credential: &Credential,
+    upload: Uuid,
+    id: treeharbor_core::ObjectId,
+    frame: Vec<u8>,
+    timeout: Duration,
+    change: bool,
+) -> Result<Reply> {
     if frame.len() > treeharbor_core::MAX_PAYLOAD + treeharbor_core::FRAME_HEADER {
         return Err(Error::Size);
     }
     let path = format!(
-        "/v1/source/{}/{}/uploads/{}/objects/{}",
+        "/v1/{}/{}/{}/uploads/{}/objects/{}",
+        if change { "changes" } else { "source" },
         credential.scope.tenant(),
         credential.scope.repository(),
         upload,
@@ -99,6 +121,26 @@ pub async fn send_object(
         path,
         "application/octet-stream",
         frame,
+        timeout,
+    )
+    .await
+}
+pub async fn send_proposal(
+    socket: &Path,
+    token: &SecretToken,
+    body: Vec<u8>,
+    timeout: Duration,
+) -> Result<Reply> {
+    if body.len() > MAX_REQUEST_BYTES {
+        return Err(Error::Size);
+    }
+    send_request(
+        socket,
+        token,
+        "POST",
+        "/v1/changes/submit".into(),
+        "application/json",
+        body,
         timeout,
     )
     .await

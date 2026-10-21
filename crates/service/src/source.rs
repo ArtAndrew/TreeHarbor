@@ -18,7 +18,7 @@ use uuid::Uuid;
 #[derive(Clone)]
 pub(crate) struct Backend {
     pub config: StorageConfig,
-    permits: Arc<Semaphore>,
+    pub permits: Arc<Semaphore>,
     pub read_permits: Arc<Semaphore>,
 }
 impl Backend {
@@ -61,12 +61,13 @@ pub(crate) struct Route {
     scope: Scope,
     upload: Uuid,
     object: ObjectId,
+    change: bool,
 }
 pub(crate) fn route(path: &str) -> Option<Route> {
     let parts: Vec<_> = path.split('/').collect();
     if parts.len() != 9
         || parts[1] != "v1"
-        || parts[2] != "source"
+        || !matches!(parts[2], "source" | "changes")
         || parts[5] != "uploads"
         || parts[7] != "objects"
     {
@@ -81,6 +82,7 @@ pub(crate) fn route(path: &str) -> Option<Route> {
         scope: Scope::new(parts[3], repo).ok()?,
         upload,
         object: parts[8].parse().ok()?,
+        change: parts[2] == "changes",
     })
 }
 pub(crate) struct Failure {
@@ -93,11 +95,15 @@ fn fail(status: u16, code: &'static str) -> Failure {
 pub(crate) fn metadata(error: treeharbor_metadata::Error) -> Failure {
     let code = CommandError::Metadata(error).code();
     let status = match code {
+        "invalid_request" => 400,
         "unauthenticated" => 401,
         "forbidden" => 403,
         "not_found" => 404,
         "upload_limit" => 429,
         "repository_fenced"
+        | "execution_state_changed"
+        | "version_conflict"
+        | "idempotency_conflict"
         | "upload_state_changed"
         | "upload_membership"
         | "object_busy"
@@ -119,15 +125,24 @@ pub(crate) async fn put(
         .map_err(|_| fail(503, "database_unavailable"))?;
     let auth = db
         .metadata
-        .authorize(credential, &route.scope, Permission::RepositoryWrite)
+        .authorize(
+            credential,
+            &route.scope,
+            if route.change {
+                Permission::ChangeWrite
+            } else {
+                Permission::RepositoryWrite
+            },
+        )
         .await
         .map_err(metadata)?;
     // Refuse unknown/foreign sessions before consuming a large body.
-    let state = db
-        .metadata
-        .source_upload_status(&auth, route.upload)
-        .await
-        .map_err(metadata)?;
+    let state = if route.change {
+        db.metadata.change_upload_status(&auth, route.upload).await
+    } else {
+        db.metadata.source_upload_status(&auth, route.upload).await
+    }
+    .map_err(metadata)?;
     if state["state"] != "active" || state["expired"] != false {
         return Err(fail(409, "upload_state_changed"));
     }
@@ -166,13 +181,30 @@ pub(crate) async fn put(
         .get()
         .await
         .map_err(|_| fail(503, "database_unavailable"))?;
-    let ticket = db
-        .metadata
-        .reserve_source_object(&auth, route.upload, &store, &object)
-        .await
-        .map_err(metadata)?;
+    enum Ticket {
+        Source(treeharbor_metadata::uploads::UploadTicket),
+        Change(treeharbor_metadata::proposals::ChangeBlobTicket),
+    }
+    let ticket = if route.change {
+        Ticket::Change(
+            db.metadata
+                .reserve_change_blob(&auth, route.upload, &store, &object)
+                .await
+                .map_err(metadata)?,
+        )
+    } else {
+        Ticket::Source(
+            db.metadata
+                .reserve_source_object(&auth, route.upload, &store, &object)
+                .await
+                .map_err(metadata)?,
+        )
+    };
     drop(db);
-    let generation = ticket.generation();
+    let generation = match &ticket {
+        Ticket::Source(t) => t.generation(),
+        Ticket::Change(t) => t.generation(),
+    };
     // Cancellation must not detach unbounded fsync workers: this owned permit
     // stays inside the blocking task until its IO actually stops.
     let (receipt, _permit) = tokio::task::spawn_blocking(move || {
@@ -187,10 +219,11 @@ pub(crate) async fn put(
         .get()
         .await
         .map_err(|_| fail(503, "database_unavailable"))?;
-    db.metadata
-        .publish_source_object(&auth, &ticket, &receipt)
-        .await
-        .map_err(metadata)?;
+    match ticket {
+        Ticket::Source(t) => db.metadata.publish_source_object(&auth, &t, &receipt).await,
+        Ticket::Change(t) => db.metadata.publish_change_blob(&auth, &t, &receipt).await,
+    }
+    .map_err(metadata)?;
     Ok(
         serde_json::json!({"version":1,"result":{"object":receipt.id().to_string(),"state":"stored"}}),
     )

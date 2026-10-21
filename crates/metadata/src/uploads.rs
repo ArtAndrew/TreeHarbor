@@ -16,7 +16,7 @@ pub struct UploadLimits {
     pub ttl_seconds: i32,
 }
 impl UploadLimits {
-    fn validate(&self) -> Result<()> {
+    pub(crate) fn validate(&self) -> Result<()> {
         ttl_valid(self.ttl_seconds)?;
         if !(1..=1_000_000).contains(&self.objects) || !(22..=68_719_476_736).contains(&self.bytes)
         {

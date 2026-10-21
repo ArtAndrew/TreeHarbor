@@ -84,3 +84,8 @@ separate database connection. They must never be routed from agent requests.
 Source ingestion uses the same authenticated envelope with `repository.write`,
 plus a binary object route. See [source upload commands and limits](source-uploads.md).
 The backend label and path are deployment configuration, never client fields.
+
+Change proposals use `change_begin`, `change_status` and `change_abort` with
+`change.write`, plus separate blob-upload and computed-submission routes. They grant
+neither source-import nor host-write permission. See [change proposals](change-proposals.md)
+for source/run fences, version CAS, immutable operations and recovery.

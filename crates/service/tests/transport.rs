@@ -1,4 +1,6 @@
 #![cfg(unix)]
+#[path = "transport/proposals.rs"]
+mod proposals;
 use serde_json::{Value, json};
 use std::{
     fs,

@@ -1,5 +1,9 @@
 # Managed AgentRun development contract
 
+Completed runs with confirmed runtime removal can submit [immutable change
+proposals](change-proposals.md) while their workspace generation remains current.
+This does not automatically capture files, validate the proposal or merge it.
+
 Schema 8 connects owner requests, prepared source identities and the local runtime
 controller. The metadata/API path has PostgreSQL contracts. The actual Linux
 CLI/import/preparation/gVisor path passed in

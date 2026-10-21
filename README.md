@@ -24,6 +24,8 @@ in **Standalone** mode. Both share one Rust engine.
 > [runtime controller](docs/runtime-controller.md) adds durable local create/start/remove
 > intents and verified external execution. [Managed runs](docs/managed-runs.md) now bind
 > owner requests to prepared files, bounded gVisor execution and recoverable results.
+> [Immutable change proposals](docs/change-proposals.md) add resumable blob uploads
+> and server-computed ChangeSets through the local API/CLI, with original run lineage.
 > Optimized caching, remote transport and MCP integration are still pending.
 > [Preparation reservations](docs/workspace-preparations.md) now persist node/storage
 > ownership and fence retries before physical work. The [local preparation node](docs/local-node.md)

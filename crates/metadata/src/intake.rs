@@ -372,11 +372,7 @@ impl Metadata {
         ctx: &CommandContext,
         change: &ChangeSubmission<'_>,
     ) -> Result<Value> {
-        let version = change
-            .previous_version
-            .checked_add(1)
-            .filter(|_| change.previous_version >= 0)
-            .ok_or(Error::Invalid("previous version"))?;
+        change_version_number(change)?;
         let applied = change.applied;
         if change.operations.key().id() != applied.operations()
             || change.result.key().id() != applied.result_snapshot()
@@ -400,49 +396,7 @@ impl Metadata {
             Begin::Replay(value) => return Ok(value),
             Begin::Fresh(tx) => tx,
         };
-        let scope = &ctx.scope;
-        let row=tx.tx.query_opt(r#"SELECT w.base_revision,b.snapshot,w.pin_holder FROM th_agent_runs r
-            JOIN th_workspaces w USING (tenant,repository,workspace)
-            JOIN th_bases b ON b.tenant=w.tenant AND b.repository=w.repository AND b.revision=w.base_revision
-            WHERE r.tenant=$1 AND r.repository=$2 AND r.run=$3 AND r.principal=$4 AND w.principal=$4
-            AND r.state='running' AND w.state='in_use' AND r.epoch=$5 AND w.epoch=$5
-            AND r.workspace_generation=$6 AND w.generation=$6 AND r.runtime=w.runtime AND w.resolved_profile IS NOT NULL"#,
-            &[&scope.tenant,&scope.repository,&change.run,&ctx.principal,&ctx.epoch,&change.workspace_generation]).await?.ok_or(Error::ExecutionState)?;
-        if row.get::<_, Vec<u8>>(1) != applied.base_snapshot().as_bytes() {
-            return Err(Error::ReceiptMismatch);
-        }
-        let base_revision: String = row.get(0);
-        let source_pin: String = row.get(2);
-        if change.previous_version == 0 {
-            let inserted=tx.tx.execute("INSERT INTO th_changesets (tenant,repository,changeset,principal,latest_version) VALUES ($1,$2,$3,$4,1) ON CONFLICT DO NOTHING",
-                &[&scope.tenant,&scope.repository,&change.id,&ctx.principal]).await?;
-            if inserted != 1 {
-                return Err(Error::VersionConflict);
-            }
-        } else {
-            let changed=tx.tx.execute("UPDATE th_changesets SET latest_version=$4 WHERE tenant=$1 AND repository=$2 AND changeset=$3 AND principal=$5 AND latest_version=$6",
-                &[&scope.tenant,&scope.repository,&change.id,&version,&ctx.principal,&change.previous_version]).await?;
-            if changed != 1 {
-                return Err(Error::VersionConflict);
-            }
-        }
-        let prefix = format!("change:{}:{version}", change.id);
-        let base_pin = format!("{prefix}:base");
-        let operations_pin = format!("{prefix}:operations");
-        let result_pin = format!("{prefix}:result");
-        tx.lock_intake_roots(&source_pin, change.operations, change.result)
-            .await?;
-        tx.copy_root_pin(&source_pin, &base_pin).await?;
-        tx.pin_kind(&operations_pin, change.operations, 4).await?;
-        tx.pin_kind(&result_pin, change.result, 3).await?;
-        tx.tx.execute(r#"INSERT INTO th_change_versions
-            (tenant,repository,changeset,version,run,base_revision,base_snapshot,operations,result_snapshot,base_pin,operations_pin,result_pin,operation_key)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)"#,
-            &[&scope.tenant,&scope.repository,&change.id,&version,&change.run,&base_revision,
-            &applied.base_snapshot().as_bytes().as_slice(),&applied.operations().as_bytes().as_slice(),&applied.result_snapshot().as_bytes().as_slice(),
-            &base_pin,&operations_pin,&result_pin,&ctx.key]).await?;
-        let result = json!({"changeset":change.id.to_string(),"version":version,"state":"accepted","run":change.run.to_string(),
-            "base_revision":base_revision,"base_snapshot":applied.base_snapshot().to_string(),"operations":applied.operations().to_string(),"result_snapshot":applied.result_snapshot().to_string()});
+        let result = tx.accept_change_version(change).await?;
         tx.complete(result.clone(), vec![event("change.accepted", result)])
             .await
     }
@@ -466,7 +420,75 @@ impl Metadata {
     }
 }
 
+fn change_version_number(change: &ChangeSubmission<'_>) -> Result<i64> {
+    change
+        .previous_version
+        .checked_add(1)
+        .filter(|_| change.previous_version >= 0)
+        .ok_or(Error::Invalid("previous version"))
+}
+
 impl Mutation<'_> {
+    pub(crate) async fn accept_change_version(
+        &self,
+        change: &ChangeSubmission<'_>,
+    ) -> Result<Value> {
+        let version = change_version_number(change)?;
+        let applied = change.applied;
+        if change.operations.key().id() != applied.operations()
+            || change.result.key().id() != applied.result_snapshot()
+        {
+            return Err(Error::ReceiptMismatch);
+        }
+        let ctx = &self.request;
+        let scope = &ctx.scope;
+        let source = crate::proposals::run_source_in(
+            &self.tx,
+            scope,
+            &ctx.principal,
+            change.run,
+            change.workspace_generation,
+            ctx.epoch,
+        )
+        .await?;
+        if source.snapshot != applied.base_snapshot() {
+            return Err(Error::ReceiptMismatch);
+        }
+        let base_revision = source.revision.to_string();
+        if change.previous_version == 0 {
+            let inserted=self.tx.execute("INSERT INTO th_changesets (tenant,repository,changeset,principal,latest_version) VALUES ($1,$2,$3,$4,1) ON CONFLICT DO NOTHING",
+                &[&scope.tenant,&scope.repository,&change.id,&ctx.principal]).await?;
+            if inserted != 1 {
+                return Err(Error::VersionConflict);
+            }
+        } else {
+            let changed=self.tx.execute("UPDATE th_changesets SET latest_version=$4 WHERE tenant=$1 AND repository=$2 AND changeset=$3 AND principal=$5 AND latest_version=$6",
+                &[&scope.tenant,&scope.repository,&change.id,&version,&ctx.principal,&change.previous_version]).await?;
+            if changed != 1 {
+                return Err(Error::VersionConflict);
+            }
+        }
+        let prefix = format!("change:{}:{version}", change.id);
+        let base_pin = format!("{prefix}:base");
+        let operations_pin = format!("{prefix}:operations");
+        let result_pin = format!("{prefix}:result");
+        self.lock_intake_roots(&source.pin, change.operations, change.result)
+            .await?;
+        self.copy_root_pin(&source.pin, &base_pin).await?;
+        self.pin_kind(&operations_pin, change.operations, 4).await?;
+        self.pin_kind(&result_pin, change.result, 3).await?;
+        self.tx.execute(r#"INSERT INTO th_change_versions
+            (tenant,repository,changeset,version,run,base_revision,base_snapshot,operations,result_snapshot,base_pin,operations_pin,result_pin,operation_key)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)"#,
+            &[&scope.tenant,&scope.repository,&change.id,&version,&change.run,&base_revision,
+            &applied.base_snapshot().as_bytes().as_slice(),&applied.operations().as_bytes().as_slice(),&applied.result_snapshot().as_bytes().as_slice(),
+            &base_pin,&operations_pin,&result_pin,&ctx.key]).await?;
+        Ok(
+            json!({"changeset":change.id.to_string(),"version":version,"state":"accepted","run":change.run.to_string(),
+            "base_revision":base_revision,"base_snapshot":applied.base_snapshot().to_string(),"operations":applied.operations().to_string(),"result_snapshot":applied.result_snapshot().to_string()}),
+        )
+    }
+
     async fn check_preparation_job(&self, job: &Job, ready: &WorkspaceReady) -> Result<()> {
         let scope = &self.request.scope;
         if job.scope.tenant != scope.tenant

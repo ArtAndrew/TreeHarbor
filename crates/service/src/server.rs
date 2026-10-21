@@ -204,7 +204,11 @@ async fn handle(
     }
     let upload = crate::source::route(request.uri().path());
     let source_read = request.uri().path() == "/v1/source/read";
-    if (request.uri().path() != "/v1/commands" && upload.is_none() && !source_read)
+    let change_submit = request.uri().path() == "/v1/changes/submit";
+    if (request.uri().path() != "/v1/commands"
+        && upload.is_none()
+        && !source_read
+        && !change_submit)
         || request.uri().query().is_some()
     {
         return error(StatusCode::NOT_FOUND, "not_found");
@@ -284,6 +288,18 @@ async fn handle(
         Ok(Err(_)) => return error(StatusCode::BAD_REQUEST, "invalid_body"),
         Err(_) => return error(StatusCode::REQUEST_TIMEOUT, "body_timeout"),
     };
+    if change_submit {
+        let Some(backend) = backend else {
+            return error(StatusCode::SERVICE_UNAVAILABLE, "storage_not_configured");
+        };
+        return match crate::proposals::submit(&body, &credential, backend, pool).await {
+            Ok(value) => response(StatusCode::OK, value),
+            Err(failure) => error(
+                StatusCode::from_u16(failure.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+                failure.code,
+            ),
+        };
+    }
     if source_read {
         let Some(backend) = backend else {
             return error(StatusCode::SERVICE_UNAVAILABLE, "storage_not_configured");
