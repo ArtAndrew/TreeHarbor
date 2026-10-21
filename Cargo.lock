@@ -1004,8 +1004,10 @@ dependencies = [
  "tokio",
  "tokio-postgres",
  "treeharbor-core",
+ "treeharbor-merge",
  "treeharbor-runtime",
  "treeharbor-storage",
+ "treeharbor-validation",
  "uuid",
 ]
 
@@ -1066,6 +1068,7 @@ dependencies = [
  "tokio-postgres",
  "treeharbor-core",
  "treeharbor-materializer",
+ "treeharbor-merge",
  "treeharbor-metadata",
  "treeharbor-node",
  "treeharbor-runtime",

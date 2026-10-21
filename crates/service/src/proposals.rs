@@ -136,16 +136,16 @@ struct Inner {
     written: Vec<ObjectId>,
     bytes: usize,
 }
-struct Scratch(RefCell<Inner>);
+pub(crate) struct Scratch(RefCell<Inner>);
 impl Scratch {
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self(RefCell::new(Inner {
             objects: BTreeMap::new(),
             written: vec![],
             bytes: 0,
         }))
     }
-    fn load(&self, read: ReadObject) -> treeharbor_core::Result<()> {
+    pub(crate) fn load(&self, read: ReadObject) -> treeharbor_core::Result<()> {
         let mut inner = self.0.borrow_mut();
         if !inner.objects.contains_key(&read.id()) {
             if inner.objects.len() >= MAX_OBJECTS
@@ -174,12 +174,15 @@ impl Scratch {
         }
         Ok(id)
     }
-    fn publications(self, applied: &AppliedChange) -> treeharbor_core::Result<Vec<PreparedObject>> {
+    pub(crate) fn publications(
+        self,
+        roots: &[ObjectId],
+    ) -> treeharbor_core::Result<Vec<PreparedObject>> {
         let mut inner = self.0.into_inner();
         // Discard intermediate trees that do not belong to either final root.
         let generated: BTreeSet<_> = inner.written.iter().copied().collect();
         let mut reachable = BTreeSet::new();
-        let mut pending = vec![applied.operations(), applied.result_snapshot()];
+        let mut pending = roots.to_vec();
         while let Some(id) = pending.pop() {
             if !reachable.insert(id) {
                 continue;
@@ -198,7 +201,7 @@ impl Scratch {
             .into_iter()
             .filter(|id| reachable.contains(id))
             .collect();
-        for root in [applied.operations(), applied.result_snapshot()] {
+        for &root in roots {
             if !order.contains(&root) {
                 order.push(root);
             }
@@ -355,7 +358,9 @@ async fn compute(
     tokio::task::spawn_blocking(move || {
         let _permit = permit;
         let applied = prepare_change(&scratch, base, &operations).map_err(core)?;
-        let objects = scratch.publications(&applied).map_err(core)?;
+        let objects = scratch
+            .publications(&[applied.operations(), applied.result_snapshot()])
+            .map_err(core)?;
         Ok((applied, objects))
     })
     .await

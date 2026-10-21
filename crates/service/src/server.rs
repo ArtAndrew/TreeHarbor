@@ -204,11 +204,13 @@ async fn handle(
     }
     let upload = crate::source::route(request.uri().path());
     let source_read = request.uri().path() == "/v1/source/read";
+    let native_prepare = request.uri().path() == "/v1/native/prepare";
     let change_submit = request.uri().path() == "/v1/changes/submit";
     if (request.uri().path() != "/v1/commands"
         && upload.is_none()
         && !source_read
-        && !change_submit)
+        && !change_submit
+        && !native_prepare)
         || request.uri().query().is_some()
     {
         return error(StatusCode::NOT_FOUND, "not_found");
@@ -288,6 +290,18 @@ async fn handle(
         Ok(Err(_)) => return error(StatusCode::BAD_REQUEST, "invalid_body"),
         Err(_) => return error(StatusCode::REQUEST_TIMEOUT, "body_timeout"),
     };
+    if native_prepare {
+        let Some(backend) = backend else {
+            return error(StatusCode::SERVICE_UNAVAILABLE, "storage_not_configured");
+        };
+        return match crate::native::prepare(&body, &credential, backend, pool).await {
+            Ok(value) => response(StatusCode::OK, value),
+            Err(f) => error(
+                StatusCode::from_u16(f.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+                f.code,
+            ),
+        };
+    }
     if change_submit {
         let Some(backend) = backend else {
             return error(StatusCode::SERVICE_UNAVAILABLE, "storage_not_configured");
@@ -340,6 +354,9 @@ async fn handle(
                 "repository_fenced"
                 | "execution_state_changed"
                 | "idempotency_conflict"
+                | "integration_state_changed"
+                | "candidate_stale"
+                | "admission_blocked"
                 | "version_conflict" => StatusCode::CONFLICT,
                 "upload_state_changed" | "upload_membership" | "object_busy" | "lease_expired" => {
                     StatusCode::CONFLICT
