@@ -71,9 +71,21 @@ async fn object_row(tx: &Transaction<'_>, tenant: &str, digest: &[u8]) -> Result
     tx.query_opt("SELECT generation,backend,kind,length,state FROM th_objects WHERE tenant=$1 AND digest=$2 FOR UPDATE",&[&tenant,&digest]).await?.ok_or(Error::ObjectNotLive)
 }
 pub(crate) async fn live_lease(tx: &Transaction<'_>, lease: &ObjectLease) -> Result<()> {
+    check_live_lease(tx, lease, false).await
+}
+pub(crate) async fn live_read_lease(tx: &Transaction<'_>, lease: &ObjectLease) -> Result<()> {
+    check_live_lease(tx, lease, true).await
+}
+async fn check_live_lease(tx: &Transaction<'_>, lease: &ObjectLease, shared: bool) -> Result<()> {
     let key = &lease.key;
     let digest = bytes(key.id);
-    let row = object_row(tx, &key.tenant, &digest).await?;
+    let row = if shared {
+        // Readers of the same root can open concurrently. FOR SHARE still
+        // conflicts with retirement, generation changes and hold release.
+        tx.query_opt("SELECT generation,backend,kind,length,state FROM th_objects WHERE tenant=$1 AND digest=$2 FOR SHARE", &[&key.tenant,&digest]).await?.ok_or(Error::ObjectNotLive)?
+    } else {
+        object_row(tx, &key.tenant, &digest).await?
+    };
     if row.get::<_, i64>(0) != key.generation
         || row.get::<_, String>(1) != key.backend
         || row.get::<_, String>(4) != "live"

@@ -41,7 +41,8 @@ revived; generation reuse cannot make an old session valid. Callers renew before
 expiry and explicitly close sessions when finished. A crash closes descriptors
 and leaves only the expiring hold, without creating permanent reader pins.
 
-The root row lock ends before content IO/hashing. It covers only bounded local
+The root uses a shared row lock, allowing concurrent readers while excluding
+retirement and hold release. The lock ends before content IO/hashing. It covers only bounded local
 open/stat work; a 5-second idle-in-transaction timeout prevents indefinitely parked
 database sessions, and a terminated transaction cannot return a successful batch.
 The service-owned storage tree must remain inaccessible to agents. Malicious local
@@ -74,9 +75,10 @@ Repeated references must be deduplicated by a traversal before batching.
 
 ## Evidence
 
-Seven real PostgreSQL/local-file tests cover selected reads despite unavailable
+Eight real PostgreSQL/local-file tests cover selected reads despite unavailable
 unrequested data; opened batches after complete GC and generation reuse; scope and
 backend separation; byte/object limits before IO; corrupted bytes and missing edges;
 renewal/close retention; and current snapshot reads without loading either merge
-parent. Existing catalog, intake, storage and transaction tests remain applicable.
+parent; and concurrent readers sharing root protection. Existing catalog, intake,
+storage and transaction tests remain applicable.
 This is correctness evidence, not a speed or sandbox claim.

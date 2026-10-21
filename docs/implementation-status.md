@@ -27,7 +27,7 @@ macOS arm64, Rust 1.99.1, 2026-10-21:
 ```text
 cargo test --workspace --locked --offline
 33 tests passed without external services: core 12, local storage 8, native history 3, metadata input 1, validation 9.
-34 PostgreSQL integration tests passed explicitly against local PostgreSQL 18.6: transactions 7, object catalog 12, intake 8, protected reads 7.
+35 PostgreSQL integration tests passed explicitly against local PostgreSQL 18.6: transactions 7, object catalog 12, intake 8, protected reads 8.
 cargo clippy --workspace --all-targets --locked --offline -- -D warnings
 Passed.
 cargo fmt --all

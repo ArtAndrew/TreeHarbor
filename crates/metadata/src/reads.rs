@@ -1,6 +1,6 @@
 //! Incremental local graph reads. These are trusted service primitives, not an
 //! authentication boundary or a remotely serializable object-capability protocol.
-use crate::catalog::{ObjectKey, ObjectLease, live_lease, settings};
+use crate::catalog::{ObjectKey, ObjectLease, live_lease, live_read_lease, settings};
 use crate::{Error, Metadata, Result, Scope, ttl_valid};
 use std::collections::BTreeSet;
 use treeharbor_core::{Object, ObjectId};
@@ -188,7 +188,7 @@ impl Metadata {
         // a batch: the commit below must succeed before descriptors escape.
         tx.batch_execute("SET LOCAL idle_in_transaction_session_timeout='5s'")
             .await?;
-        live_lease(&tx, &session.lease).await?;
+        live_read_lease(&tx, &session.lease).await?;
         let rows = tx.query("SELECT o.generation,o.backend,o.kind,o.length,o.state, \
             (r.parent IS NULL OR EXISTS(SELECT 1 FROM th_object_edges e WHERE e.tenant=o.tenant AND e.parent=r.parent AND e.parent_generation=r.parent_generation AND e.child=o.digest AND e.child_generation=o.generation)) \
             FROM unnest($2::bytea[],$3::bytea[],$4::bigint[]) WITH ORDINALITY AS r(digest,parent,parent_generation,ordinal) \

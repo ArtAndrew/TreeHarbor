@@ -495,3 +495,39 @@ async fn current_snapshot_can_be_read_without_loading_either_merge_parent() {
     );
     cleanup(&schema).await;
 }
+
+#[tokio::test]
+#[ignore = "requires disposable PostgreSQL; runs in database CI"]
+async fn shared_root_protection_allows_another_reader_to_open_its_batch() {
+    let (schema, scope, mut db) = setup().await;
+    let root = tempfile::tempdir().unwrap();
+    let store = depot(&root, scope.tenant(), "local-1");
+    let leases = tree(&mut db, &scope, &store).await;
+    let session = db.open_read_session(&scope, "source", 60).await.unwrap();
+    let mut raw = connection(&schema).await;
+    let tx = raw.transaction().await.unwrap();
+    tx.query_one(
+        "SELECT digest FROM th_objects WHERE tenant=$1 AND digest=$2 FOR SHARE",
+        &[
+            &scope.tenant(),
+            &leases.last().unwrap().key().id().as_bytes().to_vec(),
+        ],
+    )
+    .await
+    .unwrap();
+    // Keep one reader's protection active. A second must not request an exclusive
+    // root lock (which would wait for this transaction and hit the lock timeout).
+    let batch = tokio::time::timeout(
+        std::time::Duration::from_secs(3),
+        db.open_read_batch(&session, &store, &[session.root()], MAX_READ_BYTES),
+    )
+    .await
+    .expect("concurrent reader blocked on shared root")
+    .unwrap();
+    assert!(matches!(
+        batch.read().unwrap()[0].object(),
+        Object::Snapshot { .. }
+    ));
+    tx.rollback().await.unwrap();
+    cleanup(&schema).await;
+}
