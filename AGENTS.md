@@ -25,4 +25,3 @@ Tests must exercise failure boundaries and independent reference behavior.
 Changes to storage/wire formats require a versioned spec and golden vectors.
 Update implementation status with commands and actual outcomes after each stage.
 Promotion outside this repository and direct messages require separate approval.
-

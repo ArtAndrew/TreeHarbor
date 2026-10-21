@@ -1,0 +1,22 @@
+[package]
+name = "treeharbor-metadata"
+description = "PostgreSQL transaction, fencing, idempotency and outbox primitives"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+tokio-postgres.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true
+
+[lints]
+workspace = true
