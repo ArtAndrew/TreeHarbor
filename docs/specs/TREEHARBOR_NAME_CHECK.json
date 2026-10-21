@@ -1,0 +1,68 @@
+{
+  "checked_on": "2026-10-21",
+  "scope": "Public GitHub user endpoint and public repository name search. Not a registration or trademark check.",
+  "results": [
+    {
+      "url": "https://api.github.com/users/arborlane",
+      "status": 404
+    },
+    {
+      "url": "https://api.github.com/users/treeharbor",
+      "status": 404
+    },
+    {
+      "url": "https://api.github.com/users/revloom",
+      "status": 200,
+      "total_count": null,
+      "incomplete_results": null,
+      "login": "ReVloom",
+      "repositories": []
+    },
+    {
+      "url": "https://api.github.com/search/repositories?q=arborlane+in:name&per_page=10",
+      "status": 200,
+      "total_count": 2,
+      "incomplete_results": false,
+      "login": null,
+      "repositories": [
+        {
+          "name": "Ayushkumarsingh09/arborlane",
+          "url": "https://github.com/Ayushkumarsingh09/arborlane",
+          "description": "Premium home improvement magazine and planning platform"
+        },
+        {
+          "name": "lewisc2303/ArborLaneGarageSite",
+          "url": "https://github.com/lewisc2303/ArborLaneGarageSite",
+          "description": null
+        }
+      ]
+    },
+    {
+      "url": "https://api.github.com/search/repositories?q=treeharbor+in:name&per_page=10",
+      "status": 200,
+      "total_count": 0,
+      "incomplete_results": false,
+      "login": null,
+      "repositories": []
+    },
+    {
+      "url": "https://api.github.com/search/repositories?q=revloom+in:name&per_page=10",
+      "status": 200,
+      "total_count": 2,
+      "incomplete_results": false,
+      "login": null,
+      "repositories": [
+        {
+          "name": "Revloom123/Revloom",
+          "url": "https://github.com/Revloom123/Revloom",
+          "description": null
+        },
+        {
+          "name": "dongmin24/revloom-landing",
+          "url": "https://github.com/dongmin24/revloom-landing",
+          "description": null
+        }
+      ]
+    }
+  ]
+}

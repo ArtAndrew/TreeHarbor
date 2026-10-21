@@ -1,0 +1,38 @@
+name: Contribution rights
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
+permissions:
+  contents: read
+  pull-requests: read
+jobs:
+  rights:
+    name: Contribution rights
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      # No PR checkout, PR-controlled code, artifacts, scripts or expressions.
+      - name: Verify all commit authors against initial owner-only policy
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.number }}
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+          EXPECTED_COUNT: ${{ github.event.pull_request.commits }}
+        run: |
+          set -euo pipefail
+          gh api --paginate "repos/$GH_REPO/pulls/$PR_NUMBER/commits?per_page=100" --slurp > "$RUNNER_TEMP/commits.json"
+          python3 - <<'PY'
+          import json, os, pathlib, sys
+          pages = json.loads((pathlib.Path(os.environ['RUNNER_TEMP']) / 'commits.json').read_text())
+          commits = [c for page in pages for c in page]
+          valid = bool(commits) and len(commits) == int(os.environ['EXPECTED_COUNT']) and commits[-1]['sha'] == os.environ['EXPECTED_HEAD']
+          for commit in commits:
+              author = commit.get('author') or {}
+              message = commit['commit']['message'].lower()
+              valid &= author.get('login') == 'ArtAndrew' and 'co-authored-by:' not in message
+          if not valid:
+              print('Contribution rights require maintainer review. External grants are not yet configured; see CONTRIBUTING.md.')
+              sys.exit(1)
+          print('Initial owner-only authorship check passed; provenance review is still required.')
+          PY
