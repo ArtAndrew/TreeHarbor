@@ -7,6 +7,7 @@
 - Bounded native history traversal and all best merge bases.
 - PostgreSQL idempotent transactions, repository fencing and leased outbox.
 - Exact validation-context binding and fail-closed evidence evaluation.
+- Object catalog, durable upload receipts, persistent root pins and generation-safe retirement.
 - Initial contract tests and design documentation.
 
 There is no installable product release yet.

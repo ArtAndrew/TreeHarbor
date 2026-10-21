@@ -7,7 +7,11 @@ use sha2::{Digest, Sha256};
 use tokio_postgres::{Client, Transaction};
 use uuid::Uuid;
 
-const MIGRATION: &str = include_str!("../migrations/001_transactions.sql");
+pub mod catalog;
+const MIGRATIONS: &[&str] = &[
+    include_str!("../migrations/001_transactions.sql"),
+    include_str!("../migrations/002_object_catalog.sql"),
+];
 const MAX_JSON: usize = 1024 * 1024;
 
 #[derive(Debug, thiserror::Error)]
@@ -28,6 +32,16 @@ pub enum Error {
     SchemaMismatch,
     #[error("database must have fsync enabled")]
     UnsafeDurability,
+    #[error("object storage contract failed: {0}")]
+    Objects(#[from] treeharbor_core::Error),
+    #[error("object is being uploaded or retired")]
+    ObjectBusy,
+    #[error("referenced object is not live or has the wrong type")]
+    ObjectNotLive,
+    #[error("object receipt does not match its reservation")]
+    ReceiptMismatch,
+    #[error("root holder already refers to another object")]
+    PinConflict,
 }
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -186,8 +200,16 @@ impl Metadata {
             .query_one("SELECT to_regclass('th_schema_version') IS NOT NULL", &[])
             .await?
             .get(0);
-        let digest = Sha256::digest(MIGRATION.as_bytes()).to_vec();
-        if exists {
+        let mut digests = Vec::new();
+        let mut previous = Vec::new();
+        for migration in MIGRATIONS {
+            let mut hash = Sha256::new();
+            hash.update(&previous);
+            hash.update(migration.as_bytes());
+            previous = hash.finalize().to_vec();
+            digests.push(previous.clone());
+        }
+        let current = if exists {
             let row = tx
                 .query_opt(
                     "SELECT version,migration_digest FROM th_schema_version WHERE singleton",
@@ -195,16 +217,21 @@ impl Metadata {
                 )
                 .await?
                 .ok_or(Error::SchemaMismatch)?;
-            if row.get::<_, i32>(0) != 1 || row.get::<_, Vec<u8>>(1) != digest {
+            let version: i32 = row.get(0);
+            if version < 1
+                || version as usize > MIGRATIONS.len()
+                || row.get::<_, Vec<u8>>(1) != digests[version as usize - 1]
+            {
                 return Err(Error::SchemaMismatch);
             }
+            version as usize
         } else {
-            tx.batch_execute(MIGRATION).await?;
-            tx.execute(
-                "INSERT INTO th_schema_version (version,migration_digest) VALUES (1,$1)",
-                &[&digest],
-            )
-            .await?;
+            0
+        };
+        for index in current..MIGRATIONS.len() {
+            tx.batch_execute(MIGRATIONS[index]).await?;
+            tx.execute("INSERT INTO th_schema_version (version,migration_digest) VALUES ($1,$2) ON CONFLICT (singleton) DO UPDATE SET version=EXCLUDED.version,migration_digest=EXCLUDED.migration_digest",
+                &[&((index+1) as i32), &digests[index]]).await?;
         }
         tx.commit().await?;
         Ok(())

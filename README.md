@@ -8,8 +8,8 @@ Use GitHub as the authority in **Connected** mode, or native history and refs
 in **Standalone** mode. Both share one Rust engine.
 
 > **Development snapshot — not ready for production.** The current code contains
-> the immutable object engine, local object storage, native history queries and
-> PostgreSQL transaction/outbox primitives and exact validation predicates.
+> the immutable object engine, local object storage, native history queries,
+> PostgreSQL transaction/outbox primitives, object retention and exact validation predicates.
 > Neither end-to-end mode is released. There is no installable server or CLI yet.
 > See [implementation status](docs/implementation-status.md) for evidence and gaps.
 
@@ -43,7 +43,7 @@ cargo clippy --workspace --all-targets --locked -- -D warnings
 The core tests need neither GitHub credentials nor a Git subprocess. The separate
 [database suite](docs/database-development.md) requires disposable PostgreSQL. They exercise
 immutable trees, change preconditions, binary paths, malformed objects, local
-storage races and native DAG ancestry. They do not prove server durability or
+storage races, catalog retention and native DAG ancestry. They do not prove server durability or
 runtime isolation.
 
 ## Architecture and modes
