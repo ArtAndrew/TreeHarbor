@@ -82,3 +82,5 @@ jobs:
         run: cargo build -p treeharbor-runtime --locked --target x86_64-unknown-linux-musl --bins --examples
       - name: Exercise real runtime, resources and process teardown
         run: python3 scripts/test-runtime.py
+      - name: Exercise Rust runtime control and lost Engine responses
+        run: python3 scripts/test-runtime-controller.py

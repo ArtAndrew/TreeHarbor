@@ -41,6 +41,15 @@ fn main() {
     );
     let args: Vec<_> = std::env::args().collect();
     match args[1].as_str() {
+        "once" => {
+            let mut file = OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open("executions")
+                .unwrap();
+            file.write_all(b"one execution\n").unwrap();
+            file.sync_all().unwrap();
+        }
         "isolation" => {
             assert!(std::env::var_os("TH_TEST_SECRET").is_none());
             assert!(!std::path::Path::new("/var/run/docker.sock").exists());

@@ -20,7 +20,9 @@ in **Standalone** mode. Both share one Rust engine.
 > same scoped service, with exact workspace context and verified blob content.
 > A development HTTP server over a private Unix socket and a CLI now expose the
 > authenticated command boundary. An experimental [task supervisor](docs/runtime-supervisor.md)
-> adds a process-lifetime primitive for an external Linux sandbox. Runtime binding, optimized caching,
+> adds a process-lifetime primitive for an external Linux sandbox. An experimental
+> [runtime controller](docs/runtime-controller.md) adds durable local create/start/remove
+> intents and verified external execution. Service-managed runtime binding, optimized caching,
 > remote transport and MCP integration are still pending.
 > [Preparation reservations](docs/workspace-preparations.md) now persist node/storage
 > ownership and fence retries before physical work. The [local preparation node](docs/local-node.md)
