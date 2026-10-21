@@ -386,6 +386,14 @@ fn declared_mount(value: &Value, expected: &Value) -> Result<()> {
         &["Type", "Source", "Target", "BindOptions"],
     )
 }
+fn oom_policy(value: &Value) -> Result<()> {
+    // Only cgroup v2 is supported. Docker discards this v1 setting at start and
+    // reports null; the kernel's OOM handling remains enabled. Never accept true.
+    if !matches!(value, Value::Null | Value::Bool(false)) {
+        return Err(Error::Mismatch);
+    }
+    Ok(())
+}
 fn verify(spec: &Specification, v: &Value) -> Result<Inspection> {
     let expected = spec.body();
     let h = &v["HostConfig"];
@@ -449,7 +457,6 @@ fn verify(spec: &Specification, v: &Value) -> Result<Inspection> {
             "NanoCpus",
             "PidsLimit",
             "ShmSize",
-            "OomKillDisable",
             "Tmpfs",
             "RestartPolicy",
             "AutoRemove",
@@ -457,6 +464,7 @@ fn verify(spec: &Specification, v: &Value) -> Result<Inspection> {
             "LogConfig",
         ],
     )?;
+    oom_policy(&h["OomKillDisable"])?;
     let caps = h["CapAdd"].as_array().ok_or(Error::Mismatch)?;
     let mut caps = caps
         .iter()
@@ -592,5 +600,9 @@ mod tests {
         let mut neighbor = observed;
         neighbor["Source"] = json!("/other/files");
         assert!(declared_mount(&neighbor, &requested).is_err());
+        oom_policy(&Value::Null).unwrap();
+        oom_policy(&Value::Bool(false)).unwrap();
+        assert!(oom_policy(&Value::Bool(true)).is_err());
+        assert!(oom_policy(&json!("false")).is_err());
     }
 }

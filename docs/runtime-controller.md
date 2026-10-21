@@ -39,6 +39,13 @@ restart. The supervisor owns the task deadline and descendant teardown. These
 controls depend on Docker, gVisor, the host kernel and the mounted filesystem;
 TreeHarbor does not implement a replacement isolation runtime.
 
+Docker omits false `ReadOnly` in declared mounts; the controller also checks the
+effective writable mount. On the required cgroup v2 host, Docker discards the v1
+`OomKillDisable` setting during start and reports null. Null or false is accepted;
+true is rejected. [Docker documents this cgroup v2 behavior](https://docs.docker.com/engine/containers/runmetrics/).
+Actual memory-exhaustion tests remain required; configuration alone is not evidence
+that the runtime enforces a limit.
+
 ## Recovery semantics
 
 `Controller::open` requires an exact durable intent and exclusive journal/volume
@@ -116,6 +123,7 @@ It uses a real root-owned Unix proxy to delay/drop actual Docker replies and
 requests. It fabricates no successful runtime response. It kills the controller
 at create/start/remove boundaries, checks that the task executes only once,
 exercises two independent same-path writers, retained volume assignments, stale
-cleanup and configuration drift. The existing supervisor stress suite remains
+cleanup and configuration drift, followed by actual OOM, deadline/descendant and
+persistent disk exhaustion through the Rust controller. The existing supervisor stress suite remains
 required. This is correctness testing, not a performance benchmark or security
 certification. The example driver is a test tool, not the product CLI.

@@ -269,6 +269,28 @@ def main():
         docker("update", "--cpus=0.5", "treeharbor-" + e[1]["attempt"])
         assert call(e, "status", check=False).returncode != 0
         print("PASS uncertain unsent start is retained, stale cleanup cannot release successor, drift is refused", flush=True)
+        # Restore only this deliberately altered test fixture, then use exact
+        # controller removal before testing resource exhaustion on its volume.
+        docker("update", "--cpus=1", "treeharbor-" + e[1]["attempt"])
+        call(e, "remove")
+        memory = config("memory")
+        call(memory, "start")
+        outcome = finish(memory)
+        assert outcome["exit_code"] == 137 and outcome["oom_killed"]
+        call(memory, "remove")
+        timed = config("attack", timeout=1500)
+        call(timed, "start")
+        assert finish(timed)["exit_code"] == 124
+        count = (timed[2] / "heartbeat").stat().st_size
+        time.sleep(0.2)
+        assert count > 0 and (timed[2] / "heartbeat").stat().st_size == count
+        call(timed, "remove")
+        disk = config("disk")
+        call(disk, "start")
+        assert finish(disk)["exit_code"] == 0
+        assert (b[2] / "same.txt").read_text() == "agent-b"
+        call(disk, "remove")
+        print("PASS Rust controller: real OOM, autonomous deadline/descendant stop and bounded persistent disk", flush=True)
     finally:
         for name in names:
             if docker("inspect", name, check=False).returncode == 0:
