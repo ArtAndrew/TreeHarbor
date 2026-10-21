@@ -11,8 +11,9 @@ in **Standalone** mode. Both share one Rust engine.
 > the immutable object engine, local object storage, native history queries,
 > PostgreSQL transaction/outbox primitives, object retention, durable native ChangeSet
 > intake, protected source reads, native file preparation/sparse expansion and exact
-> validation predicates. These are internal libraries; runtime binding, node recovery,
-> optimized caching and authenticated service integration are still pending.
+> validation predicates, repository-scoped credentials and authenticated command handling.
+> These are libraries; runtime binding, node recovery, optimized caching and HTTP/CLI/MCP
+> integration are still pending.
 > Neither end-to-end mode is released. There is no installable server or CLI yet.
 > See [implementation status](docs/implementation-status.md) for evidence and gaps.
 

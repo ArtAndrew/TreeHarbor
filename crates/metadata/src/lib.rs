@@ -1,19 +1,23 @@
-//! PostgreSQL primitives used only by trusted service code. These do not authenticate
-//! agents, prove uploaded bytes durable, or implement merge admission. Callers must
-//! finish object upload before opening a short metadata mutation transaction.
+//! PostgreSQL primitives for trusted service code, including scoped credentials
+//! and transactional authorization. Only authenticated contexts may be used at
+//! external boundaries. Callers finish object upload before a short mutation;
+//! authentication alone never grants merge admission or proves runtime isolation.
 
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use tokio_postgres::{Client, Transaction};
 use uuid::Uuid;
 
+pub mod access;
 pub mod catalog;
+pub mod commands;
 pub mod intake;
 pub mod reads;
 const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/001_transactions.sql"),
     include_str!("../migrations/002_object_catalog.sql"),
     include_str!("../migrations/003_change_intake.sql"),
+    include_str!("../migrations/004_access_control.sql"),
 ];
 const MAX_JSON: usize = 1024 * 1024;
 
@@ -53,6 +57,12 @@ pub enum Error {
     ReadScope,
     #[error("object read exceeds its batch resource limit")]
     ReadLimit,
+    #[error("credential is missing, invalid, expired or revoked")]
+    Unauthenticated,
+    #[error("principal lacks permission for this repository operation")]
+    Forbidden,
+    #[error("secure credential generation failed")]
+    CredentialGeneration,
 }
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -99,6 +109,7 @@ pub struct Request {
     authority: Authority,
     epoch: i64,
     digest: Vec<u8>,
+    authorization: Option<std::sync::Arc<access::Authorization>>,
 }
 impl Request {
     /// `command` must be the service's complete, canonical command representation.
@@ -141,6 +152,7 @@ impl Request {
             authority,
             epoch,
             digest: digest.finalize().to_vec(),
+            authorization: None,
         })
     }
 }
@@ -182,6 +194,15 @@ impl Mutation<'_> {
         for (ordinal, event) in events.iter().enumerate() {
             self.tx.execute("INSERT INTO th_outbox (tenant,repository,operation_key,ordinal,kind,payload) VALUES ($1,$2,$3,$4,$5,$6)",
                 &[&r.scope.tenant, &r.scope.repository, &r.key, &(ordinal as i32), &event.kind, &event.payload]).await?;
+        }
+        if let Some(auth) = &r.authorization {
+            auth.check_transaction(
+                &self.tx,
+                &r.scope,
+                &r.principal,
+                access::Permission::for_command(&r.kind)?,
+            )
+            .await?;
         }
         self.tx.commit().await?;
         Ok(result)
@@ -274,10 +295,22 @@ impl Metadata {
         // before this point. This is a deliberate correctness baseline.
         let repo = tx.query_opt("SELECT authority,state,epoch FROM th_repositories WHERE tenant=$1 AND repository=$2 FOR UPDATE",
                                &[&scope.tenant,&scope.repository]).await?.ok_or(Error::NotFound)?;
+        if let Some(auth) = &request.authorization {
+            auth.check_transaction(
+                &tx,
+                scope,
+                &request.principal,
+                access::Permission::for_command(&request.kind)?,
+            )
+            .await?;
+        }
         if let Some(row) = tx.query_opt("SELECT request_digest,result FROM th_operations WHERE tenant=$1 AND repository=$2 AND key=$3",
                                        &[&scope.tenant,&scope.repository,&request.key]).await? {
             if row.get::<_,Vec<u8>>(0) != request.digest { return Err(Error::IdempotencyConflict); }
             let result: Value = row.get(1);
+            if let Some(auth) = &request.authorization {
+                auth.check_transaction(&tx, scope, &request.principal, access::Permission::for_command(&request.kind)?).await?;
+            }
             tx.commit().await?;
             return Ok(Begin::Replay(result));
         }
