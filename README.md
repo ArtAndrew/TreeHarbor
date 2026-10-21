@@ -12,7 +12,8 @@ in **Standalone** mode. Both share one Rust engine.
 > PostgreSQL transaction/outbox primitives, object retention, durable native ChangeSet
 > intake, protected source reads, native file preparation/sparse expansion and exact
 > validation predicates, repository-scoped credentials, immutable source profiles
-> and authenticated command handling.
+> and authenticated command handling. Native graph uploads now support bounded,
+> resumable sessions through [binary HTTP and CLI](docs/source-uploads.md).
 > A development HTTP server over a private Unix socket and a CLI now expose the
 > authenticated command boundary. Runtime binding, node recovery, optimized caching,
 > remote transport and MCP integration are still pending.

@@ -6,6 +6,7 @@ pub mod config;
 pub mod database;
 pub mod files;
 pub mod server;
+mod source;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {

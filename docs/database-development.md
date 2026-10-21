@@ -25,10 +25,11 @@ The database layer currently provides repository fencing, idempotent receipts,
 leased outbox primitives, an object catalog, persistent root pins and manual
 generation-safe retirement. Catalog tests include real files, a reference
 reachability model and concurrent upload/collection. Migrations verify the
-published checksum chain; the suite tests upgrading v1 and populated v2/v3/v4 databases
-to current schema v5, retaining pins, workspaces, receipts and credentials. Migration
+published checksum chain; the suite tests upgrading v1 and populated v2/v3/v4/v5 databases
+to current schema v6, retaining pins, workspaces, receipts and credentials. Migration
 005 adds immutable source profiles; historical unresolved profiles remain inspectable
-and drainable. See [profile format and upgrade behavior](source-profile-v1.md).
+and drainable. See [profile format and upgrade behavior](source-profile-v1.md). Migration 006 adds
+[source upload sessions and backend identity](source-uploads.md).
 
 Native ChangeSet intake commits exact versions, execution lineage, persistent
 roots and replay receipts in one transaction. A subprocess test kills the worker

@@ -46,6 +46,7 @@ fn private_files_reject_aliases_exposure_and_overwrite() {
 #[test]
 fn configuration_forbids_tcp_fallback_ambiguous_schema_and_unbounded_limits() {
     let mut config = Config {
+        storage: None,
         database_url: "host=/tmp dbname=test".into(),
         schema: "public".into(),
         socket: "/tmp/service.sock".into(),

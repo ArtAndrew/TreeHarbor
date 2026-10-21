@@ -34,7 +34,9 @@ impl Permission {
     }
     pub(crate) fn for_command(kind: &str) -> Result<Self> {
         match kind {
-            "base.register.v1" => Ok(Self::RepositoryWrite),
+            "base.register.v1" | "source.begin.v1" | "source.finish.v1" | "source.abort.v1" => {
+                Ok(Self::RepositoryWrite)
+            }
             "workspace.create.v1" | "workspace.drain.v1" | "profile.put.v1" => {
                 Ok(Self::WorkspaceWrite)
             }

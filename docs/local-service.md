@@ -107,9 +107,10 @@ workspace-delete and operation-status. Register full selection or explicit paths
 Each response returns a computed `profile_digest`. Use it with `profile-get` or
 workspace-create. [Profiles](source-profile-v1.md) are immutable and repository-scoped;
 they select delivery, not permissions. Creation also requires an already registered
-native commit. Production graph import/upload and automatic preparation are not
-wired into this transport yet. Tests seed an actual immutable
-graph through the storage/catalog APIs; this is not a user-facing import command.
+native commit. [Native graph uploads](source-uploads.md) now register a base through
+authenticated binary HTTP/CLI commands when a storage backend is configured.
+Directory/Git import and automatic preparation remain pending. The upload API
+currently requires canonical object frames from a compatible client.
 
 ```sh
 ./target/debug/treeharbor client --socket "$TH_STATE/service.sock" \

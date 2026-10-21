@@ -19,6 +19,14 @@ pub struct Config {
     pub max_connections: usize,
     #[serde(default = "default_timeout")]
     pub request_timeout_ms: u64,
+    #[serde(default)]
+    pub storage: Option<StorageConfig>,
+}
+#[derive(Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StorageConfig {
+    pub root: PathBuf,
+    pub backend: String,
 }
 fn default_schema() -> String {
     "public".into()
@@ -40,6 +48,12 @@ impl Config {
         Ok(config)
     }
     pub fn database_config(&self) -> Result<PgConfig> {
+        if let Some(store) = &self.storage
+            && (!store.root.is_absolute()
+                || treeharbor_storage::TenantId::new(&store.backend).is_err())
+        {
+            return Err(Error::Config);
+        }
         if !(1..=64).contains(&self.pool_size)
             || !(1..=1024).contains(&self.max_connections)
             || !(100..=60_000).contains(&self.request_timeout_ms)

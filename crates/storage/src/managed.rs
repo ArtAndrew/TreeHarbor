@@ -12,6 +12,7 @@ pub struct PreparedObject {
     id: ObjectId,
     kind: u8,
     references: Vec<(ObjectId, u8)>,
+    snapshot: Option<ObjectId>,
 }
 impl PreparedObject {
     pub fn new(object: &Object) -> Result<Self> {
@@ -20,8 +21,32 @@ impl PreparedObject {
             id: ObjectId::hash_frame(&bytes),
             kind: object.kind(),
             references: object.references(),
+            snapshot: match object {
+                Object::NativeCommit(commit) => Some(commit.snapshot),
+                _ => None,
+            },
             bytes,
         })
+    }
+    /// Verify the complete client-supplied frame before reserving any catalog state.
+    pub fn from_frame(id: ObjectId, bytes: Vec<u8>) -> Result<Self> {
+        let object = Object::decode_verified(id, &bytes)?;
+        Ok(Self {
+            id,
+            kind: object.kind(),
+            references: object.references(),
+            snapshot: match object {
+                Object::NativeCommit(commit) => Some(commit.snapshot),
+                _ => None,
+            },
+            bytes,
+        })
+    }
+    pub fn references(&self) -> &[(ObjectId, u8)] {
+        &self.references
+    }
+    pub fn commit_snapshot(&self) -> Option<ObjectId> {
+        self.snapshot
     }
     pub fn id(&self) -> ObjectId {
         self.id
