@@ -9,6 +9,7 @@ use uuid::Uuid;
 
 pub mod catalog;
 pub mod intake;
+pub mod reads;
 const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/001_transactions.sql"),
     include_str!("../migrations/002_object_catalog.sql"),
@@ -48,6 +49,10 @@ pub enum Error {
     ExecutionState,
     #[error("changeset version changed or belongs to another principal")]
     VersionConflict,
+    #[error("object read is outside its session or verified ancestry")]
+    ReadScope,
+    #[error("object read exceeds its batch resource limit")]
+    ReadLimit,
 }
 pub type Result<T> = std::result::Result<T, Error>;
 
