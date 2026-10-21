@@ -24,59 +24,171 @@ use uuid::Uuid;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires disposable PostgreSQL; runs in database CI"]
+async fn directory_import_resumes_partial_graph_and_completed_receipt_without_source_or_git() {
+    let mut f = Fixture::new().await;
+    f.importer();
+    let source = f.dir.path().join("source");
+    fs::create_dir_all(source.join("src")).unwrap();
+    fs::write(source.join("src/main.rs"), b"fn main() {}\n").unwrap();
+    fs::write(source.join("not-selected"), b"private").unwrap();
+    let pack_path = f.dir.path().join("pack");
+    let state = f.dir.path().join("import.json");
+    let output = Command::new(env!("CARGO_BIN_EXE_treeharbor"))
+        .env("PATH", "/treeharbor-test-no-executables")
+        .arg("source-pack")
+        .arg("--directory")
+        .arg(&source)
+        .arg("--output")
+        .arg(&pack_path)
+        .args([
+            "--path",
+            "src",
+            "--author-name",
+            "Test",
+            "--author-email",
+            "test@example.invalid",
+            "--message",
+            "capture",
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let packed: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(
+        packed["commit"],
+        "sha256:edd78b7b781955d45661c7d81c46ac4939ec0cb6fa9a80dc1fd28b0e53b5bf3f"
+    );
+    let pack = treeharbor_service::pack::Pack::open(&pack_path).unwrap();
+    let args = [
+        "source-import",
+        "--pack",
+        pack_path.to_str().unwrap(),
+        "--state",
+        state.to_str().unwrap(),
+        "--authority",
+        "standalone",
+        "--epoch",
+        "1",
+    ];
+    // No server exists yet. The identity must be durable before first network IO.
+    assert!(!f.cli(&args).status.success());
+    let original = files::read_private(&state, 4096).unwrap();
+    let journal: Value = serde_json::from_slice(&original).unwrap();
+    assert_eq!(
+        journal["pack_fingerprint"],
+        "sha256:cb4a7d0f8f09dab7215cf4c3624c59cda21a61308b103fa275f73e9f0008f1d2"
+    );
+    let upload: Uuid = journal["upload"].as_str().unwrap().parse().unwrap();
+    let manifest: Value =
+        serde_json::from_slice(&fs::read(pack_path.join("manifest.json")).unwrap()).unwrap();
+    let mut server = f.start().await;
+    let begin = f.send(json!({"method":"source_begin","key":format!("import-{upload}-begin"),"authority":"standalone","epoch":1,"upload":upload.to_string(),"ttl_seconds":journal["ttl_seconds"],"max_objects":journal["max_objects"],"max_bytes":journal["max_bytes"]})).await;
+    assert!(begin.status.is_success(), "{}", begin.body);
+    // Stop after the first actual binary PUT, then remove the original source.
+    let blob = manifest["objects"][0].as_str().unwrap().parse().unwrap();
+    let reply = client::send_object(
+        &f.config.socket,
+        &f.credential(),
+        upload,
+        blob,
+        pack.frame(blob).unwrap(),
+        Duration::from_secs(10),
+    )
+    .await
+    .unwrap();
+    assert!(reply.status.is_success());
+    server.0.kill().unwrap();
+    server.0.wait().unwrap();
+    drop(server);
+    fs::remove_dir_all(&source).unwrap();
+    server = f.start().await;
+    // Altering the invocation must not overwrite its identity or send requests.
+    let mismatch = f.cli(&[args.as_slice(), &["--ttl-seconds", "60"]].concat());
+    assert!(!mismatch.status.success());
+    assert_eq!(fs::read(&state).unwrap(), original);
+    let count: i64 = f
+        .sql
+        .query_one("SELECT count(*) FROM th_source_upload_items", &[])
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(count, 1);
+    let result = f.cli(&args);
+    assert!(
+        result.status.success(),
+        "{} {}",
+        String::from_utf8_lossy(&result.stdout),
+        String::from_utf8_lossy(&result.stderr)
+    );
+    let accepted: Value = serde_json::from_slice(&result.stdout).unwrap();
+    assert_eq!(
+        accepted["result"]["revision"],
+        RevisionRef::Native(pack.commit()).to_string()
+    );
+    assert_eq!(accepted["result"]["state"], "completed");
+    assert_eq!(fs::read(&state).unwrap(), original);
+    // Lost final reply: exact replay survives process loss and session expiry.
+    server.0.kill().unwrap();
+    server.0.wait().unwrap();
+    drop(server);
+    f.sql.execute("UPDATE th_source_uploads SET expires_at=clock_timestamp()-interval '1 second' WHERE upload=$1", &[&upload]).await.unwrap();
+    server = f.start().await;
+    assert_eq!(f.cli(&args).stdout, result.stdout);
+    let (sessions, items, bases, pins): (i64, i64, i64, i64) = {
+        let row = f.sql.query_one("SELECT (SELECT count(*) FROM th_source_uploads), (SELECT count(*) FROM th_source_upload_items), (SELECT count(*) FROM th_bases), (SELECT count(*) FROM th_object_pins)", &[]).await.unwrap();
+        (row.get(0), row.get(1), row.get(2), row.get(3))
+    };
+    assert_eq!(
+        (sessions, items, bases, pins),
+        (1, pack.object_count() as i64, 1, 1)
+    );
+    assert!(
+        f.cli(&[
+            "profile-put",
+            "--key",
+            "import-full",
+            "--authority",
+            "standalone",
+            "--epoch",
+            "1",
+            "--full"
+        ])
+        .status
+        .success()
+    );
+    let response = f.cli(&[
+        "workspace-create",
+        "--key",
+        "from-directory",
+        "--authority",
+        "standalone",
+        "--epoch",
+        "1",
+        "--workspace",
+        &Uuid::new_v4().to_string(),
+        "--base",
+        &RevisionRef::Native(pack.commit()).to_string(),
+        "--profile-digest",
+        &treeharbor_core::SourceProfile::full().id().to_string(),
+    ]);
+    assert!(
+        response.status.success(),
+        "{}",
+        String::from_utf8_lossy(&response.stdout)
+    );
+    drop(server);
+    f.cleanup().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires disposable PostgreSQL; runs in database CI"]
 async fn binary_source_upload_survives_process_loss_and_creates_a_real_workspace_base() {
     let mut f = Fixture::new().await;
-    let storage = f.dir.path().join("source-store");
-    fs::create_dir(&storage).unwrap();
-    fs::set_permissions(&storage, fs::Permissions::from_mode(0o700)).unwrap();
-    f.config.storage = Some(treeharbor_service::config::StorageConfig {
-        root: storage,
-        backend: "source-1".into(),
-    });
-    f.save_config();
-    f.admin_ok(&[
-        "principal-create",
-        "--tenant",
-        f.scope.tenant(),
-        "--principal",
-        "importer",
-        "--kind",
-        "human",
-    ]);
-    f.admin_ok(&[
-        "access-set",
-        "--tenant",
-        f.scope.tenant(),
-        "--repository",
-        &f.scope.repository().to_string(),
-        "--principal",
-        "importer",
-        "--permission",
-        "repository.write",
-        "--permission",
-        "workspace.write",
-        "--permission",
-        "read",
-    ]);
-    let agent = f.credential();
-    f.credential_path = f.dir.path().join("importer.json");
-    f.admin_ok(&[
-        "token-issue",
-        "--tenant",
-        f.scope.tenant(),
-        "--repository",
-        &f.scope.repository().to_string(),
-        "--principal",
-        "importer",
-        "--permission",
-        "repository.write",
-        "--permission",
-        "workspace.write",
-        "--permission",
-        "read",
-        "--output",
-        f.credential_path.to_str().unwrap(),
-    ]);
+    let agent = f.importer();
     let upload = Uuid::new_v4().to_string();
     let mut server = f.start().await;
     let begin = [
@@ -374,6 +486,60 @@ impl Fixture {
         ]);
         f
     }
+    fn importer(&mut self) -> Credential {
+        let storage = self.dir.path().join("source-store");
+        fs::create_dir(&storage).unwrap();
+        fs::set_permissions(&storage, fs::Permissions::from_mode(0o700)).unwrap();
+        self.config.storage = Some(treeharbor_service::config::StorageConfig {
+            root: storage,
+            backend: "source-1".into(),
+        });
+        self.save_config();
+        self.admin_ok(&[
+            "principal-create",
+            "--tenant",
+            self.scope.tenant(),
+            "--principal",
+            "importer",
+            "--kind",
+            "human",
+        ]);
+        self.admin_ok(&[
+            "access-set",
+            "--tenant",
+            self.scope.tenant(),
+            "--repository",
+            &self.scope.repository().to_string(),
+            "--principal",
+            "importer",
+            "--permission",
+            "repository.write",
+            "--permission",
+            "workspace.write",
+            "--permission",
+            "read",
+        ]);
+        let agent = self.credential();
+        self.credential_path = self.dir.path().join("importer.json");
+        self.admin_ok(&[
+            "token-issue",
+            "--tenant",
+            self.scope.tenant(),
+            "--repository",
+            &self.scope.repository().to_string(),
+            "--principal",
+            "importer",
+            "--permission",
+            "repository.write",
+            "--permission",
+            "workspace.write",
+            "--permission",
+            "read",
+            "--output",
+            self.credential_path.to_str().unwrap(),
+        ]);
+        agent
+    }
     fn save_config(&self) {
         if self.config_path.exists() {
             fs::remove_file(&self.config_path).unwrap();
@@ -402,6 +568,7 @@ impl Fixture {
     }
     fn cli(&self, args: &[&str]) -> Output {
         Command::new(env!("CARGO_BIN_EXE_treeharbor"))
+            .env("PATH", "/treeharbor-test-no-executables")
             .args(["client", "--socket"])
             .arg(&self.config.socket)
             .arg("--credential-file")

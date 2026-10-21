@@ -109,8 +109,9 @@ workspace-create. [Profiles](source-profile-v1.md) are immutable and repository-
 they select delivery, not permissions. Creation also requires an already registered
 native commit. [Native graph uploads](source-uploads.md) now register a base through
 authenticated binary HTTP/CLI commands when a storage backend is configured.
-Directory/Git import and automatic preparation remain pending. The upload API
-currently requires canonical object frames from a compatible client.
+For ordinary files, [native directory import](native-import.md) now captures
+explicit paths and resumes uploads using a durable local pack and journal.
+Git import and automatic node/runtime preparation remain pending.
 
 ```sh
 ./target/debug/treeharbor client --socket "$TH_STATE/service.sock" \

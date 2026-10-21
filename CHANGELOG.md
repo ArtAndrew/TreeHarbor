@@ -9,6 +9,9 @@
 - Exact validation-context binding and fail-closed evidence evaluation.
 - Object catalog, durable upload receipts, persistent root pins and generation-safe retirement.
 - Native ChangeSet intake with immutable versions, execution lineage, atomic pins and process-loss replay.
-- Initial contract tests and design documentation.
+- Repository credentials, local Unix-socket service and CLI, immutable delivery profiles.
+- Bounded native graph uploads with durable completion and restart/replay.
+- Explicit native directory capture and resumable import from a private local pack.
+- Contract tests and product documentation.
 
 There is no installable product release yet.
