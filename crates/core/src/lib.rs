@@ -4,11 +4,13 @@ mod codec;
 mod identity;
 mod object;
 mod path;
+mod proposal;
 mod tree;
 
 pub use identity::{GitOid, ObjectId, RevisionRef};
 pub use object::{ChangeOperation, Changes, Commit, Directory, Entry, EntryMode, EntryRef, Object};
 pub use path::{Name, RepoPath};
+pub use proposal::{AppliedChange, prepare_change};
 pub use tree::{apply_changes, lookup, validate_graph};
 
 pub const MAX_PAYLOAD: usize = 64 * 1024 * 1024;

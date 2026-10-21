@@ -8,9 +8,11 @@ use tokio_postgres::{Client, Transaction};
 use uuid::Uuid;
 
 pub mod catalog;
+pub mod intake;
 const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/001_transactions.sql"),
     include_str!("../migrations/002_object_catalog.sql"),
+    include_str!("../migrations/003_change_intake.sql"),
 ];
 const MAX_JSON: usize = 1024 * 1024;
 
@@ -42,6 +44,10 @@ pub enum Error {
     ReceiptMismatch,
     #[error("root holder already refers to another object")]
     PinConflict,
+    #[error("workspace or agent run is not in the required current state")]
+    ExecutionState,
+    #[error("changeset version changed or belongs to another principal")]
+    VersionConflict,
 }
 pub type Result<T> = std::result::Result<T, Error>;
 
