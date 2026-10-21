@@ -25,7 +25,8 @@ The database layer currently provides repository fencing, idempotent receipts,
 leased outbox primitives, an object catalog, persistent root pins and manual
 generation-safe retirement. Catalog tests include real files, a reference
 reachability model and concurrent upload/collection. Migrations verify the
-published checksum chain; the suite tests upgrading schema v1 and a populated v2 to v3.
+published checksum chain; the suite tests upgrading v1 and populated v2/v3 databases
+to the current schema v4, retaining existing pins, workspaces and receipts.
 
 Native ChangeSet intake commits exact versions, execution lineage, persistent
 roots and replay receipts in one transaction. A subprocess test kills the worker
@@ -38,7 +39,12 @@ snapshots and tests sparse expansion, preserved local edits/deletes, filesystem
 name differences, symlink confinement and cancellation. It does not start a runtime
 or update workspace READY state.
 
-Native refs/admission, API authorization, node/runtime integration and
+Access tests cover scoped credentials, transactional revocation/expiry, exact
+receipt replay, owner checks and node/agent identity separation. Bootstrap admin
+methods are trusted in-process operations, not public agent commands. The
+[command library](agent-commands.md) has no network listener yet.
+
+Native refs/admission, network authorization, node/runtime integration and
 automatic GC/reconciliation are still unimplemented. Restore must stop/fence existing
 workers before replacing metadata or objects. An outbox
 worker must use the repository's current authority/epoch when executing its

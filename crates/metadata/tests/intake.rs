@@ -10,13 +10,13 @@ use treeharbor_storage::{LocalStore, ManagedStore, PreparedObject, TenantId};
 use uuid::Uuid;
 
 fn context(scope: &Scope, key: &str) -> CommandContext {
-    CommandContext {
-        scope: scope.clone(),
-        key: key.into(),
-        principal: "agent-owner".into(),
-        authority: Authority::Standalone,
-        epoch: 1,
-    }
+    CommandContext::trusted(
+        scope.clone(),
+        key.into(),
+        "agent-owner".into(),
+        Authority::Standalone,
+        1,
+    )
 }
 fn private_temp() -> tempfile::TempDir {
     let dir = tempfile::tempdir().unwrap();
@@ -791,4 +791,89 @@ async fn published_v2_catalog_upgrade_preserves_live_pinned_bytes() {
         Object::Blob(b"before schema upgrade".to_vec())
     );
     cleanup(&schema).await;
+}
+
+#[tokio::test]
+#[ignore = "requires disposable PostgreSQL; runs in database CI"]
+async fn authenticated_change_acceptance_requires_owner_permission_and_live_credential_on_replay() {
+    use treeharbor_metadata::access::{Permission as P, PrincipalKind as K};
+    let mut f = Fixture::new().await;
+    let prepared = f.prepare(b"authenticated source change").await;
+    let change = submission(Uuid::new_v4(), f.run, &prepared);
+    for principal in ["agent-owner", "other-agent"] {
+        f.db.provision_principal(f.scope.tenant(), principal, K::Agent, "operator")
+            .await
+            .unwrap();
+        f.db.set_repository_access(
+            &f.scope,
+            principal,
+            &[P::ChangeWrite, P::WorkspaceWrite],
+            "operator",
+        )
+        .await
+        .unwrap();
+    }
+    let token =
+        f.db.issue_repository_token(
+            &f.scope,
+            "agent-owner",
+            &[P::ChangeWrite, P::WorkspaceWrite],
+            3600,
+            "operator",
+        )
+        .await
+        .unwrap();
+    let other =
+        f.db.issue_repository_token(&f.scope, "other-agent", &[P::ChangeWrite], 3600, "operator")
+            .await
+            .unwrap();
+    let wrong_permission =
+        f.db.authorize(&token.secret, &f.scope, P::WorkspaceWrite)
+            .await
+            .unwrap();
+    assert!(matches!(
+        f.db.accept_change(
+            &wrong_permission.context("accept".into(), Authority::Standalone, 1),
+            &change
+        )
+        .await,
+        Err(MetaError::Forbidden)
+    ));
+    let wrong_owner =
+        f.db.authorize(&other.secret, &f.scope, P::ChangeWrite)
+            .await
+            .unwrap();
+    assert!(matches!(
+        f.db.accept_change(
+            &wrong_owner.context("other".into(), Authority::Standalone, 1),
+            &change
+        )
+        .await,
+        Err(MetaError::ExecutionState)
+    ));
+    let owner =
+        f.db.authorize(&token.secret, &f.scope, P::ChangeWrite)
+            .await
+            .unwrap();
+    let ctx = owner.context("accept".into(), Authority::Standalone, 1);
+    let receipt = f.db.accept_change(&ctx, &change).await.unwrap();
+    assert_eq!(receipt["state"], "accepted");
+    assert_eq!(f.db.accept_change(&ctx, &change).await.unwrap(), receipt);
+    f.db.revoke_repository_token(&f.scope, token.id, "operator")
+        .await
+        .unwrap();
+    assert!(matches!(
+        f.db.accept_change(&ctx, &change).await,
+        Err(MetaError::Unauthenticated)
+    ));
+    assert_eq!(
+        connection(&f.schema)
+            .await
+            .query_one("SELECT count(*) FROM th_change_versions", &[])
+            .await
+            .unwrap()
+            .get::<_, i64>(0),
+        1
+    );
+    cleanup(&f.schema).await;
 }

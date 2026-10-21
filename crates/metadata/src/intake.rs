@@ -14,12 +14,45 @@ pub struct CommandContext {
     pub principal: String,
     pub authority: Authority,
     pub epoch: i64,
+    authorization: Option<std::sync::Arc<crate::access::Authorization>>,
 }
 impl CommandContext {
+    /// Administrative/internal code only. External requests use Authorization::context.
+    pub fn trusted(
+        scope: Scope,
+        key: String,
+        principal: String,
+        authority: Authority,
+        epoch: i64,
+    ) -> Self {
+        Self {
+            scope,
+            key,
+            principal,
+            authority,
+            epoch,
+            authorization: None,
+        }
+    }
+    pub(crate) fn authenticated(
+        auth: crate::access::Authorization,
+        key: String,
+        authority: Authority,
+        epoch: i64,
+    ) -> Self {
+        Self {
+            scope: auth.scope().clone(),
+            principal: auth.principal().into(),
+            key,
+            authority,
+            epoch,
+            authorization: Some(std::sync::Arc::new(auth)),
+        }
+    }
     fn request(&self, kind: &str, command: Value) -> Result<Request> {
         // Only service-built, versioned arrays are hashed; no arbitrary result or
         // command digest from the client can bypass an idempotency comparison.
-        Request::new(
+        let mut request = Request::new(
             self.scope.clone(),
             &self.key,
             &self.principal,
@@ -27,7 +60,9 @@ impl CommandContext {
             self.authority,
             self.epoch,
             command.to_string().as_bytes(),
-        )
+        )?;
+        request.authorization = self.authorization.clone();
+        Ok(request)
     }
 }
 
@@ -184,6 +219,9 @@ impl Metadata {
     ) -> Result<Value> {
         identifier(&ready.node, 128)?;
         identifier(&ready.runtime, 128)?;
+        if ctx.authorization.is_some() && ready.node != ctx.principal {
+            return Err(Error::Forbidden);
+        }
         let request = ctx.request(
             "workspace.ready.v1",
             json!([
@@ -216,8 +254,9 @@ impl Metadata {
         .await
     }
 
-    /// Record an observed agent execution under the authenticated initiating
-    /// principal. This method is not an instruction to launch an arbitrary process.
+    /// Record an execution observed by the node bound to this workspace. The
+    /// run owner comes from the workspace; the node is only the observing actor.
+    /// This method neither launches a process nor proves sandbox isolation.
     pub async fn record_running_agent(
         &mut self,
         ctx: &CommandContext,
@@ -243,29 +282,39 @@ impl Metadata {
             Begin::Fresh(tx) => tx,
         };
         let scope = &ctx.scope;
-        let changed = tx
+        // Authenticated controllers may observe only their own node binding.
+        // Legacy trusted callers must still match the workspace owner.
+        let node = ctx.authorization.as_ref().map(|_| ctx.principal.as_str());
+        let legacy_owner = if node.is_none() {
+            Some(ctx.principal.as_str())
+        } else {
+            None
+        };
+        let row = tx
             .tx
-            .execute(
+            .query_opt(
                 r#"UPDATE th_workspaces SET state='in_use'
             WHERE tenant=$1 AND repository=$2 AND workspace=$3 AND generation=$4 AND epoch=$5
-            AND state='ready' AND principal=$6 AND runtime=$7"#,
+            AND state='ready' AND runtime=$6
+            AND ($7::text IS NULL OR node=$7) AND ($8::text IS NULL OR principal=$8)
+            RETURNING principal"#,
                 &[
                     &scope.tenant,
                     &scope.repository,
                     &run.workspace,
                     &run.workspace_generation,
                     &ctx.epoch,
-                    &ctx.principal,
                     &run.runtime,
+                    &node,
+                    &legacy_owner,
                 ],
             )
-            .await?;
-        if changed != 1 {
-            return Err(Error::ExecutionState);
-        }
+            .await?
+            .ok_or(Error::ExecutionState)?;
+        let owner: String = row.get(0);
         tx.tx.execute(r#"INSERT INTO th_agent_runs (tenant,repository,run,workspace,workspace_generation,epoch,principal,agent,task,runtime,state)
             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'running')"#,
-            &[&scope.tenant,&scope.repository,&run.id,&run.workspace,&run.workspace_generation,&ctx.epoch,&ctx.principal,&run.agent,&run.task,&run.runtime]).await?;
+            &[&scope.tenant,&scope.repository,&run.id,&run.workspace,&run.workspace_generation,&ctx.epoch,&owner,&run.agent,&run.task,&run.runtime]).await?;
         tx.complete(json!({"run":run.id.to_string(),"workspace":run.workspace.to_string(),"state":"running"}),vec![]).await
     }
 
