@@ -83,17 +83,7 @@ success nor CI guarantees detection of every semantic incompatibility.
 ## Explore and contribute
 
 - [Roadmap and release gates](ROADMAP.md)
-- [Object format ADR](docs/adr/006-canonical-object-format.md)
-- [Architecture](docs/specs/TREEHARBOR_ARCHITECTURE.md),
-  [research and competition](docs/specs/TREEHARBOR_RESEARCH.md),
-  [benchmark plan](docs/specs/TREEHARBOR_DELIVERY.md) (design documents in Russian)
 - [Contributing](CONTRIBUTING.md) and [security](SECURITY.md)
-
-Original research sources include [Anthropic Scion](https://www.anthropic.com/research/redesigning-source-control),
-[CarterT27/scion](https://github.com/CarterT27/scion),
-[OpenCSGs/scion](https://github.com/OpenCSGs/scion) and
-[feder-cr/git-ai](https://github.com/feder-cr/git-ai).
-TreeHarbor is independent and is not affiliated with Anthropic.
 
 ## License
 

@@ -1,7 +1,7 @@
 # Implementation status
 
-Updated: 2026-10-21. This file describes implemented behavior; design documents
-describe the complete target. A foundation milestone does not complete either mode.
+Updated: 2026-10-21. This file describes implemented behavior and remaining release
+gates. A foundation milestone does not complete either mode.
 
 | Component | Evidence | Remaining |
 |---|---|---|
@@ -16,7 +16,7 @@ describe the complete target. A foundation milestone does not complete either mo
 | Object catalog and retention | Receipt-bound publication, typed edges, atomic persistent pins, read holds, generation-safe retirement/retry; independent reachability model | Automatic GC/reconciliation/dry-run, abandoned-upload cleanup, S3 and full restore |
 | Exact validation predicate | Context binding, stale-target rejection, trusted issuer filtering, revocation and conflicting receipt tests | Authenticated collectors, durable evidence, review and atomic publication checks |
 | API, CLI, workspaces and runtime | Logical workspace/run state, drain fencing and separate filesystem preparation implemented; no runtime binding | Authenticated coordinator, API/CLI and secure node/runtime integration |
-| MCP adapter | Planned in ADR 011; not implemented | Shared-service adapter, scoped tools and real client interoperability tests |
+| MCP adapter | Planned; not implemented | Shared-service adapter, scoped tools and real client interoperability tests |
 | Connected | Not implemented | Real GitHub PR/checks/merge queue and credential separation |
 | Standalone S2 | Not implemented | Durable native admission and publication without Git processes |
 | Release and benchmarks | Not released or measured | Clean installation, artifacts, SBOM/provenance, comparison and operating cost |
@@ -48,11 +48,9 @@ every filesystem. No benchmark timing or customer adoption is claimed.
 
 The catalog tests use real files and PostgreSQL, including simultaneous pin/GC,
 duplicate hold tokens, deletion retries, a crash boundary between deletion and
-database completion, and published-v1 schema upgrade. See
-[ADR 009](adr/009-object-catalog-and-generations.md). Native intake now commits a
+database completion, and published-v1 schema upgrade. Native intake now commits a
 ChangeSet version, lineage, graph pins, response and outbox atomically, and recovers
-the same receipt after a worker process is killed. See
-[ADR 010](adr/010-change-intake-and-execution-lineage.md). These commands are internal:
+the same receipt after a worker process is killed. These commands are internal:
 coordinator authentication, physical workspace/runtime binding, full application
 failure injection, fenced restore and automatic maintenance remain release gates.
 
@@ -60,15 +58,15 @@ Protected local reads now resolve only requested object frontiers and retain ope
 file descriptors across GC without holding a database transaction during content
 verification. Tests include expired sessions, complete physical collection, generation
 reuse, corrupt bytes, resource limits and selective reads without loading commit
-parents. See [ADR 012](adr/012-protected-incremental-local-reads.md). Per-service
+parents. Per-service
 authentication, scheduling and runtime isolation are still absent.
 
 Native filesystem preparation now consumes these reads and returns a private tree
 with a sibling baseline manifest. Sparse expansion copies a previously stopped
 tree into a new candidate, preserves edits/deletions/untracked files and adds source
 paths without modifying the old tree. Limits, symlink/case behavior and cancellation
-are tested using actual files and PostgreSQL. See [ADR 013](adr/013-native-filesystem-materialization.md)
-and [manifest v1](workspace-manifest-v1.md). The caller must still prove runtime
+are tested using actual files and PostgreSQL. See [manifest v1](workspace-manifest-v1.md).
+The caller must still prove runtime
 quiescence, fence/persist the new generation and bind the result before READY;
 none of those steps is implied by a materializer receipt.
 

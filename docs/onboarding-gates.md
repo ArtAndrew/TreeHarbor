@@ -18,24 +18,3 @@ Record a fresh operator's actions, time to first useful action, permission promp
 errors, documentation lookups and cleanup. Test at least three operators unfamiliar
 with the implementation. A successfully replayed developer script is necessary
 but not sufficient evidence of onboarding quality.
-
-## Research implications, checked 2026-10-21
-
-[Anthropic's article](https://www.anthropic.com/research/redesigning-source-control)
-(published October 13, updated October 15; report about an internal deployed
-system) describes immutable-object requests and node/regional cache tiers. Adopt
-the testable principle of reusable immutable content and bounded failure domains;
-do not transfer their infrastructure savings to our workloads.
-
-[OpenCSGs/scion](https://github.com/OpenCSGs/scion) already documents a one-command
-installation, a local evaluation mode and production storage options. This is an
-available public implementation and its maintainers' claims, not our independent
-operational validation. [CarterT27/scion](https://github.com/CarterT27/scion) and
-[git-ai](https://github.com/feder-cr/git-ai) also ship public implementations and
-benchmark tooling. Compare exact pinned versions and dependencies, including
-startup, import, operation, recovery and removal. Do not assert missing competitor
-features based on an old README.
-
-TreeHarbor's differentiation to test is the combined Connected/native workflow,
-exact validation and acceptance semantics, recoverable operation and measured
-cost on a first customer's workload. These remain hypotheses until the gates pass.

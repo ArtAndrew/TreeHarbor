@@ -1,8 +1,14 @@
 # TreeHarbor implementation instructions
 
-Read docs/specs/TREEHARBOR_ARCHITECTURE.md, TREEHARBOR_DELIVERY.md,
-TREEHARBOR_RESEARCH.md and ADR-003, ADR-004, ADR-005 before changing contracts.
+Read README.md, ROADMAP.md and the relevant source and tests before changing
+contracts. Public documentation must be self-contained and refer to available files.
 Track actual implemented behavior in docs/implementation-status.md.
+
+Keep internal research, business plans, naming checks, licensing deliberations,
+ADRs and private handoff documents outside this public repository. Do not copy them
+into documentation, issues, pull requests or releases without explicit approval.
+Publish only product documentation intended for users and contributors.
+The former docs/specs and docs/adr directories are intentionally excluded.
 
 The user has authorized implementation and publication on ArtAndrew's GitHub.
 Copyright holder: Artishchev Andrey Borisovich, explicitly supplied by the user.

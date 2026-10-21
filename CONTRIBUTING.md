@@ -5,7 +5,7 @@ and workload. Do not include private source code, credentials or customer data.
 Use the commands in the README to run format, lint and tests.
 
 Changes to object encoding, durability, identity, authority or trust boundaries
-need an ADR and tests that cover the failure boundary. Benchmarks must retain raw
+need documented behavior and tests that cover the failure boundary. Benchmarks must retain raw
 data, environment details, errors and the strongest applicable baseline. Never
 replace an external dependency with a mock and report the release gate as passed.
 

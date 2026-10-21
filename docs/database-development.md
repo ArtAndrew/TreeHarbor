@@ -36,7 +36,7 @@ callbacks must supply that evidence in the later runtime integration.
 The native materializer suite builds actual private files from catalog-backed
 snapshots and tests sparse expansion, preserved local edits/deletes, filesystem
 name differences, symlink confinement and cancellation. It does not start a runtime
-or update workspace READY state. See [ADR 013](adr/013-native-filesystem-materialization.md).
+or update workspace READY state.
 
 Native refs/admission, API authorization, node/runtime integration and
 automatic GC/reconciliation are still unimplemented. Restore must stop/fence existing
