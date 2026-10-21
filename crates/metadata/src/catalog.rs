@@ -9,10 +9,10 @@ use uuid::Uuid;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ObjectKey {
-    tenant: String,
-    backend: String,
-    id: ObjectId,
-    generation: i64,
+    pub(crate) tenant: String,
+    pub(crate) backend: String,
+    pub(crate) id: ObjectId,
+    pub(crate) generation: i64,
 }
 impl ObjectKey {
     pub fn tenant(&self) -> &str {
@@ -63,14 +63,14 @@ fn id(raw: Vec<u8>) -> Result<ObjectId> {
         raw.try_into().map_err(|_| Error::SchemaMismatch)?,
     ))
 }
-async fn settings(tx: &Transaction<'_>) -> Result<()> {
+pub(crate) async fn settings(tx: &Transaction<'_>) -> Result<()> {
     tx.batch_execute("SET LOCAL synchronous_commit=on; SET LOCAL lock_timeout='5s'; SET LOCAL statement_timeout='15s'").await?;
     Ok(())
 }
 async fn object_row(tx: &Transaction<'_>, tenant: &str, digest: &[u8]) -> Result<Row> {
     tx.query_opt("SELECT generation,backend,kind,length,state FROM th_objects WHERE tenant=$1 AND digest=$2 FOR UPDATE",&[&tenant,&digest]).await?.ok_or(Error::ObjectNotLive)
 }
-async fn live_lease(tx: &Transaction<'_>, lease: &ObjectLease) -> Result<()> {
+pub(crate) async fn live_lease(tx: &Transaction<'_>, lease: &ObjectLease) -> Result<()> {
     let key = &lease.key;
     let digest = bytes(key.id);
     let row = object_row(tx, &key.tenant, &digest).await?;

@@ -11,6 +11,34 @@ use treeharbor_core::{Error, FRAME_HEADER, MAX_PAYLOAD, Object, ObjectId, Object
 mod managed;
 pub use managed::{DurableObject, ManagedStore, PreparedObject};
 
+/// An already opened immutable object, not an authorization token. On supported
+/// Unix filesystems the descriptor retains its inode after catalog GC unlinks it.
+/// Open under catalog protection; verify bytes outside the database transaction.
+#[derive(Debug)]
+pub struct OpenedObject {
+    file: File,
+    id: ObjectId,
+    length: u64,
+}
+impl OpenedObject {
+    pub fn length(&self) -> u64 {
+        self.length
+    }
+
+    /// Blocking, bounded IO. The coordinator must run this in its bounded IO pool.
+    pub fn read(self) -> Result<Object> {
+        let mut bytes = Vec::with_capacity(self.length as usize);
+        self.file
+            .take(self.length + 1)
+            .read_to_end(&mut bytes)
+            .map_err(io_error)?;
+        if bytes.len() as u64 != self.length {
+            return Err(Error::Storage("opened object length changed".into()));
+        }
+        Object::decode_verified(self.id, &bytes)
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TenantId(String);
 impl TenantId {
@@ -77,6 +105,19 @@ impl LocalStore {
 
 impl ObjectStore for LocalStore {
     fn get(&self, id: ObjectId) -> Result<Object> {
+        self.open_object(id)?.read()
+    }
+
+    fn put(&self, object: &Object) -> Result<ObjectId> {
+        let bytes = object.encode()?;
+        let id = ObjectId::hash_frame(&bytes);
+        self.write_verified_frame(id, &bytes)?;
+        Ok(id)
+    }
+}
+
+impl LocalStore {
+    fn open_object(&self, id: ObjectId) -> Result<OpenedObject> {
         let path = self.path(id);
         let metadata = fs::symlink_metadata(&path).map_err(|e| {
             if e.kind() == std::io::ErrorKind::NotFound {
@@ -88,23 +129,19 @@ impl ObjectStore for LocalStore {
         if !metadata.is_file() || metadata.file_type().is_symlink() {
             return Err(Error::Storage("object is not a regular file".into()));
         }
+        let file = File::open(path).map_err(io_error)?;
+        let metadata = file.metadata().map_err(io_error)?;
+        if !metadata.is_file() {
+            return Err(Error::Storage("opened object is not a regular file".into()));
+        }
         if metadata.len() > (FRAME_HEADER + MAX_PAYLOAD) as u64 {
             return Err(Error::TooLarge);
         }
-        let mut bytes = Vec::with_capacity(metadata.len() as usize);
-        File::open(path)
-            .map_err(io_error)?
-            .take((FRAME_HEADER + MAX_PAYLOAD + 1) as u64)
-            .read_to_end(&mut bytes)
-            .map_err(io_error)?;
-        Object::decode_verified(id, &bytes)
-    }
-
-    fn put(&self, object: &Object) -> Result<ObjectId> {
-        let bytes = object.encode()?;
-        let id = ObjectId::hash_frame(&bytes);
-        self.write_verified_frame(id, &bytes)?;
-        Ok(id)
+        Ok(OpenedObject {
+            file,
+            id,
+            length: metadata.len(),
+        })
     }
 }
 

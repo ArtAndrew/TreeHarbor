@@ -1,9 +1,9 @@
-use crate::{LocalStore, TenantId, ensure_private_dir, io_error, sync_directory};
+use crate::{LocalStore, OpenedObject, TenantId, ensure_private_dir, io_error, sync_directory};
 use std::{
     fs,
     path::{Path, PathBuf},
 };
-use treeharbor_core::{Error, Object, ObjectId, ObjectStore, Result};
+use treeharbor_core::{Error, Object, ObjectId, Result};
 
 /// Encode once before reservation/upload. The frame and its descriptors cannot
 /// be independently mutated, so publication metadata is derived from the bytes.
@@ -121,6 +121,10 @@ impl ManagedStore {
         })
     }
     pub fn get(&self, generation: i64, id: ObjectId) -> Result<Object> {
+        self.open_object(generation, id)?.read()
+    }
+    /// Internal read primitive: caller holds catalog protection until this returns.
+    pub fn open_object(&self, generation: i64, id: ObjectId) -> Result<OpenedObject> {
         let directory = self.directory(generation)?;
         match fs::symlink_metadata(&directory) {
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
@@ -129,7 +133,7 @@ impl ManagedStore {
             Err(error) => return Err(io_error(error)),
             Ok(_) => (),
         }
-        LocalStore::open(directory, &self.tenant)?.get(id)
+        LocalStore::open(directory, &self.tenant)?.open_object(id)
     }
     /// Internal maintenance primitive. The catalog orchestrator must commit
     /// RETIRING before invoking it. Never expose it as an agent API.
