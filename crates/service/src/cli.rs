@@ -219,9 +219,50 @@ struct Mutation {
     #[arg(long, value_parser=clap::value_parser!(i64).range(1..))]
     epoch: i64,
 }
+#[derive(Args)]
+struct SourceContext {
+    #[arg(long)]
+    workspace: Uuid,
+    #[arg(long,value_parser=clap::value_parser!(i64).range(1..))]
+    generation: i64,
+    #[arg(long, value_enum)]
+    authority: Mode,
+    #[arg(long,value_parser=clap::value_parser!(i64).range(1..))]
+    epoch: i64,
+}
+impl SourceContext {
+    fn fence(self) -> treeharbor_metadata::workspace_reads::SourceFence {
+        treeharbor_metadata::workspace_reads::SourceFence {
+            workspace: self.workspace,
+            generation: self.generation,
+            authority: self.authority.into(),
+            epoch: self.epoch,
+        }
+    }
+}
 #[derive(Subcommand)]
 enum Agent {
     RepositoryInfo,
+    /// Read a baseline file (or link bytes) into a new private regular file.
+    SourceFile {
+        #[command(flatten)]
+        source: SourceContext,
+        #[arg(long)]
+        path: OsString,
+        #[arg(long)]
+        output: PathBuf,
+    },
+    /// List one baseline directory page; empty path selects the root.
+    SourceList {
+        #[command(flatten)]
+        source: SourceContext,
+        #[arg(long, default_value = "")]
+        path: OsString,
+        #[arg(long)]
+        after_hex: Option<String>,
+        #[arg(long,default_value_t=128,value_parser=clap::value_parser!(u16).range(1..=256))]
+        limit: u16,
+    },
     /// Import a completed source pack; keep the same state file to resume.
     SourceImport {
         #[arg(long)]
@@ -343,7 +384,10 @@ impl Agent {
             Self::SourceStatus { upload } => {
                 json!({"method":"source_status","upload":upload.to_string()})
             }
-            Self::SourcePut { .. } | Self::SourceImport { .. } => return Err(Error::Config), // binary path below
+            Self::SourcePut { .. }
+            | Self::SourceImport { .. }
+            | Self::SourceFile { .. }
+            | Self::SourceList { .. } => return Err(Error::Config), // separate data path below
             Self::ProfilePut {
                 mutation,
                 full,
@@ -449,6 +493,52 @@ pub async fn run(cli: Cli) -> Result<bool> {
             action,
         } => {
             let credential = Credential::load(&credential_file)?;
+            let action = match action {
+                Agent::SourceFile {
+                    source,
+                    path,
+                    output,
+                } => {
+                    let path = treeharbor_core::RepoPath::new(path.as_bytes().to_vec())
+                        .map_err(|_| Error::Config)?;
+                    // Validate the destination before fetching; publication still
+                    // uses atomic no-clobber, including a concurrent file creator.
+                    files::private_directory(output.parent().ok_or(Error::UnsafeFile)?)?;
+                    if output.try_exists()? {
+                        return Err(Error::Config);
+                    }
+                    let reply = crate::download::read(
+                        &socket,
+                        &credential,
+                        source.fence(),
+                        json!({"kind":"file","path_hex":crate::pack::hex(path.as_bytes())}),
+                        Duration::from_millis(timeout_ms),
+                    )
+                    .await?;
+                    if let Some(bytes) = reply.content {
+                        tokio::task::spawn_blocking(move || files::write_private(&output, &bytes))
+                            .await
+                            .map_err(|_| Error::Http)??;
+                    }
+                    println!("{}", reply.metadata);
+                    return Ok(reply.status.is_success());
+                }
+                Agent::SourceList {
+                    source,
+                    path,
+                    after_hex,
+                    limit,
+                } => {
+                    if !path.is_empty() {
+                        treeharbor_core::RepoPath::new(path.as_bytes().to_vec())
+                            .map_err(|_| Error::Config)?;
+                    }
+                    let reply=crate::download::read(&socket,&credential,source.fence(),json!({"kind":"list","path_hex":crate::pack::hex(path.as_bytes()),"after_hex":after_hex,"limit":limit}),Duration::from_millis(timeout_ms)).await?;
+                    println!("{}", reply.metadata);
+                    return Ok(reply.status.is_success());
+                }
+                other => other,
+            };
             if let Agent::SourceImport {
                 pack,
                 state,

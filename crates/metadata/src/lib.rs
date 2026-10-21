@@ -15,6 +15,7 @@ pub mod intake;
 pub mod profiles;
 pub mod reads;
 pub mod uploads;
+pub mod workspace_reads;
 const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/001_transactions.sql"),
     include_str!("../migrations/002_object_catalog.sql"),

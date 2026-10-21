@@ -4,11 +4,13 @@ pub mod cli;
 pub mod client;
 pub mod config;
 pub mod database;
+pub mod download;
 pub mod files;
 pub mod import;
 pub mod pack;
 pub mod server;
 mod source;
+mod source_read;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {

@@ -17,6 +17,9 @@ pub struct ReadSession {
     lease: ObjectLease,
 }
 impl ReadSession {
+    pub(crate) fn from_lease(lease: ObjectLease) -> Self {
+        Self { lease }
+    }
     pub fn root(&self) -> ReadNode {
         ReadNode {
             anchor: self.lease.key().clone(),

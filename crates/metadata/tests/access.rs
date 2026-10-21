@@ -136,6 +136,183 @@ fn ctx(auth: &Authorization, key: &str) -> CommandContext {
 
 #[tokio::test]
 #[ignore = "requires disposable PostgreSQL; runs in database CI"]
+async fn workspace_source_scope_owner_fences_and_final_revocation_are_enforced() {
+    use treeharbor_metadata::workspace_reads::SourceFence;
+    let mut f = Fixture::new().await;
+    let owner = f
+        .token("owner", K::Agent, &[P::Read, P::WorkspaceWrite])
+        .await;
+    let other = f.token("other", K::Agent, &[P::Read]).await;
+    let spec = f.spec();
+    let write = f.auth(&owner, P::WorkspaceWrite).await;
+    f.db.create_workspace(&ctx(&write, "source-workspace"), &spec)
+        .await
+        .unwrap();
+    let read = f.auth(&owner, P::Read).await;
+    let outsider = f.auth(&other, P::Read).await;
+    let fence = SourceFence {
+        workspace: spec.id,
+        generation: 1,
+        authority: Authority::Standalone,
+        epoch: 1,
+    };
+    assert!(matches!(
+        f.db.open_workspace_source(&write, fence, 60).await,
+        Err(Error::Forbidden)
+    ));
+    assert!(matches!(
+        f.db.open_workspace_source(&outsider, fence, 60).await,
+        Err(Error::NotFound)
+    ));
+    assert!(matches!(
+        f.db.open_workspace_source(
+            &read,
+            SourceFence {
+                generation: 2,
+                ..fence
+            },
+            60
+        )
+        .await,
+        Err(Error::ExecutionState)
+    ));
+    assert!(matches!(
+        f.db.open_workspace_source(&read, SourceFence { epoch: 2, ..fence }, 60)
+            .await,
+        Err(Error::Fenced)
+    ));
+    assert!(matches!(
+        f.db.open_workspace_source(
+            &read,
+            SourceFence {
+                authority: Authority::Connected,
+                ..fence
+            },
+            60
+        )
+        .await,
+        Err(Error::Fenced)
+    ));
+    let store = ManagedStore::open(
+        f._objects.path(),
+        TenantId::new(f.scope.tenant()).unwrap(),
+        "test-local",
+    )
+    .unwrap();
+    let sql = connection(&f.schema).await;
+    let before: i64 = sql
+        .query_one("SELECT count(*) FROM th_object_holds", &[])
+        .await
+        .unwrap()
+        .get(0);
+    let session = f.db.open_workspace_source(&read, fence, 60).await.unwrap();
+    assert_eq!(session.identity().revision, f.base);
+    let nodes = [session.root()];
+    let values =
+        f.db.open_workspace_source_batch(&session, &store, &nodes, 1024)
+            .await
+            .unwrap()
+            .read()
+            .unwrap();
+    assert!(matches!(values[0].object(), Object::NativeCommit(_)));
+    let held: i64 = sql
+        .query_one("SELECT count(*) FROM th_object_holds", &[])
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(held, before + 1);
+    f.db.revoke_repository_token(&f.scope, owner.id, "operator")
+        .await
+        .unwrap();
+    assert!(matches!(
+        f.db.open_workspace_source_batch(&session, &store, &nodes, 1024)
+            .await,
+        Err(Error::Unauthenticated)
+    ));
+    assert!(matches!(
+        f.db.finish_workspace_source(session).await,
+        Err(Error::Unauthenticated)
+    ));
+    let after: i64 = sql
+        .query_one("SELECT count(*) FROM th_object_holds", &[])
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(after, before);
+    cleanup(&f.schema).await;
+}
+
+#[tokio::test]
+#[ignore = "requires disposable PostgreSQL; runs in database CI"]
+async fn workspace_source_rejects_drain_epoch_change_and_unresolved_profile() {
+    use treeharbor_metadata::workspace_reads::SourceFence;
+    let mut f = Fixture::new().await;
+    let owner = f
+        .token("owner", K::Agent, &[P::Read, P::WorkspaceWrite])
+        .await;
+    let spec = f.spec();
+    let write = f.auth(&owner, P::WorkspaceWrite).await;
+    f.db.create_workspace(&ctx(&write, "source-workspace"), &spec)
+        .await
+        .unwrap();
+    let auth = f.auth(&owner, P::Read).await;
+    let fence = SourceFence {
+        workspace: spec.id,
+        generation: 1,
+        authority: Authority::Standalone,
+        epoch: 1,
+    };
+    let sql = connection(&f.schema).await;
+    let session = f.db.open_workspace_source(&auth, fence, 60).await.unwrap();
+    sql.execute(
+        "UPDATE th_repositories SET epoch=2 WHERE tenant=$1 AND repository=$2",
+        &[&f.scope.tenant(), &f.scope.repository()],
+    )
+    .await
+    .unwrap();
+    assert!(matches!(
+        f.db.finish_workspace_source(session).await,
+        Err(Error::Fenced)
+    ));
+    sql.execute(
+        "UPDATE th_repositories SET epoch=1 WHERE tenant=$1 AND repository=$2",
+        &[&f.scope.tenant(), &f.scope.repository()],
+    )
+    .await
+    .unwrap();
+    sql.execute(
+        "UPDATE th_workspaces SET resolved_profile=NULL WHERE workspace=$1",
+        &[&spec.id],
+    )
+    .await
+    .unwrap();
+    assert!(matches!(
+        f.db.open_workspace_source(&auth, fence, 60).await,
+        Err(Error::ExecutionState)
+    ));
+    sql.execute(
+        "UPDATE th_workspaces SET resolved_profile=profile WHERE workspace=$1",
+        &[&spec.id],
+    )
+    .await
+    .unwrap();
+    let session = f.db.open_workspace_source(&auth, fence, 60).await.unwrap();
+    f.db.drain_workspace(&ctx(&write, "drain-source"), spec.id, 1)
+        .await
+        .unwrap();
+    assert!(matches!(
+        f.db.finish_workspace_source(session).await,
+        Err(Error::ExecutionState)
+    ));
+    assert!(matches!(
+        f.db.open_workspace_source(&auth, fence, 60).await,
+        Err(Error::ExecutionState)
+    ));
+    cleanup(&f.schema).await;
+}
+
+#[tokio::test]
+#[ignore = "requires disposable PostgreSQL; runs in database CI"]
 async fn credentials_are_scoped_narrowed_hashed_and_audited_without_implicit_role_power() {
     let mut f = Fixture::new().await;
     let roles = [

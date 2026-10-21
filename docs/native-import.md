@@ -47,6 +47,8 @@ After capture, upload reads only the pack. Source edits or removal no longer
 change the uploaded revision. Finish returns `native:sha256:…`, usable with
 `workspace-create` and a registered [source profile](source-profile-v1.md).
 This creates a logical workspace; automatic node/runtime preparation is pending.
+Its owner can then [list directories and download baseline files](source-reads.md)
+with the workspace generation and repository epoch.
 
 ## Recovery and lifecycle
 
