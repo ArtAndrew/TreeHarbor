@@ -16,8 +16,9 @@ gates. A foundation milestone does not complete either mode.
 | Object catalog and retention | Receipt-bound publication, typed edges, atomic persistent pins, read holds, generation-safe retirement/retry; independent reachability model | Automatic GC/reconciliation/dry-run, abandoned-upload cleanup, S3 and full restore |
 | Exact validation predicate | Context binding, stale-target rejection, trusted issuer filtering, revocation and conflicting receipt tests | Authenticated collectors, durable evidence, review and atomic publication checks |
 | Credentials and agent commands | Repository-scoped opaque tokens, transactional revocation, distinct actor classes, owner-bound reads and strict command dispatch | Remote transport, MCP, production identity/admission integration |
-| Local HTTP service and CLI | Actual Unix-socket server/client, trusted admin CLI, private credential files, bounded HTTP/pool, strict startup schema, SIGKILL replay, cancellation/rollback, reconnect and graceful shutdown tests | Directory/Git import, source-stream/node integration, TLS/remote access, packaged installation |
-| Source graph uploads | Authenticated scoped sessions, child membership, fixed deadlines/budgets, backend identity, binary HTTP/CLI, concurrent retry, restart and schema-v5 upgrade tests | Directory/Git import, incremental reuse, streaming/batching and automatic cleanup |
+| Local HTTP service and CLI | Actual Unix-socket server/client, trusted admin CLI, private credential files, bounded HTTP/pool, strict startup schema, SIGKILL replay, cancellation/rollback, reconnect and graceful shutdown tests | Git import, source-stream/node integration, TLS/remote access, packaged installation |
+| Source graph uploads | Authenticated scoped sessions, child membership, fixed deadlines/budgets, backend identity, binary HTTP/CLI, concurrent retry, restart and schema-v5 upgrade tests | Git import, incremental reuse, streaming/batching and automatic cleanup |
+| Native directory import | Explicit selection, descriptor-relative capture, durable pack/journal v1, independent vector, actual CLI-to-server partial-upload recovery and completed replay with Git absent from PATH | Git history import, incremental reuse, automatic spool cleanup and runtime-proven snapshots |
 | Source delivery profiles | Canonical full/sparse format with independent vectors, immutable scoped definitions, workspace foreign-key binding, v4 upgrade, authenticated CLI/HTTP and restart tests | Automatic worker use, profile retention and generation-aware expansion |
 | Workspaces and runtime | Logical workspace/run state, drain fencing and separate filesystem preparation implemented; node identity checks | Real node/runtime observation, sandbox binding and lifecycle recovery |
 | MCP adapter | Planned; not implemented | Shared-service adapter, scoped tools and real client interoperability tests |
@@ -31,14 +32,14 @@ macOS arm64, Rust 1.99.1, 2026-10-21:
 
 ```text
 cargo test --workspace --locked --offline
-43 tests passed without external services: core 15, local storage 8, native history 3, metadata input/auth/protocol 3, validation 9, materializer 2, service configuration/files/CLI 3.
-70 PostgreSQL integration tests passed explicitly against local PostgreSQL 18.6: transactions 7, object catalog 12, intake 9, protected reads 9, materializer 9, access/commands 8, source profiles/upgrade 2, source uploads/upgrade 7, service process/transport 7.
+49 tests passed without external services: core 15, local storage 8, native history 3, metadata input/auth/protocol 3, validation 9, materializer 2, service configuration/files/CLI/pack 9.
+71 PostgreSQL integration tests passed explicitly against local PostgreSQL 18.6: transactions 7, object catalog 12, intake 9, protected reads 9, materializer 9, access/commands 8, source profiles/upgrade 2, source uploads/upgrade 7, service process/transport 8.
 cargo clippy --workspace --all-targets --locked --offline -- -D warnings
 Passed.
 cargo fmt --all
 Applied before the checks above.
 Published baseline CI (Linux, macOS and PostgreSQL):
-https://github.com/ArtAndrew/TreeHarbor/actions/runs/39588613802
+https://github.com/ArtAndrew/TreeHarbor/actions/runs/39597018312
 ```
 
 Test stores used for pure model tests are not a server implementation. Local

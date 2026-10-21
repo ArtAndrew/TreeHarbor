@@ -28,6 +28,27 @@ pub struct Cli {
 }
 #[derive(Subcommand)]
 enum Command {
+    /// Capture explicitly selected files from a stopped native source directory.
+    SourcePack {
+        #[arg(long)]
+        directory: PathBuf,
+        #[arg(long)]
+        output: PathBuf,
+        #[arg(long = "path", required = true)]
+        paths: Vec<OsString>,
+        #[arg(long)]
+        author_name: String,
+        #[arg(long)]
+        author_email: String,
+        #[arg(long, default_value = "Native source import")]
+        message: String,
+        #[arg(long, default_value_t = 0, allow_hyphen_values = true)]
+        timestamp_seconds: i64,
+        #[arg(long, default_value_t = 100_000)]
+        max_objects: u64,
+        #[arg(long, default_value_t = 4_294_967_296)]
+        max_bytes: u64,
+    },
     /// Serve authenticated commands. Requires an explicitly migrated database.
     Serve {
         #[arg(long)]
@@ -201,6 +222,19 @@ struct Mutation {
 #[derive(Subcommand)]
 enum Agent {
     RepositoryInfo,
+    /// Import a completed source pack; keep the same state file to resume.
+    SourceImport {
+        #[arg(long)]
+        pack: PathBuf,
+        #[arg(long)]
+        state: PathBuf,
+        #[arg(long, value_enum)]
+        authority: Mode,
+        #[arg(long,value_parser=clap::value_parser!(i64).range(1..))]
+        epoch: i64,
+        #[arg(long,default_value_t=3600,value_parser=clap::value_parser!(i32).range(1..=3600))]
+        ttl_seconds: i32,
+    },
     /// Begin a resumable native source upload; does not publish a branch.
     SourceBegin {
         #[command(flatten)]
@@ -309,7 +343,7 @@ impl Agent {
             Self::SourceStatus { upload } => {
                 json!({"method":"source_status","upload":upload.to_string()})
             }
-            Self::SourcePut { .. } => return Err(Error::Config), // binary path below
+            Self::SourcePut { .. } | Self::SourceImport { .. } => return Err(Error::Config), // binary path below
             Self::ProfilePut {
                 mutation,
                 full,
@@ -354,6 +388,45 @@ impl Agent {
 }
 pub async fn run(cli: Cli) -> Result<bool> {
     match cli.command {
+        Command::SourcePack {
+            directory,
+            output,
+            paths,
+            author_name,
+            author_email,
+            message,
+            timestamp_seconds,
+            max_objects,
+            max_bytes,
+        } => {
+            let paths = paths
+                .into_iter()
+                .map(|p| treeharbor_core::RepoPath::new(p.as_bytes().to_vec()))
+                .collect::<treeharbor_core::Result<Vec<_>>>()
+                .map_err(|_| Error::Profile)?;
+            let result = tokio::task::spawn_blocking(move || {
+                crate::pack::capture(crate::pack::Capture {
+                    directory: &directory,
+                    output: &output,
+                    paths,
+                    author_name,
+                    author_email,
+                    message,
+                    timestamp_seconds,
+                    limits: crate::pack::Limits {
+                        objects: max_objects,
+                        bytes: max_bytes,
+                    },
+                })
+            })
+            .await
+            .map_err(|_| Error::ImportWorker)??;
+            println!(
+                "{}",
+                json!({"pack":result.directory.to_str(),"pack_path_hex":crate::pack::hex(result.directory.as_os_str().as_bytes()),"commit":result.commit().to_string(),"snapshot":result.snapshot().to_string(),"objects":result.object_count(),"encoded_bytes":result.encoded_bytes(),"filesystem_entries":result.filesystem_entries()})
+            );
+            Ok(true)
+        }
         Command::Serve { config } => {
             let config = Config::load(&config)?;
             let mut terminate =
@@ -376,6 +449,31 @@ pub async fn run(cli: Cli) -> Result<bool> {
             action,
         } => {
             let credential = Credential::load(&credential_file)?;
+            if let Agent::SourceImport {
+                pack,
+                state,
+                authority,
+                epoch,
+                ttl_seconds,
+            } = action
+            {
+                let pack = tokio::task::spawn_blocking(move || crate::pack::Pack::open(&pack))
+                    .await
+                    .map_err(|_| Error::ImportWorker)??;
+                let reply = crate::import::send(crate::import::Request {
+                    socket: &socket,
+                    credential: &credential,
+                    pack,
+                    state: &state,
+                    authority: authority.into(),
+                    epoch,
+                    ttl_seconds,
+                    timeout: Duration::from_millis(timeout_ms),
+                })
+                .await?;
+                println!("{}", reply.body);
+                return Ok(reply.status.is_success());
+            }
             if let Agent::SourcePut {
                 upload,
                 object,

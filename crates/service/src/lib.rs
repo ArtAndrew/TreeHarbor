@@ -5,6 +5,8 @@ pub mod client;
 pub mod config;
 pub mod database;
 pub mod files;
+pub mod import;
+pub mod pack;
 pub mod server;
 mod source;
 
@@ -24,6 +26,14 @@ pub enum Error {
     Credential,
     #[error("invalid source profile; use full selection or bounded repository-relative paths")]
     Profile,
+    #[error("native source import failed: {0}")]
+    Pack(#[from] pack::Error),
+    #[error(
+        "import state does not match this pack, repository or request; reuse its original inputs or choose a new state file"
+    )]
+    ImportState,
+    #[error("local import worker failed; the existing pack and state are retained")]
+    ImportWorker,
     #[error("request or response exceeds its size limit")]
     Size,
     #[error("request timed out; its outcome may be unknown, retry with the same idempotency key")]
