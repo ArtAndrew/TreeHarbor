@@ -292,6 +292,29 @@ async fn expansion_preserves_edits_deletions_and_untracked_files_in_a_new_tree()
     fs::remove_file(a.path().join("src/deleted")).unwrap();
     fs::write(a.path().join("new"), b"local untracked").unwrap();
     fs::write(a.path().join("generated"), b"build output").unwrap();
+    // Discard all in-memory state and recover the independently observed exact
+    // baseline. Reopening must not restore tracked deletions or erase edits.
+    use sha2::{Digest, Sha256};
+    use treeharbor_materializer::{BaselineExpectation, MaterializedTree};
+    let root = a.manifest_path().parent().unwrap().to_owned();
+    let digest = Sha256::digest(fs::read(a.manifest_path()).unwrap()).into();
+    drop(a);
+    drop(builder);
+    let profile = SourceProfile::sparse(vec![RepoPath::new(b"src".to_vec()).unwrap()]).unwrap();
+    let a = MaterializedTree::load_baseline(
+        &root,
+        BaselineExpectation {
+            scope: &scope,
+            snapshot,
+            profile: &profile,
+            manifest_digest: digest,
+        },
+        Limits::default(),
+    )
+    .unwrap();
+    assert!(a.statistics().is_none());
+    assert!(!a.preserved_local_state());
+    let builder = Materializer::open(output.path(), 1).unwrap();
     let b = builder
         .expand_stopped(
             &mut db,
@@ -302,6 +325,7 @@ async fn expansion_preserves_edits_deletions_and_untracked_files_in_a_new_tree()
         .await
         .unwrap();
     assert_eq!(fs::read(b.path().join("src/a")).unwrap(), b"edited");
+    assert!(b.preserved_local_state());
     assert!(!b.path().join("src/deleted").exists());
     assert!(b.includes(&RepoPath::new(b"src/deleted".to_vec()).unwrap()));
     assert_eq!(
@@ -317,7 +341,7 @@ async fn expansion_preserves_edits_deletions_and_untracked_files_in_a_new_tree()
     fs::write(b.path().join("src/a"), b"second generation").unwrap();
     assert_eq!(fs::read(a.path().join("src/a")).unwrap(), b"edited");
     assert_eq!(
-        b.statistics().source_bytes_written,
+        b.statistics().unwrap().source_bytes_written,
         b"dependency".len() as u64
     );
     cleanup(&schema).await;

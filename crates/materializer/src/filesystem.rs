@@ -22,6 +22,7 @@ pub(crate) struct Manifest {
     pub snapshot: ObjectId,
     pub selection: Selection,
     pub entries: BTreeMap<RepoPath, EntryRef>,
+    pub preserved_local_state: bool,
 }
 
 pub(crate) struct Stage {
@@ -64,6 +65,7 @@ impl Stage {
                 snapshot,
                 selection,
                 entries: BTreeMap::new(),
+                preserved_local_state: previous.is_some(),
             },
             previous: previous.as_ref().map(|p| p.manifest.clone()),
             limits,
@@ -349,7 +351,7 @@ impl Stage {
             .paths
             .as_ref()
             .map(|v| v.iter().map(|p| hex(p.as_bytes())).collect::<Vec<_>>());
-        let header = serde_json::json!({"version":1,"materializer":"copy-unix-v1","tenant":self.manifest.tenant,"repository":self.manifest.repository,"snapshot":self.manifest.snapshot.hex(),"selection":paths,"preserved_local_state":self.previous.is_some()});
+        let header = serde_json::json!({"version":1,"materializer":"copy-unix-v1","tenant":self.manifest.tenant,"repository":self.manifest.repository,"snapshot":self.manifest.snapshot.hex(),"selection":paths,"preserved_local_state":self.manifest.preserved_local_state});
         // Stream entries so the manifest encoding does not allocate a second full tree.
         file.write_all(b"{\"header\":")?;
         serde_json::to_writer(&mut file, &header)?;
@@ -379,7 +381,7 @@ impl Stage {
         Ok(MaterializedTree {
             root,
             manifest: Arc::new(self.manifest),
-            stats: self.stats,
+            stats: Some(self.stats),
         })
     }
 }
