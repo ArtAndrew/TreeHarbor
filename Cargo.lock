@@ -970,6 +970,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "treeharbor-runtime"
+version = "0.1.0-dev"
+dependencies = [
+ "rustix",
+]
+
+[[package]]
 name = "treeharbor-service"
 version = "0.1.0-dev"
 dependencies = [
