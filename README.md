@@ -22,6 +22,8 @@ in **Standalone** mode. Both share one Rust engine.
 > authenticated command boundary. An experimental [task supervisor](docs/runtime-supervisor.md)
 > adds a process-lifetime primitive for an external Linux sandbox. Runtime binding, node recovery, optimized caching,
 > remote transport and MCP integration are still pending.
+> [Preparation reservations](docs/workspace-preparations.md) now persist node/storage
+> ownership and fence retries before physical work; the node worker is still pending.
 > Neither end-to-end mode is released. No packaged installation is available yet.
 > See [implementation status](docs/implementation-status.md) for evidence and gaps.
 

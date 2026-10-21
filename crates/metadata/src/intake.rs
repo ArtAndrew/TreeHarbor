@@ -231,6 +231,12 @@ impl Metadata {
         };
         tx.check_preparation_job(job, ready).await?;
         let scope = &ctx.scope;
+        // Managed preparation has a separate file-ready protocol. Legacy
+        // observations cannot replace its durable node/slot/source binding.
+        if tx.tx.query_opt("SELECT 1 FROM th_workspace_preparations WHERE tenant=$1 AND repository=$2 AND workspace=$3",
+            &[&scope.tenant,&scope.repository,&ready.id]).await?.is_some() {
+            return Err(Error::ExecutionState);
+        }
         let changed=tx.tx.execute(r#"UPDATE th_workspaces SET state='ready',node=$4,runtime=$5
             WHERE tenant=$1 AND repository=$2 AND workspace=$3 AND generation=$6 AND epoch=$7 AND state='requested' AND resolved_profile IS NOT NULL"#,
             &[&scope.tenant,&scope.repository,&ready.id,&ready.node,&ready.runtime,&ready.generation,&ctx.epoch]).await?;
@@ -351,6 +357,7 @@ impl Metadata {
             return Err(Error::ExecutionState);
         }
         tx.tx.execute("UPDATE th_agent_runs SET state='stopping' WHERE tenant=$1 AND repository=$2 AND workspace=$3 AND state='running'",&[&scope.tenant,&scope.repository,&workspace]).await?;
+        tx.tx.execute("UPDATE th_workspace_preparations SET state='draining' WHERE tenant=$1 AND repository=$2 AND workspace=$3 AND state<>'draining'",&[&scope.tenant,&scope.repository,&workspace]).await?;
         let result =
             json!({"workspace":workspace.to_string(),"generation":next,"state":"draining"});
         tx.complete(result.clone(), vec![event("workspace.drain", result)])

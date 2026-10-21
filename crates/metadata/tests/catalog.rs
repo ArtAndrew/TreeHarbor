@@ -608,7 +608,7 @@ async fn migration_from_published_v1_preserves_existing_repository_and_is_repeat
             .await
             .unwrap()
             .get::<_, i32>(0),
-        6
+        7
     );
     cleanup(&schema).await;
 }
