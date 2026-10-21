@@ -109,16 +109,7 @@ impl<'a> Controller<'a> {
         Ok(())
     }
     fn saved_id(&self) -> Result<Option<String>> {
-        if !self.journal.exists("container.json")? {
-            return Ok(None);
-        }
-        let value: Value =
-            serde_json::from_slice(&read(&self.journal.root.join("container.json"), 1024)?)?;
-        let id = value["id"].as_str().ok_or(Error::Mismatch)?;
-        if value != json!({"version":1,"id":id}) {
-            return Err(Error::Mismatch);
-        }
-        Ok(Some(id.into()))
+        self.journal.saved_id()
     }
     fn save_id(&self, container: &Container) -> Result<()> {
         let bytes = serde_json::to_vec(&json!({"version":1,"id":container.id()}))?;
@@ -302,6 +293,23 @@ impl Journal {
         }
         Ok(())
     }
+    fn saved_id(&self) -> Result<Option<String>> {
+        if !self.exists("container.json")? {
+            return Ok(None);
+        }
+        let bytes = read(&self.root.join("container.json"), 1024)?;
+        let value: Value = serde_json::from_slice(&bytes)?;
+        let id = value["id"].as_str().ok_or(Error::Mismatch)?;
+        if id.len() != 64
+            || !id
+                .bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+            || bytes != serde_json::to_vec(&json!({"version":1,"id":id}))?
+        {
+            return Err(Error::Mismatch);
+        }
+        Ok(Some(id.into()))
+    }
     fn validate(&self) -> Result<()> {
         let mut flags = [false; 4];
         for (i, name) in [
@@ -319,7 +327,7 @@ impl Journal {
             }
         }
         let [create, start, remove, removed] = flags;
-        let identified = self.exists("container.json")?;
+        let identified = self.saved_id()?.is_some();
         if (identified && !create)
             || ((start || remove) && !(create && identified))
             || (removed && create && !remove)
@@ -427,7 +435,8 @@ mod tests {
         let journal = Journal::open(&path, b"exact intent").unwrap();
         assert!(Journal::open(&path, b"exact intent").is_err());
         journal.mark("create-issued.json").unwrap();
-        journal.record("container.json", b"recorded id").unwrap();
+        let recorded = serde_json::to_vec(&json!({"version":1,"id":"11".repeat(32)})).unwrap();
+        journal.record("container.json", &recorded).unwrap();
         journal.mark("start-issued.json").unwrap();
         journal.validate().unwrap();
         drop(journal);
@@ -436,10 +445,7 @@ mod tests {
         journal.validate().unwrap();
         assert!(journal.exists("start-issued.json").unwrap());
         assert!(journal.record("container.json", b"replacement").is_err());
-        assert_eq!(
-            read(&path.join("container.json"), 64).unwrap(),
-            b"recorded id"
-        );
+        assert_eq!(read(&path.join("container.json"), 1024).unwrap(), recorded);
     }
 
     #[test]
@@ -460,6 +466,11 @@ mod tests {
         assert!(journal.validate().is_err());
         fs::remove_file(path.join("removed.json")).unwrap();
         fs::write(path.join("create-issued.json"), b"{\"version\":2}\n").unwrap();
+        assert!(journal.validate().is_err());
+        fs::write(path.join("create-issued.json"), b"{\"version\":1}\n").unwrap();
+        journal
+            .record("container.json", b"{\"id\":\"short\",\"version\":1}")
+            .unwrap();
         assert!(journal.validate().is_err());
     }
 

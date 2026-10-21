@@ -196,8 +196,11 @@ def main():
         aa, bb = call(a, "create"), call(b, "create")
         assert aa["id"] != bb["id"] and aa["state"] == bb["state"] == "created"
         children = [subprocess.Popen([str(driver), str(c[0]), "start"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True) for c in (a, b)]
-        for child in children:
+        for child, case in zip(children, (a, b)):
             out, err = child.communicate(timeout=40)
+            if child.returncode:
+                actual = docker("inspect", "treeharbor-" + case[1]["attempt"], check=False)
+                print("Failed start fixture inspect: " + actual.stdout[:12000], flush=True)
             assert child.returncode == 0, (out, err)
         assert finish(a)["exit_code"] == finish(b)["exit_code"] == 0
         assert (a[2] / "same.txt").read_text() == "agent-a"

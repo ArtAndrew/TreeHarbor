@@ -23,7 +23,7 @@ gates. A foundation milestone does not complete either mode.
 | Source delivery profiles | Canonical full/sparse format with independent vectors, immutable scoped definitions, workspace foreign-key binding, v4 upgrade, authenticated CLI/HTTP and exact node use | Profile retention and generation-aware expansion |
 | Workspaces and runtime | Logical workspace/run state, drain fencing and separate filesystem preparation implemented; node identity checks | Real node/runtime observation, sandbox binding and lifecycle recovery |
 | Runtime task supervisor | Linux namespace init, privilege guards, environment clearing, guest process limit, child reaping and deadline; real gVisor CI harness | Durable node binding, trusted results and complete lifecycle |
-| Local runtime controller | Versioned immutable profiles, restricted Engine API, bounded ext4 identity, exclusive durable volume assignment and create/start/remove journal; real-runtime fault harness | Required Linux CI verification for this increment, service-managed AgentRun/epoch binding, provisioning, host/engine replacement recovery and cleanup integration |
+| Local runtime controller | Versioned immutable profiles, restricted Engine API, bounded ext4 identity, exclusive durable volume assignment and create/start/remove journal; real-runtime fault harness | Service-managed AgentRun/epoch binding, provisioning, host/engine replacement recovery and cleanup integration |
 | Workspace preparation reservations | Operator-registered node storage, scoped job claims, immutable source/slot/attempt identity, renewal/reclaim, exact file-ready observation and drain retention; real PostgreSQL race/upgrade tests | Separate runtime attempts, actual drain/removal and resource release |
 | Local preparation node | Private physical root identity/OS lock, durable placement intent, exact no-replace publication, independent concurrent slots, current authorization and file-ready acknowledgment; actual process-kill recovery and import-to-files CLI tests | Scheduler/daemon, runtime binding, disk quotas, remote workers, fenced volume migration and safe published-tree cleanup |
 | MCP adapter | Planned; not implemented | Shared-service adapter, scoped tools and real client interoperability tests |
@@ -63,7 +63,7 @@ fault harness in the same required job. It delays actual Engine traffic and kill
 the Rust controller around create/start/remove, checks independent task volumes,
 retains uncertain starts and refuses configuration drift. Local tests verify its
 canonical profile/intent vectors, journal exclusion and invalid recovery records.
-The first Linux run for this increment is still pending. This controller is not
+Linux runtime evidence comes from the required CI job, not macOS tests. This controller is not
 yet wired into authoritative AgentRun records, node leases, source sealing or
 workspace deletion; it cannot grant repository admission or trusted Validation.
 
