@@ -86,7 +86,7 @@ def main():
             assert config["Image"] == image and host["Runtime"] == "runsc"
             assert host["NetworkMode"] == "none" and host["ReadonlyRootfs"]
             assert not host["Privileged"] and host["CapDrop"] == ["ALL"]
-            assert set(host["CapAdd"]) == {"SETUID", "SETGID"}
+            assert {cap.removeprefix("CAP_") for cap in host["CapAdd"]} == {"SETUID", "SETGID"}, host["CapAdd"]
             assert host["Memory"] == 256 * 1024 * 1024 and host["MemorySwap"] == host["Memory"]
             assert host["NanoCpus"] == 1_000_000_000 and host["PidsLimit"] == 256
             return container, files
