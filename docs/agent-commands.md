@@ -75,3 +75,7 @@ The local CLI writes owner-private credential files; the server bounds connectio
 headers, bodies, timeouts and its database pool. Administrative and
 `CommandContext::trusted` methods are trusted operations only; the admin CLI uses a
 separate database connection. They must never be routed from agent requests.
+
+Source ingestion uses the same authenticated envelope with `repository.write`,
+plus a binary object route. See [source upload commands and limits](source-uploads.md).
+The backend label and path are deployment configuration, never client fields.

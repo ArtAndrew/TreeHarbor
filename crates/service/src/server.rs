@@ -28,6 +28,7 @@ pub struct Server {
     guard: SocketGuard,
     config: Config,
     pool: Pool<Database>,
+    backend: Option<crate::source::Backend>,
 }
 struct SocketGuard {
     path: PathBuf,
@@ -94,12 +95,17 @@ impl Server {
         let pool = database.pool()?;
         // Fail before publishing a listening socket if schema or DB is unavailable.
         drop(pool.get().await.map_err(|_| Error::Database)?);
+        let backend = match config.storage.clone() {
+            Some(storage) => Some(crate::source::Backend::open(storage, &pool).await?),
+            None => None,
+        };
         let (listener, guard) = bind(&config.socket).await?;
         Ok(Self {
             listener,
             guard,
             config,
             pool,
+            backend,
         })
     }
     pub fn socket(&self) -> &Path {
@@ -111,6 +117,7 @@ impl Server {
             guard,
             config,
             pool,
+            backend,
         } = self;
         let permits = Arc::new(Semaphore::new(config.max_connections));
         let mut tasks = JoinSet::new();
@@ -122,13 +129,13 @@ impl Server {
                 incoming=listener.accept()=>{
                     let (stream,_)=incoming?;
                     let Ok(permit)=permits.clone().try_acquire_owned() else { drop(stream); continue; };
-                    let pool=pool.clone(); let timeout=config.timeout();
+                    let pool=pool.clone(); let timeout=config.timeout(); let backend=backend.clone();
                     tasks.spawn(async move {
                         let _permit=permit;
                         let service=service_fn(move |request| {
-                            let pool=pool.clone();
+                            let pool=pool.clone(); let backend=backend.clone();
                             async move {
-                                let response=match tokio::time::timeout(timeout,handle(request,pool)).await {
+                                let response=match tokio::time::timeout(timeout,handle(request,pool,backend)).await {
                                     Ok(response)=>response,
                                     Err(_)=>error(StatusCode::GATEWAY_TIMEOUT,"outcome_unknown"),
                                 };
@@ -178,7 +185,11 @@ fn response(status: StatusCode, value: serde_json::Value) -> Response<Body> {
 fn error(status: StatusCode, code: &'static str) -> Response<Body> {
     response(status, json!({"error":{"code":code}}))
 }
-async fn handle(request: Request<Incoming>, pool: Pool<Database>) -> Response<Body> {
+async fn handle(
+    request: Request<Incoming>,
+    pool: Pool<Database>,
+    backend: Option<crate::source::Backend>,
+) -> Response<Body> {
     if request.headers().contains_key(header::ORIGIN)
         || request.headers().get_all(header::HOST).iter().count() != 1
         || request
@@ -191,10 +202,19 @@ async fn handle(request: Request<Incoming>, pool: Pool<Database>) -> Response<Bo
     if request.method() == hyper::Method::GET && request.uri() == "/healthz" {
         return response(StatusCode::OK, json!({"status":"alive"}));
     }
-    if request.uri().path() != "/v1/commands" || request.uri().query().is_some() {
+    let upload = crate::source::route(request.uri().path());
+    if (request.uri().path() != "/v1/commands" && upload.is_none())
+        || request.uri().query().is_some()
+    {
         return error(StatusCode::NOT_FOUND, "not_found");
     }
-    if request.method() != hyper::Method::POST {
+    if request.method()
+        != if upload.is_some() {
+            hyper::Method::PUT
+        } else {
+            hyper::Method::POST
+        }
+    {
         return error(StatusCode::METHOD_NOT_ALLOWED, "method_not_allowed");
     }
     if request
@@ -203,12 +223,22 @@ async fn handle(request: Request<Incoming>, pool: Pool<Database>) -> Response<Bo
         .iter()
         .count()
         != 1
-        || request
-            .headers()
-            .get(header::CONTENT_TYPE)
-            .is_none_or(|v| v != "application/json")
+        || request.headers().get(header::CONTENT_TYPE).is_none_or(|v| {
+            v != if upload.is_some() {
+                "application/octet-stream"
+            } else {
+                "application/json"
+            }
+        })
     {
-        return error(StatusCode::UNSUPPORTED_MEDIA_TYPE, "json_required");
+        return error(
+            StatusCode::UNSUPPORTED_MEDIA_TYPE,
+            if upload.is_some() {
+                "binary_frame_required"
+            } else {
+                "json_required"
+            },
+        );
     }
     if request
         .headers()
@@ -228,6 +258,18 @@ async fn handle(request: Request<Incoming>, pool: Pool<Database>) -> Response<Bo
     let Some(credential) = credential else {
         return error(StatusCode::UNAUTHORIZED, "unauthenticated");
     };
+    if let Some(route) = upload {
+        let Some(backend) = backend else {
+            return error(StatusCode::SERVICE_UNAVAILABLE, "storage_not_configured");
+        };
+        return match crate::source::put(request, &credential, route, backend, pool).await {
+            Ok(value) => response(StatusCode::OK, value),
+            Err(failure) => error(
+                StatusCode::from_u16(failure.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+                failure.code,
+            ),
+        };
+    }
     let body = match tokio::time::timeout(
         Duration::from_secs(5),
         Limited::new(request.into_body(), MAX_REQUEST_BYTES).collect(),
@@ -247,7 +289,11 @@ async fn handle(request: Request<Incoming>, pool: Pool<Database>) -> Response<Bo
     };
     match session
         .metadata
-        .execute_agent_command(&credential, &body)
+        .execute_command_with_backend(
+            &credential,
+            &body,
+            backend.as_ref().map(|b| b.config.backend.as_str()),
+        )
         .await
     {
         Ok(value) => response(StatusCode::OK, value),
@@ -262,6 +308,10 @@ async fn handle(request: Request<Incoming>, pool: Pool<Database>) -> Response<Bo
                 | "execution_state_changed"
                 | "idempotency_conflict"
                 | "version_conflict" => StatusCode::CONFLICT,
+                "upload_state_changed" | "upload_membership" | "object_busy" | "lease_expired" => {
+                    StatusCode::CONFLICT
+                }
+                "upload_limit" => StatusCode::TOO_MANY_REQUESTS,
                 _ => StatusCode::INTERNAL_SERVER_ERROR,
             };
             response(status, failure.response())

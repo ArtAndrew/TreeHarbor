@@ -30,9 +30,9 @@ impl ObjectKey {
 }
 #[derive(Clone, Debug)]
 pub struct ObjectLease {
-    key: ObjectKey,
-    token: Uuid,
-    upload: bool,
+    pub(crate) key: ObjectKey,
+    pub(crate) token: Uuid,
+    pub(crate) upload: bool,
 }
 impl ObjectLease {
     pub fn key(&self) -> &ObjectKey {
@@ -100,6 +100,154 @@ async fn check_live_lease(tx: &Transaction<'_>, lease: &ObjectLease, shared: boo
     Ok(())
 }
 
+pub(crate) async fn reserve_in(
+    tx: &Transaction<'_>,
+    store: &ManagedStore,
+    object: &PreparedObject,
+    token: Uuid,
+    ttl: i32,
+) -> Result<ObjectLease> {
+    ttl_valid(ttl)?;
+    let tenant = store.tenant();
+    let digest = bytes(object.id());
+    let kind = object.kind() as i16;
+    let length = object.length() as i64;
+    let inserted=tx.execute("INSERT INTO th_objects (tenant,digest,generation,backend,kind,length,state) VALUES ($1,$2,1,$3,$4,$5,'uploading') ON CONFLICT DO NOTHING",
+            &[&tenant,&digest,&store.backend(),&kind,&length]).await?==1;
+    let row = object_row(tx, tenant, &digest).await?;
+    let mut generation: i64 = row.get(0);
+    let state: String = row.get(4);
+    if row.get::<_, String>(1) != store.backend()
+        || row.get::<_, i16>(2) != kind
+        || row.get::<_, i64>(3) != length
+    {
+        return Err(Error::ReceiptMismatch);
+    }
+    if state == "retiring" {
+        return Err(Error::ObjectBusy);
+    }
+    if state == "deleted" {
+        generation = generation
+            .checked_add(1)
+            .ok_or(Error::Invalid("object generation overflow"))?;
+        tx.execute(
+            "DELETE FROM th_object_holds WHERE tenant=$1 AND digest=$2",
+            &[&tenant, &digest],
+        )
+        .await?;
+        tx.execute("UPDATE th_objects SET generation=$3,state='uploading',orphaned_at=NULL WHERE tenant=$1 AND digest=$2",&[&tenant,&digest,&generation]).await?;
+    }
+    let old_hold=tx.query_opt("SELECT digest,generation,expires_at>clock_timestamp() FROM th_object_holds WHERE tenant=$1 AND token=$2",&[&tenant,&token]).await?;
+    if let Some(ref hold) = old_hold {
+        if hold.get::<_, Vec<u8>>(0) != digest || hold.get::<_, i64>(1) != generation {
+            return Err(Error::ReceiptMismatch);
+        }
+        if !hold.get::<_, bool>(2) {
+            return Err(Error::StaleLease);
+        }
+    }
+    if state == "uploading" && !inserted && old_hold.is_none() {
+        return Err(Error::ObjectBusy);
+    }
+    let updated=tx.execute("INSERT INTO th_object_holds (tenant,token,digest,generation,expires_at) VALUES ($1,$2,$3,$4,clock_timestamp()+($5::integer*interval '1 second')) ON CONFLICT (tenant,token) DO UPDATE SET expires_at=EXCLUDED.expires_at WHERE th_object_holds.digest=EXCLUDED.digest AND th_object_holds.generation=EXCLUDED.generation",
+            &[&tenant,&token,&digest,&generation,&ttl]).await?;
+    if updated != 1 {
+        return Err(Error::ReceiptMismatch);
+    }
+    tx.execute(
+        "UPDATE th_objects SET orphaned_at=NULL WHERE tenant=$1 AND digest=$2",
+        &[&tenant, &digest],
+    )
+    .await?;
+    Ok(ObjectLease {
+        key: ObjectKey {
+            tenant: tenant.into(),
+            backend: store.backend().into(),
+            id: object.id(),
+            generation,
+        },
+        token,
+        upload: state != "live",
+    })
+}
+
+pub(crate) async fn publish_in(
+    tx: &Transaction<'_>,
+    lease: &ObjectLease,
+    receipt: &DurableObject,
+) -> Result<()> {
+    let key = &lease.key;
+    if key.tenant != receipt.tenant()
+        || key.backend != receipt.backend()
+        || key.generation != receipt.generation()
+        || key.id != receipt.id()
+    {
+        return Err(Error::ReceiptMismatch);
+    }
+    let mut references = BTreeMap::new();
+    for &(child, kind) in receipt.references() {
+        if child == key.id {
+            return Err(Error::ReceiptMismatch);
+        }
+        if let Some(previous) = references.insert(child, kind)
+            && previous != kind
+        {
+            return Err(Error::ReceiptMismatch);
+        }
+    }
+    if references.len() > 200_000 {
+        return Err(Error::Invalid("reference count"));
+    }
+    let mut ids: BTreeSet<_> = references.keys().copied().collect();
+    ids.insert(key.id);
+    let digests: Vec<Vec<u8>> = ids.iter().copied().map(bytes).collect();
+    let rows=tx.query("SELECT digest,generation,backend,kind,length,state FROM th_objects WHERE tenant=$1 AND digest=ANY($2::bytea[]) ORDER BY digest FOR UPDATE",&[&key.tenant,&digests]).await?;
+    let mut locked = BTreeMap::new();
+    for row in rows {
+        locked.insert(id(row.get(0))?, row);
+    }
+    let parent = locked.get(&key.id).ok_or(Error::ObjectNotLive)?;
+    if parent.get::<_, i64>(1) != key.generation
+        || parent.get::<_, String>(2) != key.backend
+        || parent.get::<_, i16>(3) != receipt.kind() as i16
+        || parent.get::<_, i64>(4) != receipt.length()
+    {
+        return Err(Error::ReceiptMismatch);
+    }
+    let state: String = parent.get(5);
+    if state != "uploading" && state != "live" {
+        return Err(Error::ObjectNotLive);
+    }
+    let digest = bytes(key.id);
+    let held:bool=tx.query_one("SELECT EXISTS(SELECT 1 FROM th_object_holds WHERE tenant=$1 AND token=$2 AND digest=$3 AND generation=$4 AND expires_at>clock_timestamp())",&[&key.tenant,&lease.token,&digest,&key.generation]).await?.get(0);
+    if !held {
+        return Err(Error::StaleLease);
+    }
+    let mut children = Vec::new();
+    let mut generations = Vec::new();
+    for (child, kind) in references {
+        let row = locked.get(&child).ok_or(Error::ObjectNotLive)?;
+        if row.get::<_, String>(5) != "live" || row.get::<_, i16>(3) != kind as i16 {
+            return Err(Error::ObjectNotLive);
+        }
+        children.push(bytes(child));
+        generations.push(row.get::<_, i64>(1));
+    }
+    tx.execute("INSERT INTO th_object_edges (tenant,parent,parent_generation,child,child_generation) SELECT $1,$2,$3,child,generation FROM unnest($4::bytea[],$5::bigint[]) AS edges(child,generation) ON CONFLICT DO NOTHING",
+            &[&key.tenant,&digest,&key.generation,&children,&generations]).await?;
+    tx.execute(
+        "UPDATE th_objects SET orphaned_at=NULL WHERE tenant=$1 AND digest=ANY($2::bytea[])",
+        &[&key.tenant, &digests],
+    )
+    .await?;
+    tx.execute(
+        "UPDATE th_objects SET state='live' WHERE tenant=$1 AND digest=$2",
+        &[&key.tenant, &digest],
+    )
+    .await?;
+    Ok(())
+}
+
 impl Metadata {
     /// Reserve before writing bytes. Published objects can be reused with a fresh
     /// hold; incomplete uploads must finish or retire before the digest is reused.
@@ -110,71 +258,11 @@ impl Metadata {
         token: Uuid,
         ttl: i32,
     ) -> Result<ObjectLease> {
-        ttl_valid(ttl)?;
-        let tenant = store.tenant();
-        let digest = bytes(object.id());
-        let kind = object.kind() as i16;
-        let length = object.length() as i64;
         let tx = self.client.transaction().await?;
         settings(&tx).await?;
-        let inserted=tx.execute("INSERT INTO th_objects (tenant,digest,generation,backend,kind,length,state) VALUES ($1,$2,1,$3,$4,$5,'uploading') ON CONFLICT DO NOTHING",
-            &[&tenant,&digest,&store.backend(),&kind,&length]).await?==1;
-        let row = object_row(&tx, tenant, &digest).await?;
-        let mut generation: i64 = row.get(0);
-        let state: String = row.get(4);
-        if row.get::<_, String>(1) != store.backend()
-            || row.get::<_, i16>(2) != kind
-            || row.get::<_, i64>(3) != length
-        {
-            return Err(Error::ReceiptMismatch);
-        }
-        if state == "retiring" {
-            return Err(Error::ObjectBusy);
-        }
-        if state == "deleted" {
-            generation = generation
-                .checked_add(1)
-                .ok_or(Error::Invalid("object generation overflow"))?;
-            tx.execute(
-                "DELETE FROM th_object_holds WHERE tenant=$1 AND digest=$2",
-                &[&tenant, &digest],
-            )
-            .await?;
-            tx.execute("UPDATE th_objects SET generation=$3,state='uploading',orphaned_at=NULL WHERE tenant=$1 AND digest=$2",&[&tenant,&digest,&generation]).await?;
-        }
-        let old_hold=tx.query_opt("SELECT digest,generation,expires_at>clock_timestamp() FROM th_object_holds WHERE tenant=$1 AND token=$2",&[&tenant,&token]).await?;
-        if let Some(ref hold) = old_hold {
-            if hold.get::<_, Vec<u8>>(0) != digest || hold.get::<_, i64>(1) != generation {
-                return Err(Error::ReceiptMismatch);
-            }
-            if !hold.get::<_, bool>(2) {
-                return Err(Error::StaleLease);
-            }
-        }
-        if state == "uploading" && !inserted && old_hold.is_none() {
-            return Err(Error::ObjectBusy);
-        }
-        let updated=tx.execute("INSERT INTO th_object_holds (tenant,token,digest,generation,expires_at) VALUES ($1,$2,$3,$4,clock_timestamp()+($5::integer*interval '1 second')) ON CONFLICT (tenant,token) DO UPDATE SET expires_at=EXCLUDED.expires_at WHERE th_object_holds.digest=EXCLUDED.digest AND th_object_holds.generation=EXCLUDED.generation",
-            &[&tenant,&token,&digest,&generation,&ttl]).await?;
-        if updated != 1 {
-            return Err(Error::ReceiptMismatch);
-        }
-        tx.execute(
-            "UPDATE th_objects SET orphaned_at=NULL WHERE tenant=$1 AND digest=$2",
-            &[&tenant, &digest],
-        )
-        .await?;
+        let lease = reserve_in(&tx, store, object, token, ttl).await?;
         tx.commit().await?;
-        Ok(ObjectLease {
-            key: ObjectKey {
-                tenant: tenant.into(),
-                backend: store.backend().into(),
-                id: object.id(),
-                generation,
-            },
-            token,
-            upload: state != "live",
-        })
+        Ok(lease)
     }
 
     /// Make bytes reachable only after a storage-minted receipt. All referenced
@@ -184,77 +272,9 @@ impl Metadata {
         lease: &ObjectLease,
         receipt: &DurableObject,
     ) -> Result<()> {
-        let key = &lease.key;
-        if key.tenant != receipt.tenant()
-            || key.backend != receipt.backend()
-            || key.generation != receipt.generation()
-            || key.id != receipt.id()
-        {
-            return Err(Error::ReceiptMismatch);
-        }
-        let mut references = BTreeMap::new();
-        for &(child, kind) in receipt.references() {
-            if child == key.id {
-                return Err(Error::ReceiptMismatch);
-            }
-            if let Some(previous) = references.insert(child, kind)
-                && previous != kind
-            {
-                return Err(Error::ReceiptMismatch);
-            }
-        }
-        if references.len() > 200_000 {
-            return Err(Error::Invalid("reference count"));
-        }
-        let mut ids: BTreeSet<_> = references.keys().copied().collect();
-        ids.insert(key.id);
-        let digests: Vec<Vec<u8>> = ids.iter().copied().map(bytes).collect();
         let tx = self.client.transaction().await?;
         settings(&tx).await?;
-        let rows=tx.query("SELECT digest,generation,backend,kind,length,state FROM th_objects WHERE tenant=$1 AND digest=ANY($2::bytea[]) ORDER BY digest FOR UPDATE",&[&key.tenant,&digests]).await?;
-        let mut locked = BTreeMap::new();
-        for row in rows {
-            locked.insert(id(row.get(0))?, row);
-        }
-        let parent = locked.get(&key.id).ok_or(Error::ObjectNotLive)?;
-        if parent.get::<_, i64>(1) != key.generation
-            || parent.get::<_, String>(2) != key.backend
-            || parent.get::<_, i16>(3) != receipt.kind() as i16
-            || parent.get::<_, i64>(4) != receipt.length()
-        {
-            return Err(Error::ReceiptMismatch);
-        }
-        let state: String = parent.get(5);
-        if state != "uploading" && state != "live" {
-            return Err(Error::ObjectNotLive);
-        }
-        let digest = bytes(key.id);
-        let held:bool=tx.query_one("SELECT EXISTS(SELECT 1 FROM th_object_holds WHERE tenant=$1 AND token=$2 AND digest=$3 AND generation=$4 AND expires_at>clock_timestamp())",&[&key.tenant,&lease.token,&digest,&key.generation]).await?.get(0);
-        if !held {
-            return Err(Error::StaleLease);
-        }
-        let mut children = Vec::new();
-        let mut generations = Vec::new();
-        for (child, kind) in references {
-            let row = locked.get(&child).ok_or(Error::ObjectNotLive)?;
-            if row.get::<_, String>(5) != "live" || row.get::<_, i16>(3) != kind as i16 {
-                return Err(Error::ObjectNotLive);
-            }
-            children.push(bytes(child));
-            generations.push(row.get::<_, i64>(1));
-        }
-        tx.execute("INSERT INTO th_object_edges (tenant,parent,parent_generation,child,child_generation) SELECT $1,$2,$3,child,generation FROM unnest($4::bytea[],$5::bigint[]) AS edges(child,generation) ON CONFLICT DO NOTHING",
-            &[&key.tenant,&digest,&key.generation,&children,&generations]).await?;
-        tx.execute(
-            "UPDATE th_objects SET orphaned_at=NULL WHERE tenant=$1 AND digest=ANY($2::bytea[])",
-            &[&key.tenant, &digests],
-        )
-        .await?;
-        tx.execute(
-            "UPDATE th_objects SET state='live' WHERE tenant=$1 AND digest=$2",
-            &[&key.tenant, &digest],
-        )
-        .await?;
+        publish_in(&tx, lease, receipt).await?;
         tx.commit().await?;
         Ok(())
     }

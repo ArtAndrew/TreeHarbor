@@ -22,6 +22,238 @@ use treeharbor_service::{
 use treeharbor_storage::{ManagedStore, PreparedObject, TenantId};
 use uuid::Uuid;
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires disposable PostgreSQL; runs in database CI"]
+async fn binary_source_upload_survives_process_loss_and_creates_a_real_workspace_base() {
+    let mut f = Fixture::new().await;
+    let storage = f.dir.path().join("source-store");
+    fs::create_dir(&storage).unwrap();
+    fs::set_permissions(&storage, fs::Permissions::from_mode(0o700)).unwrap();
+    f.config.storage = Some(treeharbor_service::config::StorageConfig {
+        root: storage,
+        backend: "source-1".into(),
+    });
+    f.save_config();
+    f.admin_ok(&[
+        "principal-create",
+        "--tenant",
+        f.scope.tenant(),
+        "--principal",
+        "importer",
+        "--kind",
+        "human",
+    ]);
+    f.admin_ok(&[
+        "access-set",
+        "--tenant",
+        f.scope.tenant(),
+        "--repository",
+        &f.scope.repository().to_string(),
+        "--principal",
+        "importer",
+        "--permission",
+        "repository.write",
+        "--permission",
+        "workspace.write",
+        "--permission",
+        "read",
+    ]);
+    let agent = f.credential();
+    f.credential_path = f.dir.path().join("importer.json");
+    f.admin_ok(&[
+        "token-issue",
+        "--tenant",
+        f.scope.tenant(),
+        "--repository",
+        &f.scope.repository().to_string(),
+        "--principal",
+        "importer",
+        "--permission",
+        "repository.write",
+        "--permission",
+        "workspace.write",
+        "--permission",
+        "read",
+        "--output",
+        f.credential_path.to_str().unwrap(),
+    ]);
+    let upload = Uuid::new_v4().to_string();
+    let mut server = f.start().await;
+    let begin = [
+        "source-begin",
+        "--key",
+        "source-one",
+        "--authority",
+        "standalone",
+        "--epoch",
+        "1",
+        "--upload",
+        &upload,
+    ];
+    assert!(f.cli(&begin).status.success());
+    let blob = Object::Blob(b"source bytes\0\xff".to_vec());
+    let dir = Object::Directory(
+        Directory::new(vec![treeharbor_core::Entry {
+            name: treeharbor_core::Name::new(b"main.rs".to_vec()).unwrap(),
+            value: treeharbor_core::EntryRef {
+                mode: treeharbor_core::EntryMode::File,
+                target: blob.id().unwrap(),
+            },
+        }])
+        .unwrap(),
+    );
+    let snapshot = Object::Snapshot {
+        root: dir.id().unwrap(),
+    };
+    let changes = Object::ChangeOperations(Changes::new(vec![]).unwrap());
+    let commit = Object::NativeCommit(Commit {
+        parents: vec![],
+        snapshot: snapshot.id().unwrap(),
+        changes: changes.id().unwrap(),
+        author_name: "Importer".into(),
+        author_email: "import@example.invalid".into(),
+        timestamp_seconds: 0,
+        timezone_minutes: 0,
+        message: "native import".into(),
+    });
+    let credential = f.credential();
+    let id: Uuid = upload.parse().unwrap();
+    // Known global digests and missing child objects do not confer membership.
+    let reply = client::send_object(
+        &f.config.socket,
+        &credential,
+        id,
+        dir.id().unwrap(),
+        dir.encode().unwrap(),
+        Duration::from_secs(10),
+    )
+    .await
+    .unwrap();
+    assert_eq!(reply.status.as_u16(), 409);
+    assert_eq!(reply.body["error"]["code"], "upload_membership");
+    let reply = client::send_object(
+        &f.config.socket,
+        &agent,
+        id,
+        blob.id().unwrap(),
+        blob.encode().unwrap(),
+        Duration::from_secs(10),
+    )
+    .await
+    .unwrap();
+    assert_eq!(reply.status.as_u16(), 403);
+    let reply = client::send_object(
+        &f.config.socket,
+        &credential,
+        id,
+        dir.id().unwrap(),
+        blob.encode().unwrap(),
+        Duration::from_secs(10),
+    )
+    .await
+    .unwrap();
+    assert_eq!(reply.status.as_u16(), 400);
+    let objects = [blob, dir, snapshot, changes, commit];
+    for (index, object) in objects.iter().enumerate() {
+        let path = f.dir.path().join(format!("object-{index}"));
+        files::write_private(&path, &object.encode().unwrap()).unwrap();
+        let args = [
+            "source-put",
+            "--upload",
+            &upload,
+            "--object",
+            &object.id().unwrap().to_string(),
+            "--file",
+            path.to_str().unwrap(),
+        ];
+        let output = f.cli(&args);
+        assert!(
+            output.status.success(),
+            "{} {}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        if index == 0 {
+            server.0.kill().unwrap();
+            server.0.wait().unwrap();
+            drop(server);
+            server = f.start().await;
+            assert!(f.cli(&begin).status.success());
+            assert!(f.cli(&args).status.success());
+        }
+    }
+    let root = objects.last().unwrap().id().unwrap();
+    let finish = [
+        "source-finish",
+        "--key",
+        "finish-source-one",
+        "--authority",
+        "standalone",
+        "--epoch",
+        "1",
+        "--upload",
+        &upload,
+        "--commit",
+        &root.to_string(),
+    ];
+    let result = f.cli(&finish);
+    assert!(result.status.success());
+    server.0.kill().unwrap();
+    server.0.wait().unwrap();
+    drop(server);
+    server = f.start().await;
+    assert_eq!(f.cli(&finish).stdout, result.stdout);
+    let status = f.cli(&["source-status", "--upload", &upload]);
+    assert!(status.status.success());
+    let status: Value = serde_json::from_slice(&status.stdout).unwrap();
+    assert_eq!(status["result"]["reserved_objects"], 5);
+    assert_eq!(status["result"]["state"], "completed");
+    assert!(
+        f.cli(&[
+            "profile-put",
+            "--key",
+            "all",
+            "--authority",
+            "standalone",
+            "--epoch",
+            "1",
+            "--full"
+        ])
+        .status
+        .success()
+    );
+    let workspace = Uuid::new_v4();
+    let response = f.cli(&[
+        "workspace-create",
+        "--key",
+        "from-source",
+        "--authority",
+        "standalone",
+        "--epoch",
+        "1",
+        "--workspace",
+        &workspace.to_string(),
+        "--base",
+        &RevisionRef::Native(root).to_string(),
+        "--profile-digest",
+        &treeharbor_core::SourceProfile::full().id().to_string(),
+    ]);
+    assert!(
+        response.status.success(),
+        "{}",
+        String::from_utf8_lossy(&response.stdout)
+    );
+    let protected: i64 = f
+        .sql
+        .query_one("SELECT count(*) FROM th_object_pins", &[])
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(protected, 2);
+    drop(server);
+    f.cleanup().await;
+}
+
 struct Process(Child);
 impl Drop for Process {
     fn drop(&mut self) {
@@ -56,6 +288,7 @@ impl Fixture {
         fs::set_permissions(dir.path(), fs::Permissions::from_mode(0o700)).unwrap();
         let schema = format!("th_test_{}", Uuid::new_v4().simple());
         let config = Config {
+            storage: None,
             database_url,
             schema,
             socket: dir.path().join("service.sock"),
@@ -146,7 +379,7 @@ impl Fixture {
             fs::remove_file(&self.config_path).unwrap();
         }
         let c = &self.config;
-        files::write_private(&self.config_path,json!({"database_url":c.database_url,"schema":c.schema,"socket":c.socket,"pool_size":c.pool_size,"max_connections":c.max_connections,"request_timeout_ms":c.request_timeout_ms}).to_string().as_bytes()).unwrap();
+        files::write_private(&self.config_path,json!({"database_url":c.database_url,"schema":c.schema,"socket":c.socket,"pool_size":c.pool_size,"max_connections":c.max_connections,"request_timeout_ms":c.request_timeout_ms,"storage":c.storage.as_ref().map(|s|json!({"root":s.root,"backend":s.backend}))}).to_string().as_bytes()).unwrap();
     }
     fn admin(&self, args: &[&str]) -> Output {
         Command::new(env!("CARGO_BIN_EXE_treeharbor"))

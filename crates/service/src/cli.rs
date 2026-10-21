@@ -201,6 +201,46 @@ struct Mutation {
 #[derive(Subcommand)]
 enum Agent {
     RepositoryInfo,
+    /// Begin a resumable native source upload; does not publish a branch.
+    SourceBegin {
+        #[command(flatten)]
+        mutation: Mutation,
+        #[arg(long)]
+        upload: Uuid,
+        #[arg(long, default_value_t = 100_000)]
+        max_objects: i64,
+        #[arg(long, default_value_t = 4_294_967_296)]
+        max_bytes: i64,
+        #[arg(long, default_value_t = 3600)]
+        ttl_seconds: i32,
+    },
+    /// Send one canonical object frame, children first.
+    SourcePut {
+        #[arg(long)]
+        upload: Uuid,
+        #[arg(long)]
+        object: String,
+        #[arg(long)]
+        file: PathBuf,
+    },
+    SourceFinish {
+        #[command(flatten)]
+        mutation: Mutation,
+        #[arg(long)]
+        upload: Uuid,
+        #[arg(long)]
+        commit: String,
+    },
+    SourceAbort {
+        #[command(flatten)]
+        mutation: Mutation,
+        #[arg(long)]
+        upload: Uuid,
+    },
+    SourceStatus {
+        #[arg(long)]
+        upload: Uuid,
+    },
     /// Store a full or explicit sparse source-delivery profile.
     ProfilePut {
         #[command(flatten)]
@@ -247,6 +287,29 @@ impl Agent {
     fn json(self) -> Result<Value> {
         Ok(match self {
             Self::RepositoryInfo => json!({"method":"repository_info"}),
+            Self::SourceBegin {
+                mutation,
+                upload,
+                max_objects,
+                max_bytes,
+                ttl_seconds,
+            } => {
+                json!({"method":"source_begin","key":mutation.key,"authority":Authority::from(mutation.authority).as_str(),"epoch":mutation.epoch,"upload":upload.to_string(),"max_objects":max_objects,"max_bytes":max_bytes,"ttl_seconds":ttl_seconds})
+            }
+            Self::SourceFinish {
+                mutation,
+                upload,
+                commit,
+            } => {
+                json!({"method":"source_finish","key":mutation.key,"authority":Authority::from(mutation.authority).as_str(),"epoch":mutation.epoch,"upload":upload.to_string(),"commit":commit})
+            }
+            Self::SourceAbort { mutation, upload } => {
+                json!({"method":"source_abort","key":mutation.key,"authority":Authority::from(mutation.authority).as_str(),"epoch":mutation.epoch,"upload":upload.to_string()})
+            }
+            Self::SourceStatus { upload } => {
+                json!({"method":"source_status","upload":upload.to_string()})
+            }
+            Self::SourcePut { .. } => return Err(Error::Config), // binary path below
             Self::ProfilePut {
                 mutation,
                 full,
@@ -313,6 +376,29 @@ pub async fn run(cli: Cli) -> Result<bool> {
             action,
         } => {
             let credential = Credential::load(&credential_file)?;
+            if let Agent::SourcePut {
+                upload,
+                object,
+                file,
+            } = action
+            {
+                let id: treeharbor_core::ObjectId = object.parse().map_err(|_| Error::Config)?;
+                let bytes = files::read_private(
+                    &file,
+                    treeharbor_core::FRAME_HEADER + treeharbor_core::MAX_PAYLOAD,
+                )?;
+                let reply = client::send_object(
+                    &socket,
+                    &credential,
+                    upload,
+                    id,
+                    bytes,
+                    Duration::from_millis(timeout_ms),
+                )
+                .await?;
+                println!("{}", reply.body);
+                return Ok(reply.status.is_success());
+            }
             let body = credential.request(action.json()?).to_string().into_bytes();
             let reply = client::send(
                 &socket,

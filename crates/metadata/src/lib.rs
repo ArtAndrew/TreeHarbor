@@ -14,12 +14,14 @@ pub mod commands;
 pub mod intake;
 pub mod profiles;
 pub mod reads;
+pub mod uploads;
 const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/001_transactions.sql"),
     include_str!("../migrations/002_object_catalog.sql"),
     include_str!("../migrations/003_change_intake.sql"),
     include_str!("../migrations/004_access_control.sql"),
     include_str!("../migrations/005_source_profiles.sql"),
+    include_str!("../migrations/006_source_uploads.sql"),
 ];
 const MAX_JSON: usize = 1024 * 1024;
 
@@ -65,6 +67,12 @@ pub enum Error {
     Forbidden,
     #[error("secure credential generation failed")]
     CredentialGeneration,
+    #[error("source upload is closed, expired or outside its scope")]
+    UploadState,
+    #[error("source upload exceeds its resource budget")]
+    UploadLimit,
+    #[error("source upload does not contain all referenced objects")]
+    UploadMembership,
 }
 pub type Result<T> = std::result::Result<T, Error>;
 

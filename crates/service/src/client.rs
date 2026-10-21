@@ -62,6 +62,56 @@ pub async fn send(
     if body.len() > MAX_REQUEST_BYTES {
         return Err(Error::Size);
     }
+    send_request(
+        socket,
+        token,
+        "POST",
+        "/v1/commands".into(),
+        "application/json",
+        body,
+        timeout,
+    )
+    .await
+}
+/// Full canonical frame, not an existence probe or a promise to upload later.
+pub async fn send_object(
+    socket: &Path,
+    credential: &Credential,
+    upload: Uuid,
+    id: treeharbor_core::ObjectId,
+    frame: Vec<u8>,
+    timeout: Duration,
+) -> Result<Reply> {
+    if frame.len() > treeharbor_core::MAX_PAYLOAD + treeharbor_core::FRAME_HEADER {
+        return Err(Error::Size);
+    }
+    let path = format!(
+        "/v1/source/{}/{}/uploads/{}/objects/{}",
+        credential.scope.tenant(),
+        credential.scope.repository(),
+        upload,
+        id
+    );
+    send_request(
+        socket,
+        &credential.token,
+        "PUT",
+        path,
+        "application/octet-stream",
+        frame,
+        timeout,
+    )
+    .await
+}
+async fn send_request(
+    socket: &Path,
+    token: &SecretToken,
+    method: &'static str,
+    uri: String,
+    content_type: &'static str,
+    body: Vec<u8>,
+    timeout: Duration,
+) -> Result<Reply> {
     files::private_directory(socket.parent().ok_or(Error::UnsafeFile)?)?;
     let meta = fs::symlink_metadata(socket)?;
     if !meta.file_type().is_socket()
@@ -86,10 +136,10 @@ pub async fn send(
             let _ = connection.await;
         }));
         let mut request = Request::builder()
-            .method("POST")
-            .uri("/v1/commands")
+            .method(method)
+            .uri(uri)
             .header(header::HOST, "treeharbor.local")
-            .header(header::CONTENT_TYPE, "application/json")
+            .header(header::CONTENT_TYPE, content_type)
             .header(header::CONNECTION, "close")
             .body(Full::new(Bytes::from(body)))
             .map_err(|_| Error::Http)?;

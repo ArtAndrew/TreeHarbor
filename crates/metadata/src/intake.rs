@@ -140,21 +140,7 @@ impl Metadata {
             Begin::Replay(value) => return Ok(value),
             Begin::Fresh(tx) => tx,
         };
-        let scope = &ctx.scope;
-        let holder = format!("base:{}", id.hex());
-        tx.pin_kind(&holder, lease, 5).await?;
-        tx.tx.execute("INSERT INTO th_bases (tenant,repository,revision,snapshot,pin_holder) VALUES ($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING",
-            &[&scope.tenant,&scope.repository,&revision,&commit.snapshot.as_bytes().as_slice(),&holder]).await?;
-        let row = tx
-            .tx
-            .query_one(
-                "SELECT snapshot FROM th_bases WHERE tenant=$1 AND repository=$2 AND revision=$3",
-                &[&scope.tenant, &scope.repository, &revision],
-            )
-            .await?;
-        if row.get::<_, Vec<u8>>(0) != commit.snapshot.as_bytes() {
-            return Err(Error::ReceiptMismatch);
-        }
+        tx.register_base(id, commit.snapshot, lease).await?;
         tx.complete(
             json!({"revision":revision,"snapshot":commit.snapshot.to_string()}),
             vec![],
@@ -516,6 +502,33 @@ impl Mutation<'_> {
             result.key().id().as_bytes().to_vec(),
         ];
         self.tx.query("SELECT digest FROM th_objects WHERE tenant=$1 AND digest=ANY($2::bytea[]) ORDER BY digest FOR UPDATE",&[&scope.tenant,&digests]).await?;
+        Ok(())
+    }
+}
+
+impl Mutation<'_> {
+    pub(crate) async fn register_base(
+        &self,
+        id: treeharbor_core::ObjectId,
+        snapshot: treeharbor_core::ObjectId,
+        lease: &ObjectLease,
+    ) -> Result<()> {
+        let revision = RevisionRef::Native(id).to_string();
+        let scope = &self.request.scope;
+        let holder = format!("base:{}", id.hex());
+        self.pin_kind(&holder, lease, 5).await?;
+        self.tx.execute("INSERT INTO th_bases (tenant,repository,revision,snapshot,pin_holder) VALUES ($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING",
+            &[&scope.tenant,&scope.repository,&revision,&snapshot.as_bytes().as_slice(),&holder]).await?;
+        let row = self
+            .tx
+            .query_one(
+                "SELECT snapshot FROM th_bases WHERE tenant=$1 AND repository=$2 AND revision=$3",
+                &[&scope.tenant, &scope.repository, &revision],
+            )
+            .await?;
+        if row.get::<_, Vec<u8>>(0) != snapshot.as_bytes() {
+            return Err(Error::ReceiptMismatch);
+        }
         Ok(())
     }
 }

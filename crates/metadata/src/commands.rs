@@ -6,7 +6,7 @@ use crate::intake::{WorkspaceFormat, WorkspaceSpec};
 use crate::{Authority, Error, Metadata, Scope};
 use serde::Deserialize;
 use serde_json::{Value, json};
-use treeharbor_core::{ProfileId, RepoPath, RevisionRef, SourceProfile};
+use treeharbor_core::{ObjectId, ProfileId, RepoPath, RevisionRef, SourceProfile};
 use uuid::Uuid;
 
 pub const MAX_REQUEST_BYTES: usize = 64 * 1024;
@@ -33,6 +33,11 @@ impl CommandError {
             Self::Metadata(Error::ExecutionState) => "execution_state_changed",
             Self::Metadata(Error::IdempotencyConflict) => "idempotency_conflict",
             Self::Metadata(Error::VersionConflict) => "version_conflict",
+            Self::Metadata(Error::UploadState) => "upload_state_changed",
+            Self::Metadata(Error::UploadLimit) => "upload_limit",
+            Self::Metadata(Error::UploadMembership) => "upload_membership",
+            Self::Metadata(Error::ObjectBusy) => "object_busy",
+            Self::Metadata(Error::StaleLease) => "lease_expired",
             Self::Metadata(Error::Invalid(_)) => "invalid_request",
             Self::Metadata(_) => "internal_error",
         }
@@ -56,6 +61,31 @@ struct Envelope {
 #[serde(tag = "method", rename_all = "snake_case", deny_unknown_fields)]
 enum Command {
     RepositoryInfo {},
+    SourceBegin {
+        key: String,
+        authority: Mode,
+        epoch: i64,
+        upload: String,
+        max_objects: i64,
+        max_bytes: i64,
+        ttl_seconds: i32,
+    },
+    SourceFinish {
+        key: String,
+        authority: Mode,
+        epoch: i64,
+        upload: String,
+        commit: String,
+    },
+    SourceAbort {
+        key: String,
+        authority: Mode,
+        epoch: i64,
+        upload: String,
+    },
+    SourceStatus {
+        upload: String,
+    },
     SourceProfilePut {
         key: String,
         authority: Mode,
@@ -141,6 +171,10 @@ impl From<Mode> for Authority {
 impl Command {
     fn permission(&self) -> Permission {
         match self {
+            Self::SourceBegin { .. }
+            | Self::SourceFinish { .. }
+            | Self::SourceAbort { .. }
+            | Self::SourceStatus { .. } => Permission::RepositoryWrite,
             Self::WorkspaceCreate { .. }
             | Self::WorkspaceDelete { .. }
             | Self::SourceProfilePut { .. } => Permission::WorkspaceWrite,
@@ -175,6 +209,16 @@ impl Metadata {
         credential: &SecretToken,
         bytes: &[u8],
     ) -> Result<Value, CommandError> {
+        self.execute_command_with_backend(credential, bytes, None)
+            .await
+    }
+    /// Backend label comes only from verified deployment configuration.
+    pub async fn execute_command_with_backend(
+        &mut self,
+        credential: &SecretToken,
+        bytes: &[u8],
+        backend: Option<&str>,
+    ) -> Result<Value, CommandError> {
         let request = decode(bytes)?;
         let scope = Scope::new(request.tenant, uuid(&request.repository)?)?;
         let auth = self
@@ -182,6 +226,57 @@ impl Metadata {
             .await?;
         let result = match request.command {
             Command::RepositoryInfo {} => self.authorized_repository_info(&auth).await?,
+            Command::SourceBegin {
+                key,
+                authority,
+                epoch,
+                upload,
+                max_objects,
+                max_bytes,
+                ttl_seconds,
+            } => {
+                self.begin_source_upload(
+                    &auth.context(key, authority.into(), epoch),
+                    backend.ok_or(Error::Invalid("storage not configured"))?,
+                    uuid(&upload)?,
+                    &crate::uploads::UploadLimits {
+                        objects: max_objects,
+                        bytes: max_bytes,
+                        ttl_seconds,
+                    },
+                )
+                .await?
+            }
+            Command::SourceFinish {
+                key,
+                authority,
+                epoch,
+                upload,
+                commit,
+            } => {
+                let id: ObjectId = commit.parse().map_err(|_| CommandError::InvalidRequest)?;
+                self.finish_source_upload(
+                    &auth.context(key, authority.into(), epoch),
+                    uuid(&upload)?,
+                    id,
+                )
+                .await?
+            }
+            Command::SourceAbort {
+                key,
+                authority,
+                epoch,
+                upload,
+            } => {
+                self.abort_source_upload(
+                    &auth.context(key, authority.into(), epoch),
+                    uuid(&upload)?,
+                )
+                .await?
+            }
+            Command::SourceStatus { upload } => {
+                self.source_upload_status(&auth, uuid(&upload)?).await?
+            }
             Command::SourceProfilePut {
                 key,
                 authority,
