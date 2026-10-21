@@ -55,7 +55,7 @@ def main():
         secret = root / "host-secret"
         secret.write_text("test-only-never-mounted")
 
-        def create(mode, *args, slot=0, milliseconds=10000, bad_user=False, privileges=False):
+        def create(mode, *args, slot=0, milliseconds=10000, processes=64, bad_user=False, privileges=False):
             files = mounts[slot] / uuid.uuid4().hex
             files.mkdir(mode=0o700)
             name = "treeharbor-test-" + uuid.uuid4().hex
@@ -76,7 +76,7 @@ def main():
             if not privileges:
                 options.append("--security-opt=no-new-privileges")
             options.extend([image, "--protocol", "1", "--timeout-ms", str(milliseconds),
-                            "--max-processes", "64", "--uid", str(os.getuid()),
+                            "--max-processes", str(processes), "--uid", str(os.getuid()),
                             "--gid", str(os.getgid()), "--", "/probe", mode, *args])
             container = docker(*options).stdout.strip()
             assert len(container) == 64
@@ -151,11 +151,13 @@ def main():
         assert (files / "heartbeat").stat().st_size == count
         print("PASS external cancellation kills namespace writers", flush=True)
 
-        container, files = create("nproc")
-        start(container)
-        finish(container, 0)
-        assert 1 < int((files / "process-count").read_text()) < 64
-        print("PASS guest RLIMIT_NPROC (separate from host cgroup pids)", flush=True)
+        for budget in [4, 16, 64]:
+            container, files = create("nproc", str(budget), processes=budget)
+            start(container)
+            finish(container, 0)
+            total = int((files / "process-count").read_text())
+            assert 2 < total <= budget
+            print(f"PASS guest process budget {budget}: {total} tasks including primary; repeat after reap", flush=True)
 
         container, _ = create("memory", milliseconds=20000)
         start(container)

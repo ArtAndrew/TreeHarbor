@@ -129,11 +129,16 @@ fn supervise(task: Task) -> Result<i32, Box<dyn std::error::Error>> {
             maximum: Some(0),
         },
     )?;
+    // In the pinned gVisor release, a task created as root keeps its original
+    // process counter across setuid. Reserve the primary explicitly, so the
+    // requested bound includes it as well as its descendants. This is also
+    // conservative on kernels that transfer accounting during the UID change.
+    let descendant_budget = task.processes - 1;
     setrlimit(
         Resource::Nproc,
         Rlimit {
-            current: Some(task.processes),
-            maximum: Some(task.processes),
+            current: Some(descendant_budget),
+            maximum: Some(descendant_budget),
         },
     )?;
     let started = Instant::now();

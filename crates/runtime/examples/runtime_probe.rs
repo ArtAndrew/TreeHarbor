@@ -102,27 +102,46 @@ fn main() {
             }
         }
         "nproc" => {
-            let mut children = Vec::new();
-            let mut limited = false;
-            for _ in 0..128 {
-                match Command::new("/probe").arg("idle").spawn() {
-                    Ok(child) => children.push(child),
-                    Err(_) => {
-                        limited = true;
-                        break;
+            let requested: usize = args[2].parse().unwrap();
+            // The task must not be able to raise either inherited limit.
+            let limit = rustix::process::getrlimit(rustix::process::Resource::Nproc);
+            let raised = limit.maximum.unwrap() + 1;
+            assert_eq!(
+                rustix::process::setrlimit(
+                    rustix::process::Resource::Nproc,
+                    rustix::process::Rlimit {
+                        current: Some(raised),
+                        maximum: Some(raised),
+                    },
+                ),
+                Err(rustix::io::Errno::PERM)
+            );
+            // Reap and repeat: accounting must recover after children exit.
+            for _ in 0..2 {
+                let mut children = Vec::new();
+                let mut limited = false;
+                for _ in 0..128 {
+                    match Command::new("/probe").arg("idle").spawn() {
+                        Ok(child) => children.push(child),
+                        Err(error) => {
+                            assert_eq!(error.raw_os_error(), Some(11)); // EAGAIN
+                            limited = true;
+                            break;
+                        }
                     }
                 }
+                let count = children.len();
+                for mut child in children {
+                    assert!(child.try_wait().unwrap().is_none());
+                    child.kill().unwrap();
+                    child.wait().unwrap();
+                }
+                assert!(
+                    limited && count > 1 && count < requested,
+                    "guest children {count}, requested total {requested}"
+                );
+                fs::write("process-count", (count + 1).to_string()).unwrap();
             }
-            let count = children.len();
-            for mut child in children {
-                let _ = child.kill();
-                let _ = child.wait();
-            }
-            assert!(
-                limited && count > 1 && count < 64,
-                "guest process count {count}"
-            );
-            fs::write("process-count", count.to_string()).unwrap();
         }
         "disk" => {
             let mut file = File::create("fill").unwrap();

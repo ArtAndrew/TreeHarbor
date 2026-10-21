@@ -32,7 +32,13 @@ checks do **not** identify or attest gVisor: the external controller must config
 and verify the runtime. Do not use this executable as the host's init process.
 
 Before executing the command, the supervisor disables its own dumpability, disables
-core dumps and sets both the soft and hard `RLIMIT_NPROC`. It launches the command
+core dumps and sets both the soft and hard `RLIMIT_NPROC` to the requested process
+budget minus one, reserving the primary command explicitly. The pinned gVisor
+release retains the primary's original process counter across its UID change;
+without this reservation it permits one extra task. This is conservative for
+kernels that account for the primary under its new UID. The budget covers the
+command and its guest descendants/threads; the distinct supervisor is additional.
+It launches the command
 under the supplied non-root UID/GID, clearing supplementary groups and dropping
 capabilities before entering `/workspace` and executing any task code. Task IDs
 must be 1 through 2,147,483,647, excluding the reserved supervisor ID 65534.
@@ -81,7 +87,7 @@ The harness configures and inspects these external controls:
 | Privileges | Restricted root bootstrap with only SETUID/SETGID; task and supervisor drop to distinct non-root IDs, no-new-privileges |
 | Network | `none`, no published ports |
 | Memory / CPU | 256 MiB, no additional swap, one CPU of quota |
-| Processes | Host cgroup limit 256; separate guest RLIMIT_NPROC 64 |
+| Processes | Host cgroup limit 256; task budget 64 including primary, guest RLIMIT_NPROC 63 |
 | Temporary files | `/tmp` tmpfs 16 MiB, `/dev/shm` 8 MiB |
 | Persistent workspace | Separate 128 MiB ext4 loop filesystem per test slot, nodev/nosuid |
 | Output | Docker local log driver, one 1 MiB log file |
@@ -96,7 +102,8 @@ costs; these settings are not a whole-node disk budget.
 
 The script exercises concurrent same-path edits, filesystem/network/credential
 denial, rejected invalid bootstrap configurations, primary exit propagation, autonomous timeout,
-PID-1 signal/proc attacks, descendants, guest process exhaustion, memory exhaustion,
+PID-1 signal/proc attacks, descendants, guest process exhaustion at budgets 4/16/64
+(including attempts to raise the limit and repeated exhaustion after reaping), memory exhaustion,
 and a full persistent volume without corrupting its neighboring slot. Cleanup
 removes only containers created by that invocation, before unmounting their slots.
 It never calls a global prune. This is an adversarial test fixture, not a sandbox
