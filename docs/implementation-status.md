@@ -14,6 +14,7 @@ describe the complete target. A foundation milestone does not complete either mo
 | Object catalog and retention | Receipt-bound publication, typed edges, atomic persistent pins, read holds, generation-safe retirement/retry; independent reachability model | Automatic GC/reconciliation/dry-run, abandoned-upload cleanup, S3 and full restore |
 | Exact validation predicate | Context binding, stale-target rejection, trusted issuer filtering, revocation and conflicting receipt tests | Authenticated collectors, durable evidence, review and atomic publication checks |
 | API, CLI, workspaces and runtime | Logical workspace/run state and drain fencing implemented; no filesystem/runtime yet | Authenticated coordinator, API/CLI, materialization and secure runtime binding |
+| MCP adapter | Planned in ADR 011; not implemented | Shared-service adapter, scoped tools and real client interoperability tests |
 | Connected | Not implemented | Real GitHub PR/checks/merge queue and credential separation |
 | Standalone S2 | Not implemented | Durable native admission and publication without Git processes |
 | Release and benchmarks | Not released or measured | Clean installation, artifacts, SBOM/provenance, comparison and operating cost |
