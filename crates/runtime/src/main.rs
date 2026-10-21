@@ -56,17 +56,38 @@ impl Task {
 #[cfg(target_os = "linux")]
 fn supervise(task: Task) -> Result<i32, Box<dyn std::error::Error>> {
     use rustix::process::{
-        DumpableBehavior, Resource, Rlimit, WaitOptions, getpid, getuid, set_dumpable_behavior,
-        setrlimit, wait,
+        DumpableBehavior, Resource, Rlimit, WaitOptions, getgid, getpid, getuid,
+        set_dumpable_behavior, setrlimit, wait,
     };
     use std::{process::Command, thread, time::Instant};
 
     // Never run the command on the host, as root, or with privileges which could
     // defeat RLIMIT_NPROC or allow the child to inspect/modify this supervisor.
-    if getpid().as_raw_nonzero().get() != 1 || getuid().is_root() {
+    if getpid().as_raw_nonzero().get() != 1 || getuid().is_root() || getgid().is_root() {
         return Err("requires PID 1 and a non-root user in an external sandbox".into());
     }
     let status = std::fs::read_to_string("/proc/self/status")?;
+    // Include saved and filesystem IDs, not only the real UID. A saved root ID
+    // could otherwise be regained without a setuid executable or new capability.
+    for (key, expected) in [
+        ("Uid:", getuid().to_string()),
+        ("Gid:", getgid().to_string()),
+    ] {
+        let expected = [expected.as_str(); 4];
+        if !status.lines().any(|line| {
+            line.strip_prefix(key)
+                .is_some_and(|value| value.split_whitespace().eq(expected))
+        }) {
+            return Err("requires matching non-root real/effective/saved/filesystem IDs".into());
+        }
+    }
+    let group = getgid().to_string();
+    if !status.lines().any(|line| {
+        line.strip_prefix("Groups:")
+            .is_some_and(|value| value.split_whitespace().all(|value| value == group))
+    }) {
+        return Err("additional groups are not permitted".into());
+    }
     for (key, expected) in [
         ("CapInh:", "0000000000000000"),
         ("CapPrm:", "0000000000000000"),

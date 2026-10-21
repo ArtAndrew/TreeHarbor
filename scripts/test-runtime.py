@@ -68,7 +68,7 @@ def main():
                 "--shm-size=8m", "--tmpfs", "/tmp:rw,noexec,nodev,nosuid,size=16777216,mode=1777",
                 "--mount", f"type=bind,source={files},target=/workspace,bind-propagation=rprivate",
                 "--workdir=/workspace", "--log-driver=local", "--log-opt=max-size=1m",
-                "--log-opt=max-file=1", "--restart=no", "--entrypoint=/init",
+                "--log-opt=max-file=1", "--log-opt=compress=false", "--restart=no", "--entrypoint=/init",
                 "--env", "TH_TEST_SECRET=not-inherited",
                 "--user", "0:0" if root_user else f"{os.getuid()}:{os.getgid()}",
             ]
@@ -134,6 +134,19 @@ def main():
             assert (files / "heartbeat").stat().st_size == count
             assert docker("exec", container, "/probe", "idle", check=False).returncode != 0
         print("PASS deadline without live launcher, init signal/proc attacks, descendant termination", flush=True)
+
+        container, files = create("attack", milliseconds=20000)
+        start(container)
+        until = time.monotonic() + 10
+        while not (files / "heartbeat").exists() and time.monotonic() < until:
+            time.sleep(0.01)
+        assert (files / "heartbeat").exists()
+        docker("kill", "--signal=KILL", container)
+        finish(container, 137)
+        count = (files / "heartbeat").stat().st_size
+        time.sleep(0.2)
+        assert (files / "heartbeat").stat().st_size == count
+        print("PASS external cancellation kills namespace writers", flush=True)
 
         container, files = create("nproc")
         start(container)

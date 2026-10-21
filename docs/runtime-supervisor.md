@@ -23,7 +23,9 @@ The trusted runtime controller supplies these arguments. Timeout is 100 through
 argument list is bounded to 136 arguments and 65,536 native argument bytes. Paths
 and command arguments are passed directly to the program, without a host shell.
 
-The process must be namespace PID 1, run as a non-root real user, have no inherited,
+The process must be namespace PID 1, have matching non-root real/effective/saved/
+filesystem user and group IDs, have no supplementary groups other than its primary
+group, have no inherited,
 permitted, effective, bounding or ambient capabilities, and have
 `no-new-privileges` enabled. It rejects execution if these observations fail. These
 checks do **not** identify or attest gVisor: the external controller must configure

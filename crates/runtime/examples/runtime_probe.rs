@@ -69,7 +69,7 @@ fn main() {
                 .spawn()
                 .unwrap();
             drop(child);
-            while !std::path::Path::new("heartbeat").exists() {
+            while !fs::metadata("heartbeat").is_ok_and(|metadata| metadata.len() > 0) {
                 thread::sleep(Duration::from_millis(10));
             }
             if args[1] == "attack" {
