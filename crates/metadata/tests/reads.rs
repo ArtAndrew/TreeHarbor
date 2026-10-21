@@ -531,3 +531,35 @@ async fn shared_root_protection_allows_another_reader_to_open_its_batch() {
     tx.rollback().await.unwrap();
     cleanup(&schema).await;
 }
+
+#[tokio::test]
+#[ignore = "requires disposable PostgreSQL; runs in database CI"]
+async fn prefix_batches_advance_exactly_within_the_encoded_byte_budget() {
+    let (schema, scope, mut db) = setup().await;
+    let root = tempfile::tempdir().unwrap();
+    let store = depot(&root, scope.tenant(), "local-1");
+    tree(&mut db, &scope, &store).await;
+    let session = db.open_read_session(&scope, "source", 60).await.unwrap();
+    let nodes = files(&mut db, &session, &store).await;
+    assert!(matches!(
+        db.open_read_batch(&session, &store, &nodes, 40).await,
+        Err(MetaError::ReadLimit)
+    ));
+    let first = db
+        .open_read_prefix(&session, &store, &nodes, 40)
+        .await
+        .unwrap();
+    assert_eq!(first.len(), 1);
+    let read = first.read().unwrap();
+    assert_eq!(read[0].id(), nodes[0].id());
+    assert!(read[0].encoded_length() <= 40);
+    let second = db
+        .open_read_prefix(&session, &store, &nodes[1..], 40)
+        .await
+        .unwrap()
+        .read()
+        .unwrap();
+    assert_eq!(second[0].id(), nodes[1].id());
+    db.close_read_session(session).await.unwrap();
+    cleanup(&schema).await;
+}
