@@ -433,6 +433,38 @@ impl Metadata {
 }
 
 impl Mutation<'_> {
+    pub(crate) async fn pin_kind(
+        &self,
+        holder: &str,
+        lease: &ObjectLease,
+        kind: i16,
+    ) -> Result<()> {
+        live_lease(&self.tx, lease).await?;
+        let actual: i16 = object_row(&self.tx, lease.key.tenant(), &bytes(lease.key.id))
+            .await?
+            .get(2);
+        if actual != kind {
+            return Err(Error::ObjectNotLive);
+        }
+        self.pin_object(holder, lease).await
+    }
+
+    /// Copy an existing repository root while the repository and object are
+    /// locked. The source pin, not an unprotected locator, grants retention.
+    pub(crate) async fn copy_root_pin(&self, source: &str, target: &str) -> Result<()> {
+        identifier(target, 128)?;
+        let scope = &self.request.scope;
+        let row = self.tx.query_opt("SELECT digest,generation FROM th_object_pins WHERE tenant=$1 AND repository=$2 AND holder=$3", &[&scope.tenant,&scope.repository,&source]).await?.ok_or(Error::NotFound)?;
+        let digest: Vec<u8> = row.get(0);
+        let generation: i64 = row.get(1);
+        let object = object_row(&self.tx, &scope.tenant, &digest).await?;
+        if object.get::<_, i64>(0) != generation || object.get::<_, String>(4) != "live" {
+            return Err(Error::ObjectNotLive);
+        }
+        self.tx.execute("INSERT INTO th_object_pins (tenant,repository,holder,digest,generation) VALUES ($1,$2,$3,$4,$5)", &[&scope.tenant,&scope.repository,&target,&digest,&generation]).await?;
+        Ok(())
+    }
+
     /// Atomic with the acknowledged service effect and operation receipt.
     /// Persistent workspace/branch/backup pins have no automatic TTL.
     pub async fn pin_object(&self, holder: &str, lease: &ObjectLease) -> Result<()> {

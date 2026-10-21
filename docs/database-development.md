@@ -25,10 +25,16 @@ The database layer currently provides repository fencing, idempotent receipts,
 leased outbox primitives, an object catalog, persistent root pins and manual
 generation-safe retirement. Catalog tests include real files, a reference
 reachability model and concurrent upload/collection. Migrations verify the
-published checksum chain; the suite tests upgrading schema v1 to v2.
+published checksum chain; the suite tests upgrading schema v1 and a populated v2 to v3.
 
-ChangeSet publication, native refs/admission, API authorization and automatic
-GC/reconciliation are still unimplemented. Restore must stop/fence existing
+Native ChangeSet intake commits exact versions, execution lineage, persistent
+roots and replay receipts in one transaction. A subprocess test kills the worker
+after acknowledgment and verifies the same result on retry. Logical workspace
+states do not prove that files or an isolated runtime exist: trusted coordinator
+callbacks must supply that evidence in the later runtime integration.
+
+Native refs/admission, API authorization, filesystem/runtime integration and
+automatic GC/reconciliation are still unimplemented. Restore must stop/fence existing
 workers before replacing metadata or objects. An outbox
 worker must use the repository's current authority/epoch when executing its
 effect, and must reconcile external effects after a crash. A valid delivery lease

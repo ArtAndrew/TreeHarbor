@@ -366,3 +366,36 @@ fn every_object_kind_round_trips_with_binary_names_and_content() {
         assert_eq!(Object::decode(&object.encode().unwrap()).unwrap(), object);
     }
 }
+
+#[test]
+fn prepared_change_binds_base_operations_and_computed_result() {
+    let store = Memory::default();
+    let base = store
+        .put(&Object::Snapshot {
+            root: empty(&store),
+        })
+        .unwrap();
+    let value = entry(&store, b"new file");
+    let changes = Changes::new(vec![put(path("src/file"), None, value)]).unwrap();
+    let applied = prepare_change(&store, base, &changes).unwrap();
+    assert_eq!(applied.base_snapshot(), base);
+    assert_eq!(
+        store.get(applied.operations()).unwrap(),
+        Object::ChangeOperations(changes.clone())
+    );
+    let Object::Snapshot { root } = store.get(applied.result_snapshot()).unwrap() else {
+        panic!()
+    };
+    assert_eq!(
+        lookup(&store, root, &path("src/file")).unwrap(),
+        Some(value)
+    );
+    assert!(matches!(
+        prepare_change(&store, applied.result_snapshot(), &changes),
+        Err(Error::PredicateMismatch)
+    ));
+    assert!(matches!(
+        prepare_change(&store, value.target, &changes),
+        Err(Error::WrongKind)
+    ));
+}
