@@ -22,7 +22,8 @@ gates. A foundation milestone does not complete either mode.
 | Native directory import | Explicit selection, descriptor-relative capture, durable pack/journal v1, independent vector, actual CLI-to-server partial-upload recovery and completed replay with Git absent from PATH | Git history import, incremental reuse, automatic spool cleanup and runtime-proven snapshots |
 | Source delivery profiles | Canonical full/sparse format with independent vectors, immutable scoped definitions, workspace foreign-key binding, v4 upgrade, authenticated CLI/HTTP and exact node use | Profile retention and generation-aware expansion |
 | Workspaces and runtime | Logical workspace/run state, drain fencing and separate filesystem preparation implemented; node identity checks | Real node/runtime observation, sandbox binding and lifecycle recovery |
-| Runtime task supervisor | Linux namespace init, privilege guards, environment clearing, guest process limit, child reaping and deadline; real gVisor CI harness | Production controller, durable node binding, volume ownership, reconciliation, trusted results and complete lifecycle |
+| Runtime task supervisor | Linux namespace init, privilege guards, environment clearing, guest process limit, child reaping and deadline; real gVisor CI harness | Durable node binding, trusted results and complete lifecycle |
+| Local runtime controller | Versioned immutable profiles, restricted Engine API, bounded ext4 identity, exclusive durable volume assignment and create/start/remove journal; real-runtime fault harness | Service-managed AgentRun/epoch binding, provisioning, host/engine replacement recovery and cleanup integration |
 | Workspace preparation reservations | Operator-registered node storage, scoped job claims, immutable source/slot/attempt identity, renewal/reclaim, exact file-ready observation and drain retention; real PostgreSQL race/upgrade tests | Separate runtime attempts, actual drain/removal and resource release |
 | Local preparation node | Private physical root identity/OS lock, durable placement intent, exact no-replace publication, independent concurrent slots, current authorization and file-ready acknowledgment; actual process-kill recovery and import-to-files CLI tests | Scheduler/daemon, runtime binding, disk quotas, remote workers, fenced volume migration and safe published-tree cleanup |
 | MCP adapter | Planned; not implemented | Shared-service adapter, scoped tools and real client interoperability tests |
@@ -36,7 +37,7 @@ macOS arm64, Rust 1.99.1, 2026-10-21:
 
 ```text
 cargo test --workspace --locked --offline
-70 tests passed without external services: core 15, local storage 8, native history 3, metadata input/auth/protocol 3, validation 9, materializer 14, node identity/format/IO lifetime 4, service configuration/files/CLI/pack/read transport 12, runtime argument/host guards 2.
+78 tests passed without external services: core 15, local storage 8, native history 3, metadata input/auth/protocol 3, validation 9, materializer 14, node identity/format/IO lifetime 4, service configuration/files/CLI/pack/read transport 12, runtime argument/host guards and controller profile/journal/mount contracts 10.
 91 PostgreSQL integration tests passed explicitly against local PostgreSQL 18.6: transactions 7, object catalog 12, intake 9, protected reads 9, materializer 10, access/commands/source sessions 10, source profiles/upgrade 2, source uploads/upgrade 7, preparation ownership/upgrade 8, node preparation/recovery 7, service process/transport 10.
 The combined run uses cargo test --workspace --locked --offline -- --include-ignored with both test database URLs set.
 cargo clippy --workspace --all-targets --locked --offline -- -D warnings
@@ -56,6 +57,15 @@ which exits before completion, guest PID limits, memory exhaustion and a dedicat
 persistent disk capacity. This is not yet a service-managed workspace or a proof
 of restart/DB reconciliation. No READY or Validation receipt is produced by the
 supervisor tests.
+
+The [local runtime controller](runtime-controller.md) now has a separate real-engine
+fault harness in the same required job. It delays actual Engine traffic and kills
+the Rust controller around create/start/remove, checks independent task volumes,
+retains uncertain starts and refuses configuration drift. Local tests verify its
+canonical profile/intent vectors, journal exclusion and invalid recovery records.
+Linux runtime evidence comes from the required CI job, not macOS tests. This controller is not
+yet wired into authoritative AgentRun records, node leases, source sealing or
+workspace deletion; it cannot grant repository admission or trusted Validation.
 
 The real runtime run above passed isolation, rejected invalid bootstrap settings,
 primary exit and descendant teardown, PID-1 signal/proc attacks, timeout after the

@@ -2,7 +2,8 @@
 
 `treeharbor-runtime-init` supervises one command **inside an existing Linux
 sandbox**. It does not create a sandbox, authorize a workspace, allocate a volume,
-or report trusted validation results. The service does not yet launch agents.
+or report trusted validation results. The experimental [local controller](runtime-controller.md)
+supplies durable execution intents and an Engine adapter; the service does not yet launch agents.
 
 The supervisor is built as a static `x86_64-unknown-linux-musl` executable for the
 runtime tests. The trusted operator must keep this binary and its image immutable;
@@ -62,8 +63,9 @@ namespace, including descendants in other process groups. There is no dependency
 on a live client connection or a polling worker. This is a cancellation mechanism,
 not a hard real-time guarantee during host starvation, suspension or stalled IO.
 The controller must still reconcile the **actual stopped runtime** before sealing
-or removing a workspace. Restarting a container restarts the deadline; the future
-controller must fence restarts against the persisted attempt and workspace state.
+or removing a workspace. Restarting a container restarts the deadline; the local
+controller never reissues an uncertain start. Authoritative workspace/AgentRun
+fencing remains separate work.
 
 Exit status is the primary command's status, or 128 plus its terminating signal.
 The supervisor uses 124 for timeout and 125 for its own errors. A command can also
@@ -96,7 +98,9 @@ The harness configures and inspects these external controls:
 The dedicated filesystem supplies the persistent capacity bound. Docker's RAM
 limit and root-layer storage options do not bound an arbitrary writable host bind
 directory. The test filesystem persists after a task exits; mounting/provisioning
-production workspace slots and recovering their ownership are **not implemented**.
+production workspace slots are **not automated**. The local controller verifies
+preprovisioned mounts and persists exclusive assignments; service-managed lifecycle
+and host-replacement recovery are not implemented.
 Image storage, metadata, supervisor overhead, logs and cleanup are additional host
 costs; these settings are not a whole-node disk budget.
 
@@ -132,8 +136,8 @@ explains why guest processes and host cgroup processes are different. Its
 complete multi-file distribution. References checked 2026-10-21; behavior still
 requires the actual supported runtime tests.
 
-Remaining release gates include a production controller/adapter, immutable image
-policy, durable node/attempt identity, job/epoch fencing, writer-stop observations,
+Remaining release gates include wiring the local controller into AgentRuns, immutable image
+registration, durable node/attempt binding, job/epoch fencing, writer-stop observations,
 safe cancellation/drain, disk-volume ownership and cleanup, restart reconciliation,
 source materializer binding, and trusted validation collection. The supervisor
 alone satisfies none of these end-to-end workspace lifecycle gates.
