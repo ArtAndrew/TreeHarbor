@@ -21,9 +21,15 @@ tests. The separate **PostgreSQL contracts** CI job runs them explicitly and
 must be required for merge. A missing database is a test failure there, not a
 silent fallback to an in-memory store.
 
-The database layer currently provides repository fencing, idempotent receipts
-and leased outbox primitives. Object reachability/catalog, ChangeSet publication,
-native refs/admission and API authorization are still unimplemented. An outbox
+The database layer currently provides repository fencing, idempotent receipts,
+leased outbox primitives, an object catalog, persistent root pins and manual
+generation-safe retirement. Catalog tests include real files, a reference
+reachability model and concurrent upload/collection. Migrations verify the
+published checksum chain; the suite tests upgrading schema v1 to v2.
+
+ChangeSet publication, native refs/admission, API authorization and automatic
+GC/reconciliation are still unimplemented. Restore must stop/fence existing
+workers before replacing metadata or objects. An outbox
 worker must use the repository's current authority/epoch when executing its
 effect, and must reconcile external effects after a crash. A valid delivery lease
 alone is not permission to modify repository state or to publish to GitHub.

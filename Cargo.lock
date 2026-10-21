@@ -707,9 +707,12 @@ version = "0.1.0-dev"
 dependencies = [
  "serde_json",
  "sha2",
+ "tempfile",
  "thiserror",
  "tokio",
  "tokio-postgres",
+ "treeharbor-core",
+ "treeharbor-storage",
  "uuid",
 ]
 

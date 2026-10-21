@@ -8,6 +8,9 @@ use std::{
 };
 use treeharbor_core::{Error, FRAME_HEADER, MAX_PAYLOAD, Object, ObjectId, ObjectStore, Result};
 
+mod managed;
+pub use managed::{DurableObject, ManagedStore, PreparedObject};
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TenantId(String);
 impl TenantId {
@@ -100,26 +103,34 @@ impl ObjectStore for LocalStore {
     fn put(&self, object: &Object) -> Result<ObjectId> {
         let bytes = object.encode()?;
         let id = ObjectId::hash_frame(&bytes);
+        self.write_verified_frame(id, &bytes)?;
+        Ok(id)
+    }
+}
+
+impl LocalStore {
+    // Only callers that have canonicalized/hashed the bytes may use this path.
+    fn write_verified_frame(&self, id: ObjectId, bytes: &[u8]) -> Result<()> {
         let path = self.path(id);
         let parent = path
             .parent()
             .ok_or(Error::Storage("object parent missing".into()))?;
         ensure_private_dir(parent)?;
         let mut tmp = tempfile::NamedTempFile::new_in(&self.staging).map_err(io_error)?;
-        tmp.write_all(&bytes).map_err(io_error)?;
+        tmp.write_all(bytes).map_err(io_error)?;
         tmp.as_file().sync_all().map_err(io_error)?;
         match tmp.persist_noclobber(&path) {
             Ok(file) => file.sync_all().map_err(io_error)?,
             Err(error) if error.error.kind() == std::io::ErrorKind::AlreadyExists => {
                 // Never repair corruption by overwriting an immutable address.
-                if self.get(id)? != *object {
+                if self.get(id)?.encode()? != bytes {
                     return Err(Error::InvalidObject("existing object differs"));
                 }
             }
             Err(error) => return Err(io_error(error.error)),
         }
         sync_directory(parent)?;
-        Ok(id)
+        Ok(())
     }
 }
 
