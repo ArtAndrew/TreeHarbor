@@ -1,0 +1,16 @@
+[package]
+name = "treeharbor-validation"
+description = "Exact validation-context binding and fail-closed evidence evaluation"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+treeharbor-core.workspace = true
+sha2.workspace = true
+
+[lints]
+workspace = true

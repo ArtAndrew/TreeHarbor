@@ -9,7 +9,7 @@ in **Standalone** mode. Both share one Rust engine.
 
 > **Development snapshot — not ready for production.** The current code contains
 > the immutable object engine, local object storage, native history queries and
-> PostgreSQL transaction/outbox primitives.
+> PostgreSQL transaction/outbox primitives and exact validation predicates.
 > Neither end-to-end mode is released. There is no installable server or CLI yet.
 > See [implementation status](docs/implementation-status.md) for evidence and gaps.
 
