@@ -7,7 +7,7 @@ point this suite at a production database. Failed tests can leave test schemas.
 
 ```sh
 export TH_TEST_DATABASE_URL='host=127.0.0.1 user=treeharbor_test dbname=treeharbor_test'
-cargo test -p treeharbor-metadata -p treeharbor-materializer --locked -- --ignored
+cargo test -p treeharbor-metadata -p treeharbor-materializer -p treeharbor-node --locked -- --ignored
 ```
 
 Use a private Unix socket or an isolated development database with disposable
@@ -44,6 +44,12 @@ snapshots and tests sparse expansion, preserved local edits/deletes, filesystem
 name differences, symlink confinement and cancellation. It does not start a runtime
 or update workspace READY state.
 
+The [local node suite](local-node.md) separately binds those materialized files to
+durable preparation ownership and acknowledges file readiness with no runtime.
+It kills its own worker subprocesses at publication/acknowledgment boundaries and
+tests current authorization, recovery, concurrent workspaces, cancellation and
+real lease renewal. It does not execute untrusted tasks or prove sandbox readiness.
+
 Access tests cover scoped credentials, transactional revocation/expiry, exact
 receipt replay, owner checks and node/agent identity separation. Bootstrap admin
 methods are trusted in-process operations, not public agent commands. The
@@ -64,7 +70,7 @@ schema drift, pool reconnection and graceful shutdown. CI mounts the disposable
 PostgreSQL service's socket directory into the runner; production TCP connections
 are rejected by this development connector, not silently downgraded to plaintext.
 
-Native refs/admission, remote service transport, node/runtime integration and
+Native refs/admission, remote service transport, runtime binding/lifecycle and
 automatic GC/reconciliation are still unimplemented. Restore must stop/fence existing
 workers before replacing metadata or objects. An outbox
 worker must use the repository's current authority/epoch when executing its
