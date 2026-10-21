@@ -13,7 +13,7 @@ name = "treeharbor-runtime-init"
 path = "src/main.rs"
 
 [dependencies]
-rustix.workspace = true
+rustix = { workspace = true, features = ["thread"] }
 
 [lints]
 workspace = true

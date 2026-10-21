@@ -15,24 +15,37 @@ macOS builds reject execution; they are not an alternative isolation backend.
 The argument order is fixed:
 
 ```text
-/init --protocol 1 --timeout-ms 10000 --max-processes 64 -- /absolute/program arg...
+/init --protocol 1 --timeout-ms 10000 --max-processes 64 --uid 1001 --gid 1001 -- /absolute/program arg...
 ```
 
 The trusted runtime controller supplies these arguments. Timeout is 100 through
 86,400,000 milliseconds, and the process limit is 4 through 4,096. The complete
-argument list is bounded to 136 arguments and 65,536 native argument bytes. Paths
+argument list is bounded to 140 arguments and 65,536 native argument bytes. Paths
 and command arguments are passed directly to the program, without a host shell.
 
-The process must be namespace PID 1, have matching non-root real/effective/saved/
-filesystem user and group IDs, have no supplementary groups other than its primary
-group, have no inherited,
-permitted, effective, bounding or ambient capabilities, and have
-`no-new-privileges` enabled. It rejects execution if these observations fail. These
+The trusted bootstrap must be namespace PID 1, initially UID/GID 0 with matching
+real/effective/saved/filesystem IDs, no extra groups, exactly SETUID and SETGID in
+permitted/effective/bounding capabilities, empty inherited/ambient sets, default
+securebits, one thread and `no-new-privileges` enabled. It rejects execution if
+these observations fail. These
 checks do **not** identify or attest gVisor: the external controller must configure
 and verify the runtime. Do not use this executable as the host's init process.
 
 Before executing the command, the supervisor disables its own dumpability, disables
-core dumps and sets both the soft and hard `RLIMIT_NPROC`. It starts the command in
+core dumps and sets both the soft and hard `RLIMIT_NPROC`. It launches the command
+under the supplied non-root UID/GID, clearing supplementary groups and dropping
+capabilities before entering `/workspace` and executing any task code. Task IDs
+must be 1 through 2,147,483,647, excluding the reserved supervisor ID 65534.
+The single-threaded supervisor then irrevocably drops its own UID/GID to 65534,
+clears groups, disables dumpability again and verifies empty permitted/effective/
+ambient capabilities. Only the inert bounding SETUID/SETGID bits remain; empty
+inheritable sets and no-new-privileges prevent regaining them via execution.
+
+**Distinct UIDs are required:** the pinned gVisor test allowed a same-UID task to
+kill its container PID 1. Do not rely on PID-1 signal rules alone to protect the
+deadline. The signal test now requires EPERM for STOP, KILL and TERM from the task.
+
+It starts the command in
 `/workspace` with only `PATH=/usr/local/bin:/usr/bin:/bin`, `HOME=/workspace` and
 `TMPDIR=/tmp`. It does not pass through image environment variables or service
 credentials. A future explicit environment/secret profile is separate work.
@@ -65,7 +78,7 @@ The harness configures and inspects these external controls:
 |---|---|
 | Kernel boundary | Docker explicitly selects `runsc`; no fallback to the default runtime |
 | Files | Read-only root image, one writable workspace bind, no engine socket or source-store mount |
-| Privileges | Non-root UID/GID, all capabilities dropped, no-new-privileges |
+| Privileges | Restricted root bootstrap with only SETUID/SETGID; task and supervisor drop to distinct non-root IDs, no-new-privileges |
 | Network | `none`, no published ports |
 | Memory / CPU | 256 MiB, no additional swap, one CPU of quota |
 | Processes | Host cgroup limit 256; separate guest RLIMIT_NPROC 64 |
@@ -82,7 +95,7 @@ Image storage, metadata, supervisor overhead, logs and cleanup are additional ho
 costs; these settings are not a whole-node disk budget.
 
 The script exercises concurrent same-path edits, filesystem/network/credential
-denial, rejected privileged launches, primary exit propagation, autonomous timeout,
+denial, rejected invalid bootstrap configurations, primary exit propagation, autonomous timeout,
 PID-1 signal/proc attacks, descendants, guest process exhaustion, memory exhaustion,
 and a full persistent volume without corrupting its neighboring slot. Cleanup
 removes only containers created by that invocation, before unmounting their slots.

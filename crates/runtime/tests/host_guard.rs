@@ -10,6 +10,10 @@ fn refuses_to_execute_a_task_outside_namespace_init() {
             "1000",
             "--max-processes",
             "64",
+            "--uid",
+            "1001",
+            "--gid",
+            "1001",
             "--",
             "/this-command-must-never-run",
         ])

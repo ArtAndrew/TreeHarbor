@@ -4,6 +4,8 @@ use std::{ffi::OsString, path::Path, time::Duration};
 struct Task {
     timeout: Duration,
     processes: u64,
+    uid: u32,
+    gid: u32,
     command: Vec<OsString>,
 }
 
@@ -15,18 +17,20 @@ impl Task {
         let mut bytes = 0_usize;
         for arg in args {
             bytes = bytes.checked_add(arg.len()).ok_or("argument limit")?;
-            if bounded.len() >= 136 || bytes > 65_536 {
+            if bounded.len() >= 140 || bytes > 65_536 {
                 return Err("argument limit");
             }
             bounded.push(arg);
         }
         let args = bounded;
-        if args.len() < 8
+        if args.len() < 12
             || args[0] != "--protocol"
             || args[1] != "1"
             || args[2] != "--timeout-ms"
             || args[4] != "--max-processes"
-            || args[6] != "--"
+            || args[6] != "--uid"
+            || args[8] != "--gid"
+            || args[10] != "--"
         {
             return Err("expected protocol 1, timeout, process limit and command");
         }
@@ -42,13 +46,23 @@ impl Task {
         if !(100..=86_400_000).contains(&milliseconds) || !(4..=4096).contains(&processes) {
             return Err("limit out of range");
         }
-        if !Path::new(&args[7]).is_absolute() {
+        let uid = number(&args[7])?;
+        let gid = number(&args[9])?;
+        if [uid, gid]
+            .into_iter()
+            .any(|id| !(1..=2_147_483_647).contains(&id) || id == 65534)
+        {
+            return Err("task UID/GID must be non-root and distinct from supervisor 65534");
+        }
+        if !Path::new(&args[11]).is_absolute() {
             return Err("command must be absolute");
         }
         Ok(Self {
             timeout: Duration::from_millis(milliseconds),
             processes,
-            command: args.into_iter().skip(7).collect(),
+            uid: uid as u32,
+            gid: gid as u32,
+            command: args.into_iter().skip(11).collect(),
         })
     }
 }
@@ -59,12 +73,12 @@ fn supervise(task: Task) -> Result<i32, Box<dyn std::error::Error>> {
         DumpableBehavior, Resource, Rlimit, WaitOptions, getgid, getpid, getuid,
         set_dumpable_behavior, setrlimit, wait,
     };
-    use std::{process::Command, thread, time::Instant};
+    use std::{os::unix::process::CommandExt, process::Command, thread, time::Instant};
 
-    // Never run the command on the host, as root, or with privileges which could
-    // defeat RLIMIT_NPROC or allow the child to inspect/modify this supervisor.
-    if getpid().as_raw_nonzero().get() != 1 || getuid().is_root() || getgid().is_root() {
-        return Err("requires PID 1 and a non-root user in an external sandbox".into());
+    // Only the trusted bootstrap starts as root, with SETUID/SETGID and nothing
+    // else. The untrusted command never executes with these credentials.
+    if getpid().as_raw_nonzero().get() != 1 || !getuid().is_root() || !getgid().is_root() {
+        return Err("requires PID 1 and restricted root bootstrap in an external sandbox".into());
     }
     let status = std::fs::read_to_string("/proc/self/status")?;
     // Include saved and filesystem IDs, not only the real UID. A saved root ID
@@ -78,7 +92,7 @@ fn supervise(task: Task) -> Result<i32, Box<dyn std::error::Error>> {
             line.strip_prefix(key)
                 .is_some_and(|value| value.split_whitespace().eq(expected))
         }) {
-            return Err("requires matching non-root real/effective/saved/filesystem IDs".into());
+            return Err("requires matching real/effective/saved/filesystem IDs".into());
         }
     }
     let group = getgid().to_string();
@@ -90,18 +104,22 @@ fn supervise(task: Task) -> Result<i32, Box<dyn std::error::Error>> {
     }
     for (key, expected) in [
         ("CapInh:", "0000000000000000"),
-        ("CapPrm:", "0000000000000000"),
-        ("CapEff:", "0000000000000000"),
-        ("CapBnd:", "0000000000000000"),
+        ("CapPrm:", "00000000000000c0"),
+        ("CapEff:", "00000000000000c0"),
+        ("CapBnd:", "00000000000000c0"),
         ("CapAmb:", "0000000000000000"),
         ("NoNewPrivs:", "1"),
+        ("Threads:", "1"),
     ] {
         if !status.lines().any(|line| {
             line.strip_prefix(key)
                 .is_some_and(|value| value.trim() == expected)
         }) {
-            return Err("requires empty capabilities and no-new-privileges".into());
+            return Err("requires only SETUID/SETGID, one thread and no-new-privileges".into());
         }
+    }
+    if !rustix::thread::capabilities_secure_bits()?.is_empty() {
+        return Err("non-default securebits could retain bootstrap capabilities".into());
     }
     set_dumpable_behavior(DumpableBehavior::NotDumpable)?;
     setrlimit(
@@ -125,9 +143,29 @@ fn supervise(task: Task) -> Result<i32, Box<dyn std::error::Error>> {
         .env("PATH", "/usr/local/bin:/usr/bin:/bin")
         .env("HOME", "/workspace")
         .env("TMPDIR", "/tmp")
+        // Rust clears supplementary groups, sets gid and uid, then changes cwd
+        // and execs. All real/effective/saved IDs change; capabilities are lost.
+        .gid(task.gid)
+        .uid(task.uid)
         .current_dir("/workspace")
         .spawn()?;
     let primary = child.id();
+    // The supervisor and task must not share a UID: tested gVisor allows a
+    // same-UID task to signal its container PID 1. This single-threaded process
+    // irrevocably drops its own credentials after spawning the unprivileged task.
+    rustix::thread::set_thread_groups(&[])?;
+    rustix::thread::set_thread_gid(rustix::process::Gid::from_raw(65534))?;
+    rustix::thread::set_thread_uid(rustix::process::Uid::from_raw(65534))?;
+    set_dumpable_behavior(DumpableBehavior::NotDumpable)?;
+    let status = std::fs::read_to_string("/proc/self/status")?;
+    for key in ["CapPrm:", "CapEff:", "CapAmb:"] {
+        if !status.lines().any(|line| {
+            line.strip_prefix(key)
+                .is_some_and(|value| value.trim() == "0000000000000000")
+        }) {
+            return Err("supervisor privilege drop failed".into());
+        }
+    }
     // wait() reaps the primary and adopted descendants. Using Child::try_wait
     // as well would introduce two independent consumers of the primary status.
     drop(child);
@@ -155,7 +193,13 @@ fn supervise(task: Task) -> Result<i32, Box<dyn std::error::Error>> {
 
 #[cfg(not(target_os = "linux"))]
 fn supervise(task: Task) -> Result<i32, Box<dyn std::error::Error>> {
-    let _ = (task.timeout, task.processes, task.command);
+    let _ = (
+        task.timeout,
+        task.processes,
+        task.uid,
+        task.gid,
+        task.command,
+    );
     Err("runtime init supports Linux only".into())
 }
 
@@ -189,6 +233,10 @@ mod tests {
             "1000",
             "--max-processes",
             "64",
+            "--uid",
+            "1001",
+            "--gid",
+            "1001",
             "--",
             "/probe",
         ];
@@ -201,17 +249,21 @@ mod tests {
             (3, "-1"),
             (5, "3"),
             (5, "4097"),
-            (6, "--other"),
-            (7, "probe"),
+            (7, "0"),
+            (7, "65534"),
+            (7, "4294967295"),
+            (9, "0"),
+            (10, "--other"),
+            (11, "probe"),
         ] {
             let mut invalid = valid;
             invalid[index] = value;
             assert!(parse(&invalid).is_err());
         }
-        assert!(parse(&valid[..7]).is_err());
+        assert!(parse(&valid[..11]).is_err());
         let mut oversized: Vec<_> = valid.into_iter().map(OsString::from).collect();
         oversized.push(OsString::from("x".repeat(65_536)));
         assert!(Task::parse(oversized).is_err());
-        assert!(Task::parse((0..137).map(|_| OsString::from("x"))).is_err());
+        assert!(Task::parse((0..141).map(|_| OsString::from("x"))).is_err());
     }
 }

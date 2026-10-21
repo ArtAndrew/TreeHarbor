@@ -55,7 +55,7 @@ def main():
         secret = root / "host-secret"
         secret.write_text("test-only-never-mounted")
 
-        def create(mode, *args, slot=0, milliseconds=10000, root_user=False, privileges=False):
+        def create(mode, *args, slot=0, milliseconds=10000, bad_user=False, privileges=False):
             files = mounts[slot] / uuid.uuid4().hex
             files.mkdir(mode=0o700)
             name = "treeharbor-test-" + uuid.uuid4().hex
@@ -63,19 +63,21 @@ def main():
                 "create", "--name", name, "--pull=never", "--runtime=runsc",
                 "--label", "treeharbor.test=runtime-supervisor-v1",
                 "--network=none", "--read-only", "--cap-drop=ALL", "--cgroupns=private",
+                "--cap-add=SETUID", "--cap-add=SETGID",
                 "--memory=256m", "--memory-swap=256m", "--cpus=1", "--pids-limit=256",
                 "--ulimit", "nofile=1024:1024", "--ulimit", "core=0:0",
                 "--shm-size=8m", "--tmpfs", "/tmp:rw,noexec,nodev,nosuid,size=16777216,mode=1777",
                 "--mount", f"type=bind,source={files},target=/workspace,bind-propagation=rprivate",
-                "--workdir=/workspace", "--log-driver=local", "--log-opt=max-size=1m",
+                "--workdir=/", "--log-driver=local", "--log-opt=max-size=1m",
                 "--log-opt=max-file=1", "--log-opt=compress=false", "--restart=no", "--entrypoint=/init",
                 "--env", "TH_TEST_SECRET=not-inherited",
-                "--user", "0:0" if root_user else f"{os.getuid()}:{os.getgid()}",
+                "--user", f"{os.getuid()}:{os.getgid()}" if bad_user else "0:0",
             ]
             if not privileges:
                 options.append("--security-opt=no-new-privileges")
             options.extend([image, "--protocol", "1", "--timeout-ms", str(milliseconds),
-                            "--max-processes", "64", "--", "/probe", mode, *args])
+                            "--max-processes", "64", "--uid", str(os.getuid()),
+                            "--gid", str(os.getgid()), "--", "/probe", mode, *args])
             container = docker(*options).stdout.strip()
             assert len(container) == 64
             containers.append(container)
@@ -84,6 +86,7 @@ def main():
             assert config["Image"] == image and host["Runtime"] == "runsc"
             assert host["NetworkMode"] == "none" and host["ReadonlyRootfs"]
             assert not host["Privileged"] and host["CapDrop"] == ["ALL"]
+            assert set(host["CapAdd"]) == {"SETUID", "SETGID"}
             assert host["Memory"] == 256 * 1024 * 1024 and host["MemorySwap"] == host["Memory"]
             assert host["NanoCpus"] == 1_000_000_000 and host["PidsLimit"] == 256
             return container, files
@@ -112,8 +115,8 @@ def main():
         assert secret.read_text() == "test-only-never-mounted"
         print("PASS concurrent files, namespace/filesystem/network/credential isolation", flush=True)
 
-        for root_user, privileges in [(True, False), (False, True)]:
-            container, _ = create("isolation", "never", str(secret), root_user=root_user, privileges=privileges)
+        for bad_user, privileges in [(True, False), (False, True)]:
+            container, _ = create("isolation", "never", str(secret), bad_user=bad_user, privileges=privileges)
             start(container)
             finish(container, 125)
         container, _ = create("exit", "37")

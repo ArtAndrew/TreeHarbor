@@ -18,6 +18,22 @@ fn main() {
         "the trusted supervisor must be PID 1"
     );
     assert!(!getuid().is_root());
+    assert_ne!(getuid().as_raw(), 65534);
+    assert_eq!(
+        rustix::thread::set_thread_uid(rustix::process::Uid::ROOT),
+        Err(rustix::io::Errno::PERM)
+    );
+    assert_eq!(
+        rustix::thread::set_thread_uid(rustix::process::Uid::from_raw(65534)),
+        Err(rustix::io::Errno::PERM)
+    );
+    let status = fs::read_to_string("/proc/self/status").unwrap();
+    for key in ["CapInh:", "CapPrm:", "CapEff:", "CapAmb:"] {
+        assert!(status.lines().any(|line| {
+            line.strip_prefix(key)
+                .is_some_and(|value| value.trim() == "0000000000000000")
+        }));
+    }
     // Refuse the most obvious accidental host invocation, before any stress.
     assert_eq!(
         fs::read_link("/proc/1/exe").unwrap_err().kind(),
@@ -74,7 +90,10 @@ fn main() {
             }
             if args[1] == "attack" {
                 for signal in [Signal::STOP, Signal::KILL, Signal::TERM] {
-                    let _ = kill_process(Pid::from_raw(1).unwrap(), signal);
+                    assert_eq!(
+                        kill_process(Pid::from_raw(1).unwrap(), signal),
+                        Err(rustix::io::Errno::PERM)
+                    );
                 }
                 assert!(OpenOptions::new().write(true).open("/proc/1/mem").is_err());
                 loop {
