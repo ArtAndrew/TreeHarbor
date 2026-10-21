@@ -37,7 +37,7 @@ macOS arm64, Rust 1.99.1, 2026-10-21:
 
 ```text
 cargo test --workspace --locked --offline
-77 tests passed without external services: core 15, local storage 8, native history 3, metadata input/auth/protocol 3, validation 9, materializer 14, node identity/format/IO lifetime 4, service configuration/files/CLI/pack/read transport 12, runtime argument/host guards and controller profile/journal/mount contracts 9.
+78 tests passed without external services: core 15, local storage 8, native history 3, metadata input/auth/protocol 3, validation 9, materializer 14, node identity/format/IO lifetime 4, service configuration/files/CLI/pack/read transport 12, runtime argument/host guards and controller profile/journal/mount contracts 10.
 91 PostgreSQL integration tests passed explicitly against local PostgreSQL 18.6: transactions 7, object catalog 12, intake 9, protected reads 9, materializer 10, access/commands/source sessions 10, source profiles/upgrade 2, source uploads/upgrade 7, preparation ownership/upgrade 8, node preparation/recovery 7, service process/transport 10.
 The combined run uses cargo test --workspace --locked --offline -- --include-ignored with both test database URLs set.
 cargo clippy --workspace --all-targets --locked --offline -- -D warnings
