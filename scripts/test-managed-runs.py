@@ -6,6 +6,7 @@ No fixture fabricates runtime success or bypasses source import/preparation.
 Lease expiry is injected in PostgreSQL only after the corresponding worker dies.
 """
 import json
+from hashlib import sha256
 import os
 from pathlib import Path
 import shutil
@@ -104,7 +105,7 @@ class Harness:
         self.admin("migrate")
         self.admin("repository-create", *self.scope, "--authority", "standalone")
         self.owner = self.principal("owner", "human", ["read", "workspace.write", "repository.write"])
-        self.agents = [self.principal(name, "agent", ["read", "workspace.write"])
+        self.agents = [self.principal(name, "agent", ["read", "workspace.write", "change.write"])
                        for name in ("agent-a", "agent-b")]
         for index in range(2):
             name = f"node-{index}"
@@ -250,6 +251,40 @@ class Harness:
         (self.transport / "fault").write_text("none")
         self.expire_dead_worker(case)
 
+    def propose(self, case):
+        assert self.status(case)["runtime_removed"]
+        upload, changeset = str(uuid.uuid4()), str(uuid.uuid4())
+        self.client("change-begin", "--key", "change-begin-" + upload, "--authority", "standalone", "--epoch", "1",
+                    "--upload", upload, "--run", case["run"], "--generation", "1", credential=case["credential"])
+        # Explicit immutable API bytes, after actual runtime removal. This is
+        # deliberately not a claim that a filesystem seal command exists.
+        content = (case["files"] / "same.txt").read_bytes()
+        blob_file = self.root / ("blob-" + upload)
+        blob_file.write_bytes(content)
+        blob_file.chmod(0o600)
+        blob = self.client("change-put", "--upload", upload, "--file", blob_file, credential=case["credential"])["object"]
+
+        def oid(kind, payload):
+            return sha256(b"treeharbor\0" + (1).to_bytes(2, "big") + bytes([kind])
+                          + len(payload).to_bytes(8, "big") + payload).digest()
+
+        assert blob == "sha256:" + oid(1, content).hex()
+        operations = self.root / ("operations-" + upload + ".json")
+        private_json(operations, [{"path_hex": b"same.txt".hex(),
+                                   "expected": {"mode": 0o100644, "object": "sha256:" + oid(1, b"base\n").hex()},
+                                   "replacement": {"mode": 0o100644, "object": blob}}])
+        request = ["change-submit", "--key", "change-submit-" + upload, "--authority", "standalone", "--epoch", "1",
+                   "--upload", upload, "--changeset", changeset, "--operations", operations]
+        result = self.client(*request, credential=case["credential"])
+        assert result["state"] == "accepted" and result["run"] == case["run"]
+        assert result["base_revision"] == self.revision
+        directory = ((1).to_bytes(4, "big") + (8).to_bytes(4, "big") + b"same.txt"
+                     + (0o100644).to_bytes(4, "big") + oid(1, content))
+        assert result["result_snapshot"] == "sha256:" + oid(3, oid(2, directory)).hex()
+        assert self.client(*request, credential=case["credential"]) == result
+        assert self.client("change-status", "--upload", upload, credential=case["credential"])["state"] == "completed"
+        return result
+
     def exercise(self):
         a = self.case("isolation", "agent-a", self.secret, "2000")
         b = self.case("isolation", "agent-b", self.secret, "2000", node=1)
@@ -262,6 +297,11 @@ class Harness:
             assert (case["files"] / "same.txt").read_text() == marker
         assert self.client("run-status", "--run", a["run"], credential=b["credential"], check=False).returncode != 0
         print("PASS managed CLI: native import, simultaneous isolated agents, exact owner results and replay", flush=True)
+        changes = [self.propose(case) for case in (a, b)]
+        assert changes[0]["base_snapshot"] == changes[1]["base_snapshot"]
+        assert changes[0]["result_snapshot"] != changes[1]["result_snapshot"]
+        assert self.sql("SELECT count(*) FROM th_change_versions") == "2"
+        print("PASS managed proposals: actual stopped agents submit overlapping edits with distinct durable results and original lineage", flush=True)
 
         bad = self.case("exit", "23")
         self.finish(bad, self.start(bad), "failed", 23)

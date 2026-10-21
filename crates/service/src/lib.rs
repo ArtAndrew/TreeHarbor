@@ -9,6 +9,7 @@ pub mod files;
 pub mod import;
 mod node_cli;
 pub mod pack;
+mod proposals;
 pub mod server;
 mod source;
 mod source_read;

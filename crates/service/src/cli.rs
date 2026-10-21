@@ -335,6 +335,53 @@ enum Agent {
         #[arg(long,default_value_t=3600,value_parser=clap::value_parser!(i32).range(1..=3600))]
         ttl_seconds: i32,
     },
+    /// Reserve a change upload for an exact run and workspace generation.
+    ChangeBegin {
+        #[command(flatten)]
+        mutation: Mutation,
+        #[arg(long)]
+        upload: Uuid,
+        #[arg(long)]
+        run: Uuid,
+        #[arg(long,value_parser=clap::value_parser!(i64).range(1..))]
+        generation: i64,
+        #[arg(long, default_value_t = 10_000)]
+        max_objects: i64,
+        #[arg(long, default_value_t = 268_435_456)]
+        max_bytes: i64,
+        #[arg(long, default_value_t = 3600)]
+        ttl_seconds: i32,
+    },
+    /// Upload replacement bytes from a private regular file; prints its object ID.
+    ChangePut {
+        #[arg(long)]
+        upload: Uuid,
+        #[arg(long)]
+        file: PathBuf,
+    },
+    /// Submit explicit operations; the server computes and retains the result.
+    ChangeSubmit {
+        #[command(flatten)]
+        mutation: Mutation,
+        #[arg(long)]
+        upload: Uuid,
+        #[arg(long)]
+        changeset: Uuid,
+        #[arg(long,default_value_t=0,value_parser=clap::value_parser!(i64).range(0..))]
+        previous_version: i64,
+        #[arg(long)]
+        operations: PathBuf,
+    },
+    ChangeStatus {
+        #[arg(long)]
+        upload: Uuid,
+    },
+    ChangeAbort {
+        #[command(flatten)]
+        mutation: Mutation,
+        #[arg(long)]
+        upload: Uuid,
+    },
     /// Begin a resumable native source upload; does not publish a branch.
     SourceBegin {
         #[command(flatten)]
@@ -421,6 +468,25 @@ impl Agent {
     fn json(self) -> Result<Value> {
         Ok(match self {
             Self::RepositoryInfo => json!({"method":"repository_info"}),
+            Self::ChangeBegin {
+                mutation,
+                upload,
+                run,
+                generation,
+                max_objects,
+                max_bytes,
+                ttl_seconds,
+            } => {
+                json!({"method":"change_begin","key":mutation.key,"authority":Authority::from(mutation.authority).as_str(),"epoch":mutation.epoch,
+                    "upload":upload.to_string(),"run":run.to_string(),"generation":generation,"max_objects":max_objects,"max_bytes":max_bytes,"ttl_seconds":ttl_seconds})
+            }
+            Self::ChangeStatus { upload } => {
+                json!({"method":"change_status","upload":upload.to_string()})
+            }
+            Self::ChangeAbort { mutation, upload } => {
+                json!({"method":"change_abort","key":mutation.key,"authority":Authority::from(mutation.authority).as_str(),"epoch":mutation.epoch,"upload":upload.to_string()})
+            }
+            Self::ChangePut { .. } | Self::ChangeSubmit { .. } => return Err(Error::Config),
             Self::RunRequest {
                 mutation,
                 run,
@@ -638,6 +704,50 @@ pub async fn run(cli: Cli) -> Result<bool> {
                     ttl_seconds,
                     timeout: Duration::from_millis(timeout_ms),
                 })
+                .await?;
+                println!("{}", reply.body);
+                return Ok(reply.status.is_success());
+            }
+            if let Agent::ChangePut { upload, file } = action {
+                let bytes = files::read_private(&file, treeharbor_core::MAX_PAYLOAD)?;
+                let object = treeharbor_core::Object::Blob(bytes);
+                let frame = object.encode().map_err(|_| Error::Size)?;
+                let id = treeharbor_core::ObjectId::hash_frame(&frame);
+                let reply = client::send_change_blob(
+                    &socket,
+                    &credential,
+                    upload,
+                    id,
+                    frame,
+                    Duration::from_millis(timeout_ms),
+                )
+                .await?;
+                println!("{}", reply.body);
+                return Ok(reply.status.is_success());
+            }
+            if let Agent::ChangeSubmit {
+                mutation,
+                upload,
+                changeset,
+                previous_version,
+                operations,
+            } = action
+            {
+                let bytes = files::read_private(
+                    &operations,
+                    treeharbor_metadata::commands::MAX_REQUEST_BYTES,
+                )?;
+                let operations: Value =
+                    serde_json::from_slice(&bytes).map_err(|_| Error::Config)?;
+                let body=json!({"version":1,"tenant":credential.scope.tenant(),"repository":credential.scope.repository().to_string(),
+                    "key":mutation.key,"authority":Authority::from(mutation.authority).as_str(),"epoch":mutation.epoch,
+                    "upload":upload.to_string(),"changeset":changeset.to_string(),"previous_version":previous_version,"operations":operations}).to_string().into_bytes();
+                let reply = client::send_proposal(
+                    &socket,
+                    &credential.token,
+                    body,
+                    Duration::from_millis(timeout_ms),
+                )
                 .await?;
                 println!("{}", reply.body);
                 return Ok(reply.status.is_success());

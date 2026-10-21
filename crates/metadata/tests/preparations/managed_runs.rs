@@ -13,7 +13,7 @@ async fn owner(f: &mut Fixture, name: &str) -> Owner {
     f.db.provision_principal(f.scope.tenant(), name, K::Human, "operator")
         .await
         .unwrap();
-    let permissions = [P::Read, P::WorkspaceWrite];
+    let permissions = [P::Read, P::WorkspaceWrite, P::ChangeWrite];
     f.db.set_repository_access(&f.scope, name, &permissions, "operator")
         .await
         .unwrap();
@@ -94,6 +94,77 @@ async fn claim(f: &mut Fixture, node: &Node) -> RunPlan {
 }
 fn wire(f: &Fixture, command: serde_json::Value) -> Vec<u8> {
     serde_json::to_vec(&json!({"version":1,"tenant":f.scope.tenant(),"repository":f.scope.repository().to_string(),"command":command})).unwrap()
+}
+
+#[tokio::test]
+#[ignore = "requires disposable PostgreSQL; runtime observations are trusted test inputs"]
+async fn managed_terminal_proposals_require_removed_runtime_and_current_workspace() {
+    use treeharbor_metadata::{proposals::ChangeUploadSpec, uploads::UploadLimits};
+    for cancel in [false, true] {
+        let mut f = Fixture::new().await;
+        let owner = owner(&mut f, "owner").await;
+        let auth =
+            f.db.authorize(&owner.token.secret, &f.scope, P::ChangeWrite)
+                .await
+                .unwrap();
+        let node = f.node("node").await;
+        let input = prepared(&mut f, &node).await;
+        f.db.request_run(&ctx(&owner, "request"), &input)
+            .await
+            .unwrap();
+        let spec = ChangeUploadSpec {
+            upload: Uuid::new_v4(),
+            run: input.run,
+            generation: 1,
+            limits: UploadLimits {
+                objects: 10,
+                bytes: 1024,
+                ttl_seconds: 60,
+            },
+        };
+        let context = auth.context("begin-change".into(), Authority::Standalone, 1);
+        assert!(matches!(
+            f.db.begin_change_upload(&context, "preparation-tests", &spec)
+                .await,
+            Err(Error::ExecutionState)
+        ));
+        let plan = claim(&mut f, &node).await;
+        if cancel {
+            f.db.stop_run(&ctx(&owner, "cancel"), input.run)
+                .await
+                .unwrap();
+        }
+        assert!(matches!(
+            f.db.begin_change_upload(&context, "preparation-tests", &spec)
+                .await,
+            Err(Error::ExecutionState)
+        ));
+        // A trusted removal observation creates eligibility; unknown exit stays lost.
+        let result = f.db.finish_run(&node.auth, &plan).await.unwrap();
+        assert_eq!(result["state"], if cancel { "cancelled" } else { "lost" });
+        let begin =
+            f.db.begin_change_upload(&context, "preparation-tests", &spec)
+                .await
+                .unwrap();
+        assert_eq!(begin["state"], "active");
+        f.db.drain_workspace(&ctx(&owner, "drain"), input.workspace, 1)
+            .await
+            .unwrap();
+        let next = ChangeUploadSpec {
+            upload: Uuid::new_v4(),
+            ..spec
+        };
+        assert!(matches!(
+            f.db.begin_change_upload(
+                &auth.context("after-drain".into(), Authority::Standalone, 1),
+                "preparation-tests",
+                &next
+            )
+            .await,
+            Err(Error::ExecutionState)
+        ));
+        cleanup(&f.schema).await;
+    }
 }
 
 #[tokio::test]
@@ -574,6 +645,107 @@ async fn populated_v7_upgrade_preserves_legacy_run_and_reserved_preparation() {
 
 async fn upgrade_snapshot(raw: &tokio_postgres::Client) -> serde_json::Value {
     raw.query_one("SELECT jsonb_build_object('runs',(SELECT jsonb_agg(to_jsonb(r) ORDER BY run) FROM th_agent_runs r),'preparations',(SELECT jsonb_agg(to_jsonb(p) ORDER BY attempt) FROM th_workspace_preparations p),'operations',(SELECT jsonb_agg(to_jsonb(o) ORDER BY key) FROM th_operations o),'pins',(SELECT jsonb_agg(to_jsonb(p) ORDER BY holder) FROM th_object_pins p))", &[]).await.unwrap().get(0)
+}
+
+#[tokio::test]
+#[ignore = "requires disposable PostgreSQL; populated prior-version upgrade"]
+async fn populated_v8_upgrade_preserves_managed_run_and_can_accept_new_uploads() {
+    let schema = format!("th_test_{}", Uuid::new_v4().simple());
+    connection("public")
+        .await
+        .batch_execute(&format!("CREATE SCHEMA {schema}"))
+        .await
+        .unwrap();
+    let raw = connection(&schema).await;
+    let mut digest = Vec::new();
+    for sql in [
+        include_str!("../../migrations/001_transactions.sql"),
+        include_str!("../../migrations/002_object_catalog.sql"),
+        include_str!("../../migrations/003_change_intake.sql"),
+        include_str!("../../migrations/004_access_control.sql"),
+        include_str!("../../migrations/005_source_profiles.sql"),
+        include_str!("../../migrations/006_source_uploads.sql"),
+        include_str!("../../migrations/007_workspace_preparations.sql"),
+        include_str!("../../migrations/008_managed_runs.sql"),
+    ] {
+        raw.batch_execute(sql).await.unwrap();
+        let mut h = Sha256::new();
+        h.update(digest);
+        h.update(sql.as_bytes());
+        digest = h.finalize().to_vec();
+    }
+    raw.execute(
+        "INSERT INTO th_schema_version(version,migration_digest) VALUES(8,$1)",
+        &[&digest],
+    )
+    .await
+    .unwrap();
+    let mut db = Metadata::new(connection(&schema).await).await.unwrap();
+    let scope = Scope::new("upgrade", Uuid::new_v4()).unwrap();
+    db.create_repository(&scope, Authority::Standalone)
+        .await
+        .unwrap();
+    let mut f = Fixture::from_db(schema, scope, db).await;
+    let owner = owner(&mut f, "owner").await;
+    let node = f.node("node").await;
+    let input = prepared(&mut f, &node).await;
+    let request =
+        f.db.request_run(&ctx(&owner, "request"), &input)
+            .await
+            .unwrap();
+    let plan = claim(&mut f, &node).await;
+    let before = upgrade_snapshot(&raw).await;
+    let managed: serde_json::Value = raw
+        .query_one("SELECT to_jsonb(m) FROM th_managed_runs m", &[])
+        .await
+        .unwrap()
+        .get(0);
+    assert!(matches!(
+        f.db.check_schema().await,
+        Err(Error::SchemaMismatch)
+    ));
+    f.db.migrate().await.unwrap();
+    f.db.migrate().await.unwrap();
+    f.db.check_schema().await.unwrap();
+    assert_eq!(before, upgrade_snapshot(&raw).await);
+    assert_eq!(
+        managed,
+        raw.query_one("SELECT to_jsonb(m) FROM th_managed_runs m", &[])
+            .await
+            .unwrap()
+            .get::<_, serde_json::Value>(0)
+    );
+    assert_eq!(
+        request,
+        f.db.request_run(&ctx(&owner, "request"), &input)
+            .await
+            .unwrap()
+    );
+    assert_eq!(
+        f.db.finish_run(&node.auth, &plan).await.unwrap()["state"],
+        "lost"
+    );
+    let auth =
+        f.db.authorize(&owner.token.secret, &f.scope, P::ChangeWrite)
+            .await
+            .unwrap();
+    f.db.begin_change_upload(
+        &auth.context("after-upgrade".into(), Authority::Standalone, 1),
+        "preparation-tests",
+        &treeharbor_metadata::proposals::ChangeUploadSpec {
+            upload: Uuid::new_v4(),
+            run: input.run,
+            generation: 1,
+            limits: treeharbor_metadata::uploads::UploadLimits {
+                objects: 10,
+                bytes: 4096,
+                ttl_seconds: 60,
+            },
+        },
+    )
+    .await
+    .unwrap();
+    cleanup(&f.schema).await;
 }
 
 #[tokio::test]

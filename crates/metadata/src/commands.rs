@@ -61,6 +61,26 @@ struct Envelope {
 #[serde(tag = "method", rename_all = "snake_case", deny_unknown_fields)]
 enum Command {
     RepositoryInfo {},
+    ChangeBegin {
+        key: String,
+        authority: Mode,
+        epoch: i64,
+        upload: String,
+        run: String,
+        generation: i64,
+        max_objects: i64,
+        max_bytes: i64,
+        ttl_seconds: i32,
+    },
+    ChangeStatus {
+        upload: String,
+    },
+    ChangeAbort {
+        key: String,
+        authority: Mode,
+        epoch: i64,
+        upload: String,
+    },
     SourceBegin {
         key: String,
         authority: Mode,
@@ -192,6 +212,9 @@ impl From<Mode> for Authority {
 impl Command {
     fn permission(&self) -> Permission {
         match self {
+            Self::ChangeBegin { .. } | Self::ChangeStatus { .. } | Self::ChangeAbort { .. } => {
+                Permission::ChangeWrite
+            }
             Self::SourceBegin { .. }
             | Self::SourceFinish { .. }
             | Self::SourceAbort { .. }
@@ -249,6 +272,48 @@ impl Metadata {
             .await?;
         let result = match request.command {
             Command::RepositoryInfo {} => self.authorized_repository_info(&auth).await?,
+            Command::ChangeBegin {
+                key,
+                authority,
+                epoch,
+                upload,
+                run,
+                generation,
+                max_objects,
+                max_bytes,
+                ttl_seconds,
+            } => {
+                self.begin_change_upload(
+                    &auth.context(key, authority.into(), epoch),
+                    backend.ok_or(Error::Invalid("storage not configured"))?,
+                    &crate::proposals::ChangeUploadSpec {
+                        upload: uuid(&upload)?,
+                        run: uuid(&run)?,
+                        generation,
+                        limits: crate::uploads::UploadLimits {
+                            objects: max_objects,
+                            bytes: max_bytes,
+                            ttl_seconds,
+                        },
+                    },
+                )
+                .await?
+            }
+            Command::ChangeStatus { upload } => {
+                self.change_upload_status(&auth, uuid(&upload)?).await?
+            }
+            Command::ChangeAbort {
+                key,
+                authority,
+                epoch,
+                upload,
+            } => {
+                self.abort_change_upload(
+                    &auth.context(key, authority.into(), epoch),
+                    uuid(&upload)?,
+                )
+                .await?
+            }
             Command::RunRequest {
                 key,
                 authority,

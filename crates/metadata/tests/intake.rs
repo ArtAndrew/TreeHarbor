@@ -1,4 +1,6 @@
 mod common;
+#[path = "intake/proposals.rs"]
+mod proposals;
 use common::{cleanup, connection, setup};
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};

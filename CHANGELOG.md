@@ -13,6 +13,8 @@
 - Bounded native graph uploads with durable completion and restart/replay.
 - Explicit native directory capture and resumable import from a private local pack.
 - Authenticated workspace baseline listing and verified file download with lifecycle fences.
+- Managed isolated agent execution with durable requests, resource limits and process-loss recovery.
+- Resumable immutable ChangeSet API/CLI with server-computed trees and exact run/base lineage.
 - Contract tests and product documentation.
 
 There is no installable product release yet.

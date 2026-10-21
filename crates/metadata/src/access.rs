@@ -43,7 +43,9 @@ impl Permission {
             | "run.request.v1"
             | "run.stop.v1" => Ok(Self::WorkspaceWrite),
             "workspace.ready.v1" | "run.running.v1" => Ok(Self::RuntimeControl),
-            "change.accept.v1" => Ok(Self::ChangeWrite),
+            "change.accept.v1" | "change.begin.v1" | "change.abort.v1" | "change.submit.v1" => {
+                Ok(Self::ChangeWrite)
+            }
             _ => Err(Error::Forbidden),
         }
     }

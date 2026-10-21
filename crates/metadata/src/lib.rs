@@ -14,6 +14,7 @@ pub mod commands;
 pub mod intake;
 pub mod preparations;
 pub mod profiles;
+pub mod proposals;
 pub mod reads;
 pub mod runs;
 pub mod uploads;
@@ -27,6 +28,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/006_source_uploads.sql"),
     include_str!("../migrations/007_workspace_preparations.sql"),
     include_str!("../migrations/008_managed_runs.sql"),
+    include_str!("../migrations/009_change_uploads.sql"),
 ];
 const MAX_JSON: usize = 1024 * 1024;
 
