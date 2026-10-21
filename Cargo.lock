@@ -723,6 +723,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "treeharbor-validation"
+version = "0.1.0-dev"
+dependencies = [
+ "sha2",
+ "treeharbor-core",
+]
+
+[[package]]
 name = "typenum"
 version = "1.20.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

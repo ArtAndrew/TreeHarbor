@@ -10,6 +10,7 @@ describe the complete target. A foundation milestone does not complete either mo
 | Local object store | Atomic no-clobber publication, digest verification, file/directory fsync, tenant directories | Metadata publication, GC generations, S3, backup/restore, kill fault campaign |
 | Native DAG queries | All-parent traversal, multiple best merge bases, bounds | Native refs, integration, policy and full no-Git end-to-end test |
 | PostgreSQL metadata and outbox | Real database transaction/idempotency/lease tests; repository authority/epoch checks | Object catalog/pins, full ChangeSet admission, full server crash/restore |
+| Exact validation predicate | Context binding, stale-target rejection, trusted issuer filtering, revocation and conflicting receipt tests | Authenticated collectors, durable evidence, review and atomic publication checks |
 | API, CLI, workspaces and runtime | Not implemented | Both complete user journeys and secure runtime binding |
 | Connected | Not implemented | Real GitHub PR/checks/merge queue and credential separation |
 | Standalone S2 | Not implemented | Durable native admission and publication without Git processes |
@@ -21,7 +22,7 @@ macOS arm64, Rust 1.99.1, 2026-10-21:
 
 ```text
 cargo test --workspace --locked --offline
-21 tests passed without external services: core 11, local storage 6, native history 3, metadata input 1.
+30 tests passed without external services: core 11, local storage 6, native history 3, metadata input 1, validation 9.
 7 PostgreSQL integration tests passed explicitly against local PostgreSQL 18.6.
 cargo clippy --workspace --all-targets --locked --offline -- -D warnings
 Passed.
@@ -29,6 +30,8 @@ cargo fmt --all
 Applied before the checks above.
 Initial published foundation CI passed on Ubuntu 24.04 and macOS 15:
 https://github.com/ArtAndrew/TreeHarbor/actions/runs/39575656294
+PostgreSQL implementation PR passed Linux, macOS, PostgreSQL contracts and contribution-rights checks:
+https://github.com/ArtAndrew/TreeHarbor/pull/1
 ```
 
 Test stores used for pure model tests are not a server implementation. Local
