@@ -44,7 +44,10 @@ checksum, validation receipt or shared immutable-cache manifest.
 The writer streams entries, writes a final newline and fsyncs before returning a
 result. The golden test `manifest_v1_has_stable_explicit_byte_names_and_baseline_identity`
 asserts a fixed serialization independently of the traversal/fixture uploader.
-JSON field ordering/whitespace are not identity inputs. A future loader must reject
+JSON field ordering/whitespace do not change the source snapshot or profile identity.
+A [preparation observation](workspace-preparations.md) hashes the exact durable
+manifest bytes, so re-encoding the file changes that observation's digest.
+A future loader must reject
 unknown versions/materializer semantics, malformed/duplicate paths or fields,
 oversized metadata, invalid IDs/modes and mismatched tenant/repository bindings;
 it must authenticate service-owned file provenance and reestablish database/runtime
