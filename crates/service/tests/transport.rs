@@ -24,6 +24,291 @@ use uuid::Uuid;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires disposable PostgreSQL; runs in database CI"]
+async fn native_source_cli_lists_pages_and_reads_verified_files_without_following_links() {
+    use std::os::unix::ffi::OsStrExt;
+    use treeharbor_metadata::workspace_reads::SourceFence;
+    let mut f = Fixture::new().await;
+    let outsider = f.importer();
+    let source = f.dir.path().join("input");
+    fs::create_dir_all(source.join("src")).unwrap();
+    fs::write(source.join("src/main.rs"), b"fn main() {}\n").unwrap();
+    fs::write(source.join("src/run.sh"), b"#!/bin/sh\nexit 0\n").unwrap();
+    fs::set_permissions(source.join("src/run.sh"), fs::Permissions::from_mode(0o755)).unwrap();
+    std::os::unix::fs::symlink("main.rs", source.join("src/link")).unwrap();
+    fs::create_dir(source.join("raw")).unwrap();
+    let raw_name: &[u8] = if cfg!(target_os = "macos") {
+        b"raw/name"
+    } else {
+        b"raw/name-\xff"
+    };
+    fs::write(
+        source.join(std::ffi::OsStr::from_bytes(raw_name)),
+        b"binary path contents\0\xff",
+    )
+    .unwrap();
+    let pack = f.dir.path().join("pack");
+    let output = Command::new(env!("CARGO_BIN_EXE_treeharbor"))
+        .env("PATH", "/treeharbor-test-no-executables")
+        .arg("source-pack")
+        .arg("--directory")
+        .arg(&source)
+        .arg("--output")
+        .arg(&pack)
+        .args([
+            "--path",
+            "src",
+            "--path",
+            "raw",
+            "--author-name",
+            "Test",
+            "--author-email",
+            "test@example.invalid",
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let packed: Value = serde_json::from_slice(&output.stdout).unwrap();
+    let server = f.start().await;
+    let journal = f.dir.path().join("import.json");
+    let imported = f.cli(&[
+        "source-import",
+        "--pack",
+        pack.to_str().unwrap(),
+        "--state",
+        journal.to_str().unwrap(),
+        "--authority",
+        "standalone",
+        "--epoch",
+        "1",
+    ]);
+    assert!(
+        imported.status.success(),
+        "{}",
+        String::from_utf8_lossy(&imported.stdout)
+    );
+    let accepted: Value = serde_json::from_slice(&imported.stdout).unwrap();
+    // A delivery selection is not an ACL. An explicit baseline read outside this
+    // profile is allowed, but must not mutate/expand the physical workspace.
+    let profile = f.cli(&[
+        "profile-put",
+        "--key",
+        "main-only",
+        "--authority",
+        "standalone",
+        "--epoch",
+        "1",
+        "--path",
+        "src/main.rs",
+    ]);
+    assert!(profile.status.success());
+    let profile: Value = serde_json::from_slice(&profile.stdout).unwrap();
+    let workspace = Uuid::new_v4();
+    let id = workspace.to_string();
+    let common = [
+        "--workspace",
+        &id,
+        "--generation",
+        "1",
+        "--authority",
+        "standalone",
+        "--epoch",
+        "1",
+    ];
+    let created = f.cli(&[
+        "workspace-create",
+        "--key",
+        "source-workspace",
+        "--authority",
+        "standalone",
+        "--epoch",
+        "1",
+        "--workspace",
+        &id,
+        "--base",
+        accepted["result"]["revision"].as_str().unwrap(),
+        "--profile-digest",
+        profile["result"]["profile_digest"].as_str().unwrap(),
+    ]);
+    assert!(created.status.success());
+    let first = f.cli(
+        &[
+            &["source-list"][..],
+            &common,
+            &["--path", "src", "--limit", "2"],
+        ]
+        .concat(),
+    );
+    assert!(
+        first.status.success(),
+        "{} {}",
+        String::from_utf8_lossy(&first.stdout),
+        String::from_utf8_lossy(&first.stderr)
+    );
+    let page: Value = serde_json::from_slice(&first.stdout).unwrap();
+    assert_eq!(page["result"]["snapshot"], packed["snapshot"]);
+    assert_eq!(page["result"]["entries"].as_array().unwrap().len(), 2);
+    assert_eq!(page["result"]["entries"][0]["name_hex"], "6c696e6b");
+    assert_eq!(page["result"]["entries"][0]["mode"], "120000");
+    assert_eq!(page["result"]["next_after_hex"], "6d61696e2e7273");
+    let second = f.cli(
+        &[
+            &["source-list"][..],
+            &common,
+            &[
+                "--path",
+                "src",
+                "--limit",
+                "2",
+                "--after-hex",
+                "6d61696e2e7273",
+            ],
+        ]
+        .concat(),
+    );
+    assert!(second.status.success());
+    let page: Value = serde_json::from_slice(&second.stdout).unwrap();
+    assert_eq!(page["result"]["entries"].as_array().unwrap().len(), 1);
+    assert_eq!(page["result"]["entries"][0]["name_hex"], "72756e2e7368");
+    assert_eq!(page["result"]["entries"][0]["mode"], "100755");
+    assert!(page["result"]["next_after_hex"].is_null());
+    for (name, bytes, mode) in [
+        ("main.rs", b"fn main() {}\n".as_slice(), "100644"),
+        ("run.sh", b"#!/bin/sh\nexit 0\n".as_slice(), "100755"),
+        ("link", b"main.rs".as_slice(), "120000"),
+    ] {
+        let out = f.dir.path().join(format!("download-{name}"));
+        let path = format!("src/{name}");
+        let args = [
+            &["source-file"][..],
+            &common,
+            &["--path", &path, "--output", out.to_str().unwrap()],
+        ]
+        .concat();
+        let result = f.cli(&args);
+        assert!(
+            result.status.success(),
+            "{} {}",
+            String::from_utf8_lossy(&result.stdout),
+            String::from_utf8_lossy(&result.stderr)
+        );
+        assert_eq!(fs::read(&out).unwrap(), bytes);
+        let meta = fs::symlink_metadata(&out).unwrap();
+        assert!(meta.is_file());
+        assert_eq!(meta.permissions().mode() & 0o777, 0o600);
+        let receipt: Value = serde_json::from_slice(&result.stdout).unwrap();
+        assert_eq!(receipt["result"]["mode"], mode);
+        assert_eq!(receipt["result"]["base"], accepted["result"]["revision"]);
+        assert!(!f.cli(&args).status.success()); // no clobber, even identical bytes
+        assert_eq!(fs::read(out).unwrap(), bytes);
+    }
+    let fence = SourceFence {
+        workspace,
+        generation: 1,
+        authority: Authority::Standalone,
+        epoch: 1,
+    };
+    let operation = json!({"kind":"file","path_hex":"7372632f6d61696e2e7273"});
+    let raw_operation = json!({"kind":"file","path_hex":raw_name.iter().map(|b|format!("{b:02x}")).collect::<String>()});
+    let raw = treeharbor_service::download::read(
+        &f.config.socket,
+        &f.credential(),
+        fence,
+        raw_operation,
+        Duration::from_secs(10),
+    )
+    .await
+    .unwrap();
+    assert!(raw.status.is_success());
+    assert_eq!(raw.content.unwrap(), b"binary path contents\0\xff");
+    let denied = treeharbor_service::download::read(
+        &f.config.socket,
+        &outsider,
+        fence,
+        operation.clone(),
+        Duration::from_secs(10),
+    )
+    .await
+    .unwrap();
+    assert_eq!(denied.status.as_u16(), 404);
+    assert!(denied.content.is_none());
+    let stale = treeharbor_service::download::read(
+        &f.config.socket,
+        &f.credential(),
+        SourceFence {
+            generation: 2,
+            ..fence
+        },
+        operation.clone(),
+        Duration::from_secs(10),
+    )
+    .await
+    .unwrap();
+    assert_eq!(stale.status.as_u16(), 409);
+    for (path, code) in [("src/absent", 404), ("src", 409), ("src/link/child", 404)] {
+        let out = f.dir.path().join("must-not-exist");
+        let result = f.cli(
+            &[
+                &["source-file"][..],
+                &common,
+                &["--path", path, "--output", out.to_str().unwrap()],
+            ]
+            .concat(),
+        );
+        assert!(!result.status.success());
+        assert!(!out.exists());
+        let response: Value = serde_json::from_slice(&result.stdout).unwrap();
+        assert_eq!(
+            response["error"]["code"],
+            if code == 404 {
+                "source_path_not_found"
+            } else {
+                "source_path_type"
+            }
+        );
+    }
+    let status = f.cli(&["workspace-status", "--workspace", &id]);
+    let status: Value = serde_json::from_slice(&status.stdout).unwrap();
+    assert_eq!(status["result"]["state"], "requested");
+    assert_eq!(status["result"]["generation"], 1);
+    assert_eq!(
+        status["result"]["profile_digest"],
+        profile["result"]["profile_digest"]
+    );
+    let deleted = f.cli(&[
+        "workspace-delete",
+        "--key",
+        "drain-source",
+        "--authority",
+        "standalone",
+        "--epoch",
+        "1",
+        "--workspace",
+        &id,
+        "--generation",
+        "1",
+    ]);
+    assert!(deleted.status.success());
+    let drained = treeharbor_service::download::read(
+        &f.config.socket,
+        &f.credential(),
+        fence,
+        operation,
+        Duration::from_secs(10),
+    )
+    .await
+    .unwrap();
+    assert_eq!(drained.status.as_u16(), 409);
+    assert!(drained.content.is_none());
+    drop(server);
+    f.cleanup().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires disposable PostgreSQL; runs in database CI"]
 async fn directory_import_resumes_partial_graph_and_completed_receipt_without_source_or_git() {
     let mut f = Fixture::new().await;
     f.importer();

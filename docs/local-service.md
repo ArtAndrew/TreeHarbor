@@ -112,6 +112,8 @@ authenticated binary HTTP/CLI commands when a storage backend is configured.
 For ordinary files, [native directory import](native-import.md) now captures
 explicit paths and resumes uploads using a durable local pack and journal.
 Git import and automatic node/runtime preparation remain pending.
+After creation, [source-list and source-file](source-reads.md) read the exact
+baseline using the owner credential, workspace generation and repository epoch.
 
 ```sh
 ./target/debug/treeharbor client --socket "$TH_STATE/service.sock" \

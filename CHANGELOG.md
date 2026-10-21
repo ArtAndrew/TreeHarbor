@@ -12,6 +12,7 @@
 - Repository credentials, local Unix-socket service and CLI, immutable delivery profiles.
 - Bounded native graph uploads with durable completion and restart/replay.
 - Explicit native directory capture and resumable import from a private local pack.
+- Authenticated workspace baseline listing and verified file download with lifecycle fences.
 - Contract tests and product documentation.
 
 There is no installable product release yet.

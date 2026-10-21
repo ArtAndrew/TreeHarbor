@@ -112,6 +112,50 @@ async fn send_request(
     body: Vec<u8>,
     timeout: Duration,
 ) -> Result<Reply> {
+    let raw = exchange(
+        socket,
+        token,
+        Exchange {
+            method,
+            uri,
+            content_type,
+            body,
+            max_response: MAX_RESPONSE,
+        },
+        timeout,
+    )
+    .await?;
+    let body = serde_json::from_slice(&raw.bytes).map_err(|_| Error::Http)?;
+    Ok(Reply {
+        status: raw.status,
+        body,
+    })
+}
+pub(crate) struct RawReply {
+    pub status: StatusCode,
+    pub headers: hyper::HeaderMap,
+    pub bytes: Bytes,
+}
+struct Exchange {
+    method: &'static str,
+    uri: String,
+    content_type: &'static str,
+    body: Vec<u8>,
+    max_response: usize,
+}
+async fn exchange(
+    socket: &Path,
+    token: &SecretToken,
+    request: Exchange,
+    timeout: Duration,
+) -> Result<RawReply> {
+    let Exchange {
+        method,
+        uri,
+        content_type,
+        body,
+        max_response,
+    } = request;
     files::private_directory(socket.parent().ok_or(Error::UnsafeFile)?)?;
     let meta = fs::symlink_metadata(socket)?;
     if !meta.file_type().is_socket()
@@ -155,14 +199,55 @@ async fn send_request(
             .await
             .map_err(|_| Error::Http)?;
         let status = response.status();
-        let bytes = Limited::new(response.into_body(), MAX_RESPONSE)
+        let headers = response.headers().clone();
+        let bytes = Limited::new(response.into_body(), max_response)
             .collect()
             .await
             .map_err(|_| Error::Http)?
             .to_bytes();
-        let body = serde_json::from_slice(&bytes).map_err(|_| Error::Http)?;
-        Ok(Reply { status, body })
+        Ok(RawReply {
+            status,
+            headers,
+            bytes,
+        })
     })
     .await
     .map_err(|_| Error::Timeout)?
+}
+
+/// The scope always comes from the credential file, never caller-supplied fields.
+pub(crate) async fn source_read(
+    socket: &Path,
+    credential: &Credential,
+    mut fields: Value,
+    file: bool,
+    timeout: Duration,
+) -> Result<RawReply> {
+    if !fields.is_object() {
+        return Err(Error::Config);
+    }
+    fields["version"] = json!(1);
+    fields["tenant"] = json!(credential.scope.tenant());
+    fields["repository"] = json!(credential.scope.repository().to_string());
+    let body = serde_json::to_vec(&fields).map_err(|_| Error::Config)?;
+    if body.len() > MAX_REQUEST_BYTES {
+        return Err(Error::Size);
+    }
+    exchange(
+        socket,
+        &credential.token,
+        Exchange {
+            method: "POST",
+            uri: "/v1/source/read".into(),
+            content_type: "application/json",
+            body,
+            max_response: if file {
+                treeharbor_core::MAX_PAYLOAD + treeharbor_core::FRAME_HEADER
+            } else {
+                MAX_RESPONSE
+            },
+        },
+        timeout,
+    )
+    .await
 }

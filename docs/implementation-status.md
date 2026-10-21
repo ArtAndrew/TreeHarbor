@@ -11,12 +11,13 @@ gates. A foundation milestone does not complete either mode.
 | Native DAG queries | All-parent traversal, multiple best merge bases, bounds | Native refs, integration, policy and full no-Git end-to-end test |
 | PostgreSQL metadata and outbox | Real database transaction/idempotency/lease tests; repository authority/epoch checks; populated schema upgrades through v6; local service pool and crash/replay | Remote service integration and full server restore |
 | Native ChangeSet intake | Computed immutable versions, base/run lineage, atomic graph pins and replay; worker process-kill test | Git base import, remote API, review/validation/merge admission and retention |
-| Protected incremental source reads | Pinned sessions, verified frontiers, bounded prefix batches and descriptors surviving local GC | Authenticated API, service-wide quotas and S3 |
+| Protected incremental source reads | Pinned sessions, verified frontiers, bounded prefix batches and descriptors surviving local GC; authenticated workspace-root sessions | Per-tenant service quotas, bulk node delivery and S3 |
 | Native file materialization | Private copies from exact snapshots, full/sparse selection, staged expansion preserving edits/deletions, bounded IO and filesystem checks | Runtime-proven quiescence, node binding/recovery, cache/reflink, seal and Git-compatible format |
 | Object catalog and retention | Receipt-bound publication, typed edges, atomic persistent pins, read holds, generation-safe retirement/retry; independent reachability model | Automatic GC/reconciliation/dry-run, abandoned-upload cleanup, S3 and full restore |
 | Exact validation predicate | Context binding, stale-target rejection, trusted issuer filtering, revocation and conflicting receipt tests | Authenticated collectors, durable evidence, review and atomic publication checks |
 | Credentials and agent commands | Repository-scoped opaque tokens, transactional revocation, distinct actor classes, owner-bound reads and strict command dispatch | Remote transport, MCP, production identity/admission integration |
-| Local HTTP service and CLI | Actual Unix-socket server/client, trusted admin CLI, private credential files, bounded HTTP/pool, strict startup schema, SIGKILL replay, cancellation/rollback, reconnect and graceful shutdown tests | Git import, source-stream/node integration, TLS/remote access, packaged installation |
+| Local HTTP service and CLI | Actual Unix-socket server/client, trusted admin CLI, private credential files, bounded HTTP/pool, strict startup schema, SIGKILL replay, cancellation/rollback, reconnect and graceful shutdown tests | Git import, node/runtime integration, TLS/remote access, packaged installation |
+| Workspace baseline API | Owner/generation/epoch-bound directory pages and verified blob download, repeated authorization, final revocation/drain rejection, bounded response ownership, actual CLI/HTTP tests | Bulk delivery to nodes, remote streaming, persistent cache and runtime binding |
 | Source graph uploads | Authenticated scoped sessions, child membership, fixed deadlines/budgets, backend identity, binary HTTP/CLI, concurrent retry, restart and schema-v5 upgrade tests | Git import, incremental reuse, streaming/batching and automatic cleanup |
 | Native directory import | Explicit selection, descriptor-relative capture, durable pack/journal v1, independent vector, actual CLI-to-server partial-upload recovery and completed replay with Git absent from PATH | Git history import, incremental reuse, automatic spool cleanup and runtime-proven snapshots |
 | Source delivery profiles | Canonical full/sparse format with independent vectors, immutable scoped definitions, workspace foreign-key binding, v4 upgrade, authenticated CLI/HTTP and restart tests | Automatic worker use, profile retention and generation-aware expansion |
@@ -32,14 +33,14 @@ macOS arm64, Rust 1.99.1, 2026-10-21:
 
 ```text
 cargo test --workspace --locked --offline
-49 tests passed without external services: core 15, local storage 8, native history 3, metadata input/auth/protocol 3, validation 9, materializer 2, service configuration/files/CLI/pack 9.
-71 PostgreSQL integration tests passed explicitly against local PostgreSQL 18.6: transactions 7, object catalog 12, intake 9, protected reads 9, materializer 9, access/commands 8, source profiles/upgrade 2, source uploads/upgrade 7, service process/transport 8.
+52 tests passed without external services: core 15, local storage 8, native history 3, metadata input/auth/protocol 3, validation 9, materializer 2, service configuration/files/CLI/pack/read transport 12.
+74 PostgreSQL integration tests passed explicitly against local PostgreSQL 18.6: transactions 7, object catalog 12, intake 9, protected reads 9, materializer 9, access/commands/source sessions 10, source profiles/upgrade 2, source uploads/upgrade 7, service process/transport 9.
 cargo clippy --workspace --all-targets --locked --offline -- -D warnings
 Passed.
 cargo fmt --all
 Applied before the checks above.
 Published baseline CI (Linux, macOS and PostgreSQL):
-https://github.com/ArtAndrew/TreeHarbor/actions/runs/39597018312
+https://github.com/ArtAndrew/TreeHarbor/actions/runs/39599299568
 ```
 
 Test stores used for pure model tests are not a server implementation. Local
@@ -59,8 +60,10 @@ Protected local reads now resolve only requested object frontiers and retain ope
 file descriptors across GC without holding a database transaction during content
 verification. Tests include expired sessions, complete physical collection, generation
 reuse, corrupt bytes, resource limits and selective reads without loading commit
-parents. Authenticated source-stream integration, scheduling and runtime isolation
-are still absent.
+parents. Authenticated workspace baseline reads now expose directory pages and verified file
+bytes through the local CLI/HTTP service. Bulk node delivery, scheduling and runtime
+isolation remain absent. See [source reads](source-reads.md) for the wire format,
+read limits and the precise revocation boundary.
 
 Native filesystem preparation now consumes these reads and returns a private tree
 with a sibling baseline manifest. Sparse expansion copies a previously stopped

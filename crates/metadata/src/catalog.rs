@@ -310,32 +310,9 @@ impl Metadata {
         )
         .await?
         .ok_or(Error::NotFound)?;
-        let pin=tx.query_opt("SELECT digest,generation FROM th_object_pins WHERE tenant=$1 AND repository=$2 AND holder=$3",&[&scope.tenant,&scope.repository,&holder]).await?.ok_or(Error::NotFound)?;
-        let digest: Vec<u8> = pin.get(0);
-        let generation: i64 = pin.get(1);
-        let row = object_row(&tx, &scope.tenant, &digest).await?;
-        if row.get::<_, String>(4) != "live" || row.get::<_, i64>(0) != generation {
-            return Err(Error::ObjectNotLive);
-        }
-        // A token collision fails, it never reassigns a hold from another object.
-        tx.execute("INSERT INTO th_object_holds (tenant,token,digest,generation,expires_at) VALUES ($1,$2,$3,$4,clock_timestamp()+($5::integer*interval '1 second'))",&[&scope.tenant,&token,&digest,&generation,&ttl]).await?;
-        tx.execute(
-            "UPDATE th_objects SET orphaned_at=NULL WHERE tenant=$1 AND digest=$2",
-            &[&scope.tenant, &digest],
-        )
-        .await?;
-        let key = ObjectKey {
-            tenant: scope.tenant.clone(),
-            backend: row.get(1),
-            id: id(digest)?,
-            generation,
-        };
+        let lease = lease_pin_in(&tx, scope, holder, token, ttl).await?;
         tx.commit().await?;
-        Ok(ObjectLease {
-            key,
-            token,
-            upload: false,
-        })
+        Ok(lease)
     }
 
     /// Operator/maintenance primitive, not an autonomous GC scheduler. Refcounts
@@ -539,4 +516,41 @@ impl Mutation<'_> {
         }
         Ok(())
     }
+}
+
+/// Caller holds the repository row lock before acquiring the object row.
+pub(crate) async fn lease_pin_in(
+    tx: &Transaction<'_>,
+    scope: &crate::Scope,
+    holder: &str,
+    token: Uuid,
+    ttl: i32,
+) -> Result<ObjectLease> {
+    identifier(holder, 128)?;
+    ttl_valid(ttl)?;
+    let pin=tx.query_opt("SELECT digest,generation FROM th_object_pins WHERE tenant=$1 AND repository=$2 AND holder=$3",&[&scope.tenant,&scope.repository,&holder]).await?.ok_or(Error::NotFound)?;
+    let digest: Vec<u8> = pin.get(0);
+    let generation: i64 = pin.get(1);
+    let row = object_row(tx, &scope.tenant, &digest).await?;
+    if row.get::<_, String>(4) != "live" || row.get::<_, i64>(0) != generation {
+        return Err(Error::ObjectNotLive);
+    }
+    // A token collision fails, it never reassigns a hold from another object.
+    tx.execute("INSERT INTO th_object_holds (tenant,token,digest,generation,expires_at) VALUES ($1,$2,$3,$4,clock_timestamp()+($5::integer*interval '1 second'))",&[&scope.tenant,&token,&digest,&generation,&ttl]).await?;
+    tx.execute(
+        "UPDATE th_objects SET orphaned_at=NULL WHERE tenant=$1 AND digest=$2",
+        &[&scope.tenant, &digest],
+    )
+    .await?;
+    let key = ObjectKey {
+        tenant: scope.tenant.clone(),
+        backend: row.get(1),
+        id: id(digest)?,
+        generation,
+    };
+    Ok(ObjectLease {
+        key,
+        token,
+        upload: false,
+    })
 }

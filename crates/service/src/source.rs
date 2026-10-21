@@ -19,6 +19,7 @@ use uuid::Uuid;
 pub(crate) struct Backend {
     pub config: StorageConfig,
     permits: Arc<Semaphore>,
+    pub read_permits: Arc<Semaphore>,
 }
 impl Backend {
     pub async fn open(mut config: StorageConfig, pool: &Pool<Database>) -> Result<Self> {
@@ -52,6 +53,7 @@ impl Backend {
         Ok(Self {
             config,
             permits: Arc::new(Semaphore::new(2)),
+            read_permits: Arc::new(Semaphore::new(2)),
         })
     }
 }
@@ -88,7 +90,7 @@ pub(crate) struct Failure {
 fn fail(status: u16, code: &'static str) -> Failure {
     Failure { status, code }
 }
-fn metadata(error: treeharbor_metadata::Error) -> Failure {
+pub(crate) fn metadata(error: treeharbor_metadata::Error) -> Failure {
     let code = CommandError::Metadata(error).code();
     let status = match code {
         "unauthenticated" => 401,

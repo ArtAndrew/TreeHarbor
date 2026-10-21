@@ -203,7 +203,8 @@ async fn handle(
         return response(StatusCode::OK, json!({"status":"alive"}));
     }
     let upload = crate::source::route(request.uri().path());
-    if (request.uri().path() != "/v1/commands" && upload.is_none())
+    let source_read = request.uri().path() == "/v1/source/read";
+    if (request.uri().path() != "/v1/commands" && upload.is_none() && !source_read)
         || request.uri().query().is_some()
     {
         return error(StatusCode::NOT_FOUND, "not_found");
@@ -283,6 +284,22 @@ async fn handle(
         Ok(Err(_)) => return error(StatusCode::BAD_REQUEST, "invalid_body"),
         Err(_) => return error(StatusCode::REQUEST_TIMEOUT, "body_timeout"),
     };
+    if source_read {
+        let Some(backend) = backend else {
+            return error(StatusCode::SERVICE_UNAVAILABLE, "storage_not_configured");
+        };
+        return match crate::source_read::read(&body, &credential, backend, pool).await {
+            Ok(delivery) => {
+                let mut response = Response::new(Full::new(delivery.bytes));
+                *response.headers_mut() = delivery.headers;
+                response
+            }
+            Err(failure) => error(
+                StatusCode::from_u16(failure.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+                failure.code,
+            ),
+        };
+    }
     let mut session = match pool.get().await {
         Ok(session) => session,
         Err(_) => return error(StatusCode::SERVICE_UNAVAILABLE, "database_unavailable"),

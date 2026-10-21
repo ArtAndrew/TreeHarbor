@@ -16,6 +16,8 @@ in **Standalone** mode. Both share one Rust engine.
 > resumable sessions through [binary HTTP and CLI](docs/source-uploads.md).
 > [Native directory import](docs/native-import.md) captures explicit paths into a
 > durable local pack and resumes upload without rereading the original source.
+> Owners can [list and download baseline files](docs/source-reads.md) through the
+> same scoped service, with exact workspace context and verified blob content.
 > A development HTTP server over a private Unix socket and a CLI now expose the
 > authenticated command boundary. Runtime binding, node recovery, optimized caching,
 > remote transport and MCP integration are still pending.
