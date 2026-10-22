@@ -48,9 +48,17 @@ class Checks(managed.Harness):
                            "change", "--changeset", self.change["changeset"],
                            "--version", str(self.change.get("version", 1)), credential=self.reviewer)
         assert diff["identity"]["version"] == self.change.get("version", 1)
-        assert diff["total_changes"] == 1 and diff["next_after"] is None
-        assert bytes.fromhex(diff["changes"][0]["path_hex"]) == b"same.txt"
-        assert diff["changes"][0]["text"]["patch"].endswith("-base\n+candidate\n")
+        assert diff["identity"]["base_revision"] == self.revision
+        assert diff["next_after"] is None
+        if self.change.get("version", 1) == 1:
+            assert diff["total_changes"] == 1, diff
+            assert bytes.fromhex(diff["changes"][0]["path_hex"]) == b"same.txt"
+            assert diff["changes"][0]["text"]["patch"].endswith("-base\n+candidate\n")
+        else:
+            # Version 2 is rebased onto a published revision already containing
+            # the same edit. Its empty diff must not masquerade as version 1.
+            assert diff["total_changes"] == 0 and diff["changes"] == [], diff
+            assert diff["before_snapshot"] == diff["after_snapshot"]
         self.native("review", self.reviewer, candidate=candidate, review=str(uuid.uuid4()), decision="approve")
         return dict(candidate=candidate, check=check, entry=entry, target=target, policy=policy_id, candidate_snapshot=result["snapshot"])
 
@@ -201,11 +209,18 @@ class Checks(managed.Harness):
         assert self.native("land", self.integrator, check=False, candidate=old["candidate"]).returncode != 0
         self.change["version"] = 2
         self.revision = landed["revision"]
+        retained = self.client("diff", "--authority", "standalone", "--epoch", "1",
+                               "change", "--changeset", self.change["changeset"],
+                               "--version", "1", credential=self.reviewer)
+        assert retained["identity"]["version"] == 1 and retained["total_changes"] == 1
+        assert retained["identity"]["base_revision"] != self.revision
+        assert retained["changes"][0]["text"]["patch"].endswith("-base\n+candidate\n")
         fresh = self.check_case()
         assert self.native("land", self.integrator, check=False, candidate=fresh["candidate"]).returncode != 0
         self.completed_check(fresh, self.start(fresh))
         assert self.native("land", self.integrator, candidate=fresh["candidate"])["state"] == "landed"
         print("PASS native CI: owner rebase cancels a running old check and new version requires actual fresh check/review", flush=True)
+        print("PASS native review: reviewer reads original agent edit and distinct empty rebased version", flush=True)
 
         # All cases intentionally share this runtime profile. Revoke it last: a
         # revoked profile must not be revived just to prepare later test cases.
