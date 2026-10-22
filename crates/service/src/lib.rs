@@ -13,6 +13,7 @@ mod native;
 mod node_cli;
 pub mod pack;
 mod proposals;
+mod rebases;
 pub mod server;
 mod source;
 mod source_export;

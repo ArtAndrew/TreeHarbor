@@ -18,6 +18,7 @@ pub mod preparations;
 pub mod profiles;
 pub mod proposals;
 pub mod reads;
+pub mod rebases;
 pub mod runs;
 pub mod uploads;
 pub mod workspace_reads;
@@ -33,6 +34,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/009_change_uploads.sql"),
     include_str!("../migrations/010_native_integration.sql"),
     include_str!("../migrations/011_check_execution.sql"),
+    include_str!("../migrations/012_change_rebase.sql"),
 ];
 const MAX_JSON: usize = 1024 * 1024;
 
@@ -68,6 +70,8 @@ pub enum Error {
     ExecutionState,
     #[error("changeset version changed or belongs to another principal")]
     VersionConflict,
+    #[error("change rebase is closed, expired or uses an unsupported profile")]
+    RebaseState,
     #[error("object read is outside its session or verified ancestry")]
     ReadScope,
     #[error("object read exceeds its batch resource limit")]

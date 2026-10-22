@@ -4,6 +4,23 @@ use serde::Deserialize;
 #[derive(Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
 pub enum WireCommand {
+    RebaseStart {
+        key: String,
+        epoch: i64,
+        rebase: String,
+        changeset: String,
+        source_version: i64,
+        onto: String,
+    },
+    RebaseStatus {
+        epoch: i64,
+        rebase: String,
+    },
+    RebaseCancel {
+        key: String,
+        epoch: i64,
+        rebase: String,
+    },
     ProgramPut {
         key: String,
         epoch: i64,
@@ -136,6 +153,9 @@ fn native(s: &str) -> Result<ObjectId> {
 impl WireCommand {
     pub fn permission(&self) -> Permission {
         match self {
+            Self::RebaseStart { .. } | Self::RebaseStatus { .. } | Self::RebaseCancel { .. } => {
+                Permission::ChangeWrite
+            }
             Self::ProgramPut { .. } | Self::PolicyPut { .. } | Self::RefPolicy { .. } => {
                 Permission::PolicyWrite
             }
@@ -156,6 +176,33 @@ impl WireCommand {
     }
     pub async fn execute(self, db: &mut Metadata, auth: &Authorization) -> Result<Value> {
         match self {
+            Self::RebaseStart {
+                key,
+                epoch,
+                rebase,
+                changeset,
+                source_version,
+                onto,
+            } => {
+                db.start_change_rebase(
+                    auth,
+                    &Command { key, epoch },
+                    &crate::rebases::RebaseStart {
+                        rebase: uuid(&rebase)?,
+                        changeset: uuid(&changeset)?,
+                        source_version,
+                        onto: native(&onto)?,
+                    },
+                )
+                .await
+            }
+            Self::RebaseStatus { epoch, rebase } => {
+                db.change_rebase_status(auth, epoch, uuid(&rebase)?).await
+            }
+            Self::RebaseCancel { key, epoch, rebase } => {
+                db.cancel_change_rebase(auth, &Command { key, epoch }, uuid(&rebase)?)
+                    .await
+            }
             Self::ProgramPut {
                 key,
                 epoch,

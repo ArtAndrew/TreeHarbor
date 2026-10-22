@@ -22,6 +22,7 @@ use treeharbor_metadata::{
     access::{Authorization, Permission, SecretToken},
     integration::{CandidateRead, Command},
     reads::ReadNode,
+    rebases::RebaseRead,
 };
 use treeharbor_storage::{ManagedStore, PreparedObject, TenantId};
 use uuid::Uuid;
@@ -76,10 +77,38 @@ fn parse(bytes: &[u8]) -> Result<(Scope, Command, Uuid)> {
         uuid(&w.candidate)?,
     ))
 }
+enum InputRead<'a> {
+    Candidate(&'a CandidateRead),
+    Rebase(&'a RebaseRead),
+}
+impl InputRead<'_> {
+    fn roots(&self) -> Vec<ReadNode> {
+        match self {
+            Self::Candidate(r) => r.roots(),
+            Self::Rebase(r) => r.roots(),
+        }
+    }
+    fn input(&self) -> &treeharbor_merge::CandidateInput {
+        match self {
+            Self::Candidate(r) => r.input(),
+            Self::Rebase(r) => r.input(),
+        }
+    }
+}
+pub(crate) async fn rebase_source(
+    db: &mut Metadata,
+    store: &ManagedStore,
+    read: &RebaseRead,
+    permit: Permit,
+) -> Result<Scratch> {
+    Loader::new(db, store, InputRead::Rebase(read), permit)
+        .load()
+        .await
+}
 struct Loader<'a> {
     db: &'a mut Metadata,
     store: &'a ManagedStore,
-    read: &'a CandidateRead,
+    read: InputRead<'a>,
     permit: Permit,
     scratch: Scratch,
     known: BTreeMap<ObjectId, (usize, ReadNode)>,
@@ -91,7 +120,7 @@ impl<'a> Loader<'a> {
     fn new(
         db: &'a mut Metadata,
         store: &'a ManagedStore,
-        read: &'a CandidateRead,
+        read: InputRead<'a>,
         permit: Permit,
     ) -> Self {
         let known = read
@@ -121,11 +150,19 @@ impl<'a> Loader<'a> {
             .get(&id)
             .ok_or(fail(500, "native_candidate_graph"))?
             .clone();
-        let batch = self
-            .db
-            .read_native_candidate(self.read, source, self.store, &[node], 128 * 1024 * 1024)
-            .await
-            .map_err(meta)?;
+        let batch = match &self.read {
+            InputRead::Candidate(read) => {
+                self.db
+                    .read_native_candidate(read, source, self.store, &[node], 128 * 1024 * 1024)
+                    .await
+            }
+            InputRead::Rebase(read) => {
+                self.db
+                    .read_change_rebase(read, source, self.store, &[node], 128 * 1024 * 1024)
+                    .await
+            }
+        }
+        .map_err(meta)?;
         let permit = self.permit.clone();
         let object = tokio::task::spawn_blocking(move || {
             let _permit = permit;
@@ -217,7 +254,7 @@ impl<'a> Loader<'a> {
 fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
-fn conflicts(items: &[treeharbor_merge::Conflict]) -> Value {
+pub(crate) fn conflicts(items: &[treeharbor_merge::Conflict]) -> Value {
     // Bounded response, lossless paths; the count tells clients when to inspect
     // remaining conflicts locally. Content bytes are never placed in an error.
     let mut rows = Vec::new();
@@ -258,7 +295,9 @@ async fn execute(
     store: &ManagedStore,
     permit: Permit,
 ) -> Result<Value> {
-    let scratch = Loader::new(db, store, read, permit.clone()).load().await?;
+    let scratch = Loader::new(db, store, InputRead::Candidate(read), permit.clone())
+        .load()
+        .await?;
     let input = read.input().clone();
     let hold = permit.clone();
     let computed = tokio::task::spawn_blocking(move || {

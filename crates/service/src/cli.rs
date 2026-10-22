@@ -372,6 +372,44 @@ impl HistoryQuery {
 }
 #[derive(Subcommand)]
 enum Agent {
+    /// Reapply an owned accepted version onto an exact registered native revision.
+    RebaseStart {
+        #[arg(long)]
+        key: String,
+        #[arg(long,value_parser=clap::value_parser!(i64).range(1..))]
+        epoch: i64,
+        #[arg(long)]
+        rebase: Uuid,
+        #[arg(long)]
+        changeset: Uuid,
+        #[arg(long,value_parser=clap::value_parser!(i64).range(1..))]
+        source_version: i64,
+        #[arg(long)]
+        onto: String,
+    },
+    /// Compute and durably accept the rebased version. Never moves a branch.
+    RebasePrepare {
+        #[arg(long)]
+        key: String,
+        #[arg(long,value_parser=clap::value_parser!(i64).range(1..))]
+        epoch: i64,
+        #[arg(long)]
+        rebase: Uuid,
+    },
+    RebaseStatus {
+        #[arg(long,value_parser=clap::value_parser!(i64).range(1..))]
+        epoch: i64,
+        #[arg(long)]
+        rebase: Uuid,
+    },
+    RebaseCancel {
+        #[arg(long)]
+        key: String,
+        #[arg(long,value_parser=clap::value_parser!(i64).range(1..))]
+        epoch: i64,
+        #[arg(long)]
+        rebase: Uuid,
+    },
     /// Query native history with scoped read permission; never changes refs.
     History {
         #[arg(long, value_enum)]
@@ -603,6 +641,22 @@ enum Agent {
 impl Agent {
     fn json(self) -> Result<Value> {
         Ok(match self {
+            Self::RebaseStart {
+                key,
+                epoch,
+                rebase,
+                changeset,
+                source_version,
+                onto,
+            } => {
+                json!({"method":"native","request":{"action":"rebase_start","key":key,"epoch":epoch,"rebase":rebase.to_string(),"changeset":changeset.to_string(),"source_version":source_version,"onto":onto}})
+            }
+            Self::RebaseStatus { epoch, rebase } => {
+                json!({"method":"native","request":{"action":"rebase_status","epoch":epoch,"rebase":rebase.to_string()}})
+            }
+            Self::RebaseCancel { key, epoch, rebase } => {
+                json!({"method":"native","request":{"action":"rebase_cancel","key":key,"epoch":epoch,"rebase":rebase.to_string()}})
+            }
             Self::Native { request } => {
                 let bytes = files::read_private(
                     &request,
@@ -635,6 +689,7 @@ impl Agent {
             Self::SourceExport { .. }
             | Self::History { .. }
             | Self::NativePrepare { .. }
+            | Self::RebasePrepare { .. }
             | Self::ChangePut { .. }
             | Self::ChangeSubmit { .. } => {
                 return Err(Error::Config);
@@ -966,6 +1021,18 @@ pub async fn run(cli: Cli) -> Result<bool> {
                     ttl_seconds,
                     timeout: Duration::from_millis(timeout_ms),
                 })
+                .await?;
+                println!("{}", reply.body);
+                return Ok(reply.status.is_success());
+            }
+            if let Agent::RebasePrepare { key, epoch, rebase } = action {
+                let body=json!({"version":1,"tenant":credential.scope.tenant(),"repository":credential.scope.repository().to_string(),"key":key,"epoch":epoch,"rebase":rebase.to_string()}).to_string().into_bytes();
+                let reply = client::send_rebase_prepare(
+                    &socket,
+                    &credential.token,
+                    body,
+                    Duration::from_millis(timeout_ms),
+                )
                 .await?;
                 println!("{}", reply.body);
                 return Ok(reply.status.is_success());

@@ -1,3 +1,5 @@
+#[path = "integration/rebases.rs"]
+mod rebases;
 use super::*;
 use treeharbor_merge::{CandidateOutcome, Limits, PreparedCandidate, prepare_candidate};
 use treeharbor_metadata::{

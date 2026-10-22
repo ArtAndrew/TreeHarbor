@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "tenant": "rebase-vector",
+  "repository": "00112233-4455-6677-8899-aabbccddeeff",
+  "rebase": "ffeeddcc-bbaa-9988-7766-554433221100",
+  "object": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+  "profile": "treeharbor-change-rebase-v1/treeharbor-native-merge-v2/diffy-0.5.2/exact-sibling-renames/subtree-delta",
+  "hold_token": "47751356-db08-79a1-1713-0f141fa7242e"
+}

@@ -3,6 +3,13 @@
 Updated: 2026-10-22. This file describes implemented behavior and remaining release
 gates. A foundation milestone does not complete either mode.
 
+New rebase increment: [immutable ChangeSet rebase](change-rebase.md) adds owner
+start/status/cancel and durable server preparation of one accepted version on an
+exact native base. Schema 12 retains original run/version lineage and pins, and
+atomically makes pending older candidates stale. This creates a single-parent
+revision without moving refs or copying validation. General history stack rewriting
+remains open; this does not complete Standalone.
+
 New history increment: [scoped native history](native-history.md) now exposes
 commit display, deterministic all-parent or first-parent log pages, ancestry and
 all best merge bases through actual HTTP/CLI. Queries read only verified commits
@@ -72,8 +79,8 @@ resource outcomes and worker-loss recovery. No complete authority mode is implie
 | Canonical SHA-256 object format | Versioned framing, independent golden vectors, strict decoder | Compatibility policy for later formats |
 | Immutable directory trees and operations | Exact expected-before checks, canonical subtree operations v2, bounded structural diff, structural sharing, explicit deletes; native merge and Git reference matrix | General history rebase, broader rename/base support, live-server Git interop |
 | Local object store | Atomic no-clobber writes, digest verification, file/directory fsync, tenant directories, physical generations and upload receipts | S3, backup/restore, kill fault campaign |
-| Native DAG and admission | Scoped history/log/ancestry/merge-base HTTP/CLI, persisted refs/policies/queue/checks/reviews, verified candidate commits, final transactional admission and no-Git CLI/process-loss tests | Native rebase, automatic scheduling, full lifecycle and recovery |
-| PostgreSQL metadata and outbox | Real database transaction/idempotency/lease tests; repository authority/epoch checks; populated schema upgrades through v11; local service pool and crash/replay | Remote service integration and full server restore |
+| Native DAG and admission | Scoped history/log/ancestry/merge-base HTTP/CLI, persisted refs/policies/queue/checks/reviews, verified candidate commits, final transactional admission and no-Git CLI/process-loss tests | General history stack rebase, automatic scheduling, full lifecycle and recovery |
+| PostgreSQL metadata and outbox | Real database transaction/idempotency/lease tests; repository authority/epoch checks; populated schema upgrades through v12; local service pool and crash/replay | Remote service integration and full server restore |
 | Native ChangeSet intake | HTTP/CLI immutable proposals, session-owned blobs, computed versions, running/removed-run lineage, atomic pins/session completion/outbox and process-loss replay | Filesystem sealing, GitHub base synchronization, remote transport and retention |
 | Protected incremental source reads | Pinned sessions, verified frontiers, bounded prefix batches and descriptors surviving local GC; authenticated workspace-root sessions | Per-tenant service quotas, bulk node delivery and S3 |
 | Native file materialization | Private copies from exact snapshots, full/sparse selection, staged expansion preserving edits/deletions, bounded IO and filesystem checks; exact baseline loading and guarded atomic node publication | Runtime-proven quiescence, cache/reflink, changed-file sealing and Git-compatible format |
@@ -406,5 +413,29 @@ An independent DAG matrix checks complete membership and parent ordering for 64
 generated graphs. Linux/macOS and actual gVisor remain required CI gates.
 
 The initial query profile loads bounded complete ancestry on every page. There is
-no persisted ancestry index or performance claim. Native rebase, complete lifecycle,
+no persisted ancestry index or performance claim. General history stack rebase, complete lifecycle,
 Connected GitHub, backup/restore and release requirements remain open.
+
+## Durable single-ChangeSet rebase
+
+Added owner-authorized start/status/cancel and `/v1/changes/rebase` preparation,
+with CLI shortcuts. The core verifies the original proposal, merges exact snapshots,
+then writes a new delta and single-parent commit against the pinned new base.
+Schema 12 records immutable source/result lineage, retains the original AgentRun,
+and atomically pins the new version and supersedes older pending candidates.
+The protected branch is unchanged and old evidence cannot admit the new version.
+
+Local verification (macOS arm64, Rust 1.99.1): 144 ordinary tests and 135 explicit
+PostgreSQL/transport integration tests passed; formatting and strict workspace
+Clippy passed. New tests include actual Git rebase as an independent oracle,
+aggregate read/write budgets, immutable source/run retention, simultaneous version
+submission versus rebase, revoked credentials/epochs, cancellation/expiry, GC
+retention, populated schema-11 upgrade, and CLI recovery after server death at
+object publication and after database commit. Actual CLI tests also export and
+read the new revision with Git absent. Their CI outcomes are explicitly fixtures.
+
+The required Linux gVisor harness now includes rebase during an actual running
+check and fresh check/review before publishing the new version. It remains a
+required CI gate, separate from local transport tests. See [wire format, limits,
+retry and operational behavior](change-rebase.md). General history stack rewriting,
+Connected GitHub, full lifecycle/restore and release/benchmark gates remain open.

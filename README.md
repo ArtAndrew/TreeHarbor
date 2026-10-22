@@ -34,7 +34,9 @@ in **Standalone** mode. Both share one Rust engine.
 > snapshot results and structured conflicts. [Native integration](docs/native-integration.md)
 > adds durable refs, serial admission, scoped checks/reviews and atomic publication
 > through CLI/API. [Scoped history queries](docs/native-history.md) expose commits,
-> ancestry and merge bases without Git. Experimental
+> ancestry and merge bases without Git. [ChangeSet rebase](docs/change-rebase.md)
+> creates a new immutable version on an exact base, retaining its original run and
+> requiring new checks. Experimental
 > [managed native checks](docs/managed-checks.md) execute approved offline commands
 > on exact candidates. Automatic queue/CI
 > scheduling is still pending.

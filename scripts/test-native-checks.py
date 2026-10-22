@@ -36,7 +36,7 @@ class Checks(managed.Harness):
         self.native("ref_create", self.policy_admin, name=target, head=self.revision, policy=policy_id)
         entry, candidate, check = [str(uuid.uuid4()) for _ in range(3)]
         self.native("enqueue", self.agents[0], entry=entry, target=target,
-                    changeset=self.change["changeset"], version=1)
+                    changeset=self.change["changeset"], version=self.change.get("version", 1))
         self.native("candidate_start", self.integrator, entry=entry, candidate=candidate)
         result = self.client("native-prepare", "--key", "prepare-" + candidate, "--epoch", "1",
                              "--candidate", candidate, credential=self.integrator)
@@ -176,6 +176,30 @@ class Checks(managed.Harness):
         self.admin("access-set", *self.scope, "--principal", "node-0", "--permission", "runtime.control")
         print("PASS native CI: revoked node access blocks previously passing evidence", flush=True)
 
+        # Rebase is an owner operation, not approval. It supersedes an actively
+        # checked old proposal; the runtime fence must tear that check down.
+        old = self.check_case(delay=5000)
+        child = self.start(old)
+        managed.wait_until(lambda: (old["files"] / "check-executions").exists())
+        rebase = str(uuid.uuid4())
+        self.client("rebase-start", "--key", "start-" + rebase, "--epoch", "1",
+                    "--rebase", rebase, "--changeset", self.change["changeset"],
+                    "--source-version", "1", "--onto", landed["revision"], credential=self.agents[0])
+        rebased = self.client("rebase-prepare", "--key", "prepare-" + rebase, "--epoch", "1",
+                              "--rebase", rebase, credential=self.agents[0])
+        assert rebased["state"] == "ready" and rebased["result_version"] == 2
+        self.completed_check(old, child, "cancelled")
+        assert self.native("land", self.integrator, check=False, candidate=old["candidate"]).returncode != 0
+        self.change["version"] = 2
+        self.revision = landed["revision"]
+        fresh = self.check_case()
+        assert self.native("land", self.integrator, check=False, candidate=fresh["candidate"]).returncode != 0
+        self.completed_check(fresh, self.start(fresh))
+        assert self.native("land", self.integrator, candidate=fresh["candidate"])["state"] == "landed"
+        print("PASS native CI: owner rebase cancels a running old check and new version requires actual fresh check/review", flush=True)
+
+        # All cases intentionally share this runtime profile. Revoke it last: a
+        # revoked profile must not be revived just to prepare later test cases.
         revoked = self.check_case()
         self.completed_check(revoked, self.start(revoked))
         self.admin("runtime-profile-revoke", *self.scope, "--profile-digest",

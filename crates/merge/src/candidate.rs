@@ -2,6 +2,38 @@ use crate::{Conflict, Error, Limits, Outcome, Result, checked_put, merge_snapsho
 use std::cell::Cell;
 use treeharbor_core::{Commit, Object, ObjectId, ObjectStore, prepare_change};
 
+/// Changing the underlying merge semantics requires a new rebase profile too.
+pub const REBASE_PROFILE: &str = "treeharbor-change-rebase-v1/treeharbor-native-merge-v2/diffy-0.5.2/exact-sibling-renames/subtree-delta";
+
+#[derive(Clone, Debug)]
+pub struct PreparedRebase {
+    input: CandidateInput,
+    applied: treeharbor_core::AppliedChange,
+    commit: Commit,
+    revision: ObjectId,
+}
+impl PreparedRebase {
+    pub fn input(&self) -> &CandidateInput {
+        &self.input
+    }
+    pub fn applied(&self) -> &treeharbor_core::AppliedChange {
+        &self.applied
+    }
+    pub fn commit(&self) -> &Commit {
+        &self.commit
+    }
+    pub fn revision(&self) -> ObjectId {
+        self.revision
+    }
+    pub fn profile(&self) -> &'static str {
+        REBASE_PROFILE
+    }
+}
+pub enum RebaseOutcome {
+    Ready(Box<PreparedRebase>),
+    Conflicted(Vec<Conflict>),
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CandidateInput {
     pub base_revision: ObjectId,
@@ -177,6 +209,84 @@ pub fn prepare_candidate(
     Ok(CandidateOutcome::Ready(Box::new(PreparedCandidate {
         input: input.clone(),
         proposal,
+        commit,
+        revision,
+    })))
+}
+
+/// Reapply one immutable ChangeSet to an exact new base, producing a new delta
+/// and a single-parent commit. This does not move refs or transfer old evidence.
+/// `base_*` and `original_operations` describe the accepted source version;
+/// `current_*` is the explicitly chosen new base. The service fixes the label
+/// (including source version/run) and timestamp before computation/retries.
+pub fn prepare_rebase(
+    store: &impl ObjectStore,
+    input: &CandidateInput,
+    limits: Limits,
+) -> Result<RebaseOutcome> {
+    if input.label.is_empty()
+        || input.label.len() > 256
+        || !input
+            .label
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b":/-_".contains(&b))
+    {
+        return Err(treeharbor_core::Error::InvalidObject("rebase label").into());
+    }
+    let store = Budget {
+        store,
+        read: Cell::new(limits.max_read_bytes),
+        write: Cell::new(limits.max_write_bytes),
+    };
+    for (revision, snapshot) in [
+        (input.base_revision, input.base_snapshot),
+        (input.current_revision, input.current_snapshot),
+    ] {
+        let Object::NativeCommit(commit) = store.get(revision)? else {
+            return Err(treeharbor_core::Error::WrongKind.into());
+        };
+        if commit.snapshot != snapshot {
+            return Err(treeharbor_core::Error::PredicateMismatch.into());
+        }
+    }
+    let Object::ChangeOperations(operations) = store.get(input.original_operations)? else {
+        return Err(treeharbor_core::Error::WrongKind.into());
+    };
+    let original = prepare_change(&store, input.base_snapshot, &operations)?;
+    if original.result_snapshot() != input.proposed_snapshot {
+        return Err(treeharbor_core::Error::PredicateMismatch.into());
+    }
+    let merged = match merge_snapshots(
+        &store,
+        input.base_snapshot,
+        input.current_snapshot,
+        input.proposed_snapshot,
+        limits,
+    )? {
+        Outcome::Conflicted(c) => return Ok(RebaseOutcome::Conflicted(c)),
+        Outcome::Clean(m) => m,
+    };
+    let delta =
+        crate::engine::snapshot_delta(&store, input.current_snapshot, merged.result(), limits)?;
+    let applied = prepare_change(&store, input.current_snapshot, &delta)?;
+    if applied.result_snapshot() != merged.result() {
+        return Err(treeharbor_core::Error::PredicateMismatch.into());
+    }
+    let commit = Commit {
+        git_origin: None,
+        parents: vec![input.current_revision],
+        snapshot: applied.result_snapshot(),
+        changes: applied.operations(),
+        author_name: "TreeHarbor".into(),
+        author_email: "rebase@treeharbor.invalid".into(),
+        timestamp_seconds: input.timestamp_seconds,
+        timezone_minutes: 0,
+        message: format!("Rebase {}\nRebase profile: {}", input.label, REBASE_PROFILE),
+    };
+    let revision = checked_put(&store, &Object::NativeCommit(commit.clone()))?;
+    Ok(RebaseOutcome::Ready(Box::new(PreparedRebase {
+        input: input.clone(),
+        applied,
         commit,
         revision,
     })))
