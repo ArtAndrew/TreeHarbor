@@ -3,11 +3,13 @@
 #[cfg(not(unix))]
 compile_error!("The native materializer currently supports Unix only");
 
+mod capture;
 mod filesystem;
 mod pristine;
 mod publication;
 mod recovery;
 mod selection;
+pub use capture::{CaptureArtifact, CaptureExpectation};
 pub use publication::{Publication, PublicationReceipt};
 pub use recovery::BaselineExpectation;
 pub use selection::Selection;
@@ -53,6 +55,8 @@ pub enum Error {
     Configuration,
     #[error("invalid, changed or incorrectly bound workspace baseline")]
     InvalidBaseline,
+    #[error("captured source changed or conflicts with the explicit selection")]
+    CaptureConflict,
 }
 pub type Result<T> = std::result::Result<T, Error>;
 

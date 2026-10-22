@@ -3,6 +3,12 @@
 Updated: 2026-10-22. This file describes implemented behavior and remaining release
 gates. A foundation milestone does not complete either mode.
 
+Capture integration is in progress. A [selected-file capture library](capture-format-v1.md)
+now creates an independently verifiable immutable artifact from an exact baseline,
+with explicit replacements/deletions/exclusions and sparse coverage checks. This
+library does not prove runtime quiescence. Owner seal API, durable node claims,
+server publication/acceptance and physical workspace cleanup remain unfinished.
+
 New review increment: [immutable review diffs](review-diff.md) show an exact
 accepted ChangeSet version, prepared integration candidate or two registered
 native revisions through read-only HTTP/CLI. Candidate diffs compare the captured

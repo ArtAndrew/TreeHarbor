@@ -1,5 +1,6 @@
 //! Immutable source objects. No filesystem, Git, network, or publication authority.
 
+mod capture;
 mod codec;
 mod delta;
 mod identity;
@@ -9,6 +10,7 @@ mod profile;
 mod proposal;
 mod tree;
 
+pub use capture::{CaptureSelection, MAX_CAPTURE_BYTES, MAX_CAPTURE_PATHS};
 pub use delta::{TreeDiffLimits, diff_snapshots};
 pub use identity::{GitOid, ObjectId, RevisionRef};
 pub use object::{
