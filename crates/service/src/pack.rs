@@ -1,4 +1,4 @@
-//! Durable native source spools: v1 selected stopped files, v2 complete Git history.
+//! Durable source spools: v1 selected files, v2 Git history, v3 native history.
 //! Capturing files is not an atomic snapshot of a tree with concurrent writers.
 use crate::files;
 use rustix::fs::{self as unixfs, AtFlags, Dir, FileType, Mode, OFlags, Stat};
@@ -88,7 +88,7 @@ struct Manifest {
     encoded_bytes: u64,
     filesystem_entries: u64,
 }
-/// A full selected Git commit history. It never means every ref in the bundle.
+/// Full history of one Git (v2) or native (v3) commit, not all repository refs.
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct FullManifest {
@@ -163,21 +163,28 @@ impl Pack {
                 }
                 (manifest, None)
             }
-            Some(2) => {
+            Some(version @ (2 | 3)) => {
                 let full: FullManifest =
                     serde_json::from_slice(&raw).map_err(|_| Error::Invalid)?;
                 if full.selection != "full" {
                     return Err(Error::Invalid);
                 }
-                let treeharbor_core::RevisionRef::Git(oid) = full.source_revision.parse()? else {
-                    return Err(Error::Invalid);
-                };
-                if treeharbor_core::RevisionRef::Git(oid).to_string() != full.source_revision {
+                let revision: treeharbor_core::RevisionRef = full.source_revision.parse()?;
+                if revision.to_string() != full.source_revision {
                     return Err(Error::Invalid);
                 }
+                let source = match (version, revision) {
+                    (2, treeharbor_core::RevisionRef::Git(oid)) => Some(oid),
+                    (3, treeharbor_core::RevisionRef::Native(id))
+                        if id.to_string() == full.commit =>
+                    {
+                        None
+                    }
+                    _ => return Err(Error::Invalid),
+                };
                 (
                     Manifest {
-                        version: 2,
+                        version: version as u8,
                         commit: full.commit,
                         snapshot: full.snapshot,
                         selection_hex: vec![],
@@ -185,7 +192,7 @@ impl Pack {
                         encoded_bytes: full.encoded_bytes,
                         filesystem_entries: full.filesystem_entries,
                     },
-                    Some(oid),
+                    source,
                 )
             }
             _ => return Err(Error::Invalid),
@@ -681,6 +688,31 @@ pub fn capture_git(request: GitCapture<'_>) -> Result<Pack> {
     ))?;
     parent_fd.sync_all()?;
     Pack::open(&output)
+}
+
+pub(crate) fn native_manifest(
+    directory: &Path,
+    commit: ObjectId,
+    snapshot: ObjectId,
+    objects: &[ObjectId],
+    encoded_bytes: u64,
+    entries: u64,
+) -> Result<()> {
+    let manifest = FullManifest {
+        version: 3,
+        selection: "full".into(),
+        source_revision: treeharbor_core::RevisionRef::Native(commit).to_string(),
+        commit: commit.to_string(),
+        snapshot: snapshot.to_string(),
+        objects: objects.iter().map(ToString::to_string).collect(),
+        encoded_bytes,
+        filesystem_entries: entries,
+    };
+    let raw = serde_json::to_vec(&manifest).map_err(|_| Error::Invalid)?;
+    if raw.len() > MAX_MANIFEST {
+        return Err(Error::Limit);
+    }
+    files::write_private(&directory.join("manifest.json"), &raw).map_err(|_| Error::Output)
 }
 
 #[cfg(test)]

@@ -680,6 +680,44 @@ async fn import_resumes_partial_graph_and_completed_receipt(git_history: bool) {
         "{}",
         String::from_utf8_lossy(&response.stdout)
     );
+    if git_history {
+        let expected: Vec<_> = manifest["objects"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|id| {
+                let id = id.as_str().unwrap().parse().unwrap();
+                (id, pack.frame(id).unwrap())
+            })
+            .collect();
+        let root = pack.commit();
+        drop(pack);
+        fs::remove_dir_all(&pack_path).unwrap();
+        let output = f.dir.path().join("history-from-server");
+        let exported = f.cli(&[
+            "source-export",
+            "--revision",
+            &RevisionRef::Native(root).to_string(),
+            "--authority",
+            "standalone",
+            "--epoch",
+            "1",
+            "--output",
+            output.to_str().unwrap(),
+        ]);
+        assert!(
+            exported.status.success(),
+            "{} {}",
+            String::from_utf8_lossy(&exported.stdout),
+            String::from_utf8_lossy(&exported.stderr)
+        );
+        let exported = treeharbor_service::pack::Pack::open(&output).unwrap();
+        assert_eq!(exported.commit(), root);
+        assert_eq!(exported.object_count(), expected.len());
+        for (id, frame) in expected {
+            assert_eq!(exported.frame(id).unwrap(), frame);
+        }
+    }
     drop(server);
     f.cleanup().await;
 }

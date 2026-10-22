@@ -1,4 +1,6 @@
 mod common;
+#[path = "uploads/exports.rs"]
+mod exports;
 use common::{cleanup, connection, setup};
 use treeharbor_core::{
     Changes, Commit, Directory, Entry, EntryMode, EntryRef, Name, Object, RevisionRef,

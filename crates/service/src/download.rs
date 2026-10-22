@@ -144,6 +144,7 @@ mod tests {
             headers.insert(key, hyper::header::HeaderValue::from_str(&value).unwrap());
         }
         RawReply {
+            file: None,
             status: StatusCode::OK,
             headers,
             bytes: object.encode().unwrap().into(),

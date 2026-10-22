@@ -18,6 +18,8 @@ in **Standalone** mode. Both share one Rust engine.
 > durable local pack and resumes upload without rereading the original source.
 > [Git bundle import](docs/git-import.md) adds complete pinned commit ancestry,
 > preserving original Git IDs for re-export.
+> [Live source export](docs/live-source-export.md) downloads registered native
+> history from the server into a verified pack for reimport or Git restoration.
 > Owners can [list and download baseline files](docs/source-reads.md) through the
 > same scoped service, with exact workspace context and verified blob content.
 > A development HTTP server over a private Unix socket and a CLI now expose the
@@ -78,8 +80,10 @@ runtime isolation.
 
 To build and exercise the local server and credential administration, follow the
 [local service guide](docs/local-service.md). It requires PostgreSQL and currently
-exercises the control plane. The [Git export guide](docs/git-export.md) converts a completed local native source pack
-to a self-contained bundle. The [local node guide](docs/local-node.md) prepares native
+exercises the control plane. [Live source export](docs/live-source-export.md)
+downloads complete pinned history; the [Git export guide](docs/git-export.md)
+converts a completed local pack to a self-contained bundle.
+The [local node guide](docs/local-node.md) prepares native
 workspace files. [Managed runs](docs/managed-runs.md) add experimental Linux execution
 with explicitly provisioned bounded volumes and approved runtime profiles.
 

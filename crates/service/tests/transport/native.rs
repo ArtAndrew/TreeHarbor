@@ -251,7 +251,7 @@ async fn native_queue_cli_merges_agents_fences_green_and_recovers_fsync_and_comm
         &["read", "validation.report"],
     );
     let reviewer = role(&mut f, "reviewer", Some("human"), &["read", "review"]);
-    f.credential_path = admin;
+    f.credential_path = admin.clone();
     let source = f.dir.path().join("native-source");
     fs::create_dir(&source).unwrap();
     fs::write(source.join("file.txt"), b"a\nb\nc\nd\ne\n").unwrap();
@@ -501,6 +501,89 @@ async fn native_queue_cli_merges_agents_fences_green_and_recovers_fsync_and_comm
             .get::<_, i64>(0),
         2
     );
+    // Export the actual newly landed graph through public CLI after restart.
+    // Original input packs/files are gone; the local source path is no oracle.
+    server.0.kill().unwrap();
+    server.0.wait().unwrap();
+    drop(server);
+    fs::remove_dir_all(&source).unwrap();
+    fs::remove_dir_all(&pack).unwrap();
+    server = f.start().await;
+    let exported_path = f.dir.path().join("server-export");
+    let export_args = [
+        "source-export",
+        "--authority",
+        "standalone",
+        "--epoch",
+        "1",
+        "--revision",
+        final_head["revision"].as_str().unwrap(),
+        "--output",
+        exported_path.to_str().unwrap(),
+    ];
+    let exported = f.cli(&export_args);
+    assert!(
+        exported.status.success(),
+        "{} {}",
+        String::from_utf8_lossy(&exported.stdout),
+        String::from_utf8_lossy(&exported.stderr)
+    );
+    let exported = treeharbor_service::pack::Pack::open(&exported_path).unwrap();
+    assert_eq!(exported.commit(), head);
+    assert_eq!(exported.object_count(), seen.len());
+    for id in &seen {
+        assert_eq!(
+            exported.frame(*id).unwrap(),
+            copy.get(*id).unwrap().encode().unwrap()
+        );
+    }
+    assert!(!f.cli(&export_args).status.success());
+    let git_dir = f.dir.path().join("git-export");
+    let output = Command::new(env!("CARGO_BIN_EXE_treeharbor"))
+        .args(["git-export", "--pack"])
+        .arg(&exported_path)
+        .arg("--output")
+        .arg(&git_dir)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let restored = f.dir.path().join("restored.git");
+    git_reference::git(
+        f.dir.path(),
+        &[
+            "clone",
+            "--bare",
+            git_dir.join("history.bundle").to_str().unwrap(),
+            restored.to_str().unwrap(),
+        ],
+        b"",
+    );
+    assert_eq!(
+        git_reference::git(&restored, &["show", "refs/heads/main:file.txt"], b""),
+        b"A\nb\nc\nd\nE\n"
+    );
+    assert_eq!(
+        git_reference::git(&restored, &["show", "refs/heads/main:keep.bin"], b""),
+        vec![42; 2 * 1024 * 1024]
+    );
+    // Exported pack can reenter the native upload path with exact revision identity.
+    f.credential_path = admin;
+    let receipt = ok(f.cli(&[
+        "source-import",
+        "--pack",
+        exported_path.to_str().unwrap(),
+        "--state",
+        f.dir.path().join("reimport.json").to_str().unwrap(),
+        "--authority",
+        "standalone",
+        "--epoch",
+        "1",
+    ]));
+    assert_eq!(receipt["revision"], final_head["revision"]);
     drop(server);
     drop(db);
     f.cleanup().await;

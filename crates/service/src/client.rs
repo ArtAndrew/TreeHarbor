@@ -11,7 +11,7 @@ use std::{
     path::Path,
     time::Duration,
 };
-use tokio::net::UnixStream;
+use tokio::{io::AsyncWriteExt, net::UnixStream};
 use treeharbor_metadata::{Scope, access::SecretToken, commands::MAX_REQUEST_BYTES};
 use uuid::Uuid;
 
@@ -183,6 +183,7 @@ async fn send_request(
             content_type,
             body,
             max_response: MAX_RESPONSE,
+            output: None,
         },
         timeout,
     )
@@ -197,6 +198,7 @@ pub(crate) struct RawReply {
     pub status: StatusCode,
     pub headers: hyper::HeaderMap,
     pub bytes: Bytes,
+    pub file: Option<std::fs::File>,
 }
 struct Exchange {
     method: &'static str,
@@ -204,6 +206,7 @@ struct Exchange {
     content_type: &'static str,
     body: Vec<u8>,
     max_response: usize,
+    output: Option<std::fs::File>,
 }
 async fn exchange(
     socket: &Path,
@@ -217,6 +220,7 @@ async fn exchange(
         content_type,
         body,
         max_response,
+        output,
     } = request;
     files::private_directory(socket.parent().ok_or(Error::UnsafeFile)?)?;
     let meta = fs::symlink_metadata(socket)?;
@@ -262,6 +266,36 @@ async fn exchange(
             .map_err(|_| Error::Http)?;
         let status = response.status();
         let headers = response.headers().clone();
+        if status.is_success()
+            && let Some(output) = output
+        {
+            if status != StatusCode::OK
+                || headers
+                    .get(header::CONTENT_TYPE)
+                    .is_none_or(|v| v != crate::archive::CONTENT_TYPE)
+            {
+                return Err(Error::Http);
+            }
+            let mut file = tokio::fs::File::from_std(output);
+            let mut body = response.into_body();
+            let mut total = 0u64;
+            while let Some(frame) = body.frame().await {
+                let frame = frame.map_err(|_| Error::Http)?;
+                let data = frame.into_data().map_err(|_| Error::Http)?;
+                total = total.checked_add(data.len() as u64).ok_or(Error::Size)?;
+                if total > crate::archive::MAX_ARCHIVE {
+                    return Err(Error::Size);
+                }
+                file.write_all(&data).await?;
+            }
+            file.flush().await?;
+            return Ok(RawReply {
+                status,
+                headers,
+                bytes: Bytes::new(),
+                file: Some(file.into_std().await),
+            });
+        }
         let bytes = Limited::new(response.into_body(), max_response)
             .collect()
             .await
@@ -271,6 +305,7 @@ async fn exchange(
             status,
             headers,
             bytes,
+            file: None,
         })
     })
     .await
@@ -303,11 +338,42 @@ pub(crate) async fn source_read(
             uri: "/v1/source/read".into(),
             content_type: "application/json",
             body,
+            output: None,
             max_response: if file {
                 treeharbor_core::MAX_PAYLOAD + treeharbor_core::FRAME_HEADER
             } else {
                 MAX_RESPONSE
             },
+        },
+        timeout,
+    )
+    .await
+}
+
+pub(crate) async fn source_export(
+    socket: &Path,
+    credential: &Credential,
+    mut fields: Value,
+    output: std::fs::File,
+    timeout: Duration,
+) -> Result<RawReply> {
+    fields["version"] = json!(1);
+    fields["tenant"] = json!(credential.scope.tenant());
+    fields["repository"] = json!(credential.scope.repository().to_string());
+    let body = serde_json::to_vec(&fields).map_err(|_| Error::Config)?;
+    if body.len() > MAX_REQUEST_BYTES {
+        return Err(Error::Size);
+    }
+    exchange(
+        socket,
+        &credential.token,
+        Exchange {
+            method: "POST",
+            uri: "/v1/source/export".into(),
+            content_type: "application/json",
+            body,
+            max_response: MAX_RESPONSE,
+            output: Some(output),
         },
         timeout,
     )

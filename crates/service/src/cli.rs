@@ -314,6 +314,17 @@ impl SourceContext {
 }
 #[derive(Subcommand)]
 enum Agent {
+    /// Download a complete registered native revision from the live service.
+    SourceExport {
+        #[arg(long)]
+        revision: String,
+        #[arg(long, value_enum)]
+        authority: Mode,
+        #[arg(long,value_parser=clap::value_parser!(i64).range(1..))]
+        epoch: i64,
+        #[arg(long)]
+        output: PathBuf,
+    },
     /// Compute a durable merge candidate from server-owned, immutable inputs.
     NativePrepare {
         #[arg(long)]
@@ -554,7 +565,10 @@ impl Agent {
             Self::ChangeAbort { mutation, upload } => {
                 json!({"method":"change_abort","key":mutation.key,"authority":Authority::from(mutation.authority).as_str(),"epoch":mutation.epoch,"upload":upload.to_string()})
             }
-            Self::NativePrepare { .. } | Self::ChangePut { .. } | Self::ChangeSubmit { .. } => {
+            Self::SourceExport { .. }
+            | Self::NativePrepare { .. }
+            | Self::ChangePut { .. }
+            | Self::ChangeSubmit { .. } => {
                 return Err(Error::Config);
             }
             Self::RunRequest {
@@ -783,6 +797,32 @@ pub async fn run(cli: Cli) -> Result<bool> {
         } => {
             let credential = Credential::load(&credential_file)?;
             let action = match action {
+                Agent::SourceExport {
+                    revision,
+                    authority,
+                    epoch,
+                    output,
+                } => {
+                    let treeharbor_core::RevisionRef::Native(revision) =
+                        revision.parse().map_err(|_| Error::Config)?
+                    else {
+                        return Err(Error::Config);
+                    };
+                    let reply = crate::archive::download(
+                        &socket,
+                        &credential,
+                        treeharbor_metadata::exports::ExportFence {
+                            authority: authority.into(),
+                            epoch,
+                            revision,
+                        },
+                        &output,
+                        Duration::from_millis(timeout_ms),
+                    )
+                    .await?;
+                    println!("{}", reply.body);
+                    return Ok(reply.status.is_success());
+                }
                 Agent::SourceFile {
                     source,
                     path,

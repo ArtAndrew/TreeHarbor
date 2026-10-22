@@ -21,7 +21,7 @@ treeharbor-metadata.workspace = true
 treeharbor-node.workspace = true
 treeharbor-materializer.workspace = true
 treeharbor-runtime.workspace = true
-tokio.workspace = true
+tokio = { workspace = true, features = ["fs"] }
 tokio-postgres.workspace = true
 serde.workspace = true
 serde_json.workspace = true
