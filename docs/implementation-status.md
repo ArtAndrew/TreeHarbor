@@ -50,7 +50,7 @@ resource outcomes and worker-loss recovery. No complete authority mode is implie
 | Component | Evidence | Remaining |
 |---|---|---|
 | Canonical SHA-256 object format | Versioned framing, independent golden vectors, strict decoder | Compatibility policy for later formats |
-| Immutable directory trees and operations | Exact expected-before checks, structural sharing, explicit deletes; bounded native merge library and Git reference matrix | General history rebase, broader rename/base support, Git import/export |
+| Immutable directory trees and operations | Exact expected-before checks, canonical subtree operations v2, bounded structural diff, structural sharing, explicit deletes; native merge and Git reference matrix | General history rebase, broader rename/base support, Git import/export |
 | Local object store | Atomic no-clobber writes, digest verification, file/directory fsync, tenant directories, physical generations and upload receipts | S3, backup/restore, kill fault campaign |
 | Native DAG and admission | All-parent traversal, persisted refs/policies/queue/checks/reviews, verified candidate commits, final transactional admission and no-Git CLI/process-loss tests | Automatic scheduling, full native lifecycle, recovery and export |
 | PostgreSQL metadata and outbox | Real database transaction/idempotency/lease tests; repository authority/epoch checks; populated schema upgrades through v11; local service pool and crash/replay | Remote service integration and full server restore |
@@ -236,3 +236,31 @@ Public format/limits/operations are in [git-export.md](git-export.md). This does
 not implement Git import, original Git ID roundtrip, leased live-server export,
 GitHub delivery, authority migration or full product backup. No performance
 superiority, production readiness or complete mode release is claimed.
+
+
+## Subtree operations increment — 2026-10-22
+
+Canonical ChangeOperations v2 adds typed Directory before/after edges while all
+leaf-only and existing object frames retain v1 bytes/IDs. The core computes a
+bounded structural snapshot diff and applies file/directory transitions with all
+predicates checked before writes. The candidate builder replays the new delta;
+its merge profile is explicitly v2. Source graph upload and Git export accept
+mixed-version graphs. Public leaf-only proposal HTTP v1 is unchanged.
+
+Independent Python frame/hash vectors, a 49-pair exact-tree replay matrix,
+stale-subtree and overlap rejection, kind/version failures, all budget boundaries,
+unchanged-subtree reuse, candidate parent/delta checks and real Git mixed-history
+restoration are covered. Real PostgreSQL tests retain both directory graphs during
+GC, enforce upload-session membership and replay after reconnect; an old pending
+merge-profile reservation must be cancelled/requeued rather than recomputed.
+See [format and upgrade boundaries](subtree-operations-v2.md). Git import with raw
+metadata and agent-facing subtree proposal uploads remain to be implemented.
+
+
+Local verification for this increment (macOS arm64, Rust 1.99.1): 119 ordinary
+workspace tests passed. The full PostgreSQL/transport suite passed 119 tests,
+then the new old-profile upgrade test passed separately (120 total); the extended
+actual CLI/HTTP crash/replay test also passed with a server-derived v2 directory
+addition and durable full-graph reads. Strict workspace Clippy and fmt passed.
+No runtime outcome is fabricated by the new tests; the existing transport fixture
+is explicitly separate from actual task/check execution in required gVisor CI.

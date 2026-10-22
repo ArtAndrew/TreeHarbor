@@ -13,7 +13,8 @@ pub use candidate::{CandidateInput, CandidateOutcome, PreparedCandidate, prepare
 pub use engine::merge_snapshots;
 
 /// A behavior change or merge-library upgrade requires a new profile identity.
-pub const PROFILE: &str = "treeharbor-native-merge-v1/diffy-0.5.2/exact-sibling-renames";
+pub const PROFILE: &str =
+    "treeharbor-native-merge-v2/diffy-0.5.2/exact-sibling-renames/subtree-delta";
 
 #[derive(Clone, Copy, Debug)]
 pub struct Limits {

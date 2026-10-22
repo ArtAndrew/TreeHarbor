@@ -8,7 +8,11 @@ durable candidates and exposes admission through CLI/API.
 The engine uses native directories and blobs, with pinned `diffy` 0.5.2 for byte
 text merging. It does not create a Git mirror, invoke Git, execute hooks or apply
 repository-defined merge drivers. Its profile identity is
-`treeharbor-native-merge-v1/diffy-0.5.2/exact-sibling-renames`.
+`treeharbor-native-merge-v2/diffy-0.5.2/exact-sibling-renames/subtree-delta`.
+This profile uses [subtree operations v2](subtree-operations-v2.md) when deriving
+candidate deltas for directory entry replacements. A clean one-sided file/directory
+transition can now be represented and replayed as one exact operation. Conservative
+three-way rename/type conflict handling is otherwise unchanged.
 Changing the dependency version or behavior requires a new profile. Durable
 candidate construction must bind that identity before checks are dispatched.
 

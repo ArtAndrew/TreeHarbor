@@ -519,3 +519,55 @@ fn shared_subtrees_remain_exact_and_expansion_budget_counts_each_path() {
     ));
     assert!(!next.exists());
 }
+
+#[test]
+fn mixed_native_frame_versions_export_file_directory_history_with_original_trees() {
+    let temp = tempfile::tempdir().unwrap();
+    fs::set_permissions(temp.path(), fs::Permissions::from_mode(0o700)).unwrap();
+    let s = store(&temp.path().join("store"));
+    let before = tree(&s, &[(b"a", EntryMode::File, b"original")]);
+    let parent = commit(&s, before, vec![], "before");
+    let child_snapshot = tree(&s, &[(b"file", EntryMode::Executable, b"child")]);
+    let Object::Snapshot { root: child } = s.get(child_snapshot).unwrap() else {
+        panic!()
+    };
+    let root = s
+        .put(&Object::Directory(
+            Directory::new(vec![Entry {
+                name: Name::new(b"a".to_vec()).unwrap(),
+                value: EntryRef {
+                    mode: EntryMode::Directory,
+                    target: child,
+                },
+            }])
+            .unwrap(),
+        ))
+        .unwrap();
+    let after = s.put(&Object::Snapshot { root }).unwrap();
+    let changes = diff_snapshots(&s, before, after, TreeDiffLimits::default()).unwrap();
+    assert_eq!(changes.format_version(), 2);
+    let operations = s.put(&Object::ChangeOperations(changes)).unwrap();
+    let template = commit(&s, after, vec![parent], "after");
+    let Object::NativeCommit(mut native) = s.get(template).unwrap() else {
+        panic!()
+    };
+    native.changes = operations;
+    let head = s.put(&Object::NativeCommit(native)).unwrap();
+    let output = temp.path().join("export");
+    let manifest = export(&s, request(&output, head, HashAlgorithm::Sha1)).unwrap();
+    let restored = temp.path().join("restored");
+    run(
+        temp.path(),
+        &[
+            "clone",
+            "--bare",
+            output.join("history.bundle").to_str().unwrap(),
+            restored.to_str().unwrap(),
+        ],
+        b"",
+    );
+    assert_eq!(manifest.commits.len(), 2);
+    assert_eq!(run(&restored, &["show", "main:a/file"], b""), b"child");
+    assert_eq!(run(&restored, &["show", "main^:a"], b""), b"original");
+    run(&restored, &["fsck", "--strict"], b"");
+}

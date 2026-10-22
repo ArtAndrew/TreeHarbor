@@ -65,7 +65,28 @@ pub struct ChangeOperation {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Changes(Vec<ChangeOperation>);
 impl Changes {
-    pub fn new(mut ops: Vec<ChangeOperation>) -> Result<Self> {
+    /// Original leaf-only constructor; existing callers retain the v1 contract.
+    pub fn new(ops: Vec<ChangeOperation>) -> Result<Self> {
+        Self::checked(ops, false)
+    }
+    /// Exact entry replacements, including whole directory subtrees. Parent and
+    /// descendant operations remain forbidden; there is no implicit ordering.
+    pub fn with_subtrees(ops: Vec<ChangeOperation>) -> Result<Self> {
+        Self::checked(ops, true)
+    }
+    pub fn format_version(&self) -> u16 {
+        if self.0.iter().any(|op| {
+            [op.expected, op.replacement]
+                .into_iter()
+                .flatten()
+                .any(|entry| entry.mode == EntryMode::Directory)
+        }) {
+            2
+        } else {
+            1
+        }
+    }
+    fn checked(mut ops: Vec<ChangeOperation>, allow_directories: bool) -> Result<Self> {
         if ops.len() > MAX_ENTRIES {
             return Err(Error::TooLarge);
         }
@@ -74,7 +95,7 @@ impl Changes {
                 return Err(Error::InvalidObject("empty operation"));
             }
             for value in [op.expected, op.replacement].into_iter().flatten() {
-                if value.mode == EntryMode::Directory {
+                if !allow_directories && value.mode == EntryMode::Directory {
                     return Err(Error::InvalidObject("operation must address a leaf"));
                 }
             }
@@ -189,7 +210,7 @@ impl Object {
                     [op.expected, op.replacement]
                         .into_iter()
                         .flatten()
-                        .map(|e| (e.target, 1))
+                        .map(|e| (e.target, if e.mode == EntryMode::Directory { 2 } else { 1 }))
                 })
                 .collect(),
             Self::NativeCommit(c) => c

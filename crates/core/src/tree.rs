@@ -45,10 +45,16 @@ pub fn apply_changes(
         if lookup(store, root, &op.path)? != op.expected {
             return Err(Error::PredicateMismatch);
         }
-        if let Some(entry) = op.replacement
-            && !matches!(store.get(entry.target)?, Object::Blob(_))
-        {
-            return Err(Error::WrongKind);
+        if let Some(entry) = op.replacement {
+            let kind = store.get(entry.target)?.kind();
+            let expected = if entry.mode == EntryMode::Directory {
+                2
+            } else {
+                1
+            };
+            if kind != expected {
+                return Err(Error::WrongKind);
+            }
         }
     }
     let mut result = root;
