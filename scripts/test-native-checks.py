@@ -176,13 +176,6 @@ class Checks(managed.Harness):
         self.admin("access-set", *self.scope, "--principal", "node-0", "--permission", "runtime.control")
         print("PASS native CI: revoked node access blocks previously passing evidence", flush=True)
 
-        revoked = self.check_case()
-        self.completed_check(revoked, self.start(revoked))
-        self.admin("runtime-profile-revoke", *self.scope, "--profile-digest",
-                   self.sql(f"SELECT 'sha256:'||encode(profile,'hex') FROM th_managed_runs WHERE run='{revoked['run']}'"))
-        assert self.native("land", self.integrator, check=False, candidate=revoked["candidate"]).returncode != 0
-        print("PASS native CI: revoking the execution environment invalidates pending passing evidence", flush=True)
-
         # Rebase is an owner operation, not approval. It supersedes an actively
         # checked old proposal; the runtime fence must tear that check down.
         old = self.check_case(delay=5000)
@@ -204,6 +197,15 @@ class Checks(managed.Harness):
         self.completed_check(fresh, self.start(fresh))
         assert self.native("land", self.integrator, candidate=fresh["candidate"])["state"] == "landed"
         print("PASS native CI: owner rebase cancels a running old check and new version requires actual fresh check/review", flush=True)
+
+        # All cases intentionally share this runtime profile. Revoke it last: a
+        # revoked profile must not be revived just to prepare later test cases.
+        revoked = self.check_case()
+        self.completed_check(revoked, self.start(revoked))
+        self.admin("runtime-profile-revoke", *self.scope, "--profile-digest",
+                   self.sql(f"SELECT 'sha256:'||encode(profile,'hex') FROM th_managed_runs WHERE run='{revoked['run']}'"))
+        assert self.native("land", self.integrator, check=False, candidate=revoked["candidate"]).returncode != 0
+        print("PASS native CI: revoking the execution environment invalidates pending passing evidence", flush=True)
 
 
 if __name__ == "__main__":
