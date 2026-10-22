@@ -22,7 +22,10 @@ use tokio::{
 };
 use treeharbor_metadata::{access::SecretToken, commands::MAX_REQUEST_BYTES};
 
-type Body = Full<Bytes>;
+type Body = http_body_util::combinators::BoxBody<Bytes, std::io::Error>;
+fn full(bytes: Bytes) -> Body {
+    Full::new(bytes).map_err(|never| match never {}).boxed()
+}
 pub struct Server {
     listener: UnixListener,
     guard: SocketGuard,
@@ -166,7 +169,7 @@ impl Server {
     }
 }
 fn response(status: StatusCode, value: serde_json::Value) -> Response<Body> {
-    let mut response = Response::new(Full::new(Bytes::from(value.to_string())));
+    let mut response = Response::new(full(Bytes::from(value.to_string())));
     *response.status_mut() = status;
     response.headers_mut().insert(
         header::CONTENT_TYPE,
@@ -204,11 +207,13 @@ async fn handle(
     }
     let upload = crate::source::route(request.uri().path());
     let source_read = request.uri().path() == "/v1/source/read";
+    let source_export = request.uri().path() == "/v1/source/export";
     let native_prepare = request.uri().path() == "/v1/native/prepare";
     let change_submit = request.uri().path() == "/v1/changes/submit";
     if (request.uri().path() != "/v1/commands"
         && upload.is_none()
         && !source_read
+        && !source_export
         && !change_submit
         && !native_prepare)
         || request.uri().query().is_some()
@@ -314,13 +319,40 @@ async fn handle(
             ),
         };
     }
+    if source_export {
+        let Some(backend) = backend else {
+            return error(StatusCode::SERVICE_UNAVAILABLE, "storage_not_configured");
+        };
+        return match crate::source_export::export(&body, &credential, backend, pool).await {
+            Ok(delivery) => {
+                let mut result = Response::new(delivery.boxed());
+                result.headers_mut().insert(
+                    header::CONTENT_TYPE,
+                    header::HeaderValue::from_static(crate::archive::CONTENT_TYPE),
+                );
+                result.headers_mut().insert(
+                    header::CACHE_CONTROL,
+                    header::HeaderValue::from_static("no-store"),
+                );
+                result.headers_mut().insert(
+                    header::CONNECTION,
+                    header::HeaderValue::from_static("close"),
+                );
+                result
+            }
+            Err(f) => error(
+                StatusCode::from_u16(f.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+                f.code,
+            ),
+        };
+    }
     if source_read {
         let Some(backend) = backend else {
             return error(StatusCode::SERVICE_UNAVAILABLE, "storage_not_configured");
         };
         return match crate::source_read::read(&body, &credential, backend, pool).await {
             Ok(delivery) => {
-                let mut response = Response::new(Full::new(delivery.bytes));
+                let mut response = Response::new(full(delivery.bytes));
                 *response.headers_mut() = delivery.headers;
                 response
             }

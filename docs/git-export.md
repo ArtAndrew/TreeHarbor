@@ -6,8 +6,9 @@ local source pack into an ordinary, self-contained Git bundle. A source pack
 captured with `source-pack` currently contains one initial native commit; the
 bridge also supports [imported Git history packs](git-import.md) and graphs with
 all parents of native merges.
-There is no live-server export/download command yet. Do not copy a running
-server's object directory as a substitute for a consistent, pinned export.
+Use [live source export](live-source-export.md) to download a registered native
+revision from the running server, including newly published merge commits.
+Do not copy a running server's object directory as a substitute for a pinned export.
 
 ## Try it
 
@@ -132,7 +133,7 @@ of untrusted content. A SIGKILL can leave `.treeharbor-export-work-*` or
 removing its private scratch. Normal failures clean scratch automatically. No
 automatic abandoned-export cleanup or crash-resume journal is implemented.
 
-No throughput or speedup claim has been measured for this exporter. The eventual
-server adapter must hold a scoped read lease/pin for the **whole** source graph
-until the export finishes, and separately export review/audit metadata for a
-full product backup or authority migration.
+No throughput or speedup claim has been measured for this exporter.
+[The source download adapter](live-source-export.md) holds a scoped read lease
+for the whole graph while building its independent archive. Review/audit metadata,
+full product backup and authority migration remain separate release work.

@@ -116,6 +116,8 @@ The [local node](local-node.md) now materializes and acknowledges native workspa
 files with durable placement and recovery. [Managed runs](managed-runs.md) add
 operator-approved bounded runtime execution. [Git bundle import](git-import.md)
 adds complete pinned history. Automatic scheduling remains pending.
+The [source-export command](live-source-export.md) downloads a registered native
+revision and its complete source history with read permission only.
 After creation, [source-list and source-file](source-reads.md) read the exact
 baseline using the owner credential, workspace generation and repository epoch.
 
@@ -158,7 +160,7 @@ not a database readiness or durability check. Responses use `Cache-Control: no-s
 | Database pool | 8; configurable 1–64; bounded checkout/create/recycle waits |
 | Request deadline | 15 seconds; configurable 100–60,000 milliseconds |
 | Connection lifetime | One request; bounded response wait; no keep-alive |
-| Client response limit | 1 MiB + 64 KiB |
+| Client JSON response limit | 1 MiB + 64 KiB; source files and archives have separate binary bounds |
 
 Optional config keys are `schema` (default `public`), `pool_size`,
 `max_connections` and `request_timeout_ms`. Schema names are restricted identifiers;

@@ -3,6 +3,13 @@
 Updated: 2026-10-22. This file describes implemented behavior and remaining release
 gates. A foundation milestone does not complete either mode.
 
+New source-history increment: [live source export](live-source-export.md) downloads
+a registered native base and its complete reachable graph through scoped reads.
+The CLI verifies a bounded binary archive and atomically publishes a full native
+pack v3, usable for reimport and optional Git export. Actual CLI tests restart the
+server, remove original source packs and recover both imported Git origins and
+newly published two-parent native commits. Full server backup remains unfinished.
+
 New interop increment: [Git bundle import](git-import.md) converts an exact Git
 commit's complete parent/tree graph into a durable full-source pack v2. Import
 preserves original commit IDs/bytes, verifies first-parent deltas, and feeds the
@@ -78,10 +85,11 @@ resource outcomes and worker-loss recovery. No complete authority mode is implie
 | Workspace preparation reservations | Operator-registered node storage, scoped job claims, immutable source/slot/attempt identity, renewal/reclaim, exact file-ready observation and drain retention; real PostgreSQL race/upgrade tests | Automatic source/slot release after runtime removal |
 | Local preparation node | Private physical root identity/OS lock, durable placement intent, exact no-replace publication, independent concurrent slots, current authorization and file-ready acknowledgment; actual process-kill recovery and import-to-files CLI tests | Scheduler/daemon, automated volume provisioning, remote workers, fenced volume migration and safe published-tree cleanup |
 | MCP adapter | Planned; not implemented | Shared-service adapter, scoped tools and real client interoperability tests |
-| Git source export | Local native-pack CLI and bounded Rust full-DAG projection to self-contained Git SHA-1/SHA-256 bundle; isolated batch Git, exact mapping, verified original Git metadata/IDs, restored fsck and no-replace publication | Live-server leased export, backup metadata, incremental projection, GitHub delivery |
+| Git source export | Local native-pack CLI and bounded Rust full-DAG projection to self-contained Git SHA-1/SHA-256 bundle; isolated batch Git, exact mapping, verified original Git metadata/IDs, restored fsck and no-replace publication | Backup metadata, incremental projection, GitHub delivery |
+| Live source export | Scoped registered-base reads with GC holds and authority/credential fences; streaming archive v1 and atomically verified pack v3; actual CLI restart/merge/origin roundtrip | Other retained proposals, all-ref export, full metadata backup, incremental transfer, longer jobs and cleanup |
 | Git history import | Pinned self-contained SHA-1/SHA-256 bundle, all-parent native graph, replayed deltas, exact original metadata, atomic full-source pack v2 and resumable HTTP/CLI upload | Network fetch, incremental imports, multi-ref cutover, automated cleanup, larger-repository profiling |
 | Connected | Not implemented | Real GitHub PR/checks/merge queue and credential separation |
-| Standalone S2 | Partial: durable native admission/publication through CLI/API without Git, managed offline checks plus explicitly separate transport fixtures | Rebase/history CLI, full lifecycle, cutover, server restore/export |
+| Standalone S2 | Partial: durable native admission/publication through CLI/API without Git, managed offline checks, registered-source export, plus explicitly separate transport fixtures | Rebase/history CLI, full lifecycle, cutover, full server backup/restore |
 | Release and benchmarks | Not released or measured | Clean installation, artifacts, SBOM/provenance, comparison and operating cost |
 
 ## Local verification
@@ -241,7 +249,7 @@ Local macOS arm64, Rust 1.99.1, Git 2.54.0 (Apple Git-157):
 `cargo test --workspace --locked --offline` passed 112 ordinary tests;
 `cargo clippy --workspace --all-targets --locked --offline -- -D warnings` passed.
 Public format/limits/operations are in [git-export.md](git-export.md). This did
-not include automated Git import (added below), leased live-server export,
+not include automated Git import or leased live-server export (both added later),
 GitHub delivery, authority migration or full product backup. No performance
 superiority, production readiness or complete mode release is claimed.
 
@@ -333,3 +341,35 @@ selection case (130 total). All 124 real PostgreSQL/transport tests passed,
 including both new full-history CLI scenarios. Workspace Clippy with warnings
 as errors, formatting and unchanged v1 golden vectors passed. Actual Linux
 runtime execution remains a separate required gVisor CI gate.
+
+## Scoped live source export
+
+The service now exports one registered native revision and its complete source
+closure through authenticated, leased reads. Authorization/authority changes
+reject subsequent batches and final publication. A source read hold prevents
+GC retirement during construction; anonymous server scratch outlives neither its
+request owner nor process. The client downloads to disk, verifies archive v1,
+builds full native pack v3 and syncs a no-replace output. v1/v2 packs remain readable.
+There is no Git dependency in this download path or PostgreSQL schema change.
+
+Actual service/CLI tests kill and restart the server, remove original source
+packs, export newly published two-parent commits, compare every native frame,
+restore with real Git and reimport the downloaded pack. A separate imported-Git
+case preserves raw original commit metadata. Database tests cover scoped membership,
+wrong bound permission, epoch changes, revoked tokens, expired holds and GC
+retention. Independent archive/manifest vectors and corruption, exact-closure,
+no-clobber/race tests exercise the client. One deliberately fake Unix HTTP peer
+tests interrupted/mismatched downloads and exact retry; it is not server-auth
+evidence and is separate from actual server tests.
+
+Local verification (macOS arm64, Rust 1.99.1): the full ordinary suite passed
+133 tests, followed by four archive tests including one added typed-closure test
+(134 ordinary tests total). All 127 explicitly enabled integration tests passed,
+including the real PostgreSQL/server suites and the client fault-transport test.
+Formatting and strict workspace Clippy passed. Required GitHub Linux/macOS,
+PostgreSQL and actual gVisor checks still apply before merge.
+
+See [format, access rules, resource bounds and cleanup](live-source-export.md).
+This does not implement full metadata backup/restore, all-ref migration, export
+of every retained proposal, automatic cleanup or incremental/long-running export.
+No performance claim or complete mode/release claim is made.

@@ -3,7 +3,8 @@
 This development API imports a complete canonical object graph and registers a
 native commit as a workspace base. It does not move a branch, accept an agent
 ChangeSet, approve a merge or prepare files. For ordinary files, use the
-[native directory import commands](native-import.md) or [Git bundle import](git-import.md). Automatic
+[native directory import commands](native-import.md), [Git bundle import](git-import.md)
+or a pack from [live source export](live-source-export.md). Automatic
 node/runtime preparation are still pending. The low-level commands below are
 useful to clients that already encode TreeHarbor objects.
 

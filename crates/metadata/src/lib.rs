@@ -11,6 +11,7 @@ use uuid::Uuid;
 pub mod access;
 pub mod catalog;
 pub mod commands;
+pub mod exports;
 pub mod intake;
 pub mod integration;
 pub mod preparations;

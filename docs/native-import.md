@@ -4,7 +4,9 @@ The development CLI can capture selected files, keep a durable local pack and
 resume its upload to the local service. Completion registers a native workspace
 base. It does **not** create a branch, import Git history, accept an agent's
 ChangeSet or run a sandbox. For complete commit ancestry use the separate
-[Git bundle import](git-import.md). Both end-to-end product modes remain unreleased.
+[Git bundle import](git-import.md). [Live source export](live-source-export.md)
+produces full native packs that this uploader also accepts. Both end-to-end
+product modes remain unreleased.
 
 ## Capture and send
 

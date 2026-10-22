@@ -1,5 +1,6 @@
 //! Authenticated local HTTP transport and CLI support. Unix-only at this stage.
 #![cfg(unix)]
+pub mod archive;
 pub mod cli;
 pub mod client;
 pub mod config;
@@ -13,6 +14,7 @@ pub mod pack;
 mod proposals;
 pub mod server;
 mod source;
+mod source_export;
 mod source_read;
 
 #[derive(Debug, thiserror::Error)]
