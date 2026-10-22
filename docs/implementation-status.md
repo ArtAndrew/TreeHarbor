@@ -240,8 +240,8 @@ one generated Git pack (formerly fast-import), without checkout or a process per
 Local macOS arm64, Rust 1.99.1, Git 2.54.0 (Apple Git-157):
 `cargo test --workspace --locked --offline` passed 112 ordinary tests;
 `cargo clippy --workspace --all-targets --locked --offline -- -D warnings` passed.
-Public format/limits/operations are in [git-export.md](git-export.md). This does
-not implement automated Git import, leased live-server export,
+Public format/limits/operations are in [git-export.md](git-export.md). This did
+not include automated Git import (added below), leased live-server export,
 GitHub delivery, authority migration or full product backup. No performance
 superiority, production readiness or complete mode release is claimed.
 
@@ -261,8 +261,8 @@ unchanged-subtree reuse, candidate parent/delta checks and real Git mixed-histor
 restoration are covered. Real PostgreSQL tests retain both directory graphs during
 GC, enforce upload-session membership and replay after reconnect; an old pending
 merge-profile reservation must be cancelled/requeued rather than recomputed.
-See [format and upgrade boundaries](subtree-operations-v2.md). Automated Git
-import and agent-facing subtree proposal uploads remain to be implemented.
+See [format and upgrade boundaries](subtree-operations-v2.md). Git bundle import
+was added in the later increment below; agent-facing subtree uploads remain open.
 
 
 Local verification for this increment (macOS arm64, Rust 1.99.1): 119 ordinary
@@ -289,7 +289,7 @@ objects and restored histories for SHA-1/SHA-256; independent Python native vect
 and PostgreSQL retention/upload tests cover the format and reachability.
 
 See [format and upgrade](git-origin-v2.md) and [export](git-export.md). This is the
-representation/export prerequisite for automated Git import, which remains unimplemented.
+representation/export prerequisite used by the Git bundle importer added below.
 No Connected release, GitHub delivery, migration, performance result or complete
 backup/restore is implied. Old readers must be upgraded before kind5/v2 writes.
 

@@ -2,8 +2,8 @@
 
 Experimental immutable object format. This stores original source data; it grants
 no merge permission, validation success, trusted authorship or signature approval.
-Automatic Git repository import is not yet available. The bridge library and
-`git-export` can validate and export an already complete origin-bearing native graph.
+[Pinned Git bundle import](git-import.md) creates complete origin-bearing native
+graphs. The bridge library and `git-export` validate and export those graphs.
 
 ## Wire layout
 

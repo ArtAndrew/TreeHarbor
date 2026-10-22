@@ -114,8 +114,8 @@ For ordinary files, [native directory import](native-import.md) now captures
 explicit paths and resumes uploads using a durable local pack and journal.
 The [local node](local-node.md) now materializes and acknowledges native workspace
 files with durable placement and recovery. [Managed runs](managed-runs.md) add
-operator-approved bounded runtime execution. Git import and automatic scheduling
-remain pending.
+operator-approved bounded runtime execution. [Git bundle import](git-import.md)
+adds complete pinned history. Automatic scheduling remains pending.
 After creation, [source-list and source-file](source-reads.md) read the exact
 baseline using the owner credential, workspace generation and repository epoch.
 
