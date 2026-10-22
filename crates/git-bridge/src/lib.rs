@@ -2,6 +2,8 @@
 //! Callers must retain every source object for the entire export (a live server
 //! needs a read lease/pin; a local immutable pack has a separate lifetime).
 #![cfg(unix)]
+mod origin;
+mod pack;
 mod process;
 mod stream;
 
@@ -188,8 +190,15 @@ pub fn export(store: &impl ObjectStore, request: Export<'_>) -> Result<Manifest>
         .tempdir_in(&parent)?;
     fs::set_permissions(scratch.path(), fs::Permissions::from_mode(0o700))?;
     fs::set_permissions(stage.path(), fs::Permissions::from_mode(0o700))?;
-    let stream_path = scratch.path().join("import.stream");
-    let graph = stream::write(store, &request.refs, &stream_path, limits, deadline)?;
+    let stream_path = scratch.path().join("projection.pack");
+    let graph = stream::write(
+        store,
+        &request.refs,
+        &stream_path,
+        request.algorithm,
+        limits,
+        deadline,
+    )?;
     let git = process::Git::new(request.git.canonicalize()?, scratch.path(), deadline);
     let repo = scratch.path().join("projection.git");
     let template = scratch.path().join("empty-template");
@@ -208,55 +217,32 @@ pub fn export(store: &impl ObjectStore, request: Export<'_>) -> Result<Manifest>
     git.run(Some(&repo), "init", &init_args, None, 4096)?;
     git.run(
         Some(&repo),
-        "fast-import",
-        &[
-            "fast-import".into(),
-            "--quiet".into(),
-            "--done".into(),
-            "--date-format=raw".into(),
-            "--export-marks=marks".into(),
-            "--depth=0".into(),
-            "--big-file-threshold=1m".into(),
-        ],
+        "index-pack",
+        &["index-pack".into(), "--stdin".into(), "--strict".into()],
         Some(&stream_path),
         4096,
     )?;
-    let marks_path = repo.join("marks");
-    if fs::metadata(&marks_path)?.len() > limits.objects as u64 * 100 {
-        return Err(Error::Limit);
-    }
-    let marks = fs::read_to_string(&marks_path)?;
-    let mut parsed = BTreeMap::new();
-    for line in marks.lines() {
-        let (number, oid) = line.split_once(' ').ok_or(Error::InvalidProjection)?;
-        let number: usize = number
-            .strip_prefix(':')
-            .ok_or(Error::InvalidProjection)?
-            .parse()
-            .map_err(|_| Error::InvalidProjection)?;
-        if oid.len() != request.algorithm.hex_len()
-            || !oid
-                .bytes()
-                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
-            || parsed.insert(number, oid.to_string()).is_some()
-        {
-            return Err(Error::InvalidProjection);
-        }
-    }
-    if parsed.len() != graph.marks {
-        return Err(Error::InvalidProjection);
-    }
     let commits: BTreeMap<_, _> = graph
         .commits
         .iter()
-        .map(|(id, mark)| {
-            parsed
-                .get(mark)
-                .cloned()
-                .map(|oid| (id.to_string(), oid))
-                .ok_or(Error::InvalidProjection)
-        })
-        .collect::<Result<_>>()?;
+        .map(|(id, oid)| (id.to_string(), oid.clone()))
+        .collect();
+    let ref_input = scratch.path().join("refs.input");
+    let mut updates = File::create(&ref_input)?;
+    updates.write_all(b"start\n")?;
+    for (name, id) in &request.refs {
+        let oid = graph.commits.get(id).ok_or(Error::InvalidProjection)?;
+        writeln!(updates, "create {name} {oid}")?;
+    }
+    updates.write_all(b"prepare\ncommit\n")?;
+    drop(updates);
+    git.run(
+        Some(&repo),
+        "update-ref",
+        &["update-ref".into(), "--stdin".into()],
+        Some(&ref_input),
+        4096,
+    )?;
     let refs: BTreeMap<_, _> = request
         .refs
         .iter()
@@ -354,7 +340,12 @@ pub fn export(store: &impl ObjectStore, request: Export<'_>) -> Result<Manifest>
     file.sync_all()?;
     let manifest = Manifest {
         version: 1,
-        projection: "native-v1".into(),
+        projection: if graph.has_origins {
+            "native-with-git-origin-v1"
+        } else {
+            "native-v1"
+        }
+        .into(),
         git_object_format: request.algorithm,
         bundle_sha256: ObjectId::from_bytes(hasher.finalize().into()).hex(),
         bundle_bytes: bytes,

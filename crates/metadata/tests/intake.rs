@@ -122,6 +122,7 @@ impl Fixture {
             Object::ChangeOperations(Changes::new(vec![]).unwrap()),
         );
         let commit = Commit {
+            git_origin: None,
             parents: vec![],
             snapshot: base,
             changes: empty,

@@ -11,7 +11,9 @@ mod tree;
 
 pub use delta::{TreeDiffLimits, diff_snapshots};
 pub use identity::{GitOid, ObjectId, RevisionRef};
-pub use object::{ChangeOperation, Changes, Commit, Directory, Entry, EntryMode, EntryRef, Object};
+pub use object::{
+    ChangeOperation, Changes, Commit, Directory, Entry, EntryMode, EntryRef, GitOrigin, Object,
+};
 pub use path::{Name, RepoPath};
 pub use profile::{MAX_PROFILE_BYTES, MAX_PROFILE_PATHS, ProfileId, SourceProfile};
 pub use proposal::{AppliedChange, prepare_change};

@@ -123,6 +123,7 @@ pub fn commit(
         .unwrap();
     store
         .put(&Object::NativeCommit(Commit {
+            git_origin: None,
             parents,
             snapshot,
             changes,

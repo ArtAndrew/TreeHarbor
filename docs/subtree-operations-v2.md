@@ -18,10 +18,11 @@ payload        exactly payload_length bytes
 ```
 
 The object ID is SHA-256 of the complete frame. Kinds 1 (blob), 2 (directory),
-3 (snapshot) and 5 (native commit) remain version 1 with identical bytes/IDs.
+3 (snapshot) remain version 1 with identical bytes/IDs. Native commits without
+Git origins also keep v1; [origin-bearing commits](git-origin-v2.md) use kind5/v2.
 Kind 4 (change operations) uses version 2 **only if at least one expected or
 replacement entry is a directory**. Leaf-only operations, including an empty
-list, still encode as version 1. A v2 frame for any other kind, v1 operations with
+list, still encode as version 1. A v2 frame for kinds 1–3, v1 operations with
 a directory, or v2 operations without a directory are rejected. Old readers fail
 explicitly on version 2; this is not an in-place reinterpretation of v1 bytes.
 

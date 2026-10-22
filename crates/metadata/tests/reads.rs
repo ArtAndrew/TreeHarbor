@@ -425,6 +425,7 @@ async fn current_snapshot_can_be_read_without_loading_either_merge_parent() {
     .await;
     let commit = |parents, message: &str| {
         Object::NativeCommit(Commit {
+            git_origin: None,
             parents,
             snapshot,
             changes: ops.key().id(),

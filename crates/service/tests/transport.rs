@@ -684,6 +684,7 @@ async fn binary_source_upload_survives_process_loss_and_creates_a_real_workspace
     };
     let changes = Object::ChangeOperations(Changes::new(vec![]).unwrap());
     let commit = Object::NativeCommit(Commit {
+        git_origin: None,
         parents: vec![],
         snapshot: snapshot.id().unwrap(),
         changes: changes.id().unwrap(),
@@ -1127,6 +1128,7 @@ impl Fixture {
         };
         let operations = Object::ChangeOperations(Changes::new(vec![]).unwrap());
         let commit = Commit {
+            git_origin: None,
             parents: vec![],
             snapshot: snapshot.id().unwrap(),
             changes: operations.id().unwrap(),

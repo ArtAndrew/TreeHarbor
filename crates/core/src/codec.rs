@@ -1,6 +1,7 @@
 use crate::{
     ChangeOperation, Changes, Commit, Directory, Entry, EntryMode, EntryRef, Error, FRAME_HEADER,
-    MAX_ENTRIES, MAX_PARENTS, MAX_PAYLOAD, Name, Object, ObjectId, RepoPath, Result,
+    GitOid, GitOrigin, MAX_ENTRIES, MAX_PARENTS, MAX_PAYLOAD, Name, Object, ObjectId, RepoPath,
+    Result,
 };
 
 const MAGIC: &[u8; 11] = b"treeharbor\0";
@@ -39,12 +40,26 @@ impl Object {
                 w.raw(&c.timestamp_seconds.to_be_bytes())?;
                 w.raw(&c.timezone_minutes.to_be_bytes())?;
                 w.bytes(c.message.as_bytes())?;
+                if let Some(origin) = &c.git_origin {
+                    match origin.oid {
+                        GitOid::Sha1(id) => {
+                            w.raw(&[1])?;
+                            w.raw(&id)?;
+                        }
+                        GitOid::Sha256(id) => {
+                            w.raw(&[2])?;
+                            w.raw(&id)?;
+                        }
+                    }
+                    w.id(origin.raw)?;
+                }
             }
         }
         let mut out = Vec::with_capacity(FRAME_HEADER + w.0.len());
         out.extend_from_slice(MAGIC);
         let version = match self {
             Self::ChangeOperations(ops) => ops.format_version(),
+            Self::NativeCommit(c) if c.git_origin.is_some() => 2,
             _ => 1,
         };
         out.extend_from_slice(&version.to_be_bytes());
@@ -67,7 +82,7 @@ impl Object {
         }
         let version = u16::from_be_bytes(r.array()?);
         let kind = r.byte()?;
-        if version != 1 && !(version == 2 && kind == 4) {
+        if version != 1 && !(version == 2 && matches!(kind, 4 | 5)) {
             return Err(Error::UnsupportedVersion(version));
         }
         let length = u64::from_be_bytes(r.array()?);
@@ -134,6 +149,16 @@ impl Object {
                     timestamp_seconds: i64::from_be_bytes(r.array()?),
                     timezone_minutes: i16::from_be_bytes(r.array()?),
                     message: r.text()?,
+                    git_origin: if version == 2 {
+                        let oid = match r.byte()? {
+                            1 => GitOid::Sha1(r.array()?),
+                            2 => GitOid::Sha256(r.array()?),
+                            _ => return Err(Error::InvalidObject("Git origin algorithm")),
+                        };
+                        Some(Box::new(GitOrigin { oid, raw: r.id()? }))
+                    } else {
+                        None
+                    },
                 };
                 c.validate()?;
                 Self::NativeCommit(c)

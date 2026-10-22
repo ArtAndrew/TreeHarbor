@@ -175,6 +175,7 @@ async fn two_private_trees_preserve_bytes_modes_links_and_binary_names() {
         &mut db,
         &store,
         Object::NativeCommit(Commit {
+            git_origin: None,
             parents: vec![],
             snapshot,
             changes: operations.key().id(),

@@ -37,7 +37,7 @@ bundle without TreeHarbor. Preserve the manifest to map native revisions to Git
 commits. Keep the source pack until export is verified; export does not delete it,
 change server refs, move authority or grant permission to merge.
 
-## Projection contract: `native-v1`
+## Projection contracts
 
 - Every reachable parent, in its original order, is included. Independent roots
   remain independent; there are no shallow prerequisites or object filters.
@@ -55,19 +55,26 @@ change server refs, move authority or grant permission to merge.
   change-operation identity can have the same Git projection. This is a mapping,
   not a promise of a reversible native backup. A projected graph rejected by
   strict Git verification is not published.
-- Git import and preservation of original Git commit bytes/IDs are **not yet
-  implemented**. This profile must not later replace raw imported commit metadata.
-  Tags, Git submodules and LFS object transfer are not implemented. Ordinary LFS
+- A commit with [Git origin metadata](git-origin-v2.md) is exported from its exact
+  original bytes only after its hash, tree, ordered parents and displayed metadata
+  match the native graph. Separate committer, signature and extension header bytes
+  survive. Signature bytes are not authenticated by this command. Hash-format
+  conversion of an origin-bearing graph is explicitly rejected.
+- Automated Git import is **not implemented**; ordinary `source-pack` still creates
+  native v1 commits. Tags, Git submodules and LFS object transfer are not implemented. Ordinary LFS
   pointer file bytes are just bytes; their targets are not fetched.
 - Reviews, validation receipts, native changes/deltas, runtime evidence, credentials,
   audit and server metadata are not part of this source-history archive. A source
   bundle does not assert that its commits were approved or checked.
 
 A bounded Rust traversal validates IDs and all typed references, including delta
-objects. One generated `git fast-import` stream is processed in a new private
-bare repository, with explicit parents and length-delimited data. This avoids a
-Git process per file. It currently enumerates full snapshot paths per commit;
-large histories with mostly unchanged trees still incur that cost.
+objects and raw origin Blobs. Rust writes one non-delta Git pack with canonical
+blob/tree/commit payloads; system Git imports it with `index-pack --strict` into
+a private bare repository. Shared objects are encoded once, with collision-checked
+SHA-1 or SHA-256 identities and zlib compression. This preserves arbitrary original
+commit headers without a Git process per object. Full snapshot path compatibility
+checks still run per commit; large histories incur that cost. Previous `native-v1`
+commit IDs remain unchanged. No throughput improvement is claimed.
 
 Git runs with an empty inherited environment, isolated system/global config,
 an explicitly selected private Git directory, empty templates, disabled hooks,
@@ -90,7 +97,7 @@ UTF-8 JSON, fixed fields, unknown fields rejected by the Rust reader:
 | Field | Meaning |
 |---|---|
 | `version` | `1` |
-| `projection` | `native-v1` |
+| `projection` | `native-v1`, or `native-with-git-origin-v1` when the graph contains verified origins |
 | `git_object_format` | `sha1` or `sha256` |
 | `bundle_sha256` | 64 lowercase hex digits hashing the complete bundle bytes |
 | `bundle_bytes` | Actual bundle size |
@@ -109,14 +116,15 @@ compared with real Git plumbing in Linux/macOS CI.
 ## Bounds and operations
 
 CLI defaults: 100,000 unique source objects, 2,000,000 typed edges, 4 GiB native
-frames, 8 GiB generated stream/bundle and 2,000,000 expanded path visits across
+frames, 8 GiB generated object payload budget (including 32 bytes per write),
+8 GiB temporary pack/bundle and 2,000,000 expanded path visits across
 all snapshots; Git stdout/stderr are bounded. `--timeout-seconds` defaults to 300
 and may be 1–3600. The deadline covers bridge traversal and subprocesses, after
 local pack opening/validation. Timeout kills the Git process group, including
 its pack worker. Exceeding a bound fails without publishing a completed directory.
 
 These are application limits, **not a sandbox or hard CPU/RAM/disk quota**.
-Temporary stream, two Git repositories, bundle, manifest, source pack and cleanup
+Temporary pack, two Git repositories, bundle, manifest, source pack and cleanup
 all consume resources. Use an externally bounded runtime/filesystem for exports
 of untrusted content. A SIGKILL can leave `.treeharbor-export-work-*` or
 `.treeharbor-export-ready-*` directories and descendants; stop/reap the job before

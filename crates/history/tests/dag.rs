@@ -28,6 +28,7 @@ fn commit(s: &Store, parents: Vec<ObjectId>, message: &str) -> ObjectId {
         .put(&Object::ChangeOperations(Changes::new(vec![]).unwrap()))
         .unwrap();
     s.put(&Object::NativeCommit(Commit {
+        git_origin: None,
         parents,
         snapshot,
         changes,

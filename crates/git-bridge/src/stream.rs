@@ -1,35 +1,12 @@
-use crate::{Error, Limits, Result, check_deadline};
-use std::{collections::BTreeMap, fs::File, io::Write, path::Path, time::Instant};
+use crate::{Error, HashAlgorithm, Limits, Result, check_deadline, origin, pack};
+use std::{collections::BTreeMap, path::Path, time::Instant};
 use treeharbor_core::{EntryMode, Object, ObjectId, ObjectStore, RepoPath};
 
 pub(crate) struct Graph {
-    pub commits: BTreeMap<ObjectId, usize>,
-    pub marks: usize,
+    pub commits: BTreeMap<ObjectId, String>,
     pub objects: usize,
     pub bytes: u64,
-}
-struct Output {
-    file: File,
-    bytes: u64,
-    limit: u64,
-}
-impl Output {
-    fn write(&mut self, bytes: &[u8]) -> Result<()> {
-        self.bytes = self
-            .bytes
-            .checked_add(bytes.len() as u64)
-            .ok_or(Error::Limit)?;
-        if self.bytes > self.limit {
-            return Err(Error::Limit);
-        }
-        self.file.write_all(bytes)?;
-        Ok(())
-    }
-    fn data(&mut self, bytes: &[u8]) -> Result<()> {
-        self.write(format!("data {}\n", bytes.len()).as_bytes())?;
-        self.write(bytes)?;
-        self.write(b"\n")
-    }
+    pub has_origins: bool,
 }
 fn get(store: &impl ObjectStore, id: ObjectId) -> Result<Object> {
     let object = store.get(id)?;
@@ -92,128 +69,124 @@ fn ordered(
     Ok((result, bytes))
 }
 
+fn check_paths(
+    store: &impl ObjectStore,
+    root: ObjectId,
+    visits: &mut usize,
+    limits: Limits,
+    deadline: Instant,
+) -> Result<()> {
+    let mut pending = vec![(Vec::new(), root)];
+    while let Some((prefix, id)) = pending.pop() {
+        check_deadline(deadline)?;
+        *visits = visits.checked_add(1).ok_or(Error::Limit)?;
+        if *visits > limits.path_visits {
+            return Err(Error::Limit);
+        }
+        let Object::Directory(dir) = get(store, id)? else {
+            return Err(Error::InvalidProjection);
+        };
+        if !prefix.is_empty() && dir.entries().is_empty() {
+            return Err(Error::Unsupported("nested empty directory"));
+        }
+        for entry in dir.entries() {
+            *visits = visits.checked_add(1).ok_or(Error::Limit)?;
+            if *visits > limits.path_visits {
+                return Err(Error::Limit);
+            }
+            let mut path = prefix.clone();
+            path.extend_from_slice(entry.name.as_bytes());
+            RepoPath::new(path.clone())?;
+            if entry.value.mode == EntryMode::Directory {
+                path.push(b'/');
+                pending.push((path, entry.value.target));
+            }
+        }
+    }
+    Ok(())
+}
 pub(crate) fn write(
     store: &impl ObjectStore,
     refs: &BTreeMap<String, ObjectId>,
     path: &Path,
+    algorithm: HashAlgorithm,
     limits: Limits,
     deadline: Instant,
 ) -> Result<Graph> {
     let (order, bytes) = ordered(store, refs, limits, deadline)?;
-    let mut out = Output {
-        file: File::create(path)?,
-        bytes: 0,
-        limit: limits.stream_bytes,
-    };
-    let mut marks = BTreeMap::new();
+    let mut pack = pack::Pack::new(path, algorithm, limits.stream_bytes, deadline)?;
+    let mut ids = BTreeMap::<ObjectId, Vec<u8>>::new();
     let mut commits = BTreeMap::new();
     let mut visits = 0usize;
+    let mut has_origins = false;
     for id in &order {
         check_deadline(deadline)?;
-        match get(store, *id)? {
-            Object::Blob(bytes) => {
-                let mark = marks.len() + 1;
-                marks.insert(*id, mark);
-                out.write(format!("blob\nmark :{mark}\n").as_bytes())?;
-                out.data(&bytes)?;
+        let oid = match get(store, *id)? {
+            Object::Blob(bytes) => pack.put("blob", &bytes)?,
+            Object::Directory(dir) => {
+                // Git orders a directory name as if it had a trailing slash.
+                let mut sorted: Vec<_> = dir
+                    .entries()
+                    .iter()
+                    .map(|entry| {
+                        let mut key = entry.name.as_bytes().to_vec();
+                        if entry.value.mode == EntryMode::Directory {
+                            key.push(b'/');
+                        }
+                        (key, entry)
+                    })
+                    .collect();
+                sorted.sort_by(|a, b| a.0.cmp(&b.0));
+                let mut raw = Vec::new();
+                for (_, entry) in sorted {
+                    raw.extend_from_slice(format!("{:o} ", entry.value.mode as u32).as_bytes());
+                    raw.extend_from_slice(entry.name.as_bytes());
+                    raw.push(0);
+                    raw.extend_from_slice(
+                        ids.get(&entry.value.target)
+                            .ok_or(Error::InvalidProjection)?,
+                    );
+                }
+                pack.put("tree", &raw)?
             }
+            Object::Snapshot { root } => ids.get(&root).ok_or(Error::InvalidProjection)?.clone(),
             Object::NativeCommit(c) => {
-                if c.timestamp_seconds < 0
-                    || c.message.contains('\0')
-                    || c.author_name.trim() != c.author_name
-                    || c.author_name.bytes().any(|b| b.is_ascii_control())
-                    || c.author_email
-                        .bytes()
-                        .any(|b| b.is_ascii_whitespace() || b.is_ascii_control())
-                {
-                    return Err(Error::Unsupported(
-                        "Git-incompatible author, date or message",
-                    ));
-                }
-                let mark = marks.len() + 1;
-                marks.insert(*id, mark);
-                commits.insert(*id, mark);
-                // Always reset: otherwise fast-import implicitly adds the previous
-                // branch tip as a parent to a second independent root.
-                out.write(b"reset refs/treeharbor/export-staging\n\ncommit refs/treeharbor/export-staging\n")?;
-                out.write(format!("mark :{mark}\n").as_bytes())?;
-                let offset = c.timezone_minutes.unsigned_abs();
-                let identity = format!(
-                    "{} <{}> {} {}{:02}{:02}\n",
-                    c.author_name,
-                    c.author_email,
-                    c.timestamp_seconds,
-                    if c.timezone_minutes < 0 { '-' } else { '+' },
-                    offset / 60,
-                    offset % 60
-                );
-                out.write(format!("author {identity}committer {identity}").as_bytes())?;
-                out.data(c.message.as_bytes())?;
-                for (i, parent) in c.parents.iter().enumerate() {
-                    let mark = commits.get(parent).ok_or(Error::InvalidProjection)?;
-                    out.write(
-                        format!("{} :{mark}\n", if i == 0 { "from" } else { "merge" }).as_bytes(),
-                    )?;
-                }
-                out.write(b"deleteall\n")?;
                 let Object::Snapshot { root } = get(store, c.snapshot)? else {
                     return Err(Error::InvalidProjection);
                 };
-                let mut pending = vec![(Vec::new(), root)];
-                while let Some((prefix, id)) = pending.pop() {
-                    check_deadline(deadline)?;
-                    visits = visits.checked_add(1).ok_or(Error::Limit)?;
-                    if visits > limits.path_visits {
-                        return Err(Error::Limit);
-                    }
-                    let Object::Directory(dir) = get(store, id)? else {
+                check_paths(store, root, &mut visits, limits, deadline)?;
+                let tree = ids.get(&c.snapshot).ok_or(Error::InvalidProjection)?;
+                let parents: Vec<_> = c
+                    .parents
+                    .iter()
+                    .map(|p| ids.get(p).cloned().ok_or(Error::InvalidProjection))
+                    .collect::<Result<_>>()?;
+                let raw = if let Some(origin) = &c.git_origin {
+                    has_origins = true;
+                    let Object::Blob(raw) = get(store, origin.raw)? else {
                         return Err(Error::InvalidProjection);
                     };
-                    if !prefix.is_empty() && dir.entries().is_empty() {
-                        return Err(Error::Unsupported("nested empty directory"));
-                    }
-                    for entry in dir.entries() {
-                        visits = visits.checked_add(1).ok_or(Error::Limit)?;
-                        if visits > limits.path_visits {
-                            return Err(Error::Limit);
-                        }
-                        let mut path = prefix.clone();
-                        path.extend_from_slice(entry.name.as_bytes());
-                        RepoPath::new(path.clone())?;
-                        if entry.value.mode == EntryMode::Directory {
-                            path.push(b'/');
-                            pending.push((path, entry.value.target));
-                        } else {
-                            let mark = marks
-                                .get(&entry.value.target)
-                                .ok_or(Error::InvalidProjection)?;
-                            out.write(
-                                format!("M {:o} :{mark} \"", entry.value.mode as u32).as_bytes(),
-                            )?;
-                            // Fixed-width octal C quoting preserves every path byte,
-                            // including LF, quotes, spaces and non-UTF-8 names.
-                            for b in path {
-                                out.write(format!("\\{b:03o}").as_bytes())?;
-                            }
-                            out.write(b"\"\n")?;
-                        }
-                    }
-                }
-                out.write(b"\n")?;
+                    origin::verify(&c, &raw, tree, &parents, algorithm)?;
+                    raw
+                } else {
+                    origin::native_payload(&c, tree, &parents)?
+                };
+                let oid = pack.put("commit", &raw)?;
+                commits.insert(*id, origin::hex(&oid));
+                oid
             }
-            _ => {}
-        }
+            Object::ChangeOperations(_) => continue,
+        };
+        ids.insert(*id, oid);
     }
-    for (name, id) in refs {
-        let mark = commits.get(id).ok_or(Error::InvalidProjection)?;
-        out.write(format!("reset {name}\nfrom :{mark}\n\n").as_bytes())?;
+    pack.finish()?;
+    if std::fs::metadata(path)?.len() > limits.stream_bytes {
+        return Err(Error::Limit);
     }
-    out.write(b"reset refs/treeharbor/export-staging\n\ndone\n")?;
-    out.file.sync_all()?;
     Ok(Graph {
         commits,
-        marks: marks.len(),
         objects: order.len(),
         bytes,
+        has_origins,
     })
 }

@@ -1,4 +1,4 @@
-use crate::{Error, MAX_ENTRIES, MAX_PARENTS, Name, ObjectId, RepoPath, Result};
+use crate::{Error, GitOid, MAX_ENTRIES, MAX_PARENTS, Name, ObjectId, RepoPath, Result};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u32)]
@@ -127,7 +127,17 @@ impl Changes {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub struct GitOrigin {
+    /// Claimed Git identity, NOT an attestation of its association with this
+    /// native commit. The interop boundary must verify content, tree and parents.
+    pub oid: GitOid,
+    /// Blob containing the complete original Git commit payload, byte for byte.
+    pub raw: ObjectId,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Commit {
+    pub git_origin: Option<Box<GitOrigin>>,
     pub parents: Vec<ObjectId>,
     pub snapshot: ObjectId,
     pub changes: ObjectId,
@@ -218,6 +228,7 @@ impl Object {
                 .iter()
                 .map(|id| (*id, 5))
                 .chain([(c.snapshot, 3), (c.changes, 4)])
+                .chain(c.git_origin.iter().map(|origin| (origin.raw, 1)))
                 .collect(),
         }
     }

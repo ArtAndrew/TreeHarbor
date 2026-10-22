@@ -108,3 +108,152 @@ fn actual_cli_exports_pack_without_inherited_git_configuration_or_checkout() {
         .unwrap();
     assert!(!second.status.success());
 }
+
+#[test]
+fn actual_cli_exports_a_complete_origin_graph_and_rejects_tampered_association() {
+    use std::io::Write;
+    use std::process::Stdio;
+    use treeharbor_core::*;
+    use treeharbor_storage::{LocalStore, TenantId};
+    let temp = tempfile::tempdir().unwrap();
+    fs::set_permissions(temp.path(), fs::Permissions::from_mode(0o700)).unwrap();
+    let source = temp.path().join("source");
+    fs::create_dir(&source).unwrap();
+    fs::write(source.join("file"), b"exact").unwrap();
+    let pack = temp.path().join("pack");
+    let cli = env!("CARGO_BIN_EXE_treeharbor");
+    assert!(
+        Command::new(cli)
+            .args(["source-pack", "--directory"])
+            .arg(&source)
+            .arg("--output")
+            .arg(&pack)
+            .args([
+                "--path",
+                "file",
+                "--author-name",
+                "Test",
+                "--author-email",
+                "test@example.invalid"
+            ])
+            .output()
+            .unwrap()
+            .status
+            .success()
+    );
+    let first = temp.path().join("native-export");
+    assert!(
+        Command::new(cli)
+            .args(["git-export", "--pack"])
+            .arg(&pack)
+            .arg("--output")
+            .arg(&first)
+            .output()
+            .unwrap()
+            .status
+            .success()
+    );
+    let git = temp.path().join("original.git");
+    assert!(
+        Command::new("git")
+            .args(["clone", "--bare"])
+            .arg(first.join("history.bundle"))
+            .arg(&git)
+            .output()
+            .unwrap()
+            .status
+            .success()
+    );
+    let original = Command::new("git")
+        .current_dir(&git)
+        .args(["cat-file", "commit", "main"])
+        .output()
+        .unwrap();
+    assert!(original.status.success());
+    let original = String::from_utf8(original.stdout).unwrap().replace(
+        "committer Test <test@example.invalid> 0 +0000",
+        "committer Another <other@example.invalid> 1 +0030\nx-preserved header",
+    );
+    let mut hash = Command::new("git")
+        .current_dir(&git)
+        .args(["hash-object", "-w", "-t", "commit", "--stdin"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap();
+    hash.stdin
+        .take()
+        .unwrap()
+        .write_all(original.as_bytes())
+        .unwrap();
+    let hash = hash.wait_with_output().unwrap();
+    assert!(hash.status.success());
+    let git_oid = String::from_utf8(hash.stdout).unwrap().trim().to_owned();
+    let RevisionRef::Git(oid) = format!("git:sha1:{git_oid}").parse().unwrap() else {
+        panic!()
+    };
+    // Construct a complete local native graph, not a claim that source-pack is a
+    // Git importer. This exercises the actual CLI/pack decoder/export boundary.
+    let store = LocalStore::open(&pack, &TenantId::new("native-pack").unwrap()).unwrap();
+    let manifest_path = pack.join("manifest.json");
+    let mut manifest: serde_json::Value =
+        serde_json::from_slice(&fs::read(&manifest_path).unwrap()).unwrap();
+    let old_id: ObjectId = manifest["commit"].as_str().unwrap().parse().unwrap();
+    let Object::NativeCommit(mut c) = store.get(old_id).unwrap() else {
+        panic!()
+    };
+    let raw = store
+        .put(&Object::Blob(original.as_bytes().to_vec()))
+        .unwrap();
+    c.git_origin = Some(Box::new(GitOrigin { oid, raw }));
+    let head = store.put(&Object::NativeCommit(c.clone())).unwrap();
+    let mut ids: Vec<ObjectId> = manifest["objects"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_str().unwrap().parse().unwrap())
+        .collect();
+    assert_eq!(ids.pop(), Some(old_id));
+    ids.extend([raw, head]);
+    let save = |manifest: &mut serde_json::Value, ids: &[ObjectId]| {
+        manifest["commit"] = ids.last().unwrap().to_string().into();
+        manifest["objects"] =
+            serde_json::json!(ids.iter().map(ToString::to_string).collect::<Vec<_>>());
+        manifest["encoded_bytes"] = serde_json::json!(
+            ids.iter()
+                .map(|id| store.get(*id).unwrap().encode().unwrap().len() as u64)
+                .sum::<u64>()
+        );
+        fs::write(&manifest_path, serde_json::to_vec(manifest).unwrap()).unwrap();
+    };
+    save(&mut manifest, &ids);
+    let second = temp.path().join("origin-export");
+    let result = Command::new(cli)
+        .args(["git-export", "--pack"])
+        .arg(&pack)
+        .arg("--output")
+        .arg(&second)
+        .output()
+        .unwrap();
+    assert!(
+        result.status.success(),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    let result: serde_json::Value = serde_json::from_slice(&result.stdout).unwrap();
+    assert_eq!(result["projection"], "native-with-git-origin-v1");
+    assert_eq!(result["refs"]["refs/heads/main"]["git"], git_oid);
+    c.message = "tampered".into();
+    *ids.last_mut().unwrap() = store.put(&Object::NativeCommit(c)).unwrap();
+    save(&mut manifest, &ids);
+    let bad = temp.path().join("bad-export");
+    let result = Command::new(cli)
+        .args(["git-export", "--pack"])
+        .arg(&pack)
+        .arg("--output")
+        .arg(&bad)
+        .output()
+        .unwrap();
+    assert!(!result.status.success());
+    assert!(!bad.exists());
+}
