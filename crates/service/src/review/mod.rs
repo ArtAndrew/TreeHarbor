@@ -3,7 +3,7 @@ mod render;
 use crate::{
     database::Database,
     source::{Backend, Failure},
-    source_read::{Delivery, metadata},
+    source_read::Delivery,
 };
 use bytes::Bytes;
 use deadpool::managed::Pool;
@@ -34,6 +34,12 @@ fn invalid(_: impl std::fmt::Display) -> Failure {
 }
 fn limit() -> Failure {
     fail(413, "review_limit")
+}
+fn metadata(e: treeharbor_metadata::Error) -> Failure {
+    match e {
+        treeharbor_metadata::Error::IntegrationState => fail(409, "review_unavailable"),
+        e => crate::source_read::metadata(e),
+    }
 }
 fn core(e: treeharbor_core::Error) -> Failure {
     match e {
@@ -72,6 +78,7 @@ struct Wire {
 enum Query {
     Change { changeset: String, version: i64 },
     Revisions { before: String, after: String },
+    Candidate { candidate: String },
 }
 struct Request {
     scope: Scope,
@@ -91,6 +98,9 @@ fn parse(body: &[u8]) -> Result<Request> {
         _ => return Err(fail(400, "invalid_request")),
     };
     let target = match w.query {
+        Query::Candidate { candidate } => ReviewTarget::Candidate {
+            candidate: uuid(&candidate)?,
+        },
         Query::Change { changeset, version } => {
             if version <= 0 {
                 return Err(fail(400, "invalid_request"));

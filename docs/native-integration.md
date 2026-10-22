@@ -159,7 +159,11 @@ or response loss. A saved result is returned without repeating publication.
    collector must actually verify that revision using the declared inputs before
    `validation_report`. A new run UUID replaces the current run for that check;
    old reports cannot satisfy it. Reusing a run UUID is rejected.
-6. Record human review of that candidate. `land` requires all current checks and
+6. Read the exact prepared result with `diff --authority standalone --epoch 1
+   candidate --candidate "$CANDIDATE"` using a credential with repository `read`
+   permission, then record human review of that candidate. See
+   [review diffs](review-diff.md) for context, paging and limits.
+   `land` requires all current checks and
    enough distinct, allowed, non-author reviewers. A current rejection blocks.
 7. Inspect `queue_status`, `candidate_status` and `ref_resolve`. A successful land
    atomically updates the ref, retains its complete parent graph, appends a ref
@@ -187,7 +191,9 @@ state is still current; query status for the latest state.
 
 Queue states: `queued → preparing → checking → landed`. Preparation may terminate
 as `conflicted` or `failed`; policy changes invalidate active candidates as `stale`;
-the owner can `cancel` any unlanded entry. A new entry/candidate is required after a
+the owner can `cancel` any unlanded entry. Accepting a newer ChangeSet version,
+including through rebase, makes that change's older pending entries/candidates
+`stale`. Already landed history is preserved. A new entry/candidate is required after a
 terminal failure. Conflict results contain byte paths encoded as hex, kind, total
 count and a truncation flag (at most 16 details/30 KB). Conflict markers are never
 published. Semantic incompatibility still requires tests and review.

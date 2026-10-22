@@ -190,6 +190,18 @@ fn prepare_args(id: &str) -> [&str; 7] {
         id,
     ]
 }
+fn candidate_diff(f: &Fixture, id: Uuid) -> Output {
+    f.cli(&[
+        "diff",
+        "--authority",
+        "standalone",
+        "--epoch",
+        "1",
+        "candidate",
+        "--candidate",
+        &id.to_string(),
+    ])
+}
 async fn raw_prepare(f: &Fixture, id: Uuid) -> UnixStream {
     let body=json!({"version":1,"tenant":f.scope.tenant(),"repository":f.scope.repository().to_string(),"key":id.to_string(),"epoch":1,"candidate":id.to_string()}).to_string();
     let credential = f.credential();
@@ -253,6 +265,7 @@ async fn native_queue_cli_merges_agents_fences_green_and_recovers_fsync_and_comm
         &["read", "validation.report"],
     );
     let reviewer = role(&mut f, "reviewer", Some("human"), &["read", "review"]);
+    let observer = role(&mut f, "observer", Some("human"), &["read"]);
     f.credential_path = admin.clone();
     let source = f.dir.path().join("native-source");
     fs::create_dir(&source).unwrap();
@@ -320,6 +333,14 @@ async fn native_queue_cli_merges_agents_fences_green_and_recovers_fsync_and_comm
     let third = proposal(&mut f, "agent-c", &base, &profile, b"C\nb\nc\nd\ne\n").await;
     f.credential_path = worker.clone();
     let a = start(&f, first);
+    f.credential_path = observer.clone();
+    let unavailable = candidate_diff(&f, a);
+    assert!(!unavailable.status.success());
+    assert_eq!(
+        serde_json::from_slice::<Value>(&unavailable.stdout).unwrap()["error"]["code"],
+        "review_unavailable"
+    );
+    f.credential_path = worker.clone();
     let lock = (Uuid::new_v4().as_u128() & 0x7fff_ffff_ffff_ffff) as i64;
     f.sql
         .query_one("SELECT pg_advisory_lock($1)", &[&lock])
@@ -378,6 +399,12 @@ async fn native_queue_cli_merges_agents_fences_green_and_recovers_fsync_and_comm
     server = f.start().await;
     let prepared = ok(f.cli(&prepare_args(&a.to_string())));
     assert_eq!(prepared["state"], "checking");
+    f.credential_path = observer.clone();
+    let reviewed_a = ok(candidate_diff(&f, a));
+    assert_eq!(reviewed_a["identity"]["revision"], prepared["revision"]);
+    assert_eq!(reviewed_a["identity"]["expected_head"], base["revision"]);
+    assert_eq!(reviewed_a["after_snapshot"], prepared["snapshot"]);
+    f.credential_path = worker.clone();
     for row in reservations.as_array().unwrap() {
         let current:Value=f.sql.query_one("SELECT jsonb_build_array(encode(digest,'hex'),generation,hold_token) FROM th_candidate_objects WHERE candidate=$1 AND digest=decode($2,'hex')",&[&a,&row[0].as_str().unwrap()]).await.unwrap().get(0);
         assert_eq!(*row, current);
@@ -395,6 +422,84 @@ async fn native_queue_cli_merges_agents_fences_green_and_recovers_fsync_and_comm
     let prepared_b = ok(f.cli(&prepare_args(&b.to_string())));
     assert_eq!(prepared_b["state"], "checking");
     assert_eq!(prepared_b["expected_head"], landed["revision"]);
+    f.credential_path = observer.clone();
+    assert_eq!(ok(candidate_diff(&f, a)), reviewed_a);
+    let reviewed_b = ok(candidate_diff(&f, b));
+    assert_eq!(reviewed_b["identity"]["expected_head"], landed["revision"]);
+    assert_eq!(
+        reviewed_b["identity"]["proposal_base_revision"],
+        base["revision"]
+    );
+    assert_eq!(reviewed_b["identity"]["expected_generation"], 2);
+    assert_eq!(reviewed_b["identity"]["revision"], prepared_b["revision"]);
+    assert_eq!(reviewed_b["identity"]["policy"], prepared_b["policy"]);
+    assert_eq!(
+        reviewed_b["identity"]["merge_profile"],
+        prepared_b["merge_profile"]
+    );
+    assert_eq!(reviewed_b["before_snapshot"], landed["snapshot"]);
+    assert_eq!(reviewed_b["after_snapshot"], prepared_b["snapshot"]);
+    assert_eq!(reviewed_b["total_changes"], 1);
+    let row = &reviewed_b["changes"][0];
+    assert_eq!(row["path_hex"], "66696c652e747874");
+    assert_eq!(
+        row["before"]["object"],
+        Object::Blob(b"A\nb\nc\nd\ne\n".to_vec())
+            .id()
+            .unwrap()
+            .to_string()
+    );
+    assert_eq!(
+        row["after"]["object"],
+        Object::Blob(b"A\nb\nc\nd\nE\n".to_vec())
+            .id()
+            .unwrap()
+            .to_string()
+    );
+    let patch = diffy::Patch::from_str(row["text"]["patch"].as_str().unwrap()).unwrap();
+    assert_eq!(
+        diffy::apply("A\nb\nc\nd\ne\n", &patch).unwrap(),
+        "A\nb\nc\nd\nE\n"
+    );
+    // The source proposal is different from the exact integration result.
+    let proposal_diff = ok(f.cli(&[
+        "diff",
+        "--authority",
+        "standalone",
+        "--epoch",
+        "1",
+        "change",
+        "--changeset",
+        reviewed_b["identity"]["changeset"].as_str().unwrap(),
+        "--version",
+        "1",
+    ]));
+    assert_ne!(
+        proposal_diff["changes"][0]["before"]["object"],
+        row["before"]["object"]
+    );
+    assert_ne!(
+        proposal_diff["changes"][0]["after"]["object"],
+        row["after"]["object"]
+    );
+    assert_eq!(
+        proposal_diff["identity"]["run"],
+        reviewed_b["identity"]["run"]
+    );
+    let pair = ok(f.cli(&[
+        "diff",
+        "--authority",
+        "standalone",
+        "--epoch",
+        "1",
+        "revisions",
+        "--before",
+        prepared_b["expected_head"].as_str().unwrap(),
+        "--after",
+        prepared_b["revision"].as_str().unwrap(),
+    ]));
+    assert_eq!(pair["changes"], reviewed_b["changes"]);
+    f.credential_path = worker.clone();
     let mut land_b = mutation("land");
     land_b["candidate"] = json!(b.to_string());
     assert!(!native(&f, land_b.clone()).status.success());
@@ -408,6 +513,15 @@ async fn native_queue_cli_merges_agents_fences_green_and_recovers_fsync_and_comm
         "66696c652e747874"
     );
     assert_eq!(conflict, ok(f.cli(&prepare_args(&c.to_string()))));
+    f.credential_path = observer.clone();
+    let unavailable = candidate_diff(&f, c);
+    assert!(!unavailable.status.success());
+    assert_eq!(
+        serde_json::from_slice::<Value>(&unavailable.stdout).unwrap()["error"]["code"],
+        "review_unavailable"
+    );
+    assert_eq!(ok(candidate_diff(&f, b)), reviewed_b);
+    f.credential_path = worker.clone();
     assert_eq!(
         ok(native(&f, json!({"action":"ref_resolve","name":"main"})))["head"],
         final_head["revision"]
@@ -511,6 +625,9 @@ async fn native_queue_cli_merges_agents_fences_green_and_recovers_fsync_and_comm
     fs::remove_dir_all(&source).unwrap();
     fs::remove_dir_all(&pack).unwrap();
     server = f.start().await;
+    f.credential_path = observer;
+    assert_eq!(ok(candidate_diff(&f, b)), reviewed_b);
+    f.credential_path = worker;
     let exported_path = f.dir.path().join("server-export");
     let export_args = [
         "source-export",

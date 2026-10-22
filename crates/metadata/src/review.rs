@@ -1,5 +1,6 @@
 //! Repository-read scoped immutable review inputs. Root locators are derived
-//! from accepted versions or registered revisions, never supplied by the caller.
+//! from accepted versions, prepared candidates or registered revisions, never
+//! supplied by the caller.
 use crate::{
     Authority, Error, Metadata, Result,
     access::{Authorization, Permission, repository_lock},
@@ -16,6 +17,7 @@ use uuid::Uuid;
 pub enum ReviewTarget {
     Change { changeset: Uuid, version: i64 },
     Revisions { before: ObjectId, after: ObjectId },
+    Candidate { candidate: Uuid },
 }
 #[derive(Clone, Copy, Debug)]
 pub struct ReviewFence {
@@ -70,6 +72,7 @@ async fn context(tx: &Transaction<'_>, auth: &Authorization, fence: ReviewFence)
         return Err(Error::Fenced);
     }
     match fence.target {
+        ReviewTarget::Candidate { candidate } => candidate_input(tx, auth.scope(), candidate).await,
         ReviewTarget::Change { changeset, version } => {
             if version <= 0 {
                 return Err(Error::Invalid("review version"));
@@ -104,6 +107,64 @@ async fn context(tx: &Transaction<'_>, auth: &Authorization, fence: ReviewFence)
             })
         }
     }
+}
+
+async fn candidate_input(tx: &Transaction<'_>, s: &crate::Scope, candidate: Uuid) -> Result<Input> {
+    let row = tx
+        .query_opt(
+            r"SELECT c.entry,c.expected_head,c.expected_snapshot,c.expected_generation,
+                 c.epoch,c.policy,c.merge_profile,c.revision,c.snapshot,c.pin_holder,
+                 q.target,q.changeset,q.version,v.run,v.base_revision,
+                 b.pin_holder AS base_pin,b.snapshot AS registered_snapshot
+          FROM th_native_candidates c
+          JOIN th_native_queue q USING(tenant,repository,entry)
+          JOIN th_change_versions v ON v.tenant=q.tenant AND v.repository=q.repository
+               AND v.changeset=q.changeset AND v.version=q.version
+          JOIN th_bases b ON b.tenant=c.tenant AND b.repository=c.repository
+               AND b.revision='native:sha256:'||encode(c.expected_head,'hex')
+          WHERE c.tenant=$1 AND c.repository=$2 AND c.candidate=$3",
+            &[&s.tenant(), &s.repository(), &candidate],
+        )
+        .await?
+        .ok_or(Error::NotFound)?;
+    // Once populated, these three fields are immutable. A prepared stale,
+    // cancelled or landed candidate is still a valid historical review input.
+    // No mutable target/check/review state is a claim of admission here.
+    let revision = id(row
+        .get::<_, Option<Vec<u8>>>("revision")
+        .ok_or(Error::IntegrationState)?)?;
+    let after = id(row
+        .get::<_, Option<Vec<u8>>>("snapshot")
+        .ok_or(Error::IntegrationState)?)?;
+    let pin: String = row
+        .get::<_, Option<String>>("pin_holder")
+        .ok_or(Error::IntegrationState)?;
+    let before = id(row.get("expected_snapshot"))?;
+    if before != id(row.get("registered_snapshot"))? {
+        return Err(Error::ReadScope);
+    }
+    let head = id(row.get("expected_head"))?;
+    Ok(Input {
+        identity: json!({
+            "kind": "candidate",
+            "candidate": candidate.to_string(),
+            "entry": row.get::<_, Uuid>("entry").to_string(),
+            "target": row.get::<_, String>("target"),
+            "changeset": row.get::<_, Uuid>("changeset").to_string(),
+            "version": row.get::<_, i64>("version"),
+            "run": row.get::<_, Uuid>("run").to_string(),
+            "proposal_base_revision": row.get::<_, String>("base_revision"),
+            "expected_head": RevisionRef::Native(head).to_string(),
+            "expected_generation": row.get::<_, i64>("expected_generation"),
+            "candidate_epoch": row.get::<_, i64>("epoch"),
+            "revision": RevisionRef::Native(revision).to_string(),
+            "policy": id(row.get("policy"))?.to_string(),
+            "merge_profile": row.get::<_, String>("merge_profile"),
+        }),
+        snapshots: [before, after],
+        roots: [head, revision],
+        holders: [row.get("base_pin"), pin],
+    })
 }
 impl Metadata {
     pub async fn open_review(

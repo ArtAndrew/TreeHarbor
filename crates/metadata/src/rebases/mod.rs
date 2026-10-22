@@ -373,8 +373,14 @@ impl Metadata {
         tx.tx.execute("UPDATE th_change_rebases SET state='ready',result_version=$4,revision=$5 WHERE tenant=$1 AND repository=$2 AND rebase=$3",&[&s.tenant,&s.repository,&id,&version,&bytes(computed.revision())]).await?;
         // Only this owner's superseded proposals are invalidated. Already landed
         // history, immutable checks/reviews and their audit trail are retained.
-        tx.tx.execute("UPDATE th_native_candidates c SET state='stale' FROM th_native_queue q WHERE c.tenant=$1 AND c.repository=$2 AND q.tenant=c.tenant AND q.repository=c.repository AND q.entry=c.entry AND q.changeset=$3 AND q.version<$4 AND c.state IN ('preparing','checking')",&[&s.tenant,&s.repository,&r.changeset,&version]).await?;
-        tx.tx.execute("UPDATE th_native_queue SET state='stale',reason='change_rebased' WHERE tenant=$1 AND repository=$2 AND changeset=$3 AND version<$4 AND state IN ('queued','preparing','checking')",&[&s.tenant,&s.repository,&r.changeset,&version]).await?;
+        crate::integration::supersede_older_versions(
+            &tx.tx,
+            s,
+            r.changeset,
+            version,
+            "change_rebased",
+        )
+        .await?;
         // Recheck expiry after pin/row work, before committing a fresh result.
         authorized(&tx.tx, auth, cmd.epoch).await?;
         let result = record(&tx.tx, s, id).await?;

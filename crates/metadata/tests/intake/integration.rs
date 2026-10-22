@@ -1,3 +1,5 @@
+#[path = "integration/candidate_review.rs"]
+mod candidate_review;
 #[path = "integration/rebases.rs"]
 mod rebases;
 #[path = "integration/review.rs"]

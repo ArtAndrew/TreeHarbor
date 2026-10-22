@@ -163,4 +163,34 @@ mod tests {
                 .replacen('{', "{\"version\":1,", 1);
         assert!(parse(duplicate.as_bytes()).is_err());
     }
+    #[test]
+    fn candidate_selector_is_explicit_and_cannot_override_stored_context() {
+        let vector: Value = serde_json::from_str(include_str!(
+            "../../../metadata/tests/fixtures/review-candidate-v1.json"
+        ))
+        .unwrap();
+        let request = parse(&serde_json::to_vec(&vector["request"]).unwrap())
+            .unwrap_or_else(|_| panic!("candidate wire"));
+        assert_eq!(request.fence.epoch, 4);
+        let ReviewTarget::Candidate { candidate } = request.fence.target else {
+            panic!("selector")
+        };
+        assert_eq!(candidate.to_string(), vector["identity"]["candidate"]);
+        for (field, value) in [
+            ("revision", vector["identity"]["revision"].clone()),
+            ("expected_head", vector["identity"]["expected_head"].clone()),
+            ("policy", vector["identity"]["policy"].clone()),
+            ("candidate_epoch", json!(4)),
+            ("candidate", json!("not-a-uuid")),
+        ] {
+            let mut body = vector["request"].clone();
+            body["query"][field] = value;
+            assert!(
+                parse(&serde_json::to_vec(&body).unwrap()).is_err(),
+                "{field}"
+            );
+        }
+        let failure = metadata(treeharbor_metadata::Error::IntegrationState);
+        assert_eq!((failure.status, failure.code), (409, "review_unavailable"));
+    }
 }

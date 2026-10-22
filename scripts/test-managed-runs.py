@@ -255,9 +255,9 @@ class Harness:
         (self.transport / "fault").write_text("none")
         self.expire_dead_worker(case)
 
-    def propose(self, case):
+    def propose(self, case, changeset=None, previous_version=0):
         assert self.status(case)["runtime_removed"]
-        upload, changeset = str(uuid.uuid4()), str(uuid.uuid4())
+        upload, changeset = str(uuid.uuid4()), changeset or str(uuid.uuid4())
         self.client("change-begin", "--key", "change-begin-" + upload, "--authority", "standalone", "--epoch", "1",
                     "--upload", upload, "--run", case["run"], "--generation", "1", credential=case["credential"])
         # Explicit immutable API bytes, after actual runtime removal. This is
@@ -278,9 +278,11 @@ class Harness:
                                    "expected": {"mode": 0o100644, "object": "sha256:" + oid(1, b"base\n").hex()},
                                    "replacement": {"mode": 0o100644, "object": blob}}])
         request = ["change-submit", "--key", "change-submit-" + upload, "--authority", "standalone", "--epoch", "1",
-                   "--upload", upload, "--changeset", changeset, "--operations", operations]
+                   "--upload", upload, "--changeset", changeset,
+                   "--previous-version", str(previous_version), "--operations", operations]
         result = self.client(*request, credential=case["credential"])
         assert result["state"] == "accepted" and result["run"] == case["run"]
+        assert result["version"] == previous_version + 1
         assert result["base_revision"] == self.revision
         directory = ((1).to_bytes(4, "big") + (8).to_bytes(4, "big") + b"same.txt"
                      + (0o100644).to_bytes(4, "big") + oid(1, content))

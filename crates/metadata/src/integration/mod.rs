@@ -23,6 +23,39 @@ use tokio_postgres::Transaction;
 use treeharbor_core::{ObjectId, RevisionRef};
 use uuid::Uuid;
 
+/// Called only after accepting an owned new version under the repository write
+/// lock, in the same transaction. Preserve published history and evidence.
+pub(crate) async fn supersede_older_versions(
+    tx: &Transaction<'_>,
+    scope: &Scope,
+    changeset: Uuid,
+    version: i64,
+    reason: &str,
+) -> Result<()> {
+    tx.execute(
+        r"UPDATE th_native_candidates c SET state='stale' FROM th_native_queue q
+          WHERE c.tenant=$1 AND c.repository=$2 AND q.tenant=c.tenant
+            AND q.repository=c.repository AND q.entry=c.entry
+            AND q.changeset=$3 AND q.version<$4 AND c.state IN ('preparing','checking')",
+        &[&scope.tenant(), &scope.repository(), &changeset, &version],
+    )
+    .await?;
+    tx.execute(
+        r"UPDATE th_native_queue SET state='stale',reason=$5
+          WHERE tenant=$1 AND repository=$2 AND changeset=$3 AND version<$4
+            AND state IN ('queued','preparing','checking')",
+        &[
+            &scope.tenant(),
+            &scope.repository(),
+            &changeset,
+            &version,
+            &reason,
+        ],
+    )
+    .await?;
+    Ok(())
+}
+
 pub struct Command {
     pub key: String,
     pub epoch: i64,
