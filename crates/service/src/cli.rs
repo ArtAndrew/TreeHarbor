@@ -372,6 +372,11 @@ impl HistoryQuery {
 }
 #[derive(Subcommand)]
 enum DiffQuery {
+    /// Compare a prepared integration candidate against its captured target head.
+    Candidate {
+        #[arg(long)]
+        candidate: Uuid,
+    },
     Change {
         #[arg(long)]
         changeset: Uuid,
@@ -388,6 +393,9 @@ enum DiffQuery {
 impl DiffQuery {
     fn wire(self) -> Value {
         match self {
+            Self::Candidate { candidate } => {
+                json!({"kind":"candidate","candidate":candidate.to_string()})
+            }
             Self::Change { changeset, version } => {
                 json!({"kind":"change","changeset":changeset.to_string(),"version":version})
             }
@@ -399,7 +407,7 @@ impl DiffQuery {
 }
 #[derive(Subcommand)]
 enum Agent {
-    /// Review an exact accepted version or two registered revisions; no mutations.
+    /// Review an exact proposal, integration candidate or revision pair; no mutations.
     Diff {
         #[arg(long, value_enum)]
         authority: Mode,

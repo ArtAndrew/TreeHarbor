@@ -50,7 +50,7 @@ class Checks(managed.Harness):
         assert diff["identity"]["version"] == self.change.get("version", 1)
         assert diff["identity"]["base_revision"] == self.revision
         assert diff["next_after"] is None
-        if self.change.get("version", 1) == 1:
+        if not self.empty_proposal:
             assert diff["total_changes"] == 1, diff
             assert bytes.fromhex(diff["changes"][0]["path_hex"]) == b"same.txt"
             assert diff["changes"][0]["text"]["patch"].endswith("-base\n+candidate\n")
@@ -59,6 +59,20 @@ class Checks(managed.Harness):
             # the same edit. Its empty diff must not masquerade as version 1.
             assert diff["total_changes"] == 0 and diff["changes"] == [], diff
             assert diff["before_snapshot"] == diff["after_snapshot"]
+        integration = self.client("diff", "--authority", "standalone", "--epoch", "1",
+                                  "candidate", "--candidate", candidate, credential=self.reviewer)
+        subject = integration["identity"]
+        assert subject["candidate"] == candidate and subject["entry"] == entry
+        assert subject["target"] == target and subject["policy"] == policy_id
+        assert subject["revision"] == result["revision"]
+        assert subject["expected_head"] == result["expected_head"] == self.revision
+        assert subject["expected_generation"] == result["expected_generation"]
+        assert subject["candidate_epoch"] == 1
+        assert subject["run"] == diff["identity"]["run"]
+        assert subject["changeset"] == self.change["changeset"]
+        assert subject["version"] == self.change.get("version", 1)
+        assert integration["after_snapshot"] == result["snapshot"]
+        assert integration["changes"] == diff["changes"]
         self.native("review", self.reviewer, candidate=candidate, review=str(uuid.uuid4()), decision="approve")
         return dict(candidate=candidate, check=check, entry=entry, target=target, policy=policy_id, candidate_snapshot=result["snapshot"])
 
@@ -141,6 +155,7 @@ class Checks(managed.Harness):
         return result
 
     def exercise(self):
+        self.empty_proposal = False
         self.policy_admin = self.principal("policy-admin", "human", ["read", "repository.write", "policy.write"])
         self.reviewer = self.principal("reviewer", "human", ["read", "review"])
         self.integrator = self.principal("integrator", "integrator", ["read", "integration.control"])
@@ -155,6 +170,7 @@ class Checks(managed.Harness):
         assert landed["state"] == "landed"
         assert self.native("ref_resolve", self.policy_admin, name=passed["target"])["head"] == landed["revision"]
         print("PASS native CI: actual candidate files, immutable offline program, protected collector and publication", flush=True)
+        print("PASS native review: exact candidate revision, target and policy match checked and published code", flush=True)
 
         failed = self.check_case(expected="different")
         self.completed_check(failed, self.start(failed), "failed")
@@ -193,6 +209,23 @@ class Checks(managed.Harness):
         self.admin("access-set", *self.scope, "--principal", "node-0", "--permission", "runtime.control")
         print("PASS native CI: revoked node access blocks previously passing evidence", flush=True)
 
+        # Ordinary new versions must supersede pending candidates just as rebase
+        # does. Use a separate ChangeSet so the subsequent rebase keeps version 1.
+        original = self.change
+        self.change = self.propose(agent)
+        updating = self.check_case(delay=5000)
+        child = self.start(updating)
+        managed.wait_until(lambda: (updating["files"] / "check-executions").exists())
+        self.change = self.propose(agent, changeset=self.change["changeset"], previous_version=1)
+        self.completed_check(updating, child, "cancelled")
+        assert self.native("land", self.integrator, check=False, candidate=updating["candidate"]).returncode != 0
+        updated = self.check_case()
+        assert self.native("land", self.integrator, check=False, candidate=updated["candidate"]).returncode != 0
+        self.completed_check(updated, self.start(updated))
+        assert self.native("land", self.integrator, candidate=updated["candidate"])["state"] == "landed"
+        self.change = original
+        print("PASS native CI: ordinary proposal update cancels old check and needs fresh candidate checks and review", flush=True)
+
         # Rebase is an owner operation, not approval. It supersedes an actively
         # checked old proposal; the runtime fence must tear that check down.
         old = self.check_case(delay=5000)
@@ -209,6 +242,7 @@ class Checks(managed.Harness):
         assert self.native("land", self.integrator, check=False, candidate=old["candidate"]).returncode != 0
         self.change["version"] = 2
         self.revision = landed["revision"]
+        self.empty_proposal = True
         retained = self.client("diff", "--authority", "standalone", "--epoch", "1",
                                "change", "--changeset", self.change["changeset"],
                                "--version", "1", credential=self.reviewer)

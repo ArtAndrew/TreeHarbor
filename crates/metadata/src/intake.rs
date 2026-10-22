@@ -464,6 +464,16 @@ impl Mutation<'_> {
             &[&scope.tenant,&scope.repository,&change.id,&version,&change.run,&base_revision,
             &applied.base_snapshot().as_bytes().as_slice(),&applied.operations().as_bytes().as_slice(),&applied.result_snapshot().as_bytes().as_slice(),
             &base_pin,&operations_pin,&result_pin,&ctx.key]).await?;
+        if version > 1 {
+            crate::integration::supersede_older_versions(
+                &self.tx,
+                scope,
+                change.id,
+                version,
+                "change_updated",
+            )
+            .await?;
+        }
         Ok(
             json!({"changeset":change.id.to_string(),"version":version,"state":"accepted","run":change.run.to_string(),
             "base_revision":base_revision,"base_snapshot":applied.base_snapshot().to_string(),"operations":applied.operations().to_string(),"result_snapshot":applied.result_snapshot().to_string()}),

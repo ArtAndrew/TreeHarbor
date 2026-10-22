@@ -65,6 +65,16 @@ uses a new upload/key, the same ChangeSet ID and its current `previous-version`.
 Operations remain relative to the original run base, not the previous proposal.
 Concurrent versions cannot overwrite each other.
 
+Accepting a newer version atomically makes older pending queue entries and
+candidates for that ChangeSet `stale` (`reason: change_updated`). Rebase uses the
+same rule with `change_rebased`. Already published history, old versions and their
+checks/reviews remain available for inspection. A failed acceptance changes none
+of this state; replaying a completed acceptance returns its saved receipt.
+
+Enqueue the desired version explicitly; acceptance does not enqueue it. Its new
+candidate requires its own checks and review. An owner can also explicitly
+enqueue a retained older version again, with a new candidate and new evidence.
+
 ## HTTP and recovery
 
 The `/v1/commands` envelope supports `change_begin`, `change_status`, `change_abort`.

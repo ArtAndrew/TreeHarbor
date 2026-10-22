@@ -4,10 +4,25 @@ Updated: 2026-10-22. This file describes implemented behavior and remaining rele
 gates. A foundation milestone does not complete either mode.
 
 New review increment: [immutable review diffs](review-diff.md) show an exact
-accepted ChangeSet version or two registered native revisions through read-only
-HTTP/CLI. They retain run/base identity, enforce repository/epoch/access fences,
-preserve byte paths and empty directories, and explicitly bound text and pages.
-This does not approve a change or replace review of an integration candidate.
+accepted ChangeSet version, prepared integration candidate or two registered
+native revisions through read-only HTTP/CLI. Candidate diffs compare the captured
+target head against the prepared merged result and expose immutable target,
+policy, proposal and run context. Retained candidates remain inspectable after
+supersession, cancellation or publication, subject to current repository/access
+fences. Reading never approves a candidate or makes old checks current.
+Byte paths, empty directories and bounded text/page behavior remain unchanged.
+
+Ordinary [proposal version updates](change-proposals.md) now atomically make that
+ChangeSet's older pending queue entries/candidates stale, matching rebase behavior.
+Published history and old evidence remain retained. New candidates require fresh
+checks/review; failed updates and completed-request replays cannot repeat mutations.
+
+Local verification for this candidate-review increment: 148 ordinary workspace
+tests and 144 explicit PostgreSQL/materializer/node/service tests passed, along
+with formatting, strict Clippy and independent fixture reproduction. The required
+Linux gVisor job also tests candidate inspection against checked files and ordinary
+version replacement during a running check. Local macOS tests do not prove that
+runtime behavior. The complete release gates below remain open.
 
 New rebase increment: [immutable ChangeSet rebase](change-rebase.md) adds owner
 start/status/cancel and durable server preparation of one accepted version on an
@@ -86,7 +101,7 @@ resource outcomes and worker-loss recovery. No complete authority mode is implie
 | Immutable directory trees and operations | Exact expected-before checks, canonical subtree operations v2, bounded structural diff, structural sharing, explicit deletes; native merge and Git reference matrix | General history rebase, broader rename/base support, live-server Git interop |
 | Local object store | Atomic no-clobber writes, digest verification, file/directory fsync, tenant directories, physical generations and upload receipts | S3, backup/restore, kill fault campaign |
 | Native DAG and admission | Scoped history/log/ancestry/merge-base HTTP/CLI, persisted refs/policies/queue/checks/reviews, verified candidate commits, final transactional admission and no-Git CLI/process-loss tests | General history stack rebase, automatic scheduling, full lifecycle and recovery |
-| Review diff | Read-only exact ChangeSet/revision HTTP/CLI, retained version/run identity, scoped GC holds, bounded byte paths and text, actual Git path oracle and restart/page/error tests | Integration-candidate diff, review UI, persistent diff indexing and larger-repository profiling |
+| Review diff | Read-only exact ChangeSet/candidate/revision HTTP/CLI, retained integration/policy/version/run identity, scoped GC holds, bounded byte paths and text, actual Git path oracle and restart/page/error tests | Review UI, persistent diff indexing and larger-repository profiling |
 | PostgreSQL metadata and outbox | Real database transaction/idempotency/lease tests; repository authority/epoch checks; populated schema upgrades through v12; local service pool and crash/replay | Remote service integration and full server restore |
 | Native ChangeSet intake | HTTP/CLI immutable proposals, session-owned blobs, computed versions, running/removed-run lineage, atomic pins/session completion/outbox and process-loss replay | Filesystem sealing, GitHub base synchronization, remote transport and retention |
 | Protected incremental source reads | Pinned sessions, verified frontiers, bounded prefix batches and descriptors surviving local GC; authenticated workspace-root sessions | Per-tenant service quotas, bulk node delivery and S3 |
@@ -109,7 +124,7 @@ resource outcomes and worker-loss recovery. No complete authority mode is implie
 | Live source export | Scoped registered-base reads with GC holds and authority/credential fences; streaming archive v1 and atomically verified pack v3; actual CLI restart/merge/origin roundtrip | Other retained proposals, all-ref export, full metadata backup, incremental transfer, longer jobs and cleanup |
 | Git history import | Pinned self-contained SHA-1/SHA-256 bundle, all-parent native graph, replayed deltas, exact original metadata, atomic full-source pack v2 and resumable HTTP/CLI upload | Network fetch, incremental imports, multi-ref cutover, automated cleanup, larger-repository profiling |
 | Connected | Not implemented | Real GitHub PR/checks/merge queue and credential separation |
-| Standalone S2 | Partial: durable native admission/publication, scoped history/diff and single-ChangeSet rebase through CLI/API without Git, managed offline checks, registered-source export, plus explicitly separate transport fixtures | General history stack rewriting, candidate diff, full lifecycle, cutover, full server backup/restore |
+| Standalone S2 | Partial: durable native admission/publication, scoped history/candidate diff and single-ChangeSet rebase through CLI/API without Git, managed offline checks, registered-source export, plus explicitly separate transport fixtures | General history stack rewriting, full lifecycle, cutover, full server backup/restore |
 | Release and benchmarks | Not released or measured | Clean installation, artifacts, SBOM/provenance, comparison and operating cost |
 
 ## Local verification
