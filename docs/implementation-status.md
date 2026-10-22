@@ -3,6 +3,12 @@
 Updated: 2026-10-22. This file describes implemented behavior and remaining release
 gates. A foundation milestone does not complete either mode.
 
+New review increment: [immutable review diffs](review-diff.md) show an exact
+accepted ChangeSet version or two registered native revisions through read-only
+HTTP/CLI. They retain run/base identity, enforce repository/epoch/access fences,
+preserve byte paths and empty directories, and explicitly bound text and pages.
+This does not approve a change or replace review of an integration candidate.
+
 New rebase increment: [immutable ChangeSet rebase](change-rebase.md) adds owner
 start/status/cancel and durable server preparation of one accepted version on an
 exact native base. Schema 12 retains original run/version lineage and pins, and
@@ -80,6 +86,7 @@ resource outcomes and worker-loss recovery. No complete authority mode is implie
 | Immutable directory trees and operations | Exact expected-before checks, canonical subtree operations v2, bounded structural diff, structural sharing, explicit deletes; native merge and Git reference matrix | General history rebase, broader rename/base support, live-server Git interop |
 | Local object store | Atomic no-clobber writes, digest verification, file/directory fsync, tenant directories, physical generations and upload receipts | S3, backup/restore, kill fault campaign |
 | Native DAG and admission | Scoped history/log/ancestry/merge-base HTTP/CLI, persisted refs/policies/queue/checks/reviews, verified candidate commits, final transactional admission and no-Git CLI/process-loss tests | General history stack rebase, automatic scheduling, full lifecycle and recovery |
+| Review diff | Read-only exact ChangeSet/revision HTTP/CLI, retained version/run identity, scoped GC holds, bounded byte paths and text, actual Git path oracle and restart/page/error tests | Integration-candidate diff, review UI, persistent diff indexing and larger-repository profiling |
 | PostgreSQL metadata and outbox | Real database transaction/idempotency/lease tests; repository authority/epoch checks; populated schema upgrades through v12; local service pool and crash/replay | Remote service integration and full server restore |
 | Native ChangeSet intake | HTTP/CLI immutable proposals, session-owned blobs, computed versions, running/removed-run lineage, atomic pins/session completion/outbox and process-loss replay | Filesystem sealing, GitHub base synchronization, remote transport and retention |
 | Protected incremental source reads | Pinned sessions, verified frontiers, bounded prefix batches and descriptors surviving local GC; authenticated workspace-root sessions | Per-tenant service quotas, bulk node delivery and S3 |
@@ -102,7 +109,7 @@ resource outcomes and worker-loss recovery. No complete authority mode is implie
 | Live source export | Scoped registered-base reads with GC holds and authority/credential fences; streaming archive v1 and atomically verified pack v3; actual CLI restart/merge/origin roundtrip | Other retained proposals, all-ref export, full metadata backup, incremental transfer, longer jobs and cleanup |
 | Git history import | Pinned self-contained SHA-1/SHA-256 bundle, all-parent native graph, replayed deltas, exact original metadata, atomic full-source pack v2 and resumable HTTP/CLI upload | Network fetch, incremental imports, multi-ref cutover, automated cleanup, larger-repository profiling |
 | Connected | Not implemented | Real GitHub PR/checks/merge queue and credential separation |
-| Standalone S2 | Partial: durable native admission/publication and scoped history through CLI/API without Git, managed offline checks, registered-source export, plus explicitly separate transport fixtures | Rebase CLI, full lifecycle, cutover, full server backup/restore |
+| Standalone S2 | Partial: durable native admission/publication, scoped history/diff and single-ChangeSet rebase through CLI/API without Git, managed offline checks, registered-source export, plus explicitly separate transport fixtures | General history stack rewriting, candidate diff, full lifecycle, cutover, full server backup/restore |
 | Release and benchmarks | Not released or measured | Clean installation, artifacts, SBOM/provenance, comparison and operating cost |
 
 ## Local verification
@@ -439,3 +446,26 @@ check and fresh check/review before publishing the new version. It remains a
 required CI gate, separate from local transport tests. See [wire format, limits,
 retry and operational behavior](change-rebase.md). General history stack rewriting,
 Connected GitHub, full lifecycle/restore and release/benchmark gates remain open.
+
+
+## Scoped immutable review diffs
+
+Added `/v1/review/diff` and `client diff` for exact accepted versions or registered
+native revision pairs. The endpoint requires repository read permission, retains
+both roots with atomic holds, checks current access/authority per batch and before
+success, and closes all holds on ordinary failures. Results preserve original
+run/base/version identity, byte paths, modes and empty directories. Text is bounded
+separately from complete path enumeration; oversized escaped JSON fails explicitly
+and can be recovered with smaller pages or metadata-only reads. No refs, reviews
+or validation are written.
+
+Local verification (macOS arm64, Rust 1.99.1): 147 ordinary tests and all 140
+explicit PostgreSQL/materializer/node/service tests passed. Formatting and strict
+Clippy passed. Independent stdlib framing/hash/unified-patch vector, real Git
+changed-path comparison, text-patch application, actual server restart/removal of
+original source packs, older-version reads after rebase/drain, scoped access,
+revocation/epoch/lease fences, GC protection and response-budget recovery are
+covered. The required Linux gVisor harness additionally reads actual immutable
+agent proposals with reviewer credentials before approval. All required CI jobs
+must pass on the exact head before merge. See [review diff](review-diff.md) for the
+wire contract, limits and explicit distinction from integration-candidate review.

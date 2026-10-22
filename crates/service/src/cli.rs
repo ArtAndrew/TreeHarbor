@@ -371,7 +371,49 @@ impl HistoryQuery {
     }
 }
 #[derive(Subcommand)]
+enum DiffQuery {
+    Change {
+        #[arg(long)]
+        changeset: Uuid,
+        #[arg(long,value_parser=clap::value_parser!(i64).range(1..))]
+        version: i64,
+    },
+    Revisions {
+        #[arg(long)]
+        before: String,
+        #[arg(long)]
+        after: String,
+    },
+}
+impl DiffQuery {
+    fn wire(self) -> Value {
+        match self {
+            Self::Change { changeset, version } => {
+                json!({"kind":"change","changeset":changeset.to_string(),"version":version})
+            }
+            Self::Revisions { before, after } => {
+                json!({"kind":"revisions","before":before,"after":after})
+            }
+        }
+    }
+}
+#[derive(Subcommand)]
 enum Agent {
+    /// Review an exact accepted version or two registered revisions; no mutations.
+    Diff {
+        #[arg(long, value_enum)]
+        authority: Mode,
+        #[arg(long,value_parser=clap::value_parser!(i64).range(1..))]
+        epoch: i64,
+        #[arg(long,default_value_t=20,value_parser=clap::value_parser!(u16).range(1..=100))]
+        limit: u16,
+        #[arg(long)]
+        after: Option<String>,
+        #[arg(long)]
+        metadata_only: bool,
+        #[command(subcommand)]
+        query: DiffQuery,
+    },
     /// Reapply an owned accepted version onto an exact registered native revision.
     RebaseStart {
         #[arg(long)]
@@ -688,6 +730,7 @@ impl Agent {
             }
             Self::SourceExport { .. }
             | Self::History { .. }
+            | Self::Diff { .. }
             | Self::NativePrepare { .. }
             | Self::RebasePrepare { .. }
             | Self::ChangePut { .. }
@@ -920,6 +963,18 @@ pub async fn run(cli: Cli) -> Result<bool> {
         } => {
             let credential = Credential::load(&credential_file)?;
             let action = match action {
+                Agent::Diff {
+                    authority,
+                    epoch,
+                    limit,
+                    after,
+                    metadata_only,
+                    query,
+                } => {
+                    let reply=client::review(&socket,&credential,json!({"authority":Authority::from(authority).as_str(),"epoch":epoch,"query":query.wire(),"limit":limit,"after":after,"text":!metadata_only}),Duration::from_millis(timeout_ms)).await?;
+                    println!("{}", reply.body);
+                    return Ok(reply.status.is_success());
+                }
                 Agent::History {
                     authority,
                     epoch,

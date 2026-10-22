@@ -1,5 +1,7 @@
 #[path = "integration/rebases.rs"]
 mod rebases;
+#[path = "integration/review.rs"]
+mod review;
 use super::*;
 use treeharbor_merge::{CandidateOutcome, Limits, PreparedCandidate, prepare_candidate};
 use treeharbor_metadata::{

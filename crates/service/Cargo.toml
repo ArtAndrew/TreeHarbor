@@ -13,6 +13,7 @@ name = "treeharbor"
 path = "src/main.rs"
 
 [dependencies]
+diffy = "=0.5.2"
 treeharbor-core.workspace = true
 treeharbor-history.workspace = true
 treeharbor-git-bridge.workspace = true

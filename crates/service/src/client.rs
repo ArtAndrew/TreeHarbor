@@ -238,6 +238,30 @@ pub async fn history(
     )
     .await
 }
+pub async fn review(
+    socket: &Path,
+    credential: &Credential,
+    mut fields: Value,
+    timeout: Duration,
+) -> Result<Reply> {
+    fields["version"] = json!(1);
+    fields["tenant"] = json!(credential.scope.tenant());
+    fields["repository"] = json!(credential.scope.repository().to_string());
+    let body = serde_json::to_vec(&fields).map_err(|_| Error::Config)?;
+    if body.len() > MAX_REQUEST_BYTES {
+        return Err(Error::Size);
+    }
+    send_request(
+        socket,
+        &credential.token,
+        "POST",
+        "/v1/review/diff".into(),
+        "application/json",
+        body,
+        timeout,
+    )
+    .await
+}
 
 pub(crate) struct RawReply {
     pub status: StatusCode,
