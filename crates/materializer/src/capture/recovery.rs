@@ -137,6 +137,7 @@ impl CaptureArtifact {
             root: root.canonicalize()?,
             store,
             digest,
+            encoded_bytes: encoded,
             changes,
             membership: seen.into_keys().collect(),
             objects,

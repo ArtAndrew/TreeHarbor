@@ -1,5 +1,7 @@
 //! Real PostgreSQL contracts. Runtime removal here is trusted test input; only
 //! the separate Linux runtime harness can prove physical stopped-file capture.
+#[path = "seal_objects.rs"]
+mod objects;
 use super::*;
 use treeharbor_core::{CaptureSelection, RepoPath};
 use treeharbor_metadata::{seals::SealRequest, uploads::UploadLimits};

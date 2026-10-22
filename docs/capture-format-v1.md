@@ -164,8 +164,9 @@ An artifact without the node completion record requires renewed physical runtime
 and placement proof before the node may finish that record; it never recaptures
 changed source bytes over the existing artifact. A completion record with no
 artifact is an error. No database `ready` state or accepted version follows merely
-from the existence of these files. Server object publication/acceptance and
-physical workspace cleanup remain unfinished.
+from the existence of these files. The server publication methods below are now
+implemented in development. Owner acceptance, transport commands, actual Linux
+capture acceptance and physical workspace cleanup remain unfinished.
 
 ### Seal binding v1
 
@@ -188,3 +189,48 @@ intentionally outside this content binding, so a new authorized claimant reopens
 the same immutable artifact. Fixed deadline and current authorization are separate
 metadata fences. The [independent binding generator](../scripts/generate-seal-binding-vector.py)
 encodes the source profile and selection independently before hashing the context.
+
+
+## Scoped server publication (development)
+
+The assigned node binds the first verified artifact's complete declaration and
+storage backend to its durable request. Retrying with a different manifest,
+object order, dependencies, byte count or backend fails. The operations must cover
+exactly the requested replacement and deletion roots. Node execution permission
+does not grant owner ChangeSet acceptance or validation permission.
+
+Preserved dependencies require verified read objects from a session anchored at
+the run's exact original snapshot. A proof from a different session, repository or
+history root is rejected, even when its bytes already exist in the same tenant's
+object store. The node follows selected paths and exclusion ancestors to obtain
+these proofs; it does not enumerate the full commit history. All reads are bounded
+by configured entry, path and byte budgets.
+
+New objects are reserved and published child first. References must name completed
+objects in this declaration or proved baseline dependencies. Actual fsynced
+receipts must match the reserved digest, backend and physical generation. Object
+count and encoded-byte limits include reused new-object contents. Reservation
+holds end at the original request deadline; a retry never extends it. Reclaimed
+workers reuse the same reservations, while the current claim fences every write.
+
+Finishing rejects incomplete or extraneous objects. The operations pin, immutable
+`ready` receipt, operation record and outbox event commit atomically. A final
+clock/authorization check after the writes rolls everything back if the lease or
+request expired during the transaction. Permanent pins retain the operations and
+all referenced contents after temporary holds expire. Only the exact completing
+worker claim can replay its receipt; replay does not authorize new work.
+
+Reservation tokens are UUIDs formed from the first 16 SHA-256 bytes of:
+
+```text
+treeharbor-seal-object NUL v1 NUL
+u64be(tenant UTF-8 length), tenant UTF-8,
+repository UUID bytes, seal UUID bytes, object digest bytes
+```
+
+No UUID version bits are rewritten. The [independent generator](../scripts/generate-seal-reservation-vector.py)
+checks this stable identity across retries. PostgreSQL tests exercise physical
+write/metadata gaps, reclaim, scoped dependencies, budget enforcement, current
+access fences, rollback, replay and GC retention. These tests use trusted runtime
+fixtures and do not establish physical stopped-file safety; the actual Linux
+capture-to-acceptance scenario remains a release gate.

@@ -1,5 +1,6 @@
 //! Durable owner intent and node claims for stopped-file capture. A claim is not
 //! runtime quiescence, a ready source artifact, or an accepted ChangeSet.
+mod objects;
 use crate::{
     Begin, Error, Event, Metadata, Result, Scope,
     access::{Authorization, Permission, repository_lock},
@@ -9,6 +10,7 @@ use crate::{
     ttl_valid,
     uploads::UploadLimits,
 };
+pub use objects::{SealObjectTicket, SealPublication, SealSource};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use tokio_postgres::{Row, Transaction};

@@ -9,13 +9,18 @@ with explicit replacements/deletions/exclusions and sparse coverage checks. This
 library does not prove runtime quiescence. Schema 13 now adds durable owner requests,
 stop/cancel, fixed deadlines and fenced node claims, with PostgreSQL tests. A node
 adapter rechecks removed runtime identity and persists a separate completion record;
-its real Linux capture test is still pending. Owner HTTP/CLI seal API, server
-publication/acceptance and physical workspace cleanup remain unfinished.
+its real Linux capture test is still pending. Scoped server publication now binds an immutable declaration, proves baseline
+membership from the exact original snapshot and commits ready pins/receipts
+atomically. The node adapter connects capture to publication and supports exact
+completed-response replay. Owner HTTP/CLI seal commands, ChangeSet acceptance,
+actual Linux capture acceptance and physical workspace cleanup remain unfinished.
 
-Local capture increment verification: 159 ordinary tests passed; 152 explicit
+Local capture/publication verification: 161 ordinary tests passed; 159 explicit
 PostgreSQL/materializer/node/service tests passed with four parallel test cases.
-The capture-library suite also passed after adding indexed object membership.
-These results do not cover the new real-Linux capture adapter or complete sealing.
+Seven new publication tests cover scoped baseline proofs, child-first uploads,
+restart/reclaim, exact replay, quotas, GC retention, current access fences and
+expiry inside finalization. These database tests use trusted runtime fixtures.
+They do not cover the new real-Linux capture adapter or complete sealing.
 
 New review increment: [immutable review diffs](review-diff.md) show an exact
 accepted ChangeSet version, prepared integration candidate or two registered
@@ -116,7 +121,7 @@ resource outcomes and worker-loss recovery. No complete authority mode is implie
 | Local object store | Atomic no-clobber writes, digest verification, file/directory fsync, tenant directories, physical generations and upload receipts | S3, backup/restore, kill fault campaign |
 | Native DAG and admission | Scoped history/log/ancestry/merge-base HTTP/CLI, persisted refs/policies/queue/checks/reviews, verified candidate commits, final transactional admission and no-Git CLI/process-loss tests | General history stack rebase, automatic scheduling, full lifecycle and recovery |
 | Review diff | Read-only exact ChangeSet/candidate/revision HTTP/CLI, retained integration/policy/version/run identity, scoped GC holds, bounded byte paths and text, actual Git path oracle and restart/page/error tests | Review UI, persistent diff indexing and larger-repository profiling |
-| PostgreSQL metadata and outbox | Real database transaction/idempotency/lease tests; repository authority/epoch checks; populated schema upgrades through v12; local service pool and crash/replay | Remote service integration and full server restore |
+| PostgreSQL metadata and outbox | Real database transaction/idempotency/lease tests; repository authority/epoch checks; populated schema upgrades through v13; local service pool and crash/replay | Remote service integration and full server restore |
 | Native ChangeSet intake | HTTP/CLI immutable proposals, session-owned blobs, computed versions, running/removed-run lineage, atomic pins/session completion/outbox and process-loss replay | Filesystem sealing, GitHub base synchronization, remote transport and retention |
 | Protected incremental source reads | Pinned sessions, verified frontiers, bounded prefix batches and descriptors surviving local GC; authenticated workspace-root sessions | Per-tenant service quotas, bulk node delivery and S3 |
 | Native file materialization | Private copies from exact snapshots, full/sparse selection, staged expansion preserving edits/deletions, bounded IO and filesystem checks; exact baseline loading and guarded atomic node publication | Runtime-proven quiescence, cache/reflink, changed-file sealing and Git-compatible format |

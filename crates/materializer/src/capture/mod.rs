@@ -48,6 +48,7 @@ pub struct CaptureArtifact {
     root: PathBuf,
     store: LocalStore,
     digest: [u8; 32],
+    encoded_bytes: u64,
     changes: Changes,
     objects: Vec<ObjectId>,
     membership: BTreeSet<ObjectId>,
@@ -59,6 +60,9 @@ impl CaptureArtifact {
     }
     pub fn manifest_digest(&self) -> [u8; 32] {
         self.digest
+    }
+    pub fn encoded_bytes(&self) -> u64 {
+        self.encoded_bytes
     }
     pub fn operations(&self) -> &Changes {
         &self.changes

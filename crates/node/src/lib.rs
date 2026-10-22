@@ -2,6 +2,7 @@
 mod capture;
 mod execution;
 mod private;
+mod seal_publication;
 mod storage;
 mod volumes;
 mod worker;
