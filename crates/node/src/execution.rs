@@ -77,6 +77,15 @@ impl Node {
                 return Ok(db.finish_run(auth, plan).await?);
             }
             if observed.state == RuntimeState::Created {
+                if plan.is_check() {
+                    let fresh = tree.clone();
+                    let guard = operation.clone();
+                    tokio::task::spawn_blocking(move || {
+                        let _guard = guard;
+                        fresh.verify_pristine(limits)
+                    })
+                    .await??;
+                }
                 db.admit_run_start(auth, plan).await?;
                 let actual = controller.start().await?;
                 db.observe_run(auth, plan, engine.identity(), &actual)

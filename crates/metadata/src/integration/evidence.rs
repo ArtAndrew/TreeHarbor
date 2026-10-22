@@ -3,7 +3,7 @@ use super::*;
 use std::collections::BTreeSet;
 use treeharbor_validation::{self as validation, ContextDigest, Receipt};
 
-async fn trusted(
+pub(super) async fn trusted(
     tx: &Transaction<'_>,
     s: &Scope,
     principal: &str,
@@ -11,10 +11,14 @@ async fn trusted(
     permission: &str,
     token: Option<Uuid>,
 ) -> Result<bool> {
-    let allowed:bool=tx.query_one(r#"SELECT EXISTS(SELECT 1 FROM th_principals p JOIN th_repository_access a USING(tenant,principal)
+    // Principal disable is global and does not take the repository lock. Hold
+    // the exact evidence principals through publication, rather than relying on
+    // an MVCC existence read that may outlive a completed disable transaction.
+    let allowed=tx.query_opt(r"SELECT p.principal FROM th_principals p JOIN th_repository_access a USING(tenant,principal)
         WHERE p.tenant=$1 AND a.repository=$2 AND p.principal=$3 AND p.kind=$4 AND p.enabled AND $5=ANY(a.permissions)
-        AND ($6::uuid IS NULL OR EXISTS(SELECT 1 FROM th_access_tokens t WHERE t.tenant=p.tenant AND t.repository=a.repository AND t.principal=p.principal AND t.token=$6 AND t.revoked_at IS NULL AND $5=ANY(t.permissions))))"#,
-        &[&s.tenant,&s.repository,&principal,&kind,&permission,&token]).await?.get(0);
+        AND ($6::uuid IS NULL OR EXISTS(SELECT 1 FROM th_access_tokens t WHERE t.tenant=p.tenant AND t.repository=a.repository AND t.principal=p.principal AND t.token=$6 AND t.revoked_at IS NULL AND $5=ANY(t.permissions)))
+        FOR SHARE OF p,a",
+        &[&s.tenant,&s.repository,&principal,&kind,&permission,&token]).await?.is_some();
     // Expiry limits future submissions; explicit credential revocation also
     // invalidates pending evidence. Repository/principal grants remain current.
     Ok(allowed)
@@ -28,7 +32,7 @@ fn outcome(value: &str) -> Result<validation::Outcome> {
         _ => return Err(Error::Invalid("validation outcome")),
     })
 }
-async fn current_run(
+pub(super) async fn current_run(
     tx: &Transaction<'_>,
     s: &Scope,
     run: Uuid,
@@ -126,7 +130,7 @@ impl Metadata {
             Begin::Fresh(tx) => tx,
         };
         let s = auth.scope();
-        let (candidate_id, _, validator, context) = current_run(&tx.tx, s, run).await?;
+        let (candidate_id, name, validator, context) = current_run(&tx.tx, s, run).await?;
         if validator != auth.principal() {
             return Err(Error::Forbidden);
         }
@@ -135,6 +139,11 @@ impl Metadata {
             return Err(Error::IntegrationState);
         }
         fresh(&tx.tx, s, &c).await?;
+        let policy = load_policy(&tx.tx, s, c.policy.as_bytes()).await?;
+        let check = policy.check(&name, &run.to_string())?;
+        if super::program::known_program(&tx.tx, s, &check.definition_digest).await? {
+            return Err(Error::Forbidden);
+        }
         tx.tx.execute("INSERT INTO th_native_validations(tenant,repository,receipt,run,principal,token,context,outcome,evidence) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT DO NOTHING", &[&s.tenant,&s.repository,&receipt,&run,&auth.principal(),&auth.token_id(),&context,&result,&bytes(evidence)]).await?;
         let old=tx.tx.query_one("SELECT run,principal,token,context,outcome,evidence FROM th_native_validations WHERE tenant=$1 AND repository=$2 AND receipt=$3", &[&s.tenant,&s.repository,&receipt]).await?;
         if old.get::<_, Uuid>(0) != run
@@ -315,6 +324,9 @@ impl Metadata {
                 .await?
             {
                 return Err(Error::AdmissionBlocked);
+            }
+            if super::program::known_program(&tx.tx, s, &check.definition_digest).await? {
+                super::execution::admission(&tx.tx, s, run, row.get(0)).await?;
             }
             receipts.push(Receipt {
                 id: row.get::<_, Uuid>(0).to_string(),

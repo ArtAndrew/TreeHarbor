@@ -105,7 +105,7 @@ class Harness:
         self.admin("migrate")
         self.admin("repository-create", *self.scope, "--authority", "standalone")
         self.owner = self.principal("owner", "human", ["read", "workspace.write", "repository.write"])
-        self.agents = [self.principal(name, "agent", ["read", "workspace.write", "change.write"])
+        self.agents = [self.principal(name, "agent", ["read", "workspace.write", "change.write", "queue.request"])
                        for name in ("agent-a", "agent-b")]
         for index in range(2):
             name = f"node-{index}"
@@ -152,7 +152,7 @@ class Harness:
         return ["node", action, "--config", str(self.config), "--credential-file", str(node["credential"]),
                 "--root", str(node["root"]), "--storage", node["storage"]]
 
-    def case(self, mode, *args, node=0, timeout=10000):
+    def placement_profile(self, node=0, timeout=10000):
         number = len(self.cases)
         backing = self.root / f"volume-{number}.ext4"
         with backing.open("wb") as file:
@@ -176,6 +176,10 @@ class Harness:
                                "memory_bytes": 268435456, "nano_cpus": 1000000000, "max_processes": 64,
                                "timeout_ms": timeout, "workspace_bytes": 134217728})
         digest = self.admin("runtime-profile-register", *self.scope, "--file", profile)["profile_digest"]
+        return number, assigned, slot, mount, digest
+
+    def case(self, mode, *args, node=0, timeout=10000):
+        number, assigned, slot, mount, digest = self.placement_profile(node, timeout)
         workspace, run = str(uuid.uuid4()), str(uuid.uuid4())
         credential = self.agents[node]
         self.client("workspace-create", "--key", f"workspace-{number}", "--authority", "standalone", "--epoch", "1",

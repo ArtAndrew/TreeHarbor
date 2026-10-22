@@ -2,7 +2,11 @@
 //! exact evidence and current authority are rechecked before any ref publication.
 mod candidates;
 mod evidence;
+mod execution;
 mod policy;
+mod program;
+pub(crate) use execution::execution_fence;
+pub use program::CheckProgram;
 mod queue;
 mod wire;
 pub use candidates::CandidateRead;

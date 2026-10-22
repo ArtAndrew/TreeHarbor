@@ -31,6 +31,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/008_managed_runs.sql"),
     include_str!("../migrations/009_change_uploads.sql"),
     include_str!("../migrations/010_native_integration.sql"),
+    include_str!("../migrations/011_check_execution.sql"),
 ];
 const MAX_JSON: usize = 1024 * 1024;
 
