@@ -2,6 +2,7 @@ use crate::{Error, Result, check_deadline};
 use std::{
     ffi::OsString,
     fs::File,
+    io::Seek,
     os::unix::process::CommandExt,
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
@@ -44,8 +45,20 @@ impl<'a> Git<'a> {
         input: Option<&Path>,
         max_output: u64,
     ) -> Result<()> {
+        self.capture(repo, label, args, input, max_output)
+            .map(|_| ())
+    }
+    /// Bounded temporary-file output; never accumulates repository data in RAM.
+    pub fn capture(
+        &self,
+        repo: Option<&Path>,
+        label: &'static str,
+        args: &[OsString],
+        input: Option<&Path>,
+        max_output: u64,
+    ) -> Result<File> {
         check_deadline(self.deadline)?;
-        let stdout = tempfile::tempfile_in(self.scratch)?;
+        let mut stdout = tempfile::tempfile_in(self.scratch)?;
         let stderr = tempfile::tempfile_in(self.scratch)?;
         let mut command = Command::new(&self.executable);
         command
@@ -105,7 +118,8 @@ impl<'a> Git<'a> {
                     return Err(Error::Limit);
                 }
                 return if status.success() {
-                    Ok(())
+                    stdout.rewind()?;
+                    Ok(stdout)
                 } else {
                     Err(Error::Git(label))
                 };

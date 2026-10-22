@@ -109,7 +109,8 @@ edges and validates directory membership before publication.
 
 Source graph uploads accept mixed v1/v2 graphs under their existing scoped
 child-membership rules. Git export traverses these graphs and projects the source
-history into an ordinary bundle. **Git import is still unfinished.**
+history into an ordinary bundle. [Git bundle import](git-import.md) uses these
+operations for verified first-parent deltas.
 The public `changes/submit` wire v1 and its blob-only upload endpoint remain
 leaf-only. This increment does not silently permit clients to reference arbitrary
 server directories. A scoped subtree proposal transport is still required before

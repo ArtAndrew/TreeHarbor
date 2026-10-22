@@ -1,4 +1,6 @@
 #![cfg(unix)]
+#[path = "support/git.rs"]
+mod git_reference;
 #[path = "transport/native.rs"]
 mod native;
 #[path = "transport/proposals.rs"]
@@ -29,29 +31,41 @@ use uuid::Uuid;
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires disposable PostgreSQL; exercises actual node CLI"]
 async fn native_import_to_node_files_and_reopen_work_with_git_absent() {
+    import_to_node_files_and_reopen(false).await;
+}
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires disposable PostgreSQL; actual Git import followed by native node CLI"]
+async fn git_history_import_to_node_files_and_reopen_work_with_git_absent() {
+    import_to_node_files_and_reopen(true).await;
+}
+async fn import_to_node_files_and_reopen(git_history: bool) {
     let mut f = Fixture::new().await;
     f.importer();
     let source = f.dir.path().join("node-source");
     fs::create_dir(&source).unwrap();
     fs::write(source.join("main.rs"), b"fn main() {}\n").unwrap();
     let pack = f.dir.path().join("node-pack");
-    let packed = Command::new(env!("CARGO_BIN_EXE_treeharbor"))
-        .env("PATH", "/treeharbor-test-no-executables")
-        .args(["source-pack", "--directory"])
-        .arg(&source)
-        .arg("--output")
-        .arg(&pack)
-        .args([
-            "--path",
-            "main.rs",
-            "--author-name",
-            "Test",
-            "--author-email",
-            "test@example.invalid",
-        ])
-        .output()
-        .unwrap();
-    assert!(packed.status.success());
+    if git_history {
+        git_history_pack(&f, &pack);
+    } else {
+        let packed = Command::new(env!("CARGO_BIN_EXE_treeharbor"))
+            .env("PATH", "/treeharbor-test-no-executables")
+            .args(["source-pack", "--directory"])
+            .arg(&source)
+            .arg("--output")
+            .arg(&pack)
+            .args([
+                "--path",
+                "main.rs",
+                "--author-name",
+                "Test",
+                "--author-email",
+                "test@example.invalid",
+            ])
+            .output()
+            .unwrap();
+        assert!(packed.status.success());
+    }
     let server = f.start().await;
     let imported = f.cli(&[
         "source-import",
@@ -490,6 +504,14 @@ async fn native_source_cli_lists_pages_and_reads_verified_files_without_followin
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires disposable PostgreSQL; runs in database CI"]
 async fn directory_import_resumes_partial_graph_and_completed_receipt_without_source_or_git() {
+    import_resumes_partial_graph_and_completed_receipt(false).await;
+}
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires disposable PostgreSQL; actual Git import and crash/replay"]
+async fn git_history_import_resumes_partial_graph_and_completed_receipt_without_source_or_git() {
+    import_resumes_partial_graph_and_completed_receipt(true).await;
+}
+async fn import_resumes_partial_graph_and_completed_receipt(git_history: bool) {
     let mut f = Fixture::new().await;
     f.importer();
     let source = f.dir.path().join("source");
@@ -498,35 +520,39 @@ async fn directory_import_resumes_partial_graph_and_completed_receipt_without_so
     fs::write(source.join("not-selected"), b"private").unwrap();
     let pack_path = f.dir.path().join("pack");
     let state = f.dir.path().join("import.json");
-    let output = Command::new(env!("CARGO_BIN_EXE_treeharbor"))
-        .env("PATH", "/treeharbor-test-no-executables")
-        .arg("source-pack")
-        .arg("--directory")
-        .arg(&source)
-        .arg("--output")
-        .arg(&pack_path)
-        .args([
-            "--path",
-            "src",
-            "--author-name",
-            "Test",
-            "--author-email",
-            "test@example.invalid",
-            "--message",
-            "capture",
-        ])
-        .output()
-        .unwrap();
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let packed: Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(
-        packed["commit"],
-        "sha256:edd78b7b781955d45661c7d81c46ac4939ec0cb6fa9a80dc1fd28b0e53b5bf3f"
-    );
+    if git_history {
+        git_history_pack(&f, &pack_path);
+    } else {
+        let output = Command::new(env!("CARGO_BIN_EXE_treeharbor"))
+            .env("PATH", "/treeharbor-test-no-executables")
+            .arg("source-pack")
+            .arg("--directory")
+            .arg(&source)
+            .arg("--output")
+            .arg(&pack_path)
+            .args([
+                "--path",
+                "src",
+                "--author-name",
+                "Test",
+                "--author-email",
+                "test@example.invalid",
+                "--message",
+                "capture",
+            ])
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let packed: Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(
+            packed["commit"],
+            "sha256:edd78b7b781955d45661c7d81c46ac4939ec0cb6fa9a80dc1fd28b0e53b5bf3f"
+        );
+    }
     let pack = treeharbor_service::pack::Pack::open(&pack_path).unwrap();
     let args = [
         "source-import",
@@ -543,10 +569,19 @@ async fn directory_import_resumes_partial_graph_and_completed_receipt_without_so
     assert!(!f.cli(&args).status.success());
     let original = files::read_private(&state, 4096).unwrap();
     let journal: Value = serde_json::from_slice(&original).unwrap();
-    assert_eq!(
-        journal["pack_fingerprint"],
-        "sha256:cb4a7d0f8f09dab7215cf4c3624c59cda21a61308b103fa275f73e9f0008f1d2"
-    );
+    if !git_history {
+        assert_eq!(
+            journal["pack_fingerprint"],
+            "sha256:cb4a7d0f8f09dab7215cf4c3624c59cda21a61308b103fa275f73e9f0008f1d2"
+        );
+    } else {
+        let mut bytes = b"treeharbor-source-pack\0v2\0".to_vec();
+        bytes.extend(fs::read(pack_path.join("manifest.json")).unwrap());
+        assert_eq!(
+            journal["pack_fingerprint"],
+            treeharbor_core::ObjectId::hash_frame(&bytes).to_string()
+        );
+    }
     let upload: Uuid = journal["upload"].as_str().unwrap().parse().unwrap();
     let manifest: Value =
         serde_json::from_slice(&fs::read(pack_path.join("manifest.json")).unwrap()).unwrap();
@@ -839,6 +874,84 @@ impl Drop for Process {
         let _ = self.0.wait();
     }
 }
+
+/// Build two commits with actual Git plumbing, then remove every Git input.
+/// The subsequent service, upload and node processes have no Git on PATH.
+fn git_history_pack(f: &Fixture, output: &std::path::Path) {
+    let repo = f.dir.path().join("history.git");
+    git_reference::git(
+        f.dir.path(),
+        &[
+            "init",
+            "--bare",
+            "--object-format=sha1",
+            "--template=",
+            repo.to_str().unwrap(),
+        ],
+        b"",
+    );
+    let mut parent = String::new();
+    for body in [b"original\n".as_slice(), b"fn main() {}\n"] {
+        let blob = git_reference::hash(&repo, "blob", body);
+        let tree = String::from_utf8(git_reference::git(
+            &repo,
+            &["mktree"],
+            format!("100644 blob {blob}\tmain.rs\n").as_bytes(),
+        ))
+        .unwrap()
+        .trim()
+        .to_owned();
+        let ancestry = if parent.is_empty() {
+            String::new()
+        } else {
+            format!("parent {parent}\n")
+        };
+        let raw = format!(
+            "tree {tree}\n{ancestry}author Test <test@example.invalid> 1234567890 +0000\ncommitter Other <other@example.invalid> 1234567890 +0000\n\nimport fixture\n"
+        );
+        parent = git_reference::hash(&repo, "commit", raw.as_bytes());
+    }
+    let bundle = f.dir.path().join("history.bundle");
+    git_reference::bundle(&repo, &bundle, &parent);
+    let captured = Command::new(env!("CARGO_BIN_EXE_treeharbor"))
+        .env("PATH", "/treeharbor-test-no-executables")
+        .env("GIT_DIR", "/must-not-use-an-inherited-repository")
+        .env("GIT_CONFIG_COUNT", "1")
+        .env("GIT_CONFIG_KEY_0", "core.repositoryFormatVersion")
+        .env("GIT_CONFIG_VALUE_0", "999")
+        .args(["git-import", "--git", "/usr/bin/git", "--bundle"])
+        .arg(&bundle)
+        .arg("--commit")
+        .arg(format!("git:sha1:{parent}"))
+        .arg("--output")
+        .arg(output)
+        .output()
+        .unwrap();
+    assert!(
+        captured.status.success(),
+        "{}",
+        String::from_utf8_lossy(&captured.stderr)
+    );
+    let manifest: Value =
+        serde_json::from_slice(&fs::read(output.join("manifest.json")).unwrap()).unwrap();
+    let pack = treeharbor_service::pack::Pack::open(output).unwrap();
+    let commits = manifest["objects"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|id| {
+            let id = id.as_str().unwrap().parse().unwrap();
+            matches!(
+                Object::decode_verified(id, &pack.frame(id).unwrap()).unwrap(),
+                Object::NativeCommit(_)
+            )
+        })
+        .count();
+    assert_eq!(commits, 2);
+    fs::remove_dir_all(repo).unwrap();
+    fs::remove_file(bundle).unwrap();
+}
+
 struct Fixture {
     dir: tempfile::TempDir,
     config_path: PathBuf,

@@ -17,7 +17,7 @@ fn get(store: &impl ObjectStore, id: ObjectId) -> Result<Object> {
 }
 /// Iterative child-first traversal validates *all* typed edges, not only Git
 /// projection edges. An inconsistent store or missing delta fails the export.
-fn ordered(
+pub(crate) fn ordered(
     store: &impl ObjectStore,
     refs: &BTreeMap<String, ObjectId>,
     limits: Limits,
@@ -69,13 +69,14 @@ fn ordered(
     Ok((result, bytes))
 }
 
-fn check_paths(
+pub(crate) fn check_paths(
     store: &impl ObjectStore,
     root: ObjectId,
     visits: &mut usize,
     limits: Limits,
     deadline: Instant,
-) -> Result<()> {
+) -> Result<usize> {
+    let mut entries = 0usize;
     let mut pending = vec![(Vec::new(), root)];
     while let Some((prefix, id)) = pending.pop() {
         check_deadline(deadline)?;
@@ -90,6 +91,7 @@ fn check_paths(
             return Err(Error::Unsupported("nested empty directory"));
         }
         for entry in dir.entries() {
+            entries += 1;
             *visits = visits.checked_add(1).ok_or(Error::Limit)?;
             if *visits > limits.path_visits {
                 return Err(Error::Limit);
@@ -103,7 +105,7 @@ fn check_paths(
             }
         }
     }
-    Ok(())
+    Ok(entries)
 }
 pub(crate) fn write(
     store: &impl ObjectStore,

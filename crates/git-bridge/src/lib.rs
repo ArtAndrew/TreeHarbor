@@ -1,8 +1,11 @@
 //! Optional Git interop. Does not own native refs, validation or publication rights.
+//! Pinned complete Git history import and native-to-Git export.
 //! Callers must retain every source object for the entire export (a live server
 //! needs a read lease/pin; a local immutable pack has a separate lifetime).
 #![cfg(unix)]
+mod ingest;
 mod origin;
+pub use ingest::{Import, Imported, import};
 mod pack;
 mod process;
 mod stream;
@@ -21,17 +24,17 @@ use treeharbor_core::{ObjectId, ObjectStore};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    #[error("Git export filesystem operation failed: {0}")]
+    #[error("Git interop filesystem operation failed: {0}")]
     Io(#[from] std::io::Error),
     #[error("invalid source object: {0}")]
     Source(#[from] treeharbor_core::Error),
-    #[error("export resource limit or deadline exceeded")]
+    #[error("Git interop resource limit or deadline exceeded")]
     Limit,
-    #[error("unsupported native-to-Git projection: {0}")]
+    #[error("unsupported Git interoperability: {0}")]
     Unsupported(&'static str),
-    #[error("invalid export configuration or unsafe output directory")]
+    #[error("invalid Git interop configuration or unsafe path")]
     Configuration,
-    #[error("Git subprocess failed during {0}; no completed export was published")]
+    #[error("Git subprocess failed during {0}; no completed result was published")]
     Git(&'static str),
     #[error("Git returned an invalid projection")]
     InvalidProjection,
@@ -147,17 +150,8 @@ fn valid_ref(name: &str) -> bool {
             .all(|p| !p.is_empty() && !p.starts_with('.') && !p.ends_with(".lock"))
 }
 
-/// Full, self-contained projection of every reachable parent. Native source
-/// bytes are never checked out, filtered, interpreted as commands, or mutated.
-/// Successful return means bundle + mapping have been synced and published
-/// together. An IO error after rename can mean publication is uncertain: inspect
-/// the output, never overwrite it. CPU/RAM/disk isolation is an external duty.
-pub fn export(store: &impl ObjectStore, request: Export<'_>) -> Result<Manifest> {
-    let limits = request.limits;
-    if request.refs.is_empty()
-        || request.refs.len() > 128
-        || request.refs.keys().any(|r| !valid_ref(r))
-        || limits.objects == 0
+pub(crate) fn check_limits(limits: Limits, git: &Path) -> Result<()> {
+    if limits.objects == 0
         || limits.objects > 1_000_000
         || limits.edges == 0
         || limits.edges > 4_000_000
@@ -169,11 +163,28 @@ pub fn export(store: &impl ObjectStore, request: Export<'_>) -> Result<Manifest>
         || limits.path_visits > 10_000_000
         || limits.timeout.is_zero()
         || limits.timeout > Duration::from_secs(3600)
-        || !request.git.is_absolute()
-        || !request.git.is_file()
+        || !git.is_absolute()
+        || !git.is_file()
     {
         return Err(Error::Configuration);
     }
+    Ok(())
+}
+
+/// Full, self-contained projection of every reachable parent. Native source
+/// bytes are never checked out, filtered, interpreted as commands, or mutated.
+/// Successful return means bundle + mapping have been synced and published
+/// together. An IO error after rename can mean publication is uncertain: inspect
+/// the output, never overwrite it. CPU/RAM/disk isolation is an external duty.
+pub fn export(store: &impl ObjectStore, request: Export<'_>) -> Result<Manifest> {
+    let limits = request.limits;
+    if request.refs.is_empty()
+        || request.refs.len() > 128
+        || request.refs.keys().any(|r| !valid_ref(r))
+    {
+        return Err(Error::Configuration);
+    }
+    check_limits(limits, request.git)?;
     let deadline = Instant::now() + limits.timeout;
     let parent = private_parent(request.output)?;
     let name = request.output.file_name().ok_or(Error::Configuration)?;

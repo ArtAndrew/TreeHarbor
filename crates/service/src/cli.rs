@@ -28,6 +28,24 @@ pub struct Cli {
 }
 #[derive(Subcommand)]
 enum Command {
+    /// Import the full ancestry and trees of one exact Git commit from a complete bundle.
+    GitImport {
+        #[arg(long)]
+        bundle: PathBuf,
+        /// Exact git:sha1:<40 hex> or git:sha256:<64 hex> revision, never a branch name.
+        #[arg(long)]
+        commit: String,
+        #[arg(long)]
+        output: PathBuf,
+        #[arg(long, default_value = "/usr/bin/git")]
+        git: PathBuf,
+        #[arg(long, default_value_t=300, value_parser=clap::value_parser!(u64).range(1..=3600))]
+        timeout_seconds: u64,
+        #[arg(long, default_value_t = 100_000)]
+        max_objects: usize,
+        #[arg(long, default_value_t = 4_294_967_296)]
+        max_bytes: u64,
+    },
     /// Project a completed local native pack into a self-contained Git bundle.
     /// This exports source history, not server reviews, checks or authority.
     GitExport {
@@ -627,6 +645,42 @@ impl Agent {
 }
 pub async fn run(cli: Cli) -> Result<bool> {
     match cli.command {
+        Command::GitImport {
+            bundle,
+            commit,
+            output,
+            git,
+            timeout_seconds,
+            max_objects,
+            max_bytes,
+        } => {
+            let treeharbor_core::RevisionRef::Git(commit) =
+                commit.parse().map_err(|_| Error::Config)?
+            else {
+                return Err(Error::Config);
+            };
+            let result = tokio::task::spawn_blocking(move || {
+                crate::pack::capture_git(crate::pack::GitCapture {
+                    git: &git,
+                    bundle: &bundle,
+                    commit,
+                    output: &output,
+                    limits: treeharbor_git_bridge::Limits {
+                        objects: max_objects,
+                        source_bytes: max_bytes,
+                        timeout: Duration::from_secs(timeout_seconds),
+                        ..Default::default()
+                    },
+                })
+            })
+            .await
+            .map_err(|_| Error::ImportWorker)??;
+            println!(
+                "{}",
+                json!({"revision":treeharbor_core::RevisionRef::Native(result.commit()).to_string(),"snapshot":result.snapshot().to_string(),"objects":result.object_count(),"encoded_bytes":result.encoded_bytes(),"filesystem_entries":result.filesystem_entries()})
+            );
+            Ok(true)
+        }
         Command::GitExport {
             pack,
             output,
