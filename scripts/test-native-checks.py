@@ -83,7 +83,7 @@ class Checks(managed.Harness):
         response = socket.socket(socket.AF_UNIX)
         response.settimeout(20)
         response.connect(str(self.socket))
-        header = ("POST /v1/commands HTTP/1.1\r\nHost: localhost\r\n"
+        header = ("POST /v1/commands HTTP/1.1\r\nHost: treeharbor.local\r\n"
                   "Content-Type: application/json\r\nAuthorization: Bearer " + credential["token"]
                   + "\r\nContent-Length: " + str(len(body)) + "\r\nConnection: close\r\n\r\n").encode()
         response.sendall(header + body)
