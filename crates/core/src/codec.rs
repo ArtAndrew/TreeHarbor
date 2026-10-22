@@ -4,7 +4,6 @@ use crate::{
 };
 
 const MAGIC: &[u8; 11] = b"treeharbor\0";
-const VERSION: u16 = 1;
 
 impl Object {
     pub fn encode(&self) -> Result<Vec<u8>> {
@@ -44,7 +43,11 @@ impl Object {
         }
         let mut out = Vec::with_capacity(FRAME_HEADER + w.0.len());
         out.extend_from_slice(MAGIC);
-        out.extend_from_slice(&VERSION.to_be_bytes());
+        let version = match self {
+            Self::ChangeOperations(ops) => ops.format_version(),
+            _ => 1,
+        };
+        out.extend_from_slice(&version.to_be_bytes());
         out.push(self.kind());
         out.extend_from_slice(&(w.0.len() as u64).to_be_bytes());
         out.extend(w.0);
@@ -63,10 +66,10 @@ impl Object {
             return Err(Error::InvalidObject("magic"));
         }
         let version = u16::from_be_bytes(r.array()?);
-        if version != VERSION {
+        let kind = r.byte()?;
+        if version != 1 && !(version == 2 && kind == 4) {
             return Err(Error::UnsupportedVersion(version));
         }
-        let kind = r.byte()?;
         let length = u64::from_be_bytes(r.array()?);
         if length > MAX_PAYLOAD as u64 {
             return Err(Error::TooLarge);
@@ -106,7 +109,15 @@ impl Object {
                         replacement: r.optional()?,
                     });
                 }
-                Self::ChangeOperations(Changes::new(ops)?)
+                let changes = if version == 1 {
+                    Changes::new(ops)?
+                } else {
+                    Changes::with_subtrees(ops)?
+                };
+                if changes.format_version() != version {
+                    return Err(Error::InvalidObject("noncanonical operation version"));
+                }
+                Self::ChangeOperations(changes)
             }
             5 => {
                 let count = r.count(MAX_PARENTS)?;

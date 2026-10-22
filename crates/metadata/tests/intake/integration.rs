@@ -901,3 +901,43 @@ async fn native_publication_holds_evidence_principal_until_commit() {
 
 #[path = "integration/execution.rs"]
 mod execution;
+
+#[tokio::test]
+#[ignore = "requires disposable PostgreSQL; runs in database CI"]
+async fn previous_merge_profile_cannot_recompute_pending_candidate_after_upgrade() {
+    let mut f = Fixture::new().await;
+    let actors = controls(&mut f).await;
+    let entry = proposal(&mut f, &actors, "old-profile", b"transition").await;
+    let candidate = Uuid::new_v4();
+    let worker = auth(&mut f, &actors.worker, P::IntegrationControl).await;
+    // Seed the reservation the old binary would have inserted, preserving the
+    // immutable identity trigger. Never modify an existing candidate's profile.
+    let mut raw = connection(&f.schema).await;
+    let tx = raw.transaction().await.unwrap();
+    tx.execute("INSERT INTO th_native_candidates(tenant,repository,candidate,entry,expected_head,expected_snapshot,expected_generation,epoch,policy,merge_profile,timestamp_seconds,state,expires_at) SELECT r.tenant,r.repository,$1,q.entry,r.head,$2,r.generation,r.epoch,r.policy,$3,1,'preparing',clock_timestamp()+interval '1 hour' FROM th_native_queue q JOIN th_native_refs r ON r.tenant=q.tenant AND r.repository=q.repository AND r.name=q.target WHERE q.entry=$4",
+        &[&candidate, &f.base.as_bytes().as_slice(), &"treeharbor-native-merge-v1/diffy-0.5.2/exact-sibling-renames", &entry]).await.unwrap();
+    tx.execute(
+        "UPDATE th_native_queue SET state='preparing',candidate=$1 WHERE entry=$2",
+        &[&candidate, &entry],
+    )
+    .await
+    .unwrap();
+    tx.commit().await.unwrap();
+    assert!(matches!(
+        f.db.open_native_candidate(&worker, candidate).await,
+        Err(MetaError::IntegrationState)
+    ));
+    let owner = auth(&mut f, &actors.owner, P::QueueRequest).await;
+    f.db.cancel_native_entry(&owner, &cmd("cancel-old-profile"), entry)
+        .await
+        .unwrap();
+    let entry = proposal(&mut f, &actors, "new-profile", b"transition").await;
+    let (candidate, worker) = start(&mut f, &actors, entry).await;
+    let prepared = prepare(&mut f, &worker, candidate).await;
+    assert_eq!(prepared.profile(), treeharbor_merge::PROFILE);
+    assert_ne!(
+        prepared.profile(),
+        "treeharbor-native-merge-v1/diffy-0.5.2/exact-sibling-renames"
+    );
+    cleanup(&f.schema).await;
+}

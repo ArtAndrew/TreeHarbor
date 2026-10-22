@@ -107,7 +107,12 @@ async fn proposal(
         "--file",
         file.to_str().unwrap(),
     ]));
-    let ops = json!([{"path_hex":"66696c652e747874","expected":{"mode":33188,"object":Object::Blob(b"a\nb\nc\nd\ne\n".to_vec()).id().unwrap().to_string()},"replacement":{"mode":33188,"object":blob["object"]}}]);
+    let mut ops = json!([{"path_hex":"66696c652e747874","expected":{"mode":33188,"object":Object::Blob(b"a\nb\nc\nd\ne\n".to_vec()).id().unwrap().to_string()},"replacement":{"mode":33188,"object":blob["object"]}}]);
+    if actor == "agent-a" {
+        // A leaf-only public proposal creates a fresh directory. Its protected
+        // integration delta must use a server-derived v2 subtree replacement.
+        ops.as_array_mut().unwrap().push(json!({"path_hex":"61646465642f66696c652e747874","expected":null,"replacement":{"mode":33188,"object":blob["object"]}}));
+    }
     let path = f.dir.path().join(format!("ops-{change}"));
     files::write_private(&path, ops.to_string().as_bytes()).unwrap();
     ok(f.cli(&[
@@ -469,6 +474,18 @@ async fn native_queue_cli_merges_agents_fences_green_and_recovers_fsync_and_comm
         copy.get(dir.find(b"keep.bin").unwrap().target).unwrap(),
         Object::Blob(vec![42; 2 * 1024 * 1024])
     );
+    let added = treeharbor_core::lookup(
+        &copy,
+        root,
+        &treeharbor_core::RepoPath::new(b"added/file.txt".to_vec()).unwrap(),
+    )
+    .unwrap()
+    .unwrap();
+    assert_eq!(
+        copy.get(added.target).unwrap(),
+        Object::Blob(b"A\nb\nc\nd\ne\n".to_vec())
+    );
+    assert!(seen.iter().any(|id| matches!(copy.get(*id).unwrap(), Object::ChangeOperations(ops) if ops.format_version() == 2)));
     let RevisionRef::Native(base) = base["revision"].as_str().unwrap().parse().unwrap() else {
         panic!()
     };

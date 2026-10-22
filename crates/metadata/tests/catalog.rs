@@ -679,3 +679,79 @@ async fn concurrent_deletion_retries_finish_one_retirement() {
     );
     cleanup(&schema).await;
 }
+
+#[tokio::test]
+#[ignore = "requires disposable PostgreSQL; runs in database CI"]
+async fn subtree_operations_retain_both_directory_graphs_until_last_pin_is_removed() {
+    let (schema, scope, mut db) = setup().await;
+    let root = root();
+    let store = depot(&root, scope.tenant());
+    let old_blob = upload(
+        &mut db,
+        &store,
+        &Object::Blob(b"old retained bytes".to_vec()),
+    )
+    .await;
+    let new_blob = upload(
+        &mut db,
+        &store,
+        &Object::Blob(b"new retained bytes".to_vec()),
+    )
+    .await;
+    let old_dir = upload(&mut db, &store, &directory("old", old_blob.key().id(), 1)).await;
+    let new_dir = upload(&mut db, &store, &directory("new", new_blob.key().id(), 1)).await;
+    let changes = Object::ChangeOperations(
+        Changes::with_subtrees(vec![ChangeOperation {
+            path: RepoPath::new(b"a".to_vec()).unwrap(),
+            expected: Some(EntryRef {
+                mode: EntryMode::Directory,
+                target: old_dir.key().id(),
+            }),
+            replacement: Some(EntryRef {
+                mode: EntryMode::Directory,
+                target: new_dir.key().id(),
+            }),
+        }])
+        .unwrap(),
+    );
+    let operations = upload(&mut db, &store, &changes).await;
+    pin(&mut db, &scope, "retained-delta", &operations).await;
+    let leases = [operations, old_dir, new_dir, old_blob, new_blob];
+    for lease in &leases {
+        db.release_object_hold(lease).await.unwrap();
+    }
+    drop(db);
+    let mut db = Metadata::new(connection(&schema).await).await.unwrap();
+    for lease in &leases {
+        assert!(
+            db.try_retire_object(lease.key(), 0)
+                .await
+                .unwrap()
+                .is_none()
+        );
+    }
+    let read = db
+        .lease_pinned_root(&scope, "retained-delta", Uuid::new_v4(), 60)
+        .await
+        .unwrap();
+    assert_eq!(
+        store.get(read.key().generation(), read.key().id()).unwrap(),
+        changes
+    );
+    db.release_object_hold(&read).await.unwrap();
+    unpin(&mut db, &scope, "retained-delta").await;
+    for lease in &leases {
+        let retired = db
+            .try_retire_object(lease.key(), 0)
+            .await
+            .unwrap()
+            .expect("unreferenced graph should retire children after parent");
+        db.finish_retirement(&store, &retired).await.unwrap();
+        assert!(
+            store
+                .get(lease.key().generation(), lease.key().id())
+                .is_err()
+        );
+    }
+    cleanup(&schema).await;
+}

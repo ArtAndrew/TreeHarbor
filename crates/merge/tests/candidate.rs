@@ -98,3 +98,49 @@ fn candidate_preserves_proposal_parent_and_verifiable_delta_against_current_head
         .is_err()
     );
 }
+
+#[test]
+fn candidate_file_directory_transitions_keep_exact_original_and_integration_deltas() {
+    let s = Store::default();
+    let left = snapshot(&s, &plain(&[("a", "file")]));
+    let right = snapshot(&s, &plain(&[("a/child", "child")]));
+    for (base, result) in [(left, right), (right, left)] {
+        let revision = commit(&s, base, vec![], "base");
+        let ops = diff_snapshots(&s, base, result, TreeDiffLimits::default()).unwrap();
+        let applied = prepare_change(&s, base, &ops).unwrap();
+        assert_eq!(applied.result_snapshot(), result);
+        let input = CandidateInput {
+            base_revision: revision,
+            base_snapshot: base,
+            original_operations: applied.operations(),
+            proposed_snapshot: result,
+            current_revision: revision,
+            current_snapshot: base,
+            timestamp_seconds: 1,
+            label: "transition/1".into(),
+        };
+        let CandidateOutcome::Ready(candidate) =
+            prepare_candidate(&s, &input, Limits::default()).unwrap()
+        else {
+            panic!()
+        };
+        assert_eq!(candidate.commit().snapshot, result);
+        let Object::ChangeOperations(delta) = s.get(candidate.commit().changes).unwrap() else {
+            panic!()
+        };
+        assert_eq!(delta.format_version(), 2);
+        assert_eq!(
+            prepare_change(&s, base, &delta).unwrap().result_snapshot(),
+            result
+        );
+        assert_eq!(
+            candidate.profile(),
+            "treeharbor-native-merge-v2/diffy-0.5.2/exact-sibling-renames/subtree-delta"
+        );
+        let Object::NativeCommit(original) = s.get(candidate.proposal_revision()).unwrap() else {
+            panic!()
+        };
+        assert_eq!(original.parents, vec![revision]);
+        assert_eq!(original.changes, applied.operations());
+    }
+}

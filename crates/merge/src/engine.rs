@@ -459,40 +459,16 @@ pub(crate) fn snapshot_delta(
     after: ObjectId,
     limits: Limits,
 ) -> Result<treeharbor_core::Changes> {
-    use treeharbor_core::{ChangeOperation, Changes};
-    let mut cx = Context {
+    Ok(treeharbor_core::diff_snapshots(
         store,
-        limits,
-        directories: 0,
-        entries: 0,
-        path_bytes: 0,
-        read_bytes: 0,
-        write_bytes: 0,
-        diff_work: 0,
-        staged: BTreeMap::new(),
-        order: Vec::new(),
-    };
-    let b = cx.root(before)?;
-    let a = cx.root(after)?;
-    if b == a {
-        return Ok(Changes::new(vec![])?);
-    }
-    let before = cx.flatten(b)?;
-    let after = cx.flatten(a)?;
-    let paths: BTreeSet<_> = before.keys().chain(after.keys()).collect();
-    let mut operations = Vec::new();
-    for path in paths {
-        let expected = before.get(path).copied();
-        let replacement = after.get(path).copied();
-        if expected != replacement {
-            operations.push(ChangeOperation {
-                path: path.clone(),
-                expected,
-                replacement,
-            });
-        }
-    }
-    // Existing v1 leaf operations cannot represent an ancestor/descendant
-    // replacement atomically. Reject it; never write an empty invented delta.
-    Ok(Changes::new(operations)?)
+        before,
+        after,
+        treeharbor_core::TreeDiffLimits {
+            directories: limits.max_directories,
+            entries: limits.max_entries,
+            path_bytes: limits.max_path_bytes,
+            read_bytes: limits.max_read_bytes,
+            operations: treeharbor_core::MAX_ENTRIES.min(limits.max_entries),
+        },
+    )?)
 }

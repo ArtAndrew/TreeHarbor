@@ -534,3 +534,101 @@ async fn upload_deadlines_budgets_abort_and_authority_are_enforced() {
     ));
     cleanup(&schema).await;
 }
+
+#[tokio::test]
+#[ignore = "requires disposable PostgreSQL; runs in database CI"]
+async fn mixed_version_source_history_requires_scoped_directory_membership_and_survives_reopen() {
+    use treeharbor_core::{ChangeOperation, RepoPath};
+    let (schema, scope, mut db) = setup().await;
+    let (_, auth) = actor(&mut db, &scope, "human").await;
+    let (_dir, store) = store(&scope);
+    let original = graph();
+    let foreign = start(&mut db, &auth).await;
+    for object in &original {
+        put(&mut db, &auth, foreign, &store, object).await;
+    }
+    let old_blob = original[0].id().unwrap();
+    let replacement = original[1].id().unwrap();
+    let delta = Object::ChangeOperations(
+        Changes::with_subtrees(vec![ChangeOperation {
+            path: RepoPath::new(b"file".to_vec()).unwrap(),
+            expected: Some(EntryRef {
+                mode: EntryMode::File,
+                target: old_blob,
+            }),
+            replacement: Some(EntryRef {
+                mode: EntryMode::Directory,
+                target: replacement,
+            }),
+        }])
+        .unwrap(),
+    );
+    let upload = start(&mut db, &auth).await;
+    put(&mut db, &auth, upload, &store, &original[0]).await;
+    assert!(matches!(
+        db.reserve_source_object(&auth, upload, &store, &PreparedObject::new(&delta).unwrap())
+            .await,
+        Err(Error::UploadMembership)
+    ));
+    for object in &original[1..] {
+        put(&mut db, &auth, upload, &store, object).await;
+    }
+    let result_dir = Object::Directory(
+        Directory::new(vec![Entry {
+            name: Name::new(b"file".to_vec()).unwrap(),
+            value: EntryRef {
+                mode: EntryMode::Directory,
+                target: replacement,
+            },
+        }])
+        .unwrap(),
+    );
+    let snapshot = Object::Snapshot {
+        root: result_dir.id().unwrap(),
+    };
+    let Object::NativeCommit(mut next) = original.last().unwrap().clone() else {
+        panic!()
+    };
+    next.parents = vec![original.last().unwrap().id().unwrap()];
+    next.snapshot = snapshot.id().unwrap();
+    next.changes = delta.id().unwrap();
+    next.message = "replace file with directory".into();
+    let next = Object::NativeCommit(next);
+    for object in [&result_dir, &snapshot, &delta, &next] {
+        put(&mut db, &auth, upload, &store, object).await;
+    }
+    let command = auth.context("mixed-finish".into(), Authority::Standalone, 1);
+    let result = db
+        .finish_source_upload(&command, upload, next.id().unwrap())
+        .await
+        .unwrap();
+    drop(db);
+    let mut db = Metadata::new(connection(&schema).await).await.unwrap();
+    assert_eq!(
+        result,
+        db.finish_source_upload(&command, upload, next.id().unwrap())
+            .await
+            .unwrap()
+    );
+    assert_eq!(
+        db.source_upload_status(&auth, upload).await.unwrap()["state"],
+        "completed"
+    );
+    // The directory's existing physical bytes did not grant session membership.
+    // After the scoped graph upload, the catalog preserves its typed edge.
+    let raw = connection(&schema).await;
+    let count: i64 = raw
+        .query_one(
+            "SELECT count(*) FROM th_object_edges WHERE tenant=$1 AND parent=$2 AND child=$3",
+            &[
+                &scope.tenant(),
+                &delta.id().unwrap().as_bytes().as_slice(),
+                &replacement.as_bytes().as_slice(),
+            ],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(count, 1);
+    cleanup(&schema).await;
+}
