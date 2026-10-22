@@ -50,6 +50,7 @@ pub struct CaptureArtifact {
     digest: [u8; 32],
     changes: Changes,
     objects: Vec<ObjectId>,
+    membership: BTreeSet<ObjectId>,
     dependencies: BTreeMap<ObjectId, u8>,
 }
 impl CaptureArtifact {
@@ -72,7 +73,7 @@ impl CaptureArtifact {
         &self.dependencies
     }
     pub fn object(&self, id: ObjectId) -> Result<Object> {
-        if !self.objects.contains(&id) {
+        if !self.membership.contains(&id) {
             return Err(Error::InvalidBaseline);
         }
         Ok(self.store.get(id)?)

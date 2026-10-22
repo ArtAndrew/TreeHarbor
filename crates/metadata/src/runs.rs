@@ -31,8 +31,9 @@ pub struct RuntimeVolume {
     pub digest: [u8; 32],
     pub limit_bytes: u64,
 }
-pub struct RunPlan {
-    job: Job,
+/// Immutable managed execution identity. This is not a lease, start permission,
+/// or proof that the runtime has actually stopped on its assigned node.
+pub struct RunContext {
     run: Uuid,
     attempt: Uuid,
     binding: [u8; 32],
@@ -40,10 +41,11 @@ pub struct RunPlan {
     prepared: PreparedWorkspace,
     profile: Profile,
     task: Task,
-    stop: bool,
     check: bool,
+    engine: Option<String>,
+    container: Option<String>,
 }
-impl RunPlan {
+impl RunContext {
     pub fn is_check(&self) -> bool {
         self.check
     }
@@ -67,6 +69,43 @@ impl RunPlan {
     }
     pub fn task(&self) -> &Task {
         &self.task
+    }
+    pub fn engine(&self) -> Option<&str> {
+        self.engine.as_deref()
+    }
+    pub fn container(&self) -> Option<&str> {
+        self.container.as_deref()
+    }
+}
+pub struct RunPlan {
+    job: Job,
+    context: RunContext,
+    stop: bool,
+}
+impl RunPlan {
+    pub fn is_check(&self) -> bool {
+        self.context.is_check()
+    }
+    pub fn run(&self) -> Uuid {
+        self.context.run()
+    }
+    pub fn attempt(&self) -> Uuid {
+        self.context.attempt()
+    }
+    pub fn binding(&self) -> [u8; 32] {
+        self.context.binding()
+    }
+    pub fn volume_digest(&self) -> [u8; 32] {
+        self.context.volume_digest()
+    }
+    pub fn prepared(&self) -> &PreparedWorkspace {
+        self.context.prepared()
+    }
+    pub fn profile(&self) -> &Profile {
+        self.context.profile()
+    }
+    pub fn task(&self) -> &Task {
+        self.context.task()
     }
     pub fn stop_requested(&self) -> bool {
         self.stop
@@ -92,7 +131,11 @@ fn authority(value: &str) -> Result<Authority> {
         _ => Err(Error::SchemaMismatch),
     }
 }
-async fn node_auth(tx: &Transaction<'_>, auth: &Authorization, storage: Uuid) -> Result<()> {
+pub(crate) async fn node_auth(
+    tx: &Transaction<'_>,
+    auth: &Authorization,
+    storage: Uuid,
+) -> Result<()> {
     auth.check_transaction(
         tx,
         auth.scope(),
@@ -378,18 +421,18 @@ async fn effective_stop(tx: &Transaction<'_>, scope: &Scope, run: Uuid) -> Resul
 }
 async fn identity(tx: &Transaction<'_>, auth: &Authorization, plan: &RunPlan) -> Result<Row> {
     let s = auth.scope();
-    if s.tenant() != plan.prepared.scope.tenant()
-        || s.repository() != plan.prepared.scope.repository()
-        || auth.principal() != plan.prepared.node
+    if s.tenant() != plan.context.prepared.scope.tenant()
+        || s.repository() != plan.context.prepared.scope.repository()
+        || auth.principal() != plan.context.prepared.node
     {
         return Err(Error::Forbidden);
     }
-    node_auth(tx, auth, plan.prepared.slot.storage).await?;
+    node_auth(tx, auth, plan.context.prepared.slot.storage).await?;
     tx.query_opt(r#"SELECT m.engine,m.container,m.exit_code,m.oom_killed,m.runtime_started_at,m.runtime_finished_at,m.removed,r.state,m.finished_generation,m.finished_worker
         FROM th_managed_runs m JOIN th_agent_runs r USING(tenant,repository,run)
         WHERE m.tenant=$1 AND m.repository=$2 AND m.run=$3 AND m.attempt=$4 AND m.binding=$5 AND m.node=$6
             AND m.storage_instance=$7 AND m.slot=$8 AND m.preparation=$9 AND m.volume_digest=$10"#,
-        &[&s.tenant(),&s.repository(),&plan.run,&plan.attempt,&plan.binding.as_slice(),&auth.principal(),&plan.prepared.slot.storage,&plan.prepared.slot.slot,&plan.prepared.attempt,&plan.volume_digest.as_slice()]).await?.ok_or(Error::ExecutionState)
+        &[&s.tenant(),&s.repository(),&plan.context.run,&plan.context.attempt,&plan.context.binding.as_slice(),&auth.principal(),&plan.context.prepared.slot.storage,&plan.context.prepared.slot.slot,&plan.context.prepared.attempt,&plan.context.volume_digest.as_slice()]).await?.ok_or(Error::ExecutionState)
 }
 async fn checked(tx: &Transaction<'_>, auth: &Authorization, plan: &RunPlan) -> Result<Row> {
     let row = identity(tx, auth, plan).await?;
@@ -397,7 +440,7 @@ async fn checked(tx: &Transaction<'_>, auth: &Authorization, plan: &RunPlan) -> 
     Ok(row)
 }
 fn finished_response(plan: &RunPlan, state: &str) -> Value {
-    json!({"run":plan.run.to_string(),"state":state,"runtime_removed":true})
+    json!({"run":plan.context.run.to_string(),"state":state,"runtime_removed":true})
 }
 async fn completed(
     tx: &Transaction<'_>,
@@ -430,13 +473,25 @@ async fn load_plan(
     job: Job,
     storage: Uuid,
 ) -> Result<RunPlan> {
-    let s = auth.scope();
     let run = job.payload["run"]
         .as_str()
         .and_then(|v| Uuid::parse_str(v).ok())
         .ok_or(Error::StaleLease)?;
+    let context = load_context(tx, auth, run, storage).await?;
+    let stop = effective_stop(tx, auth.scope(), run).await?;
+    Ok(RunPlan { job, context, stop })
+}
+/// Shared identity decoding for execution and stopped-file capture. The caller
+/// must separately authorize a live operation; a terminal run has no fake job.
+pub(crate) async fn load_context(
+    tx: &Transaction<'_>,
+    auth: &Authorization,
+    run: Uuid,
+    storage: Uuid,
+) -> Result<RunContext> {
+    let s = auth.scope();
     let row=tx.query_opt(r#"SELECT m.attempt,m.preparation,m.binding,m.volume_digest,m.authority,m.profile,m.argv,f.definition AS runtime_profile,
-        p.workspace,p.generation,p.epoch,p.slot,p.base_revision,p.snapshot,p.profile AS source_digest,q.definition AS source_profile,p.manifest_digest,r.principal,v.limit_bytes
+        p.workspace,p.generation,p.epoch,p.slot,p.base_revision,p.snapshot,p.profile AS source_digest,q.definition AS source_profile,p.manifest_digest,r.principal,v.limit_bytes,m.engine,m.container
         FROM th_managed_runs m JOIN th_agent_runs r USING(tenant,repository,run)
         JOIN th_workspace_preparations p ON p.attempt=m.preparation
         JOIN th_runtime_profiles f ON f.tenant=m.tenant AND f.repository=m.repository AND f.digest=m.profile
@@ -499,9 +554,7 @@ async fn load_plan(
         profile: source,
         manifest_digest: digest(row.get("manifest_digest"))?,
     };
-    let stop = effective_stop(tx, s, run).await?;
-    Ok(RunPlan {
-        job,
+    Ok(RunContext {
         run,
         attempt,
         binding: bound,
@@ -509,7 +562,8 @@ async fn load_plan(
         prepared,
         profile: runtime,
         task: command,
-        stop,
+        engine: row.get("engine"),
+        container: row.get("container"),
         check: tx.query_opt("SELECT 1 FROM th_check_executions WHERE tenant=$1 AND repository=$2 AND execution_run=$3", &[&s.tenant(),&s.repository(),&run]).await?.is_some(),
     })
 }
@@ -572,13 +626,13 @@ impl Metadata {
         if observed.get::<_, bool>(6) {
             return Err(Error::ExecutionState);
         }
-        let stop = effective_stop(&tx, s, plan.run).await?;
+        let stop = effective_stop(&tx, s, plan.context.run).await?;
         let changed=tx.execute("UPDATE th_outbox SET lease_until=clock_timestamp()+($4::integer*interval '1 second') WHERE id=$1 AND generation=$2 AND worker=$3 AND state='running' AND lease_until>clock_timestamp()",
             &[&plan.job.id,&plan.job.generation,&plan.job.worker,&ttl]).await?;
         if changed != 1 {
             return Err(Error::StaleLease);
         }
-        node_auth(&tx, auth, plan.prepared.slot.storage).await?;
+        node_auth(&tx, auth, plan.context.prepared.slot.storage).await?;
         tx.commit().await?;
         Ok(stop)
     }
@@ -590,15 +644,15 @@ impl Metadata {
         let s = auth.scope();
         repository_lock(&tx, s, true).await?;
         let row = checked(&tx, auth, plan).await?;
-        if effective_stop(&tx, s, plan.run).await?
+        if effective_stop(&tx, s, plan.context.run).await?
             || row.get::<_, bool>(6)
             || !matches!(row.get::<_, String>(7).as_str(), "requested" | "launching")
         {
             return Err(Error::ExecutionState);
         }
-        tx.execute("UPDATE th_agent_runs SET state='launching' WHERE tenant=$1 AND repository=$2 AND run=$3",&[&s.tenant(),&s.repository(),&plan.run]).await?;
+        tx.execute("UPDATE th_agent_runs SET state='launching' WHERE tenant=$1 AND repository=$2 AND run=$3",&[&s.tenant(),&s.repository(),&plan.context.run]).await?;
         live_job(&tx, auth, &plan.job).await?;
-        node_auth(&tx, auth, plan.prepared.slot.storage).await?;
+        node_auth(&tx, auth, plan.context.prepared.slot.storage).await?;
         tx.commit().await?;
         Ok(())
     }
@@ -611,7 +665,7 @@ impl Metadata {
         actual: &Inspection,
     ) -> Result<bool> {
         identifier(engine, 128)?;
-        if actual.container.binding() != plan.binding {
+        if actual.container.binding() != plan.context.binding {
             return Err(Error::ReceiptMismatch);
         }
         let id = actual.container.id();
@@ -629,14 +683,14 @@ impl Metadata {
         {
             return Err(Error::ReceiptMismatch);
         }
-        let stop = effective_stop(&tx, s, plan.run).await?;
-        tx.execute("UPDATE th_managed_runs SET engine=$4,container=$5 WHERE tenant=$1 AND repository=$2 AND run=$3",&[&s.tenant(),&s.repository(),&plan.run,&engine,&id]).await?;
+        let stop = effective_stop(&tx, s, plan.context.run).await?;
+        tx.execute("UPDATE th_managed_runs SET engine=$4,container=$5 WHERE tenant=$1 AND repository=$2 AND run=$3",&[&s.tenant(),&s.repository(),&plan.context.run,&engine,&id]).await?;
         tx.execute(
             "UPDATE th_agent_runs SET runtime=$4 WHERE tenant=$1 AND repository=$2 AND run=$3",
-            &[&s.tenant(), &s.repository(), &plan.run, &runtime],
+            &[&s.tenant(), &s.repository(), &plan.context.run, &runtime],
         )
         .await?;
-        if tx.execute("UPDATE th_workspaces SET runtime=$4 WHERE tenant=$1 AND repository=$2 AND workspace=$3 AND generation=$5 AND epoch=$6 AND (runtime IS NULL OR runtime=$4)",&[&s.tenant(),&s.repository(),&plan.prepared.workspace,&runtime,&plan.prepared.generation,&plan.prepared.epoch]).await? != 1 {
+        if tx.execute("UPDATE th_workspaces SET runtime=$4 WHERE tenant=$1 AND repository=$2 AND workspace=$3 AND generation=$5 AND epoch=$6 AND (runtime IS NULL OR runtime=$4)",&[&s.tenant(),&s.repository(),&plan.context.prepared.workspace,&runtime,&plan.context.prepared.generation,&plan.context.prepared.epoch]).await? != 1 {
             return Err(Error::ExecutionState);
         }
         match actual.state {
@@ -645,7 +699,7 @@ impl Metadata {
                     return Err(Error::ReceiptMismatch);
                 }
                 let state = if stop { "stopping" } else { "running" };
-                tx.execute("UPDATE th_agent_runs SET state=$4,started_at=COALESCE(started_at,clock_timestamp()) WHERE tenant=$1 AND repository=$2 AND run=$3",&[&s.tenant(),&s.repository(),&plan.run,&state]).await?;
+                tx.execute("UPDATE th_agent_runs SET state=$4,started_at=COALESCE(started_at,clock_timestamp()) WHERE tenant=$1 AND repository=$2 AND run=$3",&[&s.tenant(),&s.repository(),&plan.context.run,&state]).await?;
             }
             RuntimeState::Exited => {
                 if let Some(code) = row.get::<_, Option<i64>>(2)
@@ -657,8 +711,8 @@ impl Metadata {
                     return Err(Error::ReceiptMismatch);
                 }
                 tx.execute("UPDATE th_managed_runs SET exit_code=$4,oom_killed=$5,runtime_started_at=$6,runtime_finished_at=$7 WHERE tenant=$1 AND repository=$2 AND run=$3",
-                    &[&s.tenant(),&s.repository(),&plan.run,&actual.exit_code,&actual.oom_killed,&actual.started_at,&actual.finished_at]).await?;
-                tx.execute("UPDATE th_agent_runs SET state='stopping',started_at=COALESCE(started_at,clock_timestamp()) WHERE tenant=$1 AND repository=$2 AND run=$3",&[&s.tenant(),&s.repository(),&plan.run]).await?;
+                    &[&s.tenant(),&s.repository(),&plan.context.run,&actual.exit_code,&actual.oom_killed,&actual.started_at,&actual.finished_at]).await?;
+                tx.execute("UPDATE th_agent_runs SET state='stopping',started_at=COALESCE(started_at,clock_timestamp()) WHERE tenant=$1 AND repository=$2 AND run=$3",&[&s.tenant(),&s.repository(),&plan.context.run]).await?;
             }
             RuntimeState::Created => {
                 if row.get::<_, Option<i64>>(2).is_some() {
@@ -666,11 +720,11 @@ impl Metadata {
                 }
             }
             RuntimeState::Dead | RuntimeState::Removing => {
-                tx.execute("UPDATE th_agent_runs SET state='stopping' WHERE tenant=$1 AND repository=$2 AND run=$3",&[&s.tenant(),&s.repository(),&plan.run]).await?;
+                tx.execute("UPDATE th_agent_runs SET state='stopping' WHERE tenant=$1 AND repository=$2 AND run=$3",&[&s.tenant(),&s.repository(),&plan.context.run]).await?;
             }
         }
         live_job(&tx, auth, &plan.job).await?;
-        node_auth(&tx, auth, plan.prepared.slot.storage).await?;
+        node_auth(&tx, auth, plan.context.prepared.slot.storage).await?;
         tx.commit().await?;
         Ok(stop)
     }
@@ -682,12 +736,12 @@ impl Metadata {
         let s = auth.scope();
         repository_lock(&tx, s, true).await?;
         if let Some(response) = completed(&tx, auth, plan).await? {
-            node_auth(&tx, auth, plan.prepared.slot.storage).await?;
+            node_auth(&tx, auth, plan.context.prepared.slot.storage).await?;
             tx.commit().await?;
             return Ok(response);
         }
         let row = checked(&tx, auth, plan).await?;
-        let stop = effective_stop(&tx, s, plan.run).await?;
+        let stop = effective_stop(&tx, s, plan.context.run).await?;
         let state = if stop {
             "cancelled"
         } else if row.get::<_, Option<bool>>(3) == Some(true) {
@@ -701,12 +755,12 @@ impl Metadata {
         };
         tx.execute(
             "UPDATE th_managed_runs SET removed=true,finished_generation=$4,finished_worker=$5 WHERE tenant=$1 AND repository=$2 AND run=$3",
-            &[&s.tenant(), &s.repository(), &plan.run, &plan.job.generation, &plan.job.worker],
+            &[&s.tenant(), &s.repository(), &plan.context.run, &plan.job.generation, &plan.job.worker],
         )
         .await?;
         tx.execute(
             "UPDATE th_agent_runs SET state=$4 WHERE tenant=$1 AND repository=$2 AND run=$3",
-            &[&s.tenant(), &s.repository(), &plan.run, &state],
+            &[&s.tenant(), &s.repository(), &plan.context.run, &state],
         )
         .await?;
         let changed=tx.execute("UPDATE th_outbox SET state='done',worker=NULL,lease_until=NULL,completed_at=clock_timestamp() WHERE id=$1 AND generation=$2 AND worker=$3 AND state='running' AND lease_until>clock_timestamp()",
@@ -714,7 +768,7 @@ impl Metadata {
         if changed != 1 {
             return Err(Error::StaleLease);
         }
-        node_auth(&tx, auth, plan.prepared.slot.storage).await?;
+        node_auth(&tx, auth, plan.context.prepared.slot.storage).await?;
         tx.commit().await?;
         Ok(finished_response(plan, state))
     }
@@ -729,7 +783,7 @@ impl Metadata {
         settings(&tx).await?;
         repository_lock(&tx, auth.scope(), false).await?;
         let result = completed(&tx, auth, plan).await?;
-        node_auth(&tx, auth, plan.prepared.slot.storage).await?;
+        node_auth(&tx, auth, plan.context.prepared.slot.storage).await?;
         tx.commit().await?;
         Ok(result)
     }
@@ -792,6 +846,61 @@ impl crate::Mutation<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn seal_binding_matches_independent_vector() {
+        let scope = Scope::new("tenant", Uuid::from_u128(1)).unwrap();
+        let context = RunContext {
+            run: Uuid::from_u128(2),
+            attempt: Uuid::from_u128(3),
+            binding: [3; 32],
+            volume_digest: [4; 32],
+            prepared: PreparedWorkspace {
+                volume_digest: Some([4; 32]),
+                scope: scope.clone(),
+                attempt: Uuid::from_u128(4),
+                workspace: Uuid::from_u128(5),
+                generation: 2,
+                epoch: 3,
+                authority: Authority::Standalone,
+                node: "node-1".into(),
+                slot: StorageSlot {
+                    storage: Uuid::from_u128(6),
+                    slot: Uuid::from_u128(7),
+                },
+                revision: treeharbor_core::RevisionRef::Native(ObjectId::from_bytes([1; 32])),
+                snapshot: ObjectId::from_bytes([2; 32]),
+                profile: SourceProfile::full(),
+                manifest_digest: [5; 32],
+            },
+            profile: Profile::decode(include_bytes!(
+                "../../runtime/tests/fixtures/profile-v1.json"
+            ))
+            .unwrap(),
+            task: Task::new(vec!["/tool".into()]).unwrap(),
+            check: false,
+            engine: None,
+            container: None,
+        };
+        let path = |p: &[u8]| treeharbor_core::RepoPath::new(p.to_vec()).unwrap();
+        let selection = treeharbor_core::CaptureSelection::new(
+            vec![path(b"src")],
+            vec![path(b"old")],
+            vec![path(b"src/cache")],
+        )
+        .unwrap();
+        let bound = crate::seals::binding(
+            &scope,
+            Uuid::from_u128(8),
+            &context,
+            &selection,
+            100,
+            1048576,
+        );
+        assert_eq!(
+            ObjectId::from_bytes(bound).to_string(),
+            include_str!("../tests/fixtures/seal-binding-v1.sha256").trim()
+        );
+    }
     #[test]
     fn run_binding_matches_independent_utf8_vector() {
         let scope = Scope::new("tenant", Uuid::from_u128(1)).unwrap();

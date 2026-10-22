@@ -138,6 +138,7 @@ impl CaptureArtifact {
             store,
             digest,
             changes,
+            membership: seen.into_keys().collect(),
             objects,
             dependencies,
         })

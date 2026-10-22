@@ -1,5 +1,7 @@
 //! Real PostgreSQL lifecycle contracts. Prepared/removed observations below are
 //! trusted test inputs, not evidence that these tests executed a real sandbox.
+#[path = "managed_seals.rs"]
+mod seals;
 use super::*;
 use treeharbor_metadata::runs::{RunPlan, RunRequest, RuntimeVolume};
 use treeharbor_runtime::{Definition, Profile};
@@ -33,6 +35,14 @@ async fn owner(f: &mut Fixture, name: &str) -> Owner {
 }
 async fn prepared(f: &mut Fixture, node: &Node) -> RunRequest {
     let workspace = f.workspace().await;
+    prepare_workspace(f, node, workspace, SourceProfile::full()).await
+}
+async fn prepare_workspace(
+    f: &mut Fixture,
+    node: &Node,
+    workspace: Uuid,
+    source: SourceProfile,
+) -> RunRequest {
     let slot = StorageSlot {
         storage: node.storage,
         slot: Uuid::new_v4(),
@@ -70,9 +80,17 @@ async fn prepared(f: &mut Fixture, node: &Node) -> RunRequest {
             .await
             .unwrap();
     assert_eq!(plan.volume_digest(), Some([71; 32]));
-    f.db.complete_preparation(&node.auth, &plan, &f.observed())
-        .await
-        .unwrap();
+    f.db.complete_preparation(
+        &node.auth,
+        &plan,
+        &PreparedFiles {
+            snapshot: f.snapshot,
+            profile: source.id(),
+            manifest_digest: [91; 32],
+        },
+    )
+    .await
+    .unwrap();
     RunRequest {
         run: Uuid::new_v4(),
         workspace,

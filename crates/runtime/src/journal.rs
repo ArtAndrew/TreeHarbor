@@ -30,6 +30,32 @@ struct Journal {
     root: PathBuf,
     _lock: File,
 }
+/// An exact removed runtime whose journal and volume remain exclusively held.
+/// Keep this guard through actual capture IO, including abandoned blocking tasks.
+/// It covers managed writers only; trusted host administration is still required.
+pub struct RemovedGuard {
+    journal: Journal,
+    spec: Specification,
+}
+impl RemovedGuard {
+    pub fn verify(&self) -> Result<()> {
+        self.journal.validate()?;
+        self.journal.check_marker("removed.json")?;
+        self.spec.volume().verify()?;
+        if exists(
+            &self
+                .spec
+                .volume()
+                .identity()
+                .mount
+                .join("treeharbor-execution.json"),
+        )? {
+            return Err(Error::Mismatch);
+        }
+        Ok(())
+    }
+}
+
 impl<'a> Controller<'a> {
     /// Trusted control plane only: obtain current metadata authorization BEFORE
     /// calling. This library does not mint a workspace lease or an AgentRun.
@@ -75,6 +101,41 @@ impl<'a> Controller<'a> {
             controller.claim_volume()?;
         }
         Ok(controller)
+    }
+    /// Re-observe current absence rather than treating a historical removed
+    /// marker as fresh proof. Consuming the controller retains its journal and
+    /// volume locks in a guard which can travel into blocking capture IO.
+    pub async fn into_removed_guard(
+        self,
+        expected_engine: Option<&str>,
+        expected_container: Option<&str>,
+    ) -> Result<RemovedGuard> {
+        self.journal.validate()?;
+        self.journal.check_marker("removed.json")?;
+        if expected_engine.is_some_and(|e| e != self.engine.identity()) {
+            return Err(Error::Mismatch);
+        }
+        let saved = self.saved_id()?;
+        if expected_container.is_some_and(|id| Some(id) != saved.as_deref()) {
+            return Err(Error::Mismatch);
+        }
+        if let Some(id) = saved
+            && self.engine.inspect_id(&self.spec, &id).await?.is_some()
+        {
+            return Err(Error::Unknown);
+        }
+        if self.engine.discover(&self.spec).await?.is_some() {
+            return Err(Error::Unknown);
+        }
+        // A crash after removed.json may leave this exact assignment. Finishing
+        // its release is safe; release_volume never removes a successor's record.
+        self.release_volume()?;
+        let guard = RemovedGuard {
+            journal: self.journal,
+            spec: self.spec,
+        };
+        guard.verify()?;
+        Ok(guard)
     }
     fn volume_record(&self) -> PathBuf {
         self.spec

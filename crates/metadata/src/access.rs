@@ -63,6 +63,8 @@ impl Permission {
             | "workspace.drain.v1"
             | "profile.put.v1"
             | "run.request.v1"
+            | "workspace.seal.request.v1"
+            | "workspace.seal.cancel.v1"
             | "run.stop.v1" => Ok(Self::WorkspaceWrite),
             "workspace.ready.v1" | "run.running.v1" => Ok(Self::RuntimeControl),
             "change.accept.v1"

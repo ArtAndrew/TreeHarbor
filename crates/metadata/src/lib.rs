@@ -21,6 +21,7 @@ pub mod reads;
 pub mod rebases;
 pub mod review;
 pub mod runs;
+pub mod seals;
 pub mod uploads;
 pub mod workspace_reads;
 const MIGRATIONS: &[&str] = &[
@@ -36,6 +37,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/010_native_integration.sql"),
     include_str!("../migrations/011_check_execution.sql"),
     include_str!("../migrations/012_change_rebase.sql"),
+    include_str!("../migrations/013_workspace_seals.sql"),
 ];
 const MAX_JSON: usize = 1024 * 1024;
 

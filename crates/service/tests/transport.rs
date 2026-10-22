@@ -1180,7 +1180,8 @@ impl Fixture {
         let output = self.admin(args);
         assert!(
             output.status.success(),
-            "admin failed: {}",
+            "admin {} failed: {}",
+            args.first().copied().unwrap_or("unknown"),
             String::from_utf8_lossy(&output.stderr)
         );
         assert!(!String::from_utf8_lossy(&output.stdout).contains("thv1_"));

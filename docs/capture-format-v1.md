@@ -1,9 +1,10 @@
 # Selected-file capture formats v1
 
 This is a development library primitive in `treeharbor-core` and
-`treeharbor-materializer`. It has no owner-facing seal command yet. Durable seal
-requests, node/runtime proof, server object publication and ChangeSet acceptance
-are still being integrated. A successful library capture is **not** proof that an
+`treeharbor-materializer`. It has no owner-facing seal command yet. Durable
+metadata requests and a node adapter are in development; owner transport, server
+object publication and ChangeSet acceptance are still being integrated. A
+successful library capture is **not** proof that an
 agent stopped, a server-accepted change, CI success or permission to merge.
 
 ## Selection
@@ -124,3 +125,66 @@ never reads the mutable source directory and does not create missing store
 subdirectories. The immutable bytes can therefore be retried after source files
 change or disappear. Deletion, garbage collection and server acceptance still
 need their separate lifecycle/retention protocols.
+
+## Managed request and local node records (development)
+
+Schema 13 adds durable owner-selected requests, owner-only read/cancel, a retained
+base pin and a fixed deadline. A request asks an active managed run to stop; a node
+can claim it only after recorded runtime removal. Claims bind the registered node,
+storage, placement, run and source context. Renewals cannot extend the original
+deadline, and newer claims fence older workers. Current owner grants, node
+credentials, repository authority/epoch and workspace drain are checked again.
+These metadata methods have PostgreSQL coverage, including a populated v12 upgrade.
+They do not prove physical runtime removal.
+
+The in-development node adapter independently reopens the existing exact runtime
+journal using the current Engine identity and original specification, checks
+absence by saved container ID and managed name, and rejects a successor volume
+assignment. Its removed guard retains journal/volume locks through actual blocking
+capture IO together with the node/slot guard. It does not detect arbitrary writers
+introduced by a privileged host administrator. Actual Linux acceptance of this
+new capture path is still pending; it is not exposed by an owner HTTP/CLI command.
+
+Private records live at `NODE_ROOT/seals/SEAL_UUID/`, outside agent mounts:
+
+- `intent.json`: compact JSON in field order `version`, `seal`, `binding`.
+- `artifact/`: the immutable artifact described above.
+- `complete.json`: compact JSON in field order `version`, `binding`, `manifest`.
+
+Both record versions are integer `1`; `seal` is a canonical UUID. `binding` and
+`manifest` use `sha256:` spelling. `manifest` is the exact artifact manifest hash.
+The [independent record generator](../scripts/generate-capture-intent-vector.py)
+produces both vectors. Records are private, written without replacement and
+fsynced. A missing intent in an existing directory requires reconciliation.
+
+The node completion record is written only after capture and a final guard check.
+It is distinct from the generic artifact publication receipt. With both artifact
+and matching completion record, recovery does not inspect mutable agent files.
+An artifact without the node completion record requires renewed physical runtime
+and placement proof before the node may finish that record; it never recaptures
+changed source bytes over the existing artifact. A completion record with no
+artifact is an error. No database `ready` state or accepted version follows merely
+from the existence of these files. Server object publication/acceptance and
+physical workspace cleanup remain unfinished.
+
+### Seal binding v1
+
+The digest is SHA-256 of `treeharbor-seal-binding`, NUL, `v1`, NUL, followed by a
+compact UTF-8 JSON array with these elements in order:
+
+```text
+1, tenant, repository UUID, seal UUID, run UUID, runtime attempt UUID,
+run binding hex, workspace UUID, workspace generation, authority epoch,
+authority name, node name, storage UUID, slot UUID, volume identity hex,
+preparation UUID, baseline manifest hex, base revision, snapshot ID,
+source profile hex, selection digest, maximum objects, maximum encoded bytes
+```
+
+UUIDs and revision/object IDs use their canonical string forms. Fields named
+`hex` contain 64 lowercase hex digits without `sha256:`; the selection digest
+uses `sha256:` spelling. Integers are JSON integers. The original run binding
+already includes owner, runtime profile and argv. Worker lease/generation is
+intentionally outside this content binding, so a new authorized claimant reopens
+the same immutable artifact. Fixed deadline and current authorization are separate
+metadata fences. The [independent binding generator](../scripts/generate-seal-binding-vector.py)
+encodes the source profile and selection independently before hashing the context.

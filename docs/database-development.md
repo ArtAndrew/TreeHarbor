@@ -25,8 +25,9 @@ The database layer currently provides repository fencing, idempotent receipts,
 leased outbox primitives, an object catalog, persistent root pins and manual
 generation-safe retirement. Catalog tests include real files, a reference
 reachability model and concurrent upload/collection. Migrations verify the
-published checksum chain; the suite tests upgrading v1 and populated v2/v3/v4/v5/v6/v7/v8/v9 databases
-to current schema v10, retaining pins, workspaces, receipts and credentials. Migration
+published checksum chain; the suite tests upgrading published and populated
+schemas through v12 to current schema v13, retaining pins, workspaces, receipts
+and credentials. Schema 13 adds durable workspace capture requests and claims. Migration
 005 adds immutable source profiles; historical unresolved profiles remain inspectable
 and drainable. See [profile format and upgrade behavior](source-profile-v1.md). Migration 006 adds
 [source upload sessions and backend identity](source-uploads.md).
@@ -61,6 +62,12 @@ The service process/socket tests require a **Unix** PostgreSQL connection explic
 export TH_SERVICE_TEST_DATABASE_URL='host=/var/run/postgresql user=treeharbor_test dbname=treeharbor_test'
 cargo test -p treeharbor-service --locked -- --ignored
 ```
+
+On machines running many test cases concurrently, add `--test-threads=4` after
+`--ignored` to bound independent fixture setup. Each fixture runs migrations under
+the database-wide migration lock; too many simultaneous initializations can exceed
+the service's statement timeout. This does not reduce concurrent workers inside
+the race tests or change production timeouts.
 
 These tests launch the real binary, use private temporary Unix sockets, kill only
 their own server processes and terminate only an identified connection from their

@@ -1,4 +1,5 @@
-//! Trusted local node: durable file preparation only. No code executes here.
+//! Trusted local node: durable files, managed external-runtime tasks and capture.
+mod capture;
 mod execution;
 mod private;
 mod storage;

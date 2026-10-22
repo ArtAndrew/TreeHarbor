@@ -6,8 +6,16 @@ gates. A foundation milestone does not complete either mode.
 Capture integration is in progress. A [selected-file capture library](capture-format-v1.md)
 now creates an independently verifiable immutable artifact from an exact baseline,
 with explicit replacements/deletions/exclusions and sparse coverage checks. This
-library does not prove runtime quiescence. Owner seal API, durable node claims,
-server publication/acceptance and physical workspace cleanup remain unfinished.
+library does not prove runtime quiescence. Schema 13 now adds durable owner requests,
+stop/cancel, fixed deadlines and fenced node claims, with PostgreSQL tests. A node
+adapter rechecks removed runtime identity and persists a separate completion record;
+its real Linux capture test is still pending. Owner HTTP/CLI seal API, server
+publication/acceptance and physical workspace cleanup remain unfinished.
+
+Local capture increment verification: 159 ordinary tests passed; 152 explicit
+PostgreSQL/materializer/node/service tests passed with four parallel test cases.
+The capture-library suite also passed after adding indexed object membership.
+These results do not cover the new real-Linux capture adapter or complete sealing.
 
 New review increment: [immutable review diffs](review-diff.md) show an exact
 accepted ChangeSet version, prepared integration candidate or two registered
