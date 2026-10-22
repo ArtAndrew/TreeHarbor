@@ -10,6 +10,7 @@ import json
 from hashlib import sha256
 from pathlib import Path
 import subprocess
+import socket
 import uuid
 
 spec = importlib.util.spec_from_file_location("managed", Path(__file__).with_name("test-managed-runs.py"))
@@ -73,7 +74,31 @@ class Checks(managed.Harness):
         assert self.native("land", self.integrator, check=False, candidate=case["candidate"]).returncode != 0
         return case
 
-    def completed_check(self, case, child, state="succeeded"):
+    def lose_collection_response(self, case, key):
+        credential = json.loads(self.ci.read_text())
+        body = json.dumps({"version": 1, "tenant": credential["tenant"],
+                           "repository": credential["repository"], "command": {
+                               "method": "native", "request": {"action": "check_collect",
+                               "key": key, "epoch": 1, "run": case["check"]}}}).encode()
+        response = socket.socket(socket.AF_UNIX)
+        response.settimeout(20)
+        response.connect(str(self.socket))
+        header = ("POST /v1/commands HTTP/1.1\r\nHost: localhost\r\n"
+                  "Content-Type: application/json\r\nAuthorization: Bearer " + credential["token"]
+                  + "\r\nContent-Length: " + str(len(body)) + "\r\nConnection: close\r\n\r\n").encode()
+        response.sendall(header + body)
+        managed.wait_until(lambda: self.sql(f"SELECT count(*) FROM th_check_execution_evidence WHERE check_run='{case['check']}'") == "1")
+        # Kill after durable collection, before this client reads any reply.
+        self.server.kill()
+        self.server.wait(timeout=10)
+        response.close()
+        log = (self.root / "server-restart.log").open("w")
+        self.server = subprocess.Popen([str(self.binary), "serve", "--config", str(self.config)],
+                                       env=self.env, stdout=log, stderr=subprocess.STDOUT)
+        self.children.append(self.server)
+        managed.wait_until(lambda: self.client("repository-info", credential=self.ci, check=False).returncode == 0)
+
+    def completed_check(self, case, child, state="succeeded", lose_reply=False):
         out, err = child.communicate(timeout=40)
         assert child.returncode == 0, (out, err)
         assert json.loads(out)["state"] == state, out
@@ -81,6 +106,8 @@ class Checks(managed.Harness):
         assert status["state"] == state and status["runtime_removed"], status
         assert managed.docker("inspect", "treeharbor-" + case["attempt"], check=False).returncode != 0
         key = "collect-" + case["check"]
+        if lose_reply:
+            self.lose_collection_response(case, key)
         result = self.native("check_collect", self.ci, key=key, run=case["check"])
         assert result == self.native("check_collect", self.ci, key=key, run=case["check"])
         assert result == self.native("check_collect", self.ci, run=case["check"])
@@ -137,10 +164,17 @@ class Checks(managed.Harness):
 
         recovery = self.check_case(delay=2000)
         self.fault(recovery, "before-start")
-        self.completed_check(recovery, self.start(recovery))
+        self.completed_check(recovery, self.start(recovery), lose_reply=True)
         assert (recovery["files"] / "check-executions").read_bytes() == b"one check\n"
         self.native("land", self.integrator, candidate=recovery["candidate"])
-        print("PASS native CI: lost start response recovers exact runtime without rerunning a check or rejecting its build outputs", flush=True)
+        print("PASS native CI: lost start/collection replies and killed server recover exact runtime/receipt without repeating checks", flush=True)
+
+        untrusted = self.check_case()
+        self.completed_check(untrusted, self.start(untrusted))
+        self.admin("access-set", *self.scope, "--principal", "node-0", "--revoke-all")
+        assert self.native("land", self.integrator, check=False, candidate=untrusted["candidate"]).returncode != 0
+        self.admin("access-set", *self.scope, "--principal", "node-0", "--permission", "runtime.control")
+        print("PASS native CI: revoked node access blocks previously passing evidence", flush=True)
 
         revoked = self.check_case()
         self.completed_check(revoked, self.start(revoked))

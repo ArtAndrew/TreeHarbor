@@ -11,7 +11,12 @@ The node verifies pristine inputs before first start; recovery uses the existing
 runtime and preserves build outputs. A required Linux scenario now exercises this
 path in `scripts/test-native-checks.py`; local database tests cover replay, current
 assignment/credential fences, missing-exit errors and populated schema-10 upgrade.
-Automatic scheduling, logs/artifacts, retention and release gates remain open.
+Local verification: 104 ordinary workspace tests and 117 real PostgreSQL/transport
+tests passed, with fmt and strict Clippy. The first real-runtime pass is
+[CI 39728681125](https://github.com/ArtAndrew/TreeHarbor/actions/runs/39728681125).
+The required job retains the added server-death/collection replay and node-revocation
+checks on every subsequent head. Automatic scheduling, logs/artifacts, retention
+and release gates remain open.
 
 New admission increment: [native integration](native-integration.md) adds durable
 policies/refs, a serial queue, immutable proposal/integration commits, scoped check
