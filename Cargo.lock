@@ -955,6 +955,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "treeharbor-git-bridge"
+version = "0.1.0-dev"
+dependencies = [
+ "rustix",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "thiserror",
+ "treeharbor-core",
+ "treeharbor-storage",
+]
+
+[[package]]
 name = "treeharbor-history"
 version = "0.1.0-dev"
 dependencies = [
@@ -1067,6 +1081,7 @@ dependencies = [
  "tokio",
  "tokio-postgres",
  "treeharbor-core",
+ "treeharbor-git-bridge",
  "treeharbor-materializer",
  "treeharbor-merge",
  "treeharbor-metadata",
