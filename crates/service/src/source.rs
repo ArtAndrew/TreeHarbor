@@ -102,6 +102,7 @@ pub(crate) fn metadata(error: treeharbor_metadata::Error) -> Failure {
         "upload_limit" => 429,
         "repository_fenced"
         | "execution_state_changed"
+        | "rebase_state_changed"
         | "version_conflict"
         | "idempotency_conflict"
         | "upload_state_changed"

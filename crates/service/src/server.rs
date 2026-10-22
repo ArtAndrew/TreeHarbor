@@ -209,6 +209,7 @@ async fn handle(
     let source_read = request.uri().path() == "/v1/source/read";
     let source_export = request.uri().path() == "/v1/source/export";
     let history_read = request.uri().path() == "/v1/history/read";
+    let rebase_prepare = request.uri().path() == "/v1/changes/rebase";
     let native_prepare = request.uri().path() == "/v1/native/prepare";
     let change_submit = request.uri().path() == "/v1/changes/submit";
     if (request.uri().path() != "/v1/commands"
@@ -217,7 +218,8 @@ async fn handle(
         && !source_export
         && !history_read
         && !change_submit
-        && !native_prepare)
+        && !native_prepare
+        && !rebase_prepare)
         || request.uri().query().is_some()
     {
         return error(StatusCode::NOT_FOUND, "not_found");
@@ -297,6 +299,18 @@ async fn handle(
         Ok(Err(_)) => return error(StatusCode::BAD_REQUEST, "invalid_body"),
         Err(_) => return error(StatusCode::REQUEST_TIMEOUT, "body_timeout"),
     };
+    if rebase_prepare {
+        let Some(backend) = backend else {
+            return error(StatusCode::SERVICE_UNAVAILABLE, "storage_not_configured");
+        };
+        return match crate::rebases::prepare(&body, &credential, backend, pool).await {
+            Ok(value) => response(StatusCode::OK, value),
+            Err(f) => error(
+                StatusCode::from_u16(f.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+                f.code,
+            ),
+        };
+    }
     if native_prepare {
         let Some(backend) = backend else {
             return error(StatusCode::SERVICE_UNAVAILABLE, "storage_not_configured");
@@ -396,6 +410,7 @@ async fn handle(
                 | "integration_state_changed"
                 | "candidate_stale"
                 | "admission_blocked"
+                | "rebase_state_changed"
                 | "version_conflict" => StatusCode::CONFLICT,
                 "upload_state_changed" | "upload_membership" | "object_busy" | "lease_expired" => {
                     StatusCode::CONFLICT

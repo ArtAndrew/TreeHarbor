@@ -300,3 +300,66 @@ fn text_positions_line_endings_and_missing_final_newline_match_git() {
         }
     }
 }
+
+#[test]
+fn one_change_rebase_matches_real_git_rebase_and_its_single_parent_result() {
+    use treeharbor_core::*;
+    use treeharbor_merge::{CandidateInput, RebaseOutcome, prepare_rebase};
+    for conflict in [false, true] {
+        let b = plain(&[("file", "a\nb\nc\nd\ne\n")]);
+        let l = plain(&[("file", "A\nb\nc\nd\ne\n")]);
+        let r = plain(&[(
+            "file",
+            if conflict {
+                "R\nb\nc\nd\ne\n"
+            } else {
+                "a\nb\nc\nd\nE\n"
+            },
+        )]);
+        let git = Git::new();
+        let base = git.commit(&b, None, "base");
+        let onto = git.commit(&l, Some(&base), "onto");
+        let proposed = git.commit(&r, Some(&base), "proposed");
+        git.ok(&["update-ref", "refs/heads/proposed", &proposed], b"");
+        git.ok(&["checkout", "--force", "proposed"], b"");
+        let oracle = git.run(&["rebase", "--onto", &onto, &base, "proposed"], b"");
+        let s = Store::default();
+        let b = snapshot(&s, &b);
+        let l = snapshot(&s, &l);
+        let r = snapshot(&s, &r);
+        let base_revision = commit(&s, b, vec![], "base");
+        let current_revision = commit(&s, l, vec![base_revision], "onto");
+        let applied = prepare_change(
+            &s,
+            b,
+            &diff_snapshots(&s, b, r, TreeDiffLimits::default()).unwrap(),
+        )
+        .unwrap();
+        let i = CandidateInput {
+            base_revision,
+            base_snapshot: b,
+            original_operations: applied.operations(),
+            proposed_snapshot: r,
+            current_revision,
+            current_snapshot: l,
+            timestamp_seconds: 1,
+            label: "rebase/1".into(),
+        };
+        match prepare_rebase(&s, &i, Limits::default()).unwrap() {
+            RebaseOutcome::Ready(c) => {
+                assert!(
+                    oracle.status.success(),
+                    "{}",
+                    String::from_utf8_lossy(&oracle.stderr)
+                );
+                assert_eq!(contents(&s, c.commit().snapshot), git.contents("HEAD"));
+                assert_eq!(c.commit().parents, vec![current_revision]);
+                assert_eq!(git.id(&["show", "-s", "--format=%P", "HEAD"], b""), onto);
+            }
+            RebaseOutcome::Conflicted(_) => {
+                assert!(conflict);
+                assert_eq!(oracle.status.code(), Some(1));
+            }
+        }
+    }
+}

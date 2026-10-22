@@ -10,6 +10,7 @@ use treeharbor_core::{Object, ObjectId, ObjectStore, RepoPath};
 use treeharbor_history::History;
 
 pub use candidate::{CandidateInput, CandidateOutcome, PreparedCandidate, prepare_candidate};
+pub use candidate::{PreparedRebase, REBASE_PROFILE, RebaseOutcome, prepare_rebase};
 pub use engine::merge_snapshots;
 
 /// A behavior change or merge-library upgrade requires a new profile identity.

@@ -33,6 +33,7 @@ impl CommandError {
             Self::Metadata(Error::ExecutionState) => "execution_state_changed",
             Self::Metadata(Error::IdempotencyConflict) => "idempotency_conflict",
             Self::Metadata(Error::VersionConflict) => "version_conflict",
+            Self::Metadata(Error::RebaseState) => "rebase_state_changed",
             Self::Metadata(Error::UploadState) => "upload_state_changed",
             Self::Metadata(Error::UploadLimit) => "upload_limit",
             Self::Metadata(Error::UploadMembership) => "upload_membership",

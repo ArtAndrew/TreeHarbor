@@ -36,7 +36,7 @@ class Checks(managed.Harness):
         self.native("ref_create", self.policy_admin, name=target, head=self.revision, policy=policy_id)
         entry, candidate, check = [str(uuid.uuid4()) for _ in range(3)]
         self.native("enqueue", self.agents[0], entry=entry, target=target,
-                    changeset=self.change["changeset"], version=1)
+                    changeset=self.change["changeset"], version=self.change.get("version", 1))
         self.native("candidate_start", self.integrator, entry=entry, candidate=candidate)
         result = self.client("native-prepare", "--key", "prepare-" + candidate, "--epoch", "1",
                              "--candidate", candidate, credential=self.integrator)
@@ -182,6 +182,28 @@ class Checks(managed.Harness):
                    self.sql(f"SELECT 'sha256:'||encode(profile,'hex') FROM th_managed_runs WHERE run='{revoked['run']}'"))
         assert self.native("land", self.integrator, check=False, candidate=revoked["candidate"]).returncode != 0
         print("PASS native CI: revoking the execution environment invalidates pending passing evidence", flush=True)
+
+        # Rebase is an owner operation, not approval. It supersedes an actively
+        # checked old proposal; the runtime fence must tear that check down.
+        old = self.check_case(delay=5000)
+        child = self.start(old)
+        managed.wait_until(lambda: (old["files"] / "check-executions").exists())
+        rebase = str(uuid.uuid4())
+        self.client("rebase-start", "--key", "start-" + rebase, "--epoch", "1",
+                    "--rebase", rebase, "--changeset", self.change["changeset"],
+                    "--source-version", "1", "--onto", landed["revision"], credential=self.agents[0])
+        rebased = self.client("rebase-prepare", "--key", "prepare-" + rebase, "--epoch", "1",
+                              "--rebase", rebase, credential=self.agents[0])
+        assert rebased["state"] == "ready" and rebased["result_version"] == 2
+        self.completed_check(old, child, "cancelled")
+        assert self.native("land", self.integrator, check=False, candidate=old["candidate"]).returncode != 0
+        self.change["version"] = 2
+        self.revision = landed["revision"]
+        fresh = self.check_case()
+        assert self.native("land", self.integrator, check=False, candidate=fresh["candidate"]).returncode != 0
+        self.completed_check(fresh, self.start(fresh))
+        assert self.native("land", self.integrator, candidate=fresh["candidate"])["state"] == "landed"
+        print("PASS native CI: owner rebase cancels a running old check and new version requires actual fresh check/review", flush=True)
 
 
 if __name__ == "__main__":
