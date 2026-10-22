@@ -76,7 +76,8 @@ runtime isolation.
 
 To build and exercise the local server and credential administration, follow the
 [local service guide](docs/local-service.md). It requires PostgreSQL and currently
-exercises the control plane. The [local node guide](docs/local-node.md) prepares native
+exercises the control plane. The [Git export guide](docs/git-export.md) converts a completed local native source pack
+to a self-contained bundle. The [local node guide](docs/local-node.md) prepares native
 workspace files. [Managed runs](docs/managed-runs.md) add experimental Linux execution
 with explicitly provisioned bounded volumes and approved runtime profiles.
 

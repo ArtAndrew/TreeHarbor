@@ -71,8 +71,9 @@ resource outcomes and worker-loss recovery. No complete authority mode is implie
 | Workspace preparation reservations | Operator-registered node storage, scoped job claims, immutable source/slot/attempt identity, renewal/reclaim, exact file-ready observation and drain retention; real PostgreSQL race/upgrade tests | Automatic source/slot release after runtime removal |
 | Local preparation node | Private physical root identity/OS lock, durable placement intent, exact no-replace publication, independent concurrent slots, current authorization and file-ready acknowledgment; actual process-kill recovery and import-to-files CLI tests | Scheduler/daemon, automated volume provisioning, remote workers, fenced volume migration and safe published-tree cleanup |
 | MCP adapter | Planned; not implemented | Shared-service adapter, scoped tools and real client interoperability tests |
+| Git source export | Local native-pack CLI and bounded Rust full-DAG projection to self-contained Git SHA-1/SHA-256 bundle; isolated batch Git, exact mapping, restored fsck and no-replace publication | Git import with raw metadata, live-server leased export, backup metadata, incremental projection, GitHub delivery |
 | Connected | Not implemented | Real GitHub PR/checks/merge queue and credential separation |
-| Standalone S2 | Partial: durable native admission/publication through CLI/API without Git, managed offline checks plus explicitly separate transport fixtures | Rebase/history CLI, full lifecycle, cutover, restore and export |
+| Standalone S2 | Partial: durable native admission/publication through CLI/API without Git, managed offline checks plus explicitly separate transport fixtures | Rebase/history CLI, full lifecycle, cutover, server restore/export |
 | Release and benchmarks | Not released or measured | Clean installation, artifacts, SBOM/provenance, comparison and operating cost |
 
 ## Local verification
@@ -215,3 +216,23 @@ untrusted code running as the server's OS user.
 - [ ] Pilot onboarding evidence and ten-team recruitment material.
 
 Do not mark unchecked gates complete based on a mock, design paragraph or planned CI job.
+
+
+## Native Git export increment — 2026-10-22
+
+Added the optional Rust `git-bridge` and `treeharbor git-export --pack ...`.
+The library projects complete native DAGs to self-contained SHA-1/SHA-256 bundles;
+the CLI consumes completed local source packs. Seven bridge tests and one actual
+CLI test cover independent roots, ordered multiple parents, exact binary/mode/link
+content, raw path quoting, shared directories, a separately calculated Git object
+vector, restored strict fsck, resource failures, killed process groups, concurrent
+no-clobber publication and inherited hostile Git configuration. The exporter uses
+one generated fast-import stream, without checkout or a process per file.
+
+Local macOS arm64, Rust 1.99.1, Git 2.54.0 (Apple Git-157):
+`cargo test --workspace --locked --offline` passed 112 ordinary tests;
+`cargo clippy --workspace --all-targets --locked --offline -- -D warnings` passed.
+Public format/limits/operations are in [git-export.md](git-export.md). This does
+not implement Git import, original Git ID roundtrip, leased live-server export,
+GitHub delivery, authority migration or full product backup. No performance
+superiority, production readiness or complete mode release is claimed.

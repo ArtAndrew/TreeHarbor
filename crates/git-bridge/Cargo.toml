@@ -1,0 +1,24 @@
+[package]
+name = "treeharbor-git-bridge"
+description = "Optional bounded native-history projection to ordinary Git bundles"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+treeharbor-core.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+tempfile.workspace = true
+rustix.workspace = true
+
+[dev-dependencies]
+treeharbor-storage.workspace = true
+
+[lints]
+workspace = true

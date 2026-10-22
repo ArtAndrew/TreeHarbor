@@ -28,6 +28,22 @@ pub struct Cli {
 }
 #[derive(Subcommand)]
 enum Command {
+    /// Project a completed local native pack into a self-contained Git bundle.
+    /// This exports source history, not server reviews, checks or authority.
+    GitExport {
+        #[arg(long)]
+        pack: PathBuf,
+        #[arg(long)]
+        output: PathBuf,
+        #[arg(long, default_value = "/usr/bin/git")]
+        git: PathBuf,
+        #[arg(long, default_value = "main")]
+        branch: String,
+        #[arg(long, default_value = "sha1", value_parser = ["sha1", "sha256"])]
+        object_format: String,
+        #[arg(long, default_value_t = 300, value_parser = clap::value_parser!(u64).range(1..=3600))]
+        timeout_seconds: u64,
+    },
     /// Trusted local preparation and bounded runtime node.
     Node {
         #[command(subcommand)]
@@ -611,6 +627,45 @@ impl Agent {
 }
 pub async fn run(cli: Cli) -> Result<bool> {
     match cli.command {
+        Command::GitExport {
+            pack,
+            output,
+            git,
+            branch,
+            object_format,
+            timeout_seconds,
+        } => {
+            let manifest = tokio::task::spawn_blocking(move || -> Result<_> {
+                let pack = crate::pack::Pack::open(&pack)?;
+                Ok(treeharbor_git_bridge::export(
+                    pack.store(),
+                    treeharbor_git_bridge::Export {
+                        git: &git,
+                        output: &output,
+                        refs: std::collections::BTreeMap::from([(
+                            format!("refs/heads/{branch}"),
+                            pack.commit(),
+                        )]),
+                        algorithm: if object_format == "sha256" {
+                            treeharbor_git_bridge::HashAlgorithm::Sha256
+                        } else {
+                            treeharbor_git_bridge::HashAlgorithm::Sha1
+                        },
+                        limits: treeharbor_git_bridge::Limits {
+                            timeout: Duration::from_secs(timeout_seconds),
+                            ..Default::default()
+                        },
+                    },
+                )?)
+            })
+            .await
+            .map_err(|_| Error::ExportWorker)??;
+            println!(
+                "{}",
+                serde_json::to_string(&manifest).map_err(|_| Error::Config)?
+            );
+            Ok(true)
+        }
         Command::Node { action } => crate::node_cli::run(action).await,
         Command::SourcePack {
             directory,

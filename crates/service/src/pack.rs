@@ -95,6 +95,9 @@ pub struct Pack {
     store: LocalStore,
 }
 impl Pack {
+    pub(crate) fn store(&self) -> &LocalStore {
+        &self.store
+    }
     pub fn commit(&self) -> ObjectId {
         self.commit
     }

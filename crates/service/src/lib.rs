@@ -17,6 +17,12 @@ mod source_read;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    #[error(
+        "local export worker failed; inspect the output before retrying with a new destination"
+    )]
+    ExportWorker,
+    #[error("Git export failed: {0}")]
+    GitExport(#[from] treeharbor_git_bridge::Error),
     #[error("node operation failed: {0}")]
     Node(#[from] treeharbor_node::Error),
     #[error("local filesystem or socket operation failed")]
