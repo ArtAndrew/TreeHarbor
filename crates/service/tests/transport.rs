@@ -7,6 +7,8 @@ mod history;
 mod native;
 #[path = "transport/proposals.rs"]
 mod proposals;
+#[path = "transport/review.rs"]
+mod review;
 use serde_json::{Value, json};
 use std::{
     fs,

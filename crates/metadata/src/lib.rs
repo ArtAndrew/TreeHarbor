@@ -19,6 +19,7 @@ pub mod profiles;
 pub mod proposals;
 pub mod reads;
 pub mod rebases;
+pub mod review;
 pub mod runs;
 pub mod uploads;
 pub mod workspace_reads;

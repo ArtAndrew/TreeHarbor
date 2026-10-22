@@ -14,6 +14,7 @@ mod node_cli;
 pub mod pack;
 mod proposals;
 mod rebases;
+mod review;
 pub mod server;
 mod source;
 mod source_export;

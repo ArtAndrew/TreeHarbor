@@ -42,6 +42,15 @@ class Checks(managed.Harness):
                              "--candidate", candidate, credential=self.integrator)
         assert result["state"] == "checking"
         self.native("check_assign", self.integrator, candidate=candidate, name="tests", run=check, validator="ci")
+        # The reviewer reads an immutable agent proposal through the same
+        # service, without the agent credential or its workspace directory.
+        diff = self.client("diff", "--authority", "standalone", "--epoch", "1",
+                           "change", "--changeset", self.change["changeset"],
+                           "--version", str(self.change.get("version", 1)), credential=self.reviewer)
+        assert diff["identity"]["version"] == self.change.get("version", 1)
+        assert diff["total_changes"] == 1 and diff["next_after"] is None
+        assert bytes.fromhex(diff["changes"][0]["path_hex"]) == b"same.txt"
+        assert diff["changes"][0]["text"]["patch"].endswith("-base\n+candidate\n")
         self.native("review", self.reviewer, candidate=candidate, review=str(uuid.uuid4()), decision="approve")
         return dict(candidate=candidate, check=check, entry=entry, target=target, policy=policy_id, candidate_snapshot=result["snapshot"])
 

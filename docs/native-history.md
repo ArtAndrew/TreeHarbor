@@ -3,8 +3,10 @@
 The development service and CLI can read commits, page through history, test
 ancestry and find all best common ancestors. They read verified durable native
 objects through PostgreSQL-backed scoped read holds. No Git process, GitHub
-credential or workspace checkout is needed. This is a read interface; native
-rebase, complete repository lifecycle and a production release remain unfinished.
+credential or workspace checkout is needed. This is a read interface; general
+history stack rewriting, complete repository lifecycle and a production release
+remain unfinished. [Single-ChangeSet rebase](change-rebase.md) and
+[immutable review diff](review-diff.md) have separate CLI/API commands.
 
 ## CLI
 

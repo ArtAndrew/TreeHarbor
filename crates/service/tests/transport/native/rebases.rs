@@ -149,6 +149,22 @@ async fn rebase_cli_survives_fsync_and_response_loss_and_requires_new_evidence_w
     green(&mut f, b, &worker, &validator, &reviewer).await;
     let before:Value=f.sql.query_one("SELECT to_jsonb(v) FROM th_change_versions v JOIN th_native_queue q USING(tenant,repository,changeset,version) WHERE q.entry=$1",&[&second]).await.unwrap().get(0);
     let change = before["changeset"].as_str().unwrap();
+    f.credential_path = reviewer.clone();
+    let review_args = [
+        "diff",
+        "--authority",
+        "standalone",
+        "--epoch",
+        "1",
+        "change",
+        "--changeset",
+        change,
+        "--version",
+        "1",
+    ];
+    let original_diff = ok(f.cli(&review_args));
+    assert_eq!(original_diff["identity"]["run"], before["run"]);
+    assert_eq!(original_diff["changes"][0]["path_hex"], "66696c652e747874");
     let rebase = Uuid::new_v4();
     let rebase_text = rebase.to_string();
     f.credential_path = agent_b.clone();
@@ -280,6 +296,36 @@ async fn rebase_cli_survives_fsync_and_response_loss_and_requires_new_evidence_w
         ok(native(&f, json!({"action":"ref_resolve","name":"main"})))["head"],
         landed["revision"]
     );
+    f.credential_path = reviewer.clone();
+    assert_eq!(ok(f.cli(&review_args)), original_diff);
+    let next_diff = ok(f.cli(&[
+        "diff",
+        "--authority",
+        "standalone",
+        "--epoch",
+        "1",
+        "change",
+        "--changeset",
+        change,
+        "--version",
+        "2",
+    ]));
+    assert_ne!(
+        next_diff["before_snapshot"],
+        original_diff["before_snapshot"]
+    );
+    assert_eq!(
+        next_diff["identity"]["run"],
+        original_diff["identity"]["run"]
+    );
+    assert_eq!(next_diff["identity"]["version"], 2);
+    let patch =
+        diffy::Patch::from_str(next_diff["changes"][0]["text"]["patch"].as_str().unwrap()).unwrap();
+    assert_eq!(
+        diffy::apply("A\nb\nc\nd\ne\n", &patch).unwrap(),
+        "A\nb\nc\nd\nE\n"
+    );
+    f.credential_path = worker.clone();
     // Export the actual durable single-parent rebase, not a locally fabricated graph.
     let destination = f.dir.path().join("rebased-export");
     assert!(

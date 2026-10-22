@@ -1190,6 +1190,7 @@ dependencies = [
  "bytes",
  "clap",
  "deadpool",
+ "diffy",
  "http-body-util",
  "hyper",
  "hyper-util",

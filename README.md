@@ -36,7 +36,9 @@ in **Standalone** mode. Both share one Rust engine.
 > through CLI/API. [Scoped history queries](docs/native-history.md) expose commits,
 > ancestry and merge bases without Git. [ChangeSet rebase](docs/change-rebase.md)
 > creates a new immutable version on an exact base, retaining its original run and
-> requiring new checks. Experimental
+> requiring new checks. [Review diffs](docs/review-diff.md) show exact retained
+> ChangeSet versions or registered revisions, with bounded text and path pages.
+> Experimental
 > [managed native checks](docs/managed-checks.md) execute approved offline commands
 > on exact candidates. Automatic queue/CI
 > scheduling is still pending.
