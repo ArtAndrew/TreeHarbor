@@ -210,8 +210,11 @@ request is cancelled. Temporary holds expire after process loss.
 
 This increment conservatively retains registered candidate bases, published
 history and evidence. Automatic expiry handling, abandoned-candidate cleanup,
-review UI, CI scheduling, Git export, history recovery and bounded long-term
-retention still need implementation. It is not a complete standalone release.
+review UI, CI scheduling, full history recovery and bounded long-term retention
+still need implementation. [Source export](live-source-export.md) and optional
+[Git projection](git-export.md) now preserve registered history;
+[history queries](native-history.md) expose its commits and ancestry. This is
+not a complete standalone release.
 
 ## Reproduce verification
 

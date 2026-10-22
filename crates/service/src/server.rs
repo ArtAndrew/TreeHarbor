@@ -208,12 +208,14 @@ async fn handle(
     let upload = crate::source::route(request.uri().path());
     let source_read = request.uri().path() == "/v1/source/read";
     let source_export = request.uri().path() == "/v1/source/export";
+    let history_read = request.uri().path() == "/v1/history/read";
     let native_prepare = request.uri().path() == "/v1/native/prepare";
     let change_submit = request.uri().path() == "/v1/changes/submit";
     if (request.uri().path() != "/v1/commands"
         && upload.is_none()
         && !source_read
         && !source_export
+        && !history_read
         && !change_submit
         && !native_prepare)
         || request.uri().query().is_some()
@@ -346,11 +348,16 @@ async fn handle(
             ),
         };
     }
-    if source_read {
+    if source_read || history_read {
         let Some(backend) = backend else {
             return error(StatusCode::SERVICE_UNAVAILABLE, "storage_not_configured");
         };
-        return match crate::source_read::read(&body, &credential, backend, pool).await {
+        let delivery = if history_read {
+            crate::history::read(&body, &credential, backend, pool).await
+        } else {
+            crate::source_read::read(&body, &credential, backend, pool).await
+        };
+        return match delivery {
             Ok(delivery) => {
                 let mut response = Response::new(full(delivery.bytes));
                 *response.headers_mut() = delivery.headers;

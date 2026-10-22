@@ -3,6 +3,12 @@
 Updated: 2026-10-22. This file describes implemented behavior and remaining release
 gates. A foundation milestone does not complete either mode.
 
+New history increment: [scoped native history](native-history.md) now exposes
+commit display, deterministic all-parent or first-parent log pages, ancestry and
+all best merge bases through actual HTTP/CLI. Queries read only verified commits
+from registered repository roots, with current authority/permission fences and
+GC holds. They neither move refs nor implement rebase.
+
 New source-history increment: [live source export](live-source-export.md) downloads
 a registered native base and its complete reachable graph through scoped reads.
 The CLI verifies a bounded binary archive and atomically publishes a full native
@@ -66,7 +72,7 @@ resource outcomes and worker-loss recovery. No complete authority mode is implie
 | Canonical SHA-256 object format | Versioned framing, independent golden vectors, strict decoder | Compatibility policy for later formats |
 | Immutable directory trees and operations | Exact expected-before checks, canonical subtree operations v2, bounded structural diff, structural sharing, explicit deletes; native merge and Git reference matrix | General history rebase, broader rename/base support, live-server Git interop |
 | Local object store | Atomic no-clobber writes, digest verification, file/directory fsync, tenant directories, physical generations and upload receipts | S3, backup/restore, kill fault campaign |
-| Native DAG and admission | All-parent traversal, persisted refs/policies/queue/checks/reviews, verified candidate commits, final transactional admission and no-Git CLI/process-loss tests | Automatic scheduling, full native lifecycle, recovery and export |
+| Native DAG and admission | Scoped history/log/ancestry/merge-base HTTP/CLI, persisted refs/policies/queue/checks/reviews, verified candidate commits, final transactional admission and no-Git CLI/process-loss tests | Native rebase, automatic scheduling, full lifecycle and recovery |
 | PostgreSQL metadata and outbox | Real database transaction/idempotency/lease tests; repository authority/epoch checks; populated schema upgrades through v11; local service pool and crash/replay | Remote service integration and full server restore |
 | Native ChangeSet intake | HTTP/CLI immutable proposals, session-owned blobs, computed versions, running/removed-run lineage, atomic pins/session completion/outbox and process-loss replay | Filesystem sealing, GitHub base synchronization, remote transport and retention |
 | Protected incremental source reads | Pinned sessions, verified frontiers, bounded prefix batches and descriptors surviving local GC; authenticated workspace-root sessions | Per-tenant service quotas, bulk node delivery and S3 |
@@ -89,7 +95,7 @@ resource outcomes and worker-loss recovery. No complete authority mode is implie
 | Live source export | Scoped registered-base reads with GC holds and authority/credential fences; streaming archive v1 and atomically verified pack v3; actual CLI restart/merge/origin roundtrip | Other retained proposals, all-ref export, full metadata backup, incremental transfer, longer jobs and cleanup |
 | Git history import | Pinned self-contained SHA-1/SHA-256 bundle, all-parent native graph, replayed deltas, exact original metadata, atomic full-source pack v2 and resumable HTTP/CLI upload | Network fetch, incremental imports, multi-ref cutover, automated cleanup, larger-repository profiling |
 | Connected | Not implemented | Real GitHub PR/checks/merge queue and credential separation |
-| Standalone S2 | Partial: durable native admission/publication through CLI/API without Git, managed offline checks, registered-source export, plus explicitly separate transport fixtures | Rebase/history CLI, full lifecycle, cutover, full server backup/restore |
+| Standalone S2 | Partial: durable native admission/publication and scoped history through CLI/API without Git, managed offline checks, registered-source export, plus explicitly separate transport fixtures | Rebase CLI, full lifecycle, cutover, full server backup/restore |
 | Release and benchmarks | Not released or measured | Clean installation, artifacts, SBOM/provenance, comparison and operating cost |
 
 ## Local verification
@@ -373,3 +379,32 @@ See [format, access rules, resource bounds and cleanup](live-source-export.md).
 This does not implement full metadata backup/restore, all-ref migration, export
 of every retained proposal, automatic cleanup or incremental/long-running export.
 No performance claim or complete mode/release claim is made.
+
+## Scoped native history queries
+
+Added `client history` and `/v1/history/read` for show, log, is-ancestor and
+merge-bases. The history core orders complete ancestry children-before-parents,
+using raw IDs to break ties; ordered parent lists remain unchanged. First-parent
+display is explicit. All best bases, including criss-cross bases, are returned.
+Missing data and exhausted budgets fail instead of becoming false/empty results.
+
+The service reuses authenticated registered-base reads and graph holds, traverses
+commit edges without loading source file blobs, closes all holds even when the
+second root fails, and rechecks access before success. Response-size accounting
+includes JSON escaping. Wire v1 has independent request/response vectors. No
+native object format or schema migration changed; the service now directly uses
+the existing workspace history crate.
+
+Local verification (macOS arm64, Rust 1.99.1): 138 ordinary tests and all 128
+explicit integration tests passed, as did formatting and strict workspace Clippy.
+Actual PostgreSQL/CLI tests compare criss-cross bases and first-parent history
+with Git, remove original inputs, restart the server and use a read-only credential.
+They cover complete pagination, nonmember roots/targets/cursors, same-tenant other
+repository denial, authority epoch changes, token revocation and hold cleanup.
+The existing native publication scenario also reads newly landed merge history.
+An independent DAG matrix checks complete membership and parent ordering for 64
+generated graphs. Linux/macOS and actual gVisor remain required CI gates.
+
+The initial query profile loads bounded complete ancestry on every page. There is
+no persisted ancestry index or performance claim. Native rebase, complete lifecycle,
+Connected GitHub, backup/restore and release requirements remain open.

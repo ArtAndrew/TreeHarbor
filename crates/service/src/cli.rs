@@ -313,7 +313,74 @@ impl SourceContext {
     }
 }
 #[derive(Subcommand)]
+enum HistoryQuery {
+    /// Complete ancestry, paginated in deterministic child-before-parent order.
+    Log {
+        #[arg(long)]
+        revision: String,
+        #[arg(long)]
+        after: Option<String>,
+        #[arg(long, default_value_t=100, value_parser=clap::value_parser!(u16).range(1..=256))]
+        limit: u16,
+        /// Display only the first parent chain; ancestry queries still use all parents.
+        #[arg(long)]
+        first_parent: bool,
+    },
+    /// Read a commit proven reachable from the registered revision.
+    Show {
+        #[arg(long)]
+        revision: String,
+        #[arg(long)]
+        commit: String,
+    },
+    IsAncestor {
+        #[arg(long)]
+        ancestor: String,
+        #[arg(long)]
+        head: String,
+    },
+    /// Return every best common ancestor, including criss-cross histories.
+    MergeBases {
+        #[arg(long)]
+        left: String,
+        #[arg(long)]
+        right: String,
+    },
+}
+impl HistoryQuery {
+    fn wire(self) -> Value {
+        match self {
+            Self::Log {
+                revision,
+                after,
+                limit,
+                first_parent,
+            } => {
+                json!({"kind":"log","revision":revision,"after":after,"limit":limit,"first_parent":first_parent})
+            }
+            Self::Show { revision, commit } => {
+                json!({"kind":"show","revision":revision,"commit":commit})
+            }
+            Self::IsAncestor { ancestor, head } => {
+                json!({"kind":"is_ancestor","ancestor":ancestor,"head":head})
+            }
+            Self::MergeBases { left, right } => {
+                json!({"kind":"merge_bases","left":left,"right":right})
+            }
+        }
+    }
+}
+#[derive(Subcommand)]
 enum Agent {
+    /// Query native history with scoped read permission; never changes refs.
+    History {
+        #[arg(long, value_enum)]
+        authority: Mode,
+        #[arg(long,value_parser=clap::value_parser!(i64).range(1..))]
+        epoch: i64,
+        #[command(subcommand)]
+        query: HistoryQuery,
+    },
     /// Download a complete registered native revision from the live service.
     SourceExport {
         #[arg(long)]
@@ -566,6 +633,7 @@ impl Agent {
                 json!({"method":"change_abort","key":mutation.key,"authority":Authority::from(mutation.authority).as_str(),"epoch":mutation.epoch,"upload":upload.to_string()})
             }
             Self::SourceExport { .. }
+            | Self::History { .. }
             | Self::NativePrepare { .. }
             | Self::ChangePut { .. }
             | Self::ChangeSubmit { .. } => {
@@ -797,6 +865,15 @@ pub async fn run(cli: Cli) -> Result<bool> {
         } => {
             let credential = Credential::load(&credential_file)?;
             let action = match action {
+                Agent::History {
+                    authority,
+                    epoch,
+                    query,
+                } => {
+                    let reply=client::history(&socket,&credential,json!({"authority":Authority::from(authority).as_str(),"epoch":epoch,"query":query.wire()}),Duration::from_millis(timeout_ms)).await?;
+                    println!("{}", reply.body);
+                    return Ok(reply.status.is_success());
+                }
                 Agent::SourceExport {
                     revision,
                     authority,
