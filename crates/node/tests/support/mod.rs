@@ -57,6 +57,7 @@ impl Fixture {
         };
         let changes = Object::ChangeOperations(Changes::new(vec![]).unwrap());
         let commit = Commit {
+            git_origin: None,
             parents: vec![],
             snapshot: snapshot.id().unwrap(),
             changes: changes.id().unwrap(),

@@ -40,6 +40,7 @@ fn commit(
         .put(&Object::ChangeOperations(Changes::new(vec![]).unwrap()))
         .unwrap();
     s.put(&Object::NativeCommit(Commit {
+        git_origin: None,
         snapshot,
         changes,
         parents,
@@ -570,4 +571,350 @@ fn mixed_native_frame_versions_export_file_directory_history_with_original_trees
     assert_eq!(run(&restored, &["show", "main:a/file"], b""), b"child");
     assert_eq!(run(&restored, &["show", "main^:a"], b""), b"original");
     run(&restored, &["fsck", "--strict"], b"");
+}
+
+fn original(
+    s: &impl ObjectStore,
+    repo: &Path,
+    algorithm: HashAlgorithm,
+    snapshot: ObjectId,
+    parents: Vec<ObjectId>,
+    raw: &[u8],
+    message: &str,
+) -> ObjectId {
+    let oid = text(run(
+        repo,
+        &[
+            "hash-object",
+            "--literally",
+            "-w",
+            "-t",
+            "commit",
+            "--stdin",
+        ],
+        raw,
+    ));
+    let bytes: Vec<u8> = oid
+        .as_bytes()
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|p| u8::from_str_radix(std::str::from_utf8(p).unwrap(), 16).unwrap())
+        .collect();
+    let oid = match algorithm {
+        HashAlgorithm::Sha1 => GitOid::Sha1(bytes.try_into().unwrap()),
+        HashAlgorithm::Sha256 => GitOid::Sha256(bytes.try_into().unwrap()),
+    };
+    let id = commit(s, snapshot, parents, message);
+    let Object::NativeCommit(mut c) = s.get(id).unwrap() else {
+        panic!()
+    };
+    c.git_origin = Some(Box::new(GitOrigin {
+        oid,
+        raw: s.put(&Object::Blob(raw.to_vec())).unwrap(),
+    }));
+    s.put(&Object::NativeCommit(c)).unwrap()
+}
+fn original_bytes(tree: &str, parents: &[String], message: &str) -> Vec<u8> {
+    let mut raw = format!("tree {tree}\n");
+    for parent in parents {
+        raw.push_str(&format!("parent {parent}\n"));
+    }
+    raw.push_str("author Andrey <a@example.invalid> 1234567890 -0530\ncommitter Other <other@example.invalid> 1234567999 +0230\nencoding UTF-8\ngpgsig -----BEGIN PGP SIGNATURE-----\n fixture-not-a-valid-signature\n -----END PGP SIGNATURE-----\nx-extension exact bytes\n continuation\n\n");
+    raw.push_str(message);
+    raw.into_bytes()
+}
+
+#[test]
+fn original_git_commit_bytes_and_ids_survive_merge_history_and_new_native_descendant() {
+    for algorithm in [HashAlgorithm::Sha1, HashAlgorithm::Sha256] {
+        let temp = tempfile::tempdir().unwrap();
+        fs::set_permissions(temp.path(), fs::Permissions::from_mode(0o700)).unwrap();
+        let s = store(&temp.path().join("store"));
+        let git = temp.path().join("source.git");
+        run(
+            temp.path(),
+            &[
+                "init",
+                "--bare",
+                &format!("--object-format={}", algorithm.name()),
+                git.to_str().unwrap(),
+            ],
+            b"",
+        );
+        let file = s.put(&Object::Blob(b"payload\0\xff".to_vec())).unwrap();
+        let child = s
+            .put(&Object::Directory(
+                Directory::new(vec![Entry {
+                    name: Name::new(b"z".to_vec()).unwrap(),
+                    value: EntryRef {
+                        mode: EntryMode::Executable,
+                        target: file,
+                    },
+                }])
+                .unwrap(),
+            ))
+            .unwrap();
+        let directory = s
+            .put(&Object::Directory(
+                Directory::new(vec![
+                    Entry {
+                        name: Name::new(b"a".to_vec()).unwrap(),
+                        value: EntryRef {
+                            mode: EntryMode::Directory,
+                            target: child,
+                        },
+                    },
+                    Entry {
+                        name: Name::new(b"a.c".to_vec()).unwrap(),
+                        value: EntryRef {
+                            mode: EntryMode::File,
+                            target: file,
+                        },
+                    },
+                ])
+                .unwrap(),
+            ))
+            .unwrap();
+        let snap = s.put(&Object::Snapshot { root: directory }).unwrap();
+        // Build original Git trees independently: Git, not our pack writer, sorts
+        // a.c ahead of a/. Binary blobs and executable modes must match exactly.
+        let blob = text(run(
+            &git,
+            &["hash-object", "-w", "--stdin"],
+            b"payload\0\xff",
+        ));
+        let subtree = text(run(
+            &git,
+            &["mktree"],
+            format!("100755 blob {blob}\tz\n").as_bytes(),
+        ));
+        let root = text(run(
+            &git,
+            &["mktree"],
+            format!("040000 tree {subtree}\ta\n100644 blob {blob}\ta.c\n").as_bytes(),
+        ));
+        let mut originals = Vec::new();
+        for message in ["left root", "right root"] {
+            let raw = original_bytes(&root, &[], message);
+            let oid = text(run(
+                &git,
+                &["hash-object", "-w", "-t", "commit", "--stdin"],
+                &raw,
+            ));
+            let native = original(&s, &git, algorithm, snap, vec![], &raw, message);
+            originals.push((native, oid, raw));
+        }
+        let raw = original_bytes(
+            &root,
+            &[originals[1].1.clone(), originals[0].1.clone()],
+            "merge without final newline",
+        );
+        let oid = text(run(
+            &git,
+            &["hash-object", "-w", "-t", "commit", "--stdin"],
+            &raw,
+        ));
+        let merge = original(
+            &s,
+            &git,
+            algorithm,
+            snap,
+            vec![originals[1].0, originals[0].0],
+            &raw,
+            "merge without final newline",
+        );
+        originals.push((merge, oid, raw));
+        let Object::NativeCommit(mut reordered) = s.get(merge).unwrap() else {
+            panic!()
+        };
+        reordered.parents.reverse();
+        let reordered = s.put(&Object::NativeCommit(reordered)).unwrap();
+        let bad_output = temp.path().join("wrong-parent-order");
+        assert!(export(&s, request(&bad_output, reordered, algorithm)).is_err());
+        assert!(!bad_output.exists());
+        let descendant = commit(&s, snap, vec![merge], "native descendant\n");
+        // A second native identity with the same Git projection exercises pack
+        // de-duplication and the existing many-to-one mapping contract.
+        let Object::NativeCommit(mut alias) = s.get(descendant).unwrap() else {
+            panic!()
+        };
+        alias.changes = s
+            .put(&Object::ChangeOperations(
+                Changes::new(vec![ChangeOperation {
+                    path: RepoPath::new(b"unrelated".to_vec()).unwrap(),
+                    expected: None,
+                    replacement: Some(EntryRef {
+                        mode: EntryMode::File,
+                        target: file,
+                    }),
+                }])
+                .unwrap(),
+            ))
+            .unwrap();
+        let alias = s.put(&Object::NativeCommit(alias)).unwrap();
+        let output = temp.path().join("export");
+        let mut req = request(&output, descendant, algorithm);
+        req.refs.insert("refs/heads/alias".into(), alias);
+        let result = export(&s, req).unwrap();
+        assert_eq!(result.projection, "native-with-git-origin-v1");
+        assert_eq!(
+            result.commits[&alias.to_string()],
+            result.commits[&descendant.to_string()]
+        );
+        let restored = temp.path().join("restored.git");
+        run(
+            temp.path(),
+            &[
+                "clone",
+                "--bare",
+                output.join("history.bundle").to_str().unwrap(),
+                restored.to_str().unwrap(),
+            ],
+            b"",
+        );
+        for (native, oid, raw) in originals {
+            assert_eq!(result.commits[&native.to_string()], oid);
+            assert_eq!(run(&restored, &["cat-file", "commit", &oid], b""), raw);
+        }
+        assert_eq!(
+            text(run(&restored, &["rev-parse", "main^"], b"")),
+            result.commits[&merge.to_string()]
+        );
+        run(&restored, &["fsck", "--strict", "--no-reflogs"], b"");
+    }
+}
+
+#[test]
+fn origin_claims_cannot_substitute_another_tree_parent_order_author_message_or_hash() {
+    let temp = tempfile::tempdir().unwrap();
+    fs::set_permissions(temp.path(), fs::Permissions::from_mode(0o700)).unwrap();
+    let s = store(&temp.path().join("store"));
+    let git = temp.path().join("source.git");
+    run(temp.path(), &["init", "--bare", git.to_str().unwrap()], b"");
+    let snapshot = tree(&s, &[]);
+    let git_tree = text(run(&git, &["mktree"], b""));
+    let raw = original_bytes(&git_tree, &[], "original");
+    let head = original(
+        &s,
+        &git,
+        HashAlgorithm::Sha1,
+        snapshot,
+        vec![],
+        &raw,
+        "original",
+    );
+    let Object::NativeCommit(c) = s.get(head).unwrap() else {
+        panic!()
+    };
+    let output = temp.path().join("export");
+    let mut wrong_kind = c.clone();
+    wrong_kind.git_origin.as_mut().unwrap().raw = snapshot;
+    let wrong_kind = s.put(&Object::NativeCommit(wrong_kind)).unwrap();
+    assert!(export(&s, request(&output, wrong_kind, HashAlgorithm::Sha1)).is_err());
+    let mut bad_hash = c.clone();
+    bad_hash.git_origin.as_mut().unwrap().oid = GitOid::Sha1([0; 20]);
+    for bad in [
+        Commit {
+            snapshot: tree(&s, &[(b"injected", EntryMode::File, b"different")]),
+            ..c.clone()
+        },
+        Commit {
+            author_name: "Someone else".into(),
+            ..c.clone()
+        },
+        Commit {
+            message: "different".into(),
+            ..c.clone()
+        },
+        Commit {
+            timestamp_seconds: c.timestamp_seconds + 1,
+            ..c.clone()
+        },
+        Commit {
+            parents: vec![commit(&s, snapshot, vec![], "other")],
+            ..c.clone()
+        },
+        bad_hash,
+    ] {
+        let id = s.put(&Object::NativeCommit(bad)).unwrap();
+        assert!(export(&s, request(&output, id, HashAlgorithm::Sha1)).is_err());
+        assert!(!output.exists());
+    }
+    assert!(export(&s, request(&output, head, HashAlgorithm::Sha256)).is_err());
+    for raw in [
+        String::from_utf8(raw.clone()).unwrap().replace(
+            "committer Other <other@example.invalid> 1234567999 +0230",
+            "committer malformed",
+        ),
+        String::from_utf8(raw.clone())
+            .unwrap()
+            .replace("encoding UTF-8", "encoding ISO-8859-1"),
+        String::from_utf8(raw.clone())
+            .unwrap()
+            .replace("x-extension exact bytes", &format!("tree {git_tree}")),
+        String::from_utf8(raw)
+            .unwrap()
+            .replace("encoding UTF-8", " continuation-without-header"),
+    ] {
+        let id = original(
+            &s,
+            &git,
+            HashAlgorithm::Sha1,
+            snapshot,
+            vec![],
+            raw.as_bytes(),
+            "original",
+        );
+        assert!(export(&s, request(&output, id, HashAlgorithm::Sha1)).is_err());
+        assert!(!output.exists());
+    }
+}
+
+#[test]
+fn pack_variable_lengths_and_incompressible_binary_objects_restore_exactly() {
+    let temp = tempfile::tempdir().unwrap();
+    fs::set_permissions(temp.path(), fs::Permissions::from_mode(0o700)).unwrap();
+    let s = store(&temp.path().join("store"));
+    let lengths = [0, 15, 16, 2047, 2048, 262143, 262144];
+    let contents: Vec<Vec<u8>> = lengths
+        .iter()
+        .map(|length| {
+            let mut state = 123u32;
+            (0..*length)
+                .map(|_| {
+                    state ^= state << 13;
+                    state ^= state >> 17;
+                    state ^= state << 5;
+                    state as u8
+                })
+                .collect()
+        })
+        .collect();
+    let names: Vec<_> = lengths.iter().map(|n| format!("n{n}")).collect();
+    let entries: Vec<_> = names
+        .iter()
+        .zip(&contents)
+        .map(|(name, body)| (name.as_bytes(), EntryMode::File, body.as_slice()))
+        .collect();
+    let head = commit(&s, tree(&s, &entries), vec![], "length boundaries");
+    let output = temp.path().join("export");
+    export(&s, request(&output, head, HashAlgorithm::Sha1)).unwrap();
+    let restored = temp.path().join("restored.git");
+    run(
+        temp.path(),
+        &[
+            "clone",
+            "--bare",
+            output.join("history.bundle").to_str().unwrap(),
+            restored.to_str().unwrap(),
+        ],
+        b"",
+    );
+    for (name, body) in names.iter().zip(contents) {
+        assert_eq!(
+            run(&restored, &["show", &format!("main:{name}")], b""),
+            body
+        );
+    }
 }

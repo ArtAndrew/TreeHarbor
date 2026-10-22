@@ -141,6 +141,7 @@ pub fn prepare_candidate(
         return Err(Error::Core(treeharbor_core::Error::PredicateMismatch));
     }
     let commit = |parents, snapshot, changes, message| Commit {
+        git_origin: None,
         parents,
         snapshot,
         changes,

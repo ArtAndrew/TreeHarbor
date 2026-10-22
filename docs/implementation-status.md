@@ -71,7 +71,7 @@ resource outcomes and worker-loss recovery. No complete authority mode is implie
 | Workspace preparation reservations | Operator-registered node storage, scoped job claims, immutable source/slot/attempt identity, renewal/reclaim, exact file-ready observation and drain retention; real PostgreSQL race/upgrade tests | Automatic source/slot release after runtime removal |
 | Local preparation node | Private physical root identity/OS lock, durable placement intent, exact no-replace publication, independent concurrent slots, current authorization and file-ready acknowledgment; actual process-kill recovery and import-to-files CLI tests | Scheduler/daemon, automated volume provisioning, remote workers, fenced volume migration and safe published-tree cleanup |
 | MCP adapter | Planned; not implemented | Shared-service adapter, scoped tools and real client interoperability tests |
-| Git source export | Local native-pack CLI and bounded Rust full-DAG projection to self-contained Git SHA-1/SHA-256 bundle; isolated batch Git, exact mapping, restored fsck and no-replace publication | Git import with raw metadata, live-server leased export, backup metadata, incremental projection, GitHub delivery |
+| Git source export | Local native-pack CLI and bounded Rust full-DAG projection to self-contained Git SHA-1/SHA-256 bundle; isolated batch Git, exact mapping, verified original Git metadata/IDs, restored fsck and no-replace publication | Automated Git import, live-server leased export, backup metadata, incremental projection, GitHub delivery |
 | Connected | Not implemented | Real GitHub PR/checks/merge queue and credential separation |
 | Standalone S2 | Partial: durable native admission/publication through CLI/API without Git, managed offline checks plus explicitly separate transport fixtures | Rebase/history CLI, full lifecycle, cutover, server restore/export |
 | Release and benchmarks | Not released or measured | Clean installation, artifacts, SBOM/provenance, comparison and operating cost |
@@ -227,13 +227,13 @@ CLI test cover independent roots, ordered multiple parents, exact binary/mode/li
 content, raw path quoting, shared directories, a separately calculated Git object
 vector, restored strict fsck, resource failures, killed process groups, concurrent
 no-clobber publication and inherited hostile Git configuration. The exporter uses
-one generated fast-import stream, without checkout or a process per file.
+one generated Git pack (formerly fast-import), without checkout or a process per file.
 
 Local macOS arm64, Rust 1.99.1, Git 2.54.0 (Apple Git-157):
 `cargo test --workspace --locked --offline` passed 112 ordinary tests;
 `cargo clippy --workspace --all-targets --locked --offline -- -D warnings` passed.
 Public format/limits/operations are in [git-export.md](git-export.md). This does
-not implement Git import, original Git ID roundtrip, leased live-server export,
+not implement automated Git import, leased live-server export,
 GitHub delivery, authority migration or full product backup. No performance
 superiority, production readiness or complete mode release is claimed.
 
@@ -253,8 +253,8 @@ unchanged-subtree reuse, candidate parent/delta checks and real Git mixed-histor
 restoration are covered. Real PostgreSQL tests retain both directory graphs during
 GC, enforce upload-session membership and replay after reconnect; an old pending
 merge-profile reservation must be cancelled/requeued rather than recomputed.
-See [format and upgrade boundaries](subtree-operations-v2.md). Git import with raw
-metadata and agent-facing subtree proposal uploads remain to be implemented.
+See [format and upgrade boundaries](subtree-operations-v2.md). Automated Git
+import and agent-facing subtree proposal uploads remain to be implemented.
 
 
 Local verification for this increment (macOS arm64, Rust 1.99.1): 119 ordinary
@@ -264,3 +264,30 @@ actual CLI/HTTP crash/replay test also passed with a server-derived v2 directory
 addition and durable full-graph reads. Strict workspace Clippy and fmt passed.
 No runtime outcome is fabricated by the new tests; the existing transport fixture
 is explicitly separate from actual task/check execution in required gVisor CI.
+
+## Original Git metadata and exact projection
+
+NativeCommit kind5/v2 adds an optional original Git OID and a typed reference to
+the raw commit Blob. Existing v1 IDs remain unchanged; subtree kind4/v2 remains
+compatible. Graph pins and read holds retain the raw bytes. Scoped uploads require
+the raw child in the same session; they do not authenticate the claimed Git identity.
+
+Export independently verifies original hash, full tree, ordered projected parents,
+author/date/message and strict Git structure before publishing a bundle. It preserves
+committer, signature and extension header bytes; signature validity is not checked.
+New native descendants receive new IDs. A single bounded non-delta pack replaces
+fast-import to preserve arbitrary headers. Linux/macOS tests compare actual Git
+objects and restored histories for SHA-1/SHA-256; independent Python native vectors
+and PostgreSQL retention/upload tests cover the format and reachability.
+
+See [format and upgrade](git-origin-v2.md) and [export](git-export.md). This is the
+representation/export prerequisite for automated Git import, which remains unimplemented.
+No Connected release, GitHub delivery, migration, performance result or complete
+backup/restore is implied. Old readers must be upgraded before kind5/v2 writes.
+
+Local verification (macOS arm64, Rust 1.99.1, Git 2.54.0): the full ordinary suite
+passed 122 tests, followed by passing the expanded bridge and CLI suites with two
+additional tests (124 total). All 122 real PostgreSQL/transport tests passed.
+Strict workspace Clippy and formatting checks passed. Independent native vectors
+regenerated identically. Actual runtime isolation remains covered by required
+Linux gVisor CI, not by a local macOS container claim.

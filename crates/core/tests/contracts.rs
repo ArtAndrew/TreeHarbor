@@ -46,6 +46,7 @@ fn commit(store: &Memory, parents: Vec<ObjectId>, root: ObjectId, message: &str)
         .unwrap();
     store
         .put(&Object::NativeCommit(Commit {
+            git_origin: None,
             parents,
             snapshot,
             changes,

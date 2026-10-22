@@ -246,6 +246,7 @@ fn graph() -> Vec<Object> {
     };
     let changes = Object::ChangeOperations(Changes::new(vec![]).unwrap());
     let commit = Object::NativeCommit(Commit {
+        git_origin: None,
         parents: vec![],
         snapshot: snapshot.id().unwrap(),
         changes: changes.id().unwrap(),
@@ -624,6 +625,66 @@ async fn mixed_version_source_history_requires_scoped_directory_membership_and_s
                 &scope.tenant(),
                 &delta.id().unwrap().as_bytes().as_slice(),
                 &replacement.as_bytes().as_slice(),
+            ],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(count, 1);
+    cleanup(&schema).await;
+}
+
+#[tokio::test]
+#[ignore = "requires disposable PostgreSQL; runs in database CI"]
+async fn original_git_blob_requires_upload_membership_and_survives_source_replay() {
+    use treeharbor_core::{GitOid, GitOrigin};
+    let (schema, scope, mut db) = setup().await;
+    let (_, auth) = actor(&mut db, &scope, "human").await;
+    let (_dir, store) = store(&scope);
+    let foreign = start(&mut db, &auth).await;
+    let raw = Object::Blob(b"opaque Git metadata; not trusted as an identity".to_vec());
+    put(&mut db, &auth, foreign, &store, &raw).await;
+    let upload = start(&mut db, &auth).await;
+    let mut graph = graph();
+    let Object::NativeCommit(c) = graph.last_mut().unwrap() else {
+        panic!()
+    };
+    c.git_origin = Some(Box::new(GitOrigin {
+        oid: GitOid::Sha1([1; 20]),
+        raw: raw.id().unwrap(),
+    }));
+    for object in &graph[..graph.len() - 1] {
+        put(&mut db, &auth, upload, &store, object).await;
+    }
+    let commit = graph.last().unwrap();
+    assert!(matches!(
+        db.reserve_source_object(&auth, upload, &store, &PreparedObject::new(commit).unwrap())
+            .await,
+        Err(Error::UploadMembership)
+    ));
+    put(&mut db, &auth, upload, &store, &raw).await;
+    put(&mut db, &auth, upload, &store, commit).await;
+    let command = auth.context("origin-finish".into(), Authority::Standalone, 1);
+    let result = db
+        .finish_source_upload(&command, upload, commit.id().unwrap())
+        .await
+        .unwrap();
+    drop(db);
+    let mut db = Metadata::new(connection(&schema).await).await.unwrap();
+    assert_eq!(
+        result,
+        db.finish_source_upload(&command, upload, commit.id().unwrap())
+            .await
+            .unwrap()
+    );
+    let count: i64 = connection(&schema)
+        .await
+        .query_one(
+            "SELECT count(*) FROM th_object_edges WHERE tenant=$1 AND parent=$2 AND child=$3",
+            &[
+                &scope.tenant(),
+                &commit.id().unwrap().as_bytes().as_slice(),
+                &raw.id().unwrap().as_bytes().as_slice(),
             ],
         )
         .await

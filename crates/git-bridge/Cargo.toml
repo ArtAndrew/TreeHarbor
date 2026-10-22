@@ -16,6 +16,8 @@ serde_json.workspace = true
 sha2.workspace = true
 tempfile.workspace = true
 rustix.workspace = true
+sha1-checked = "0.10.0"
+flate2 = "1.1.10"
 
 [dev-dependencies]
 treeharbor-storage.workspace = true

@@ -537,6 +537,7 @@ pub fn capture(request: Capture<'_>) -> Result<Pack> {
     let snapshot = builder.put(Object::Snapshot { root })?;
     let changes = builder.put(Object::ChangeOperations(Changes::new(vec![])?))?;
     let commit = builder.put(Object::NativeCommit(Commit {
+        git_origin: None,
         parents: vec![],
         snapshot,
         changes,

@@ -362,6 +362,7 @@ async fn persistent_pins_and_reader_holds_protect_the_entire_native_history() {
     }
     let commit = |parents, snapshot, message: &str| {
         Object::NativeCommit(Commit {
+            git_origin: None,
             parents,
             snapshot,
             changes: operations_id,
@@ -753,5 +754,88 @@ async fn subtree_operations_retain_both_directory_graphs_until_last_pin_is_remov
                 .is_err()
         );
     }
+    cleanup(&schema).await;
+}
+
+#[tokio::test]
+#[ignore = "requires disposable PostgreSQL; runs in database CI"]
+async fn original_git_metadata_survives_pin_reader_reconnect_and_is_eventually_collectable() {
+    let (schema, scope, mut db) = setup().await;
+    let root = root();
+    let store = depot(&root, scope.tenant());
+    let raw = upload(
+        &mut db,
+        &store,
+        &Object::Blob(b"opaque original Git commit payload".to_vec()),
+    )
+    .await;
+    let directory = upload(
+        &mut db,
+        &store,
+        &Object::Directory(Directory::new(vec![]).unwrap()),
+    )
+    .await;
+    let snapshot = upload(
+        &mut db,
+        &store,
+        &Object::Snapshot {
+            root: directory.key().id(),
+        },
+    )
+    .await;
+    let changes = upload(
+        &mut db,
+        &store,
+        &Object::ChangeOperations(Changes::new(vec![]).unwrap()),
+    )
+    .await;
+    // The catalog retains data; it deliberately does not endorse this claimed
+    // Git identity. The export boundary must reject this invalid association.
+    let head = upload(
+        &mut db,
+        &store,
+        &Object::NativeCommit(Commit {
+            git_origin: Some(Box::new(GitOrigin {
+                oid: GitOid::Sha1([1; 20]),
+                raw: raw.key().id(),
+            })),
+            parents: vec![],
+            snapshot: snapshot.key().id(),
+            changes: changes.key().id(),
+            author_name: "Test".into(),
+            author_email: "test@example.invalid".into(),
+            timestamp_seconds: 0,
+            timezone_minutes: 0,
+            message: "source".into(),
+        }),
+    )
+    .await;
+    pin(&mut db, &scope, "branch/main", &head).await;
+    let leases = [raw.clone(), directory, snapshot, changes, head];
+    for lease in &leases {
+        db.release_object_hold(lease).await.unwrap();
+    }
+    drop(db);
+    let mut db = Metadata::new(connection(&schema).await).await.unwrap();
+    assert!(db.try_retire_object(raw.key(), 0).await.unwrap().is_none());
+    let read = db
+        .lease_pinned_root(&scope, "branch/main", Uuid::new_v4(), 60)
+        .await
+        .unwrap();
+    unpin(&mut db, &scope, "branch/main").await;
+    assert!(db.try_retire_object(raw.key(), 0).await.unwrap().is_none());
+    assert_eq!(
+        store.get(raw.key().generation(), raw.key().id()).unwrap(),
+        Object::Blob(b"opaque original Git commit payload".to_vec())
+    );
+    db.release_object_hold(&read).await.unwrap();
+    for _ in 0..leases.len() + 1 {
+        for lease in &leases {
+            if let Some(retirement) = db.try_retire_object(lease.key(), 0).await.unwrap() {
+                db.finish_retirement(&store, &retirement).await.unwrap();
+            }
+        }
+    }
+    assert!(store.get(raw.key().generation(), raw.key().id()).is_err());
     cleanup(&schema).await;
 }
