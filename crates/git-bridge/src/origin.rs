@@ -85,7 +85,13 @@ pub(crate) fn native_payload(c: &Commit, tree: &[u8], parents: &[Vec<u8>]) -> Re
     Ok(raw.into_bytes())
 }
 
-fn author_matches(raw: &[u8], c: &Commit) -> Result<()> {
+pub(crate) struct Author {
+    pub name: String,
+    pub email: String,
+    pub seconds: i64,
+    pub timezone: i16,
+}
+pub(crate) fn parse_author(raw: &[u8]) -> Result<Author> {
     let text = std::str::from_utf8(raw).map_err(|_| Error::Unsupported("non-UTF8 Git author"))?;
     let (who_time, offset) = text.rsplit_once(' ').ok_or(Error::InvalidProjection)?;
     let (who, time) = who_time.rsplit_once(' ').ok_or(Error::InvalidProjection)?;
@@ -104,10 +110,19 @@ fn author_matches(raw: &[u8], c: &Commit) -> Result<()> {
         return Err(Error::InvalidProjection);
     }
     let zone = (hours * 60 + minutes) * if offset[0] == b'-' { -1 } else { 1 };
-    if name != c.author_name
-        || email != c.author_email
-        || zone != c.timezone_minutes
-        || time.parse::<i64>().map_err(|_| Error::InvalidProjection)? != c.timestamp_seconds
+    Ok(Author {
+        name: name.into(),
+        email: email.into(),
+        timezone: zone,
+        seconds: time.parse().map_err(|_| Error::InvalidProjection)?,
+    })
+}
+fn author_matches(raw: &[u8], c: &Commit) -> Result<()> {
+    let author = parse_author(raw)?;
+    if author.name != c.author_name
+        || author.email != c.author_email
+        || author.seconds != c.timestamp_seconds
+        || author.timezone != c.timezone_minutes
     {
         return Err(Error::InvalidProjection);
     }

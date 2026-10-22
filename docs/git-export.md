@@ -4,7 +4,8 @@ Experimental local command, not a completed Connected integration or server back
 `git-export` projects the **entire reachable native commit DAG** in a completed
 local source pack into an ordinary, self-contained Git bundle. A source pack
 captured with `source-pack` currently contains one initial native commit; the
-bridge library also supports packs/graphs with all parents of native merges.
+bridge also supports [imported Git history packs](git-import.md) and graphs with
+all parents of native merges.
 There is no live-server export/download command yet. Do not copy a running
 server's object directory as a substitute for a consistent, pinned export.
 
@@ -60,8 +61,8 @@ change server refs, move authority or grant permission to merge.
   match the native graph. Separate committer, signature and extension header bytes
   survive. Signature bytes are not authenticated by this command. Hash-format
   conversion of an origin-bearing graph is explicitly rejected.
-- Automated Git import is **not implemented**; ordinary `source-pack` still creates
-  native v1 commits. Tags, Git submodules and LFS object transfer are not implemented. Ordinary LFS
+- [Pinned Git bundle import](git-import.md) preserves origins; ordinary `source-pack`
+  still creates native v1 commits. Tags, Git submodules and LFS object transfer are not implemented. Ordinary LFS
   pointer file bytes are just bytes; their targets are not fetched.
 - Reviews, validation receipts, native changes/deltas, runtime evidence, credentials,
   audit and server metadata are not part of this source-history archive. A source

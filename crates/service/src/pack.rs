@@ -1,5 +1,5 @@
-//! A durable client spool of explicitly selected native source files. This is
-//! neither a Git import nor an atomic snapshot of a tree with concurrent writers.
+//! Durable native source spools: v1 selected stopped files, v2 complete Git history.
+//! Capturing files is not an atomic snapshot of a tree with concurrent writers.
 use crate::files;
 use rustix::fs::{self as unixfs, AtFlags, Dir, FileType, Mode, OFlags, Stat};
 use serde::{Deserialize, Serialize};
@@ -8,7 +8,10 @@ use std::{
     ffi::OsStr,
     fs::{self, File},
     io::Read,
-    os::unix::{ffi::OsStrExt, fs::DirBuilderExt},
+    os::unix::{
+        ffi::OsStrExt,
+        fs::{DirBuilderExt, PermissionsExt},
+    },
     path::{Path, PathBuf},
 };
 use treeharbor_core::{
@@ -36,6 +39,8 @@ pub enum Error {
     Invalid,
     #[error("pack output must be a new path outside the source, in a private directory")]
     Output,
+    #[error("Git history import failed: {0}")]
+    Git(#[from] treeharbor_git_bridge::Error),
 }
 pub type Result<T> = std::result::Result<T, Error>;
 #[derive(Clone, Copy)]
@@ -83,6 +88,19 @@ struct Manifest {
     encoded_bytes: u64,
     filesystem_entries: u64,
 }
+/// A full selected Git commit history. It never means every ref in the bundle.
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct FullManifest {
+    version: u8,
+    selection: String,
+    source_revision: String,
+    commit: String,
+    snapshot: String,
+    objects: Vec<String>,
+    encoded_bytes: u64,
+    filesystem_entries: u64,
+}
 /// Validated complete graph. Source inputs are no longer consulted by upload.
 pub struct Pack {
     pub(crate) directory: PathBuf,
@@ -122,27 +140,59 @@ impl Pack {
         let directory = files::private_directory(directory).map_err(|_| Error::Output)?;
         let raw = files::read_private(&directory.join("manifest.json"), MAX_MANIFEST)
             .map_err(|_| Error::Invalid)?;
-        let manifest: Manifest = serde_json::from_slice(&raw).map_err(|_| Error::Invalid)?;
-        if manifest.version != 1
-            || manifest.objects.is_empty()
+        let value: serde_json::Value = serde_json::from_slice(&raw).map_err(|_| Error::Invalid)?;
+        let (manifest, source) = match value["version"].as_u64() {
+            Some(1) => {
+                let manifest: Manifest =
+                    serde_json::from_slice(&raw).map_err(|_| Error::Invalid)?;
+                let paths = manifest
+                    .selection_hex
+                    .iter()
+                    .map(|s| decode_path(s))
+                    .collect::<Result<Vec<_>>>()?;
+                let profile = SourceProfile::sparse(paths)?;
+                if profile
+                    .paths()
+                    .unwrap_or_default()
+                    .iter()
+                    .map(|p| hex(p.as_bytes()))
+                    .collect::<Vec<_>>()
+                    != manifest.selection_hex
+                {
+                    return Err(Error::Invalid);
+                }
+                (manifest, None)
+            }
+            Some(2) => {
+                let full: FullManifest =
+                    serde_json::from_slice(&raw).map_err(|_| Error::Invalid)?;
+                if full.selection != "full" {
+                    return Err(Error::Invalid);
+                }
+                let treeharbor_core::RevisionRef::Git(oid) = full.source_revision.parse()? else {
+                    return Err(Error::Invalid);
+                };
+                if treeharbor_core::RevisionRef::Git(oid).to_string() != full.source_revision {
+                    return Err(Error::Invalid);
+                }
+                (
+                    Manifest {
+                        version: 2,
+                        commit: full.commit,
+                        snapshot: full.snapshot,
+                        selection_hex: vec![],
+                        objects: full.objects,
+                        encoded_bytes: full.encoded_bytes,
+                        filesystem_entries: full.filesystem_entries,
+                    },
+                    Some(oid),
+                )
+            }
+            _ => return Err(Error::Invalid),
+        };
+        if manifest.objects.is_empty()
             || manifest.objects.len() > 1_000_000
             || manifest.filesystem_entries > 1_000_000
-        {
-            return Err(Error::Invalid);
-        }
-        let paths = manifest
-            .selection_hex
-            .iter()
-            .map(|s| decode_path(s))
-            .collect::<Result<Vec<_>>>()?;
-        let profile = SourceProfile::sparse(paths)?;
-        if profile
-            .paths()
-            .unwrap_or_default()
-            .iter()
-            .map(|p| hex(p.as_bytes()))
-            .collect::<Vec<_>>()
-            != manifest.selection_hex
         {
             return Err(Error::Invalid);
         }
@@ -186,7 +236,9 @@ impl Pack {
         let Object::NativeCommit(c) = store.get(commit)? else {
             return Err(Error::Invalid);
         };
-        if c.snapshot != snapshot {
+        if c.snapshot != snapshot
+            || source.is_some_and(|oid| c.git_origin.as_ref().map(|o| o.oid) != Some(oid))
+        {
             return Err(Error::Invalid);
         }
         let mut reachable = BTreeSet::new();
@@ -207,7 +259,7 @@ impl Pack {
             return Err(Error::Invalid);
         }
         // Fingerprint is a client-spool identity, not a native source-object ID.
-        let mut frame = b"treeharbor-source-pack\0v1\0".to_vec();
+        let mut frame = format!("treeharbor-source-pack\0v{}\0", manifest.version).into_bytes();
         frame.extend_from_slice(&raw);
         Ok(Self {
             directory,
@@ -567,6 +619,67 @@ pub fn capture(request: Capture<'_>) -> Result<Pack> {
     }
     confirm_root(&fd, request.directory, &source_before)?;
     files::write_private(&output.join("manifest.json"), &bytes).map_err(|_| Error::Output)?;
+    Pack::open(&output)
+}
+
+pub struct GitCapture<'a> {
+    pub git: &'a Path,
+    pub bundle: &'a Path,
+    pub commit: treeharbor_core::GitOid,
+    pub output: &'a Path,
+    pub limits: treeharbor_git_bridge::Limits,
+}
+/// A complete local result is published only after all native frames and its
+/// manifest are durable and validated. Does not contact or update a server.
+pub fn capture_git(request: GitCapture<'_>) -> Result<Pack> {
+    let parent = files::private_directory(request.output.parent().ok_or(Error::Output)?)
+        .map_err(|_| Error::Output)?;
+    let name = request.output.file_name().ok_or(Error::Output)?;
+    let output = parent.join(name);
+    if output.symlink_metadata().is_ok() {
+        return Err(Error::Output);
+    }
+    let stage = tempfile::Builder::new()
+        .prefix(".treeharbor-git-pack-")
+        .tempdir_in(&parent)?;
+    fs::set_permissions(stage.path(), fs::Permissions::from_mode(0o700))?;
+    let store = LocalStore::open(stage.path(), &TenantId::new("native-pack")?)?;
+    let imported = treeharbor_git_bridge::import(
+        &store,
+        treeharbor_git_bridge::Import {
+            git: request.git,
+            bundle: request.bundle,
+            scratch: stage.path(),
+            commit: request.commit,
+            limits: request.limits,
+        },
+    )?;
+    let manifest = FullManifest {
+        version: 2,
+        selection: "full".into(),
+        source_revision: treeharbor_core::RevisionRef::Git(request.commit).to_string(),
+        commit: imported.commit.to_string(),
+        snapshot: imported.snapshot.to_string(),
+        objects: imported.objects.iter().map(ToString::to_string).collect(),
+        encoded_bytes: imported.encoded_bytes,
+        filesystem_entries: imported.filesystem_entries as u64,
+    };
+    let raw = serde_json::to_vec(&manifest).map_err(|_| Error::Invalid)?;
+    if raw.len() > MAX_MANIFEST {
+        return Err(Error::Limit);
+    }
+    files::write_private(&stage.path().join("manifest.json"), &raw).map_err(|_| Error::Output)?;
+    drop(Pack::open(stage.path())?);
+    File::open(stage.path())?.sync_all()?;
+    let parent_fd = File::open(&parent)?;
+    unix(unixfs::renameat_with(
+        &parent_fd,
+        stage.path().file_name().ok_or(Error::Output)?,
+        &parent_fd,
+        name,
+        unixfs::RenameFlags::NOREPLACE,
+    ))?;
+    parent_fd.sync_all()?;
     Pack::open(&output)
 }
 

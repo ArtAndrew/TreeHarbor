@@ -3,7 +3,8 @@
 The development CLI can capture selected files, keep a durable local pack and
 resume its upload to the local service. Completion registers a native workspace
 base. It does **not** create a branch, import Git history, accept an agent's
-ChangeSet or run a sandbox. Both end-to-end product modes remain unreleased.
+ChangeSet or run a sandbox. For complete commit ancestry use the separate
+[Git bundle import](git-import.md). Both end-to-end product modes remain unreleased.
 
 ## Capture and send
 
@@ -46,7 +47,8 @@ absolute output path bytes; `pack` is the UTF-8 string or null if unrepresentabl
 After capture, upload reads only the pack. Source edits or removal no longer
 change the uploaded revision. Finish returns `native:sha256:…`, usable with
 `workspace-create` and a registered [source profile](source-profile-v1.md).
-This creates a logical workspace; automatic node/runtime preparation is pending.
+This creates a logical workspace; [node preparation](local-node.md) can then be
+requested. Automatic scheduling is pending.
 Its owner can then [list directories and download baseline files](source-reads.md)
 with the workspace generation and repository epoch.
 

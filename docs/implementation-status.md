@@ -3,6 +3,13 @@
 Updated: 2026-10-22. This file describes implemented behavior and remaining release
 gates. A foundation milestone does not complete either mode.
 
+New interop increment: [Git bundle import](git-import.md) converts an exact Git
+commit's complete parent/tree graph into a durable full-source pack v2. Import
+preserves original commit IDs/bytes, verifies first-parent deltas, and feeds the
+existing scoped resumable source upload and native workspace preparation. No
+network credential, main-ref update, authority cutover or CI approval is implied.
+The local native path works with Git absent after optional import/export.
+
 New increment: [managed native checks](managed-checks.md) bind approved offline
 commands to exact candidate files and derive validation from removed, bounded
 runtime observations. Schema 11 persists programs, executions and immutable
@@ -50,20 +57,20 @@ resource outcomes and worker-loss recovery. No complete authority mode is implie
 | Component | Evidence | Remaining |
 |---|---|---|
 | Canonical SHA-256 object format | Versioned framing, independent golden vectors, strict decoder | Compatibility policy for later formats |
-| Immutable directory trees and operations | Exact expected-before checks, canonical subtree operations v2, bounded structural diff, structural sharing, explicit deletes; native merge and Git reference matrix | General history rebase, broader rename/base support, Git import/export |
+| Immutable directory trees and operations | Exact expected-before checks, canonical subtree operations v2, bounded structural diff, structural sharing, explicit deletes; native merge and Git reference matrix | General history rebase, broader rename/base support, live-server Git interop |
 | Local object store | Atomic no-clobber writes, digest verification, file/directory fsync, tenant directories, physical generations and upload receipts | S3, backup/restore, kill fault campaign |
 | Native DAG and admission | All-parent traversal, persisted refs/policies/queue/checks/reviews, verified candidate commits, final transactional admission and no-Git CLI/process-loss tests | Automatic scheduling, full native lifecycle, recovery and export |
 | PostgreSQL metadata and outbox | Real database transaction/idempotency/lease tests; repository authority/epoch checks; populated schema upgrades through v11; local service pool and crash/replay | Remote service integration and full server restore |
-| Native ChangeSet intake | HTTP/CLI immutable proposals, session-owned blobs, computed versions, running/removed-run lineage, atomic pins/session completion/outbox and process-loss replay | Filesystem sealing, Git base import, remote transport and retention |
+| Native ChangeSet intake | HTTP/CLI immutable proposals, session-owned blobs, computed versions, running/removed-run lineage, atomic pins/session completion/outbox and process-loss replay | Filesystem sealing, GitHub base synchronization, remote transport and retention |
 | Protected incremental source reads | Pinned sessions, verified frontiers, bounded prefix batches and descriptors surviving local GC; authenticated workspace-root sessions | Per-tenant service quotas, bulk node delivery and S3 |
 | Native file materialization | Private copies from exact snapshots, full/sparse selection, staged expansion preserving edits/deletions, bounded IO and filesystem checks; exact baseline loading and guarded atomic node publication | Runtime-proven quiescence, cache/reflink, changed-file sealing and Git-compatible format |
 | Object catalog and retention | Receipt-bound publication, typed edges, atomic persistent pins, read holds, generation-safe retirement/retry; independent reachability model | Automatic GC/reconciliation/dry-run, abandoned-upload cleanup, S3 and full restore |
 | Exact validation and native publication | Context binding, immutable scoped receipts, current check runs, reviewer policy, final target/policy/revocation checks and atomic ref/audit/queue/pin commit | CI artifacts/logs, automatic check scheduling, evidence retention policy, review UI |
 | Credentials and agent commands | Repository-scoped opaque tokens, transactional revocation, distinct actor classes, owner-bound reads and strict command dispatch | Remote transport, MCP, production identity/admission integration |
-| Local HTTP service and CLI | Actual Unix-socket server/client, trusted admin and file-preparation node CLI, private credentials, bounded HTTP/pool, strict startup schema, SIGKILL replay, cancellation/rollback, reconnect and graceful shutdown tests | Git import, TLS/remote access, packaged installation |
+| Local HTTP service and CLI | Actual Unix-socket server/client, trusted admin and file-preparation node CLI, private credentials, bounded HTTP/pool, strict startup schema, SIGKILL replay, cancellation/rollback, reconnect and graceful shutdown tests | TLS/remote access, packaged installation |
 | Workspace baseline API | Owner/generation/epoch-bound directory pages and verified blob download, repeated authorization, final revocation/drain rejection, bounded response ownership, actual CLI/HTTP tests | Bulk delivery to nodes, remote streaming, persistent cache and runtime binding |
-| Source graph uploads | Authenticated scoped sessions, child membership, fixed deadlines/budgets, backend identity, binary HTTP/CLI, concurrent retry, restart and schema-v5 upgrade tests | Git import, incremental reuse, streaming/batching and automatic cleanup |
-| Native directory import | Explicit selection, descriptor-relative capture, durable pack/journal v1, independent vector, actual CLI-to-server partial-upload recovery and completed replay with Git absent from PATH | Git history import, incremental reuse, automatic spool cleanup and runtime-proven snapshots |
+| Source graph uploads | Authenticated scoped sessions, child membership, fixed deadlines/budgets, backend identity, binary HTTP/CLI, concurrent retry, restart and schema-v5 upgrade tests | Incremental reuse, streaming/batching and automatic cleanup |
+| Native directory import | Explicit selection, descriptor-relative capture, durable pack/journal v1, independent vector, actual CLI-to-server partial-upload recovery and completed replay with Git absent from PATH | Incremental reuse, automatic spool cleanup and runtime-proven snapshots |
 | Source delivery profiles | Canonical full/sparse format with independent vectors, immutable scoped definitions, workspace foreign-key binding, v4 upgrade, authenticated CLI/HTTP and exact node use | Profile retention and generation-aware expansion |
 | Workspaces and runtime | Owner-bound requests, exact source/runtime bindings, trusted actual observations, drain and terminal replay; real CLI/PostgreSQL/gVisor recovery tests | Stopped-file sealing, automatic resource release, scheduling and host replacement |
 | Runtime task supervisor | Linux namespace init, privilege guards, environment clearing, guest process limit, child reaping and deadline; real gVisor CI harness | Complete workspace cleanup and production runtime provisioning |
@@ -71,7 +78,8 @@ resource outcomes and worker-loss recovery. No complete authority mode is implie
 | Workspace preparation reservations | Operator-registered node storage, scoped job claims, immutable source/slot/attempt identity, renewal/reclaim, exact file-ready observation and drain retention; real PostgreSQL race/upgrade tests | Automatic source/slot release after runtime removal |
 | Local preparation node | Private physical root identity/OS lock, durable placement intent, exact no-replace publication, independent concurrent slots, current authorization and file-ready acknowledgment; actual process-kill recovery and import-to-files CLI tests | Scheduler/daemon, automated volume provisioning, remote workers, fenced volume migration and safe published-tree cleanup |
 | MCP adapter | Planned; not implemented | Shared-service adapter, scoped tools and real client interoperability tests |
-| Git source export | Local native-pack CLI and bounded Rust full-DAG projection to self-contained Git SHA-1/SHA-256 bundle; isolated batch Git, exact mapping, verified original Git metadata/IDs, restored fsck and no-replace publication | Automated Git import, live-server leased export, backup metadata, incremental projection, GitHub delivery |
+| Git source export | Local native-pack CLI and bounded Rust full-DAG projection to self-contained Git SHA-1/SHA-256 bundle; isolated batch Git, exact mapping, verified original Git metadata/IDs, restored fsck and no-replace publication | Live-server leased export, backup metadata, incremental projection, GitHub delivery |
+| Git history import | Pinned self-contained SHA-1/SHA-256 bundle, all-parent native graph, replayed deltas, exact original metadata, atomic full-source pack v2 and resumable HTTP/CLI upload | Network fetch, incremental imports, multi-ref cutover, automated cleanup, larger-repository profiling |
 | Connected | Not implemented | Real GitHub PR/checks/merge queue and credential separation |
 | Standalone S2 | Partial: durable native admission/publication through CLI/API without Git, managed offline checks plus explicitly separate transport fixtures | Rebase/history CLI, full lifecycle, cutover, server restore/export |
 | Release and benchmarks | Not released or measured | Clean installation, artifacts, SBOM/provenance, comparison and operating cost |
@@ -291,3 +299,37 @@ additional tests (124 total). All 122 real PostgreSQL/transport tests passed.
 Strict workspace Clippy and formatting checks passed. Independent native vectors
 regenerated identically. Actual runtime isolation remains covered by required
 Linux gVisor CI, not by a local macOS container claim.
+
+
+## Complete pinned Git history import
+
+The isolated bridge now imports self-contained bundles without checkout or a
+Git process per file. It verifies exact Git IDs, preserves every reachable
+ordered parent and raw original commit, and replays each native delta against
+the first parent. Import remains an optional interop boundary; it does not
+publish native refs or authenticate claimed authors/reviews.
+
+Full-source pack manifest v2 has an independent Python vector. Its whole output
+is private, validated and synced before no-replace publication. Selected-directory
+pack v1 bytes and fingerprints remain unchanged. Existing scoped source upload
+journals accept either pack and retain their immutable retry identity.
+
+Actual SHA-1/SHA-256 Git fixtures cover independent roots, merges, byte names,
+file/directory transitions, binaries, executable bits and links; export after
+input deletion restores every original commit ID and raw payload. Corrupt,
+incremental, absent-tip, unsupported and budget inputs fail. Concurrent output
+publication has exactly one winner. Actual CLI/PostgreSQL tests exercise partial
+upload plus server loss, completed-receipt replay, source deletion and native
+node preparation/reopen with no Git on PATH.
+
+See [import format, limits and operations](git-import.md). Hard resource isolation,
+GitHub delivery, network fetch, multi-ref migration and full backup/restore remain
+open. Selected-object bounds do not limit Git's earlier unpacking of unrelated
+bundle objects; external disk/memory/CPU quotas remain required.
+
+Local verification (macOS arm64, Rust 1.99.1, Git 2.54.0): full ordinary suite
+passed 129 tests; the final targeted suite passed with one additional branch-
+selection case (130 total). All 124 real PostgreSQL/transport tests passed,
+including both new full-history CLI scenarios. Workspace Clippy with warnings
+as errors, formatting and unchanged v1 golden vectors passed. Actual Linux
+runtime execution remains a separate required gVisor CI gate.
