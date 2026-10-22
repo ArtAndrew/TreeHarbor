@@ -33,8 +33,10 @@ in **Standalone** mode. Both share one Rust engine.
 > A [native merge library](docs/native-merge.md) now computes bounded three-way
 > snapshot results and structured conflicts. [Native integration](docs/native-integration.md)
 > adds durable refs, serial admission, scoped checks/reviews and atomic publication
-> through CLI/API. Experimental [managed native checks](docs/managed-checks.md)
-> execute approved offline commands on exact candidates. Automatic queue/CI
+> through CLI/API. [Scoped history queries](docs/native-history.md) expose commits,
+> ancestry and merge bases without Git. Experimental
+> [managed native checks](docs/managed-checks.md) execute approved offline commands
+> on exact candidates. Automatic queue/CI
 > scheduling is still pending.
 > Optimized caching, remote transport and MCP integration are still pending.
 > [Preparation reservations](docs/workspace-preparations.md) now persist node/storage

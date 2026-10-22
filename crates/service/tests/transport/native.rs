@@ -531,6 +531,31 @@ async fn native_queue_cli_merges_agents_fences_green_and_recovers_fsync_and_comm
     let exported = treeharbor_service::pack::Pack::open(&exported_path).unwrap();
     assert_eq!(exported.commit(), head);
     assert_eq!(exported.object_count(), seen.len());
+    let history = ok(f.cli(&[
+        "history",
+        "--authority",
+        "standalone",
+        "--epoch",
+        "1",
+        "log",
+        "--revision",
+        final_head["revision"].as_str().unwrap(),
+        "--limit",
+        "256",
+    ]));
+    let rows = history["history"]["commits"].as_array().unwrap();
+    let expected: std::collections::BTreeSet<_> = seen
+        .iter()
+        .filter(|id| matches!(copy.get(**id).unwrap(), Object::NativeCommit(_)))
+        .map(|id| RevisionRef::Native(*id).to_string())
+        .collect();
+    assert_eq!(
+        rows.iter()
+            .map(|r| r["revision"].as_str().unwrap().to_owned())
+            .collect::<std::collections::BTreeSet<_>>(),
+        expected
+    );
+    assert_eq!(rows[0]["parents"].as_array().unwrap().len(), 2);
     for id in &seen {
         assert_eq!(
             exported.frame(*id).unwrap(),

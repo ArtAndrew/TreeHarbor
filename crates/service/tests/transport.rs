@@ -1,6 +1,8 @@
 #![cfg(unix)]
 #[path = "support/git.rs"]
 mod git_reference;
+#[path = "transport/history.rs"]
+mod history;
 #[path = "transport/native.rs"]
 mod native;
 #[path = "transport/proposals.rs"]

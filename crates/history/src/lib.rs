@@ -62,6 +62,44 @@ impl<'a, S: ObjectStore> History<'a, S> {
         Ok(self.collect(&[head])?.into_keys().collect())
     }
 
+    /// Complete reverse-topological history: a child precedes every parent.
+    /// Equal-ready nodes use ascending raw IDs, never timestamps. Exhausting the
+    /// traversal budget is an error, not a silently truncated history.
+    pub fn topological_log(&self, head: ObjectId) -> Result<Vec<(ObjectId, Commit)>> {
+        let mut graph = self.collect(&[head])?;
+        let total = graph.len();
+        let mut children: BTreeMap<_, usize> = graph.keys().map(|id| (*id, 0)).collect();
+        for commit in graph.values() {
+            for parent in &commit.parents {
+                *children
+                    .get_mut(parent)
+                    .ok_or(Error::MissingObject(*parent))? += 1;
+            }
+        }
+        let mut ready: BTreeSet<_> = children
+            .iter()
+            .filter_map(|(id, n)| (*n == 0).then_some(*id))
+            .collect();
+        let mut result = Vec::with_capacity(total);
+        while let Some(id) = ready.pop_first() {
+            let commit = graph.remove(&id).ok_or(Error::MissingObject(id))?;
+            for parent in &commit.parents {
+                let n = children
+                    .get_mut(parent)
+                    .ok_or(Error::MissingObject(*parent))?;
+                *n -= 1;
+                if *n == 0 {
+                    ready.insert(*parent);
+                }
+            }
+            result.push((id, commit));
+        }
+        if result.len() != total {
+            return Err(Error::InvalidObject("cyclic commit graph"));
+        }
+        Ok(result)
+    }
+
     pub fn is_ancestor(&self, ancestor: ObjectId, head: ObjectId) -> Result<bool> {
         // Missing IDs must never turn into an authoritative negative answer.
         self.commit(ancestor)?;

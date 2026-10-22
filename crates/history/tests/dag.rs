@@ -55,6 +55,13 @@ fn criss_cross_keeps_both_best_bases_and_reaches_both_parents() {
     assert_eq!(h.merge_bases(left, right).unwrap(), expected);
     assert!(h.is_ancestor(b, left).unwrap());
     assert_eq!(h.ancestors(left).unwrap().len(), 4);
+    let ordered: Vec<_> = h
+        .topological_log(left)
+        .unwrap()
+        .into_iter()
+        .map(|(id, _)| id)
+        .collect();
+    assert_eq!(ordered, vec![left, expected[0], expected[1], root]);
     assert_eq!(
         h.first_parent_log(left, 100)
             .unwrap()
@@ -94,4 +101,58 @@ fn unknown_history_and_exhausted_budget_fail_instead_of_claiming_no_ancestor() {
     );
     let leaf = s.put(&Object::Blob(vec![])).unwrap();
     assert!(History::new(&s, 100).commit(leaf).is_err());
+    assert!(History::new(&s, 1).topological_log(tip).is_err());
+    assert!(
+        History::new(&s, 100)
+            .topological_log(ObjectId::from_bytes([255; 32]))
+            .is_err()
+    );
+}
+
+#[test]
+fn topological_history_matches_independent_dag_matrix() {
+    for seed in 1..=64u32 {
+        let s = Store::default();
+        let mut ids = Vec::new();
+        let mut reach = [[false; 16]; 16];
+        let mut state = seed;
+        for i in 0..16 {
+            reach[i][i] = true;
+            let mut parents = Vec::new();
+            for j in 0..i {
+                state = state.wrapping_mul(1664525).wrapping_add(1013904223);
+                if state.is_multiple_of(5) {
+                    parents.push(ids[j]);
+                    let inherited = reach[j];
+                    for (slot, ancestor) in reach[i].iter_mut().zip(inherited) {
+                        *slot |= ancestor;
+                    }
+                }
+            }
+            ids.push(commit(&s, parents, &format!("{seed}:{i}")));
+        }
+        let h = History::new(&s, 16);
+        for i in 0..16 {
+            let log = h.topological_log(ids[i]).unwrap();
+            let actual: std::collections::BTreeSet<_> = log.iter().map(|(id, _)| *id).collect();
+            let expected = ids
+                .iter()
+                .enumerate()
+                .filter_map(|(j, id)| reach[i][j].then_some(*id))
+                .collect();
+            assert_eq!(actual, expected);
+            assert_eq!(actual.len(), log.len());
+            let positions: BTreeMap<_, _> = log
+                .iter()
+                .enumerate()
+                .map(|(n, (id, _))| (*id, n))
+                .collect();
+            for (id, value) in &log {
+                for parent in &value.parents {
+                    assert!(positions[id] < positions[parent]);
+                }
+            }
+            assert_eq!(log, h.topological_log(ids[i]).unwrap());
+        }
+    }
 }

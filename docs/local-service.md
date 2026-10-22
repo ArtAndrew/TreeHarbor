@@ -118,6 +118,8 @@ operator-approved bounded runtime execution. [Git bundle import](git-import.md)
 adds complete pinned history. Automatic scheduling remains pending.
 The [source-export command](live-source-export.md) downloads a registered native
 revision and its complete source history with read permission only.
+[History queries](native-history.md) add commit display, paginated logs, ancestry
+and all best merge bases through the same read-only boundary.
 After creation, [source-list and source-file](source-reads.md) read the exact
 baseline using the owner credential, workspace generation and repository epoch.
 
