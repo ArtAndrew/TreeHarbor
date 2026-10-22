@@ -41,8 +41,12 @@ pub struct RunPlan {
     profile: Profile,
     task: Task,
     stop: bool,
+    check: bool,
 }
 impl RunPlan {
+    pub fn is_check(&self) -> bool {
+        self.check
+    }
     pub fn run(&self) -> Uuid {
         self.run
     }
@@ -259,8 +263,6 @@ impl Metadata {
         if input.run.is_nil() || input.workspace.is_nil() || input.generation <= 0 {
             return Err(Error::Invalid("run identity"));
         }
-        let command = Task::new(input.argv.clone()).map_err(|_| Error::Invalid("run argv"))?;
-        let argv = serde_json::to_vec(command.argv()).map_err(|_| Error::Invalid("run argv"))?;
         let request = ctx.request(
             "run.request.v1",
             json!([
@@ -278,50 +280,15 @@ impl Metadata {
             Begin::Replay(r) => return Ok(r),
             Begin::Fresh(tx) => tx,
         };
-        let s = &ctx.scope;
-        let row=tx.tx.query_opt(r#"SELECT p.attempt,p.node,p.storage_instance,p.slot,v.identity_digest,v.limit_bytes,f.definition
-            FROM th_workspaces w JOIN th_workspace_preparations p ON p.tenant=w.tenant AND p.repository=w.repository AND p.workspace=w.workspace AND p.generation=w.generation
-            JOIN th_node_volumes v ON v.storage_instance=p.storage_instance AND v.slot=p.slot AND v.tenant=p.tenant AND v.node=p.node
-            JOIN th_runtime_profiles f ON f.tenant=w.tenant AND f.repository=w.repository AND f.digest=$7
-            WHERE w.tenant=$1 AND w.repository=$2 AND w.workspace=$3 AND w.generation=$4 AND w.epoch=$5 AND w.principal=$6
-            AND w.state='ready' AND w.runtime IS NULL AND w.format='native'
-            AND p.state='prepared' AND p.epoch=w.epoch AND p.node=w.node
-            AND p.base_revision=w.base_revision AND p.profile=w.resolved_profile
-            AND NOT EXISTS(SELECT 1 FROM th_runtime_profile_revocations x WHERE x.tenant=f.tenant AND x.repository=f.repository AND x.digest=f.digest)"#,
-            &[&s.tenant(),&s.repository(),&input.workspace,&input.generation,&ctx.epoch,&ctx.principal,&input.profile.as_slice()]).await?.ok_or(Error::ExecutionState)?;
-        let p = profile(row.get(6))?;
-        if p.digest() != input.profile
-            || p.definition().workspace_bytes != row.get::<_, i64>(5) as u64
-        {
-            return Err(Error::Invalid("runtime profile or volume"));
-        }
-        let preparation: Uuid = row.get(0);
-        let node: String = row.get(1);
-        let storage: Uuid = row.get(2);
-        let slot: Uuid = row.get(3);
-        let volume = digest(row.get(4))?;
-        let attempt = Uuid::new_v4();
-        let bound = binding(RunBinding {
-            scope: s,
-            run: input.run,
-            attempt,
-            preparation,
-            owner: &ctx.principal,
-            authority: ctx.authority,
-            epoch: ctx.epoch,
-            generation: input.generation,
-            profile: input.profile,
-            argv: command.argv(),
-            volume,
-        });
-        tx.tx.execute(r#"INSERT INTO th_agent_runs(tenant,repository,run,workspace,workspace_generation,epoch,principal,agent,task,runtime,state,started_at)
-            VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,NULL,'requested',NULL)"#,
-            &[&s.tenant(),&s.repository(),&input.run,&input.workspace,&input.generation,&ctx.epoch,&ctx.principal,&input.agent,&input.task]).await?;
-        tx.tx.execute(r#"INSERT INTO th_managed_runs(tenant,repository,run,attempt,preparation,node,storage_instance,slot,volume_digest,profile,argv,binding,operation_key,authority)
-            VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)"#,
-            &[&s.tenant(),&s.repository(),&input.run,&attempt,&preparation,&node,&storage,&slot,&volume.as_slice(),&input.profile.as_slice(),&argv,&bound.as_slice(),&ctx.key,&ctx.authority.as_str()]).await?;
-        tx.tx.execute("UPDATE th_workspaces SET state='in_use' WHERE tenant=$1 AND repository=$2 AND workspace=$3",&[&s.tenant(),&s.repository(),&input.workspace]).await?;
-        tx.complete(json!({"run":input.run.to_string(),"workspace":input.workspace.to_string(),"state":"requested"}),vec![Event{kind:"run.execute".into(),payload:json!({"run":input.run.to_string(),"epoch":ctx.epoch})}]).await
+        let result = tx.request_run_effect(input).await?;
+        tx.complete(
+            result,
+            vec![Event {
+                kind: "run.execute".into(),
+                payload: json!({"run":input.run.to_string(),"epoch":ctx.epoch}),
+            }],
+        )
+        .await
     }
     pub async fn run_status(&mut self, auth: &Authorization, run: Uuid) -> Result<Value> {
         let tx = self.client.transaction().await?;
@@ -386,17 +353,23 @@ async fn effective_stop(tx: &Transaction<'_>, scope: &Scope, run: Uuid) -> Resul
         &[&scope.tenant(),&scope.repository(),&run]).await?;
     tx.query_opt("SELECT g.principal FROM th_agent_runs r JOIN th_repository_access g USING(tenant,repository,principal) WHERE r.tenant=$1 AND r.repository=$2 AND r.run=$3 FOR SHARE OF g",
         &[&scope.tenant(),&scope.repository(),&run]).await?;
+    let check = crate::integration::execution_fence(tx, scope, run).await?;
+    let permission = if check.is_some() {
+        "validation.report"
+    } else {
+        "workspace.write"
+    };
     let row=tx.query_one(r#"SELECT m.stop_requested OR w.generation<>r.workspace_generation OR w.epoch<>r.epoch OR w.state IN ('draining','deleted')
         OR p.state='draining' OR repo.epoch<>r.epoch OR repo.authority<>m.authority OR repo.state<>'active'
         OR EXISTS(SELECT 1 FROM th_runtime_profile_revocations x WHERE x.tenant=m.tenant AND x.repository=m.repository AND x.digest=m.profile)
         OR NOT EXISTS(SELECT 1 FROM th_principals a JOIN th_repository_access g USING(tenant,principal)
-            WHERE a.tenant=r.tenant AND a.principal=r.principal AND a.enabled AND g.repository=r.repository AND 'workspace.write'=ANY(g.permissions))
+            WHERE a.tenant=r.tenant AND a.principal=r.principal AND a.enabled AND g.repository=r.repository AND $4=ANY(g.permissions))
         FROM th_managed_runs m JOIN th_agent_runs r USING(tenant,repository,run)
         JOIN th_workspaces w USING(tenant,repository,workspace)
         JOIN th_workspace_preparations p ON p.attempt=m.preparation
         JOIN th_repositories repo ON repo.tenant=m.tenant AND repo.repository=m.repository
-        WHERE m.tenant=$1 AND m.repository=$2 AND m.run=$3"#,&[&scope.tenant(),&scope.repository(),&run]).await?;
-    let stop: bool = row.get(0);
+        WHERE m.tenant=$1 AND m.repository=$2 AND m.run=$3"#,&[&scope.tenant(),&scope.repository(),&run,&permission]).await?;
+    let stop: bool = row.get::<_, bool>(0) || check == Some(true);
     if stop {
         tx.execute("UPDATE th_managed_runs SET stop_requested=true WHERE tenant=$1 AND repository=$2 AND run=$3",&[&scope.tenant(),&scope.repository(),&run]).await?;
         tx.execute("UPDATE th_agent_runs SET state='stopping' WHERE tenant=$1 AND repository=$2 AND run=$3 AND state IN ('requested','launching','running')",&[&scope.tenant(),&scope.repository(),&run]).await?;
@@ -537,6 +510,7 @@ async fn load_plan(
         profile: runtime,
         task: command,
         stop,
+        check: tx.query_opt("SELECT 1 FROM th_check_executions WHERE tenant=$1 AND repository=$2 AND execution_run=$3", &[&s.tenant(),&s.repository(),&run]).await?.is_some(),
     })
 }
 impl Metadata {
@@ -758,6 +732,60 @@ impl Metadata {
         node_auth(&tx, auth, plan.prepared.slot.storage).await?;
         tx.commit().await?;
         Ok(result)
+    }
+}
+
+impl crate::Mutation<'_> {
+    pub(crate) async fn request_run_effect(&self, input: &RunRequest) -> Result<Value> {
+        let command = Task::new(input.argv.clone()).map_err(|_| Error::Invalid("run argv"))?;
+        let argv = serde_json::to_vec(command.argv()).map_err(|_| Error::Invalid("run argv"))?;
+        let ctx = &self.request;
+        let s = &ctx.scope;
+        let row=self.tx.query_opt(r#"SELECT p.attempt,p.node,p.storage_instance,p.slot,v.identity_digest,v.limit_bytes,f.definition
+            FROM th_workspaces w JOIN th_workspace_preparations p ON p.tenant=w.tenant AND p.repository=w.repository AND p.workspace=w.workspace AND p.generation=w.generation
+            JOIN th_node_volumes v ON v.storage_instance=p.storage_instance AND v.slot=p.slot AND v.tenant=p.tenant AND v.node=p.node
+            JOIN th_runtime_profiles f ON f.tenant=w.tenant AND f.repository=w.repository AND f.digest=$7
+            WHERE w.tenant=$1 AND w.repository=$2 AND w.workspace=$3 AND w.generation=$4 AND w.epoch=$5 AND w.principal=$6
+            AND w.state='ready' AND w.runtime IS NULL AND w.format='native'
+            AND p.state='prepared' AND p.epoch=w.epoch AND p.node=w.node
+            AND p.base_revision=w.base_revision AND p.profile=w.resolved_profile
+            AND NOT EXISTS(SELECT 1 FROM th_runtime_profile_revocations x WHERE x.tenant=f.tenant AND x.repository=f.repository AND x.digest=f.digest)"#,
+            &[&s.tenant(),&s.repository(),&input.workspace,&input.generation,&ctx.epoch,&ctx.principal,&input.profile.as_slice()]).await?.ok_or(Error::ExecutionState)?;
+        let p = profile(row.get(6))?;
+        if p.digest() != input.profile
+            || p.definition().workspace_bytes != row.get::<_, i64>(5) as u64
+        {
+            return Err(Error::Invalid("runtime profile or volume"));
+        }
+        let preparation: Uuid = row.get(0);
+        let node: String = row.get(1);
+        let storage: Uuid = row.get(2);
+        let slot: Uuid = row.get(3);
+        let volume = digest(row.get(4))?;
+        let attempt = Uuid::new_v4();
+        let bound = binding(RunBinding {
+            scope: s,
+            run: input.run,
+            attempt,
+            preparation,
+            owner: &ctx.principal,
+            authority: ctx.authority,
+            epoch: ctx.epoch,
+            generation: input.generation,
+            profile: input.profile,
+            argv: command.argv(),
+            volume,
+        });
+        self.tx.execute(r#"INSERT INTO th_agent_runs(tenant,repository,run,workspace,workspace_generation,epoch,principal,agent,task,runtime,state,started_at)
+            VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,NULL,'requested',NULL)"#,
+            &[&s.tenant(),&s.repository(),&input.run,&input.workspace,&input.generation,&ctx.epoch,&ctx.principal,&input.agent,&input.task]).await?;
+        self.tx.execute(r#"INSERT INTO th_managed_runs(tenant,repository,run,attempt,preparation,node,storage_instance,slot,volume_digest,profile,argv,binding,operation_key,authority)
+            VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)"#,
+            &[&s.tenant(),&s.repository(),&input.run,&attempt,&preparation,&node,&storage,&slot,&volume.as_slice(),&input.profile.as_slice(),&argv,&bound.as_slice(),&ctx.key,&ctx.authority.as_str()]).await?;
+        self.tx.execute("UPDATE th_workspaces SET state='in_use' WHERE tenant=$1 AND repository=$2 AND workspace=$3",&[&s.tenant(),&s.repository(),&input.workspace]).await?;
+        Ok(
+            json!({"run":input.run.to_string(),"workspace":input.workspace.to_string(),"state":"requested"}),
+        )
     }
 }
 

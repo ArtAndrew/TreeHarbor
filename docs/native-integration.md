@@ -3,11 +3,12 @@
 The local service can now enqueue an accepted native ChangeSet, compute an
 immutable merge candidate, collect scoped validation/review receipts and advance a
 native ref in one PostgreSQL transaction. This is a development increment of
-Standalone. Connected/GitHub publication, automatic queue scheduling, a CI executor,
+Standalone. Connected/GitHub publication, automatic queue/CI scheduling,
 full backup/restore and an installable release remain unfinished.
 
 A trusted validator reporting `passed` is an assertion by that service identity.
-This API does not execute tests or turn an agent's exit code into validation.
+The external reporting API does not execute tests or turn an agent's exit code
+into validation. Approved offline commands use [managed checks](managed-checks.md).
 Operators must keep validator, integrator and human-review credentials out of
 agent workspaces. The transport tests use explicit CI/runtime fixtures; the
 separate Linux runtime tests exercise actual agent execution.
@@ -227,3 +228,7 @@ edits of one file, reports the third conflict, kills the server before catalog
 publication and after candidate commit, and reads all durable published ancestry
 again. Git is absent from both server and client PATH. Test runtime lineage and
 validator outcomes are explicitly fixtures, not actual CI execution evidence.
+
+For approved offline commands, use [managed native checks](managed-checks.md).
+They derive evidence from bounded execution and reject manual validation reports
+for registered programs. External collectors remain a separate trust boundary.

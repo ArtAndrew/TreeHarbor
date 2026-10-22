@@ -29,7 +29,9 @@ in **Standalone** mode. Both share one Rust engine.
 > A [native merge library](docs/native-merge.md) now computes bounded three-way
 > snapshot results and structured conflicts. [Native integration](docs/native-integration.md)
 > adds durable refs, serial admission, scoped checks/reviews and atomic publication
-> through CLI/API. CI execution and automatic queue scheduling are still pending.
+> through CLI/API. Experimental [managed native checks](docs/managed-checks.md)
+> execute approved offline commands on exact candidates. Automatic queue/CI
+> scheduling is still pending.
 > Optimized caching, remote transport and MCP integration are still pending.
 > [Preparation reservations](docs/workspace-preparations.md) now persist node/storage
 > ownership and fence retries before physical work. The [local preparation node](docs/local-node.md)

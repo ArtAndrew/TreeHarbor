@@ -813,3 +813,91 @@ async fn native_migration_preserves_existing_changes_and_can_enqueue_them() {
     drop(f.db);
     cleanup(&f.schema).await;
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires disposable PostgreSQL; global disable racing native publication"]
+async fn native_publication_holds_evidence_principal_until_commit() {
+    let mut f = Fixture::new().await;
+    let actors = controls(&mut f).await;
+    let entry = proposal(&mut f, &actors, "race", b"reviewed").await;
+    let (id, worker) = start(&mut f, &actors, entry).await;
+    prepare(&mut f, &worker, id).await;
+    evidence(&mut f, &actors, &worker, id).await;
+    let raw = connection(&f.schema).await;
+    let lock = (Uuid::new_v4().as_u128() & 0x7fff_ffff_ffff_ffff) as i64;
+    raw.query_one("SELECT pg_advisory_lock($1)", &[&lock])
+        .await
+        .unwrap();
+    raw.batch_execute(&format!("CREATE FUNCTION hold_land() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN PERFORM pg_advisory_xact_lock({lock}::bigint); RETURN NEW; END $$; CREATE TRIGGER hold_land BEFORE UPDATE ON th_native_refs FOR EACH ROW EXECUTE FUNCTION hold_land()")).await.unwrap();
+    let land_connection = connection(&f.schema).await;
+    let land_pid: i32 = land_connection
+        .query_one("SELECT pg_backend_pid()", &[])
+        .await
+        .unwrap()
+        .get(0);
+    let mut land_db = Metadata::new(land_connection).await.unwrap();
+    let land = tokio::spawn(async move {
+        land_db
+            .land_native_candidate(&worker, &cmd("race-land"), id)
+            .await
+    });
+    let until = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    loop {
+        let waiting:bool=raw.query_one("SELECT EXISTS(SELECT 1 FROM pg_locks WHERE pid=$1 AND locktype='advisory' AND NOT granted)",&[&land_pid]).await.unwrap().get(0);
+        if waiting {
+            break;
+        }
+        assert!(std::time::Instant::now() < until);
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    let disable_connection = connection(&f.schema).await;
+    let disable_pid: i32 = disable_connection
+        .query_one("SELECT pg_backend_pid()", &[])
+        .await
+        .unwrap()
+        .get(0);
+    let mut disable_db = Metadata::new(disable_connection).await.unwrap();
+    let tenant = f.scope.tenant().to_owned();
+    let disable = tokio::spawn(async move {
+        disable_db
+            .disable_principal(&tenant, "reviewer", "operator")
+            .await
+    });
+    let until = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    loop {
+        let blockers: Vec<i32> = raw
+            .query_one("SELECT pg_blocking_pids($1)", &[&disable_pid])
+            .await
+            .unwrap()
+            .get(0);
+        if blockers.contains(&land_pid) {
+            break;
+        }
+        assert!(
+            !disable.is_finished(),
+            "disable returned while an admitted publication still uses that reviewer"
+        );
+        assert!(std::time::Instant::now() < until);
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    raw.query_one("SELECT pg_advisory_unlock($1)", &[&lock])
+        .await
+        .unwrap();
+    assert_eq!(land.await.unwrap().unwrap()["state"], "landed");
+    disable.await.unwrap().unwrap();
+    assert!(
+        !raw.query_one(
+            "SELECT enabled FROM th_principals WHERE principal='reviewer'",
+            &[]
+        )
+        .await
+        .unwrap()
+        .get::<_, bool>(0)
+    );
+    drop(raw);
+    drop(f.db);
+    cleanup(&f.schema).await;
+}
+
+#[path = "integration/execution.rs"]
+mod execution;

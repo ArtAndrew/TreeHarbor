@@ -40,7 +40,9 @@ impl Permission {
     }
     pub(crate) fn for_command(kind: &str) -> Result<Self> {
         match kind {
-            "native.policy.put.v1" | "native.ref.policy.v1" => Ok(Self::PolicyWrite),
+            "native.program.put.v1" | "native.policy.put.v1" | "native.ref.policy.v1" => {
+                Ok(Self::PolicyWrite)
+            }
             "native.ref.create.v1" => Ok(Self::RepositoryWrite),
             "native.queue.enqueue.v1" | "native.queue.cancel.v1" => Ok(Self::QueueRequest),
             "native.candidate.start.v1"
@@ -48,9 +50,11 @@ impl Permission {
             | "native.candidate.fail.v1"
             | "native.check.assign.v1"
             | "native.candidate.land.v1" => Ok(Self::IntegrationControl),
-            "native.validation.report.v1" | "native.validation.revoke.v1" => {
-                Ok(Self::ValidationReport)
-            }
+            "native.check.prepare.v1"
+            | "native.check.start.v1"
+            | "native.check.collect.v1"
+            | "native.validation.report.v1"
+            | "native.validation.revoke.v1" => Ok(Self::ValidationReport),
             "native.review.record.v1" | "native.review.revoke.v1" => Ok(Self::Review),
             "base.register.v1" | "source.begin.v1" | "source.finish.v1" | "source.abort.v1" => {
                 Ok(Self::RepositoryWrite)

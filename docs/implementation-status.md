@@ -1,15 +1,31 @@
 # Implementation status
 
-Updated: 2026-10-21. This file describes implemented behavior and remaining release
+Updated: 2026-10-22. This file describes implemented behavior and remaining release
 gates. A foundation milestone does not complete either mode.
+
+New increment: [managed native checks](managed-checks.md) bind approved offline
+commands to exact candidate files and derive validation from removed, bounded
+runtime observations. Schema 11 persists programs, executions and immutable
+evidence. Generic agent exits and manual reports cannot satisfy registered programs.
+The node verifies pristine inputs before first start; recovery uses the existing
+runtime and preserves build outputs. A required Linux scenario now exercises this
+path in `scripts/test-native-checks.py`; local database tests cover replay, current
+assignment/credential fences, missing-exit errors and populated schema-10 upgrade.
+Local verification: 104 ordinary workspace tests and 117 real PostgreSQL/transport
+tests passed, with fmt and strict Clippy. The first real-runtime pass is
+[CI 39728681125](https://github.com/ArtAndrew/TreeHarbor/actions/runs/39728681125).
+The required job retains the added server-death/collection replay and node-revocation
+checks on every subsequent head. Automatic scheduling, logs/artifacts, retention
+and release gates remain open.
 
 New admission increment: [native integration](native-integration.md) adds durable
 policies/refs, a serial queue, immutable proposal/integration commits, scoped check
 runs and human reviews, exact final admission and atomic publication. Schema10
 preserves accepted schema9 data. Actual CLI/server restart tests merge compatible
 same-file changes and report a conflicting third proposal without Git on PATH.
-Validation outcomes in these transport tests are trusted fixtures; automatic CI
-execution/collection, queue scheduling and a complete Standalone release remain open.
+Validation outcomes in those transport tests are trusted fixtures; the managed
+check path above has a separate real-runtime harness. Automatic scheduling and a
+complete Standalone release remain open.
 
 The [native snapshot merge](native-merge.md) combines exact
 base/current/proposed trees, preserves original inputs and reports structured
@@ -21,7 +37,7 @@ resumable blobs and server-computed result trees through HTTP/CLI. Schema9 adds
 purpose-specific upload state; accepted proposals preserve original run/base lineage.
 Local PostgreSQL/transport tests passed, including server process loss and exact
 replay. The required Linux harness also submits overlapping real managed-agent output.
-Filesystem sealing and actual CI execution/collection remain unfinished.
+Filesystem sealing remains unfinished. Managed offline checks are described above.
 
 Development increment: [managed AgentRun](managed-runs.md) requests, owner-bound
 status/cancellation, immutable runtime policy/placement records and terminal receipt
@@ -36,13 +52,13 @@ resource outcomes and worker-loss recovery. No complete authority mode is implie
 | Canonical SHA-256 object format | Versioned framing, independent golden vectors, strict decoder | Compatibility policy for later formats |
 | Immutable directory trees and operations | Exact expected-before checks, structural sharing, explicit deletes; bounded native merge library and Git reference matrix | General history rebase, broader rename/base support, Git import/export |
 | Local object store | Atomic no-clobber writes, digest verification, file/directory fsync, tenant directories, physical generations and upload receipts | S3, backup/restore, kill fault campaign |
-| Native DAG and admission | All-parent traversal, persisted refs/policies/queue/checks/reviews, verified candidate commits, final transactional admission and no-Git CLI/process-loss tests | Actual CI executor, automatic scheduling, full native lifecycle, recovery and export |
-| PostgreSQL metadata and outbox | Real database transaction/idempotency/lease tests; repository authority/epoch checks; populated schema upgrades through v10; local service pool and crash/replay | Remote service integration and full server restore |
+| Native DAG and admission | All-parent traversal, persisted refs/policies/queue/checks/reviews, verified candidate commits, final transactional admission and no-Git CLI/process-loss tests | Automatic scheduling, full native lifecycle, recovery and export |
+| PostgreSQL metadata and outbox | Real database transaction/idempotency/lease tests; repository authority/epoch checks; populated schema upgrades through v11; local service pool and crash/replay | Remote service integration and full server restore |
 | Native ChangeSet intake | HTTP/CLI immutable proposals, session-owned blobs, computed versions, running/removed-run lineage, atomic pins/session completion/outbox and process-loss replay | Filesystem sealing, Git base import, remote transport and retention |
 | Protected incremental source reads | Pinned sessions, verified frontiers, bounded prefix batches and descriptors surviving local GC; authenticated workspace-root sessions | Per-tenant service quotas, bulk node delivery and S3 |
 | Native file materialization | Private copies from exact snapshots, full/sparse selection, staged expansion preserving edits/deletions, bounded IO and filesystem checks; exact baseline loading and guarded atomic node publication | Runtime-proven quiescence, cache/reflink, changed-file sealing and Git-compatible format |
 | Object catalog and retention | Receipt-bound publication, typed edges, atomic persistent pins, read holds, generation-safe retirement/retry; independent reachability model | Automatic GC/reconciliation/dry-run, abandoned-upload cleanup, S3 and full restore |
-| Exact validation and native publication | Context binding, immutable scoped receipts, current check runs, reviewer policy, final target/policy/revocation checks and atomic ref/audit/queue/pin commit | Actual CI execution binding, evidence artifact retention, review UI |
+| Exact validation and native publication | Context binding, immutable scoped receipts, current check runs, reviewer policy, final target/policy/revocation checks and atomic ref/audit/queue/pin commit | CI artifacts/logs, automatic check scheduling, evidence retention policy, review UI |
 | Credentials and agent commands | Repository-scoped opaque tokens, transactional revocation, distinct actor classes, owner-bound reads and strict command dispatch | Remote transport, MCP, production identity/admission integration |
 | Local HTTP service and CLI | Actual Unix-socket server/client, trusted admin and file-preparation node CLI, private credentials, bounded HTTP/pool, strict startup schema, SIGKILL replay, cancellation/rollback, reconnect and graceful shutdown tests | Git import, TLS/remote access, packaged installation |
 | Workspace baseline API | Owner/generation/epoch-bound directory pages and verified blob download, repeated authorization, final revocation/drain rejection, bounded response ownership, actual CLI/HTTP tests | Bulk delivery to nodes, remote streaming, persistent cache and runtime binding |
@@ -50,13 +66,13 @@ resource outcomes and worker-loss recovery. No complete authority mode is implie
 | Native directory import | Explicit selection, descriptor-relative capture, durable pack/journal v1, independent vector, actual CLI-to-server partial-upload recovery and completed replay with Git absent from PATH | Git history import, incremental reuse, automatic spool cleanup and runtime-proven snapshots |
 | Source delivery profiles | Canonical full/sparse format with independent vectors, immutable scoped definitions, workspace foreign-key binding, v4 upgrade, authenticated CLI/HTTP and exact node use | Profile retention and generation-aware expansion |
 | Workspaces and runtime | Owner-bound requests, exact source/runtime bindings, trusted actual observations, drain and terminal replay; real CLI/PostgreSQL/gVisor recovery tests | Stopped-file sealing, automatic resource release, scheduling and host replacement |
-| Runtime task supervisor | Linux namespace init, privilege guards, environment clearing, guest process limit, child reaping and deadline; real gVisor CI harness | Trusted validation collection and complete workspace cleanup |
+| Runtime task supervisor | Linux namespace init, privilege guards, environment clearing, guest process limit, child reaping and deadline; real gVisor CI harness | Complete workspace cleanup and production runtime provisioning |
 | Local runtime controller | Versioned immutable profiles, restricted Engine API, bounded ext4 identity, exclusive durable volume assignment and create/start/remove journal; real-runtime fault harness and managed-run adapter | Provisioning, host/engine replacement recovery and workspace cleanup |
 | Workspace preparation reservations | Operator-registered node storage, scoped job claims, immutable source/slot/attempt identity, renewal/reclaim, exact file-ready observation and drain retention; real PostgreSQL race/upgrade tests | Automatic source/slot release after runtime removal |
 | Local preparation node | Private physical root identity/OS lock, durable placement intent, exact no-replace publication, independent concurrent slots, current authorization and file-ready acknowledgment; actual process-kill recovery and import-to-files CLI tests | Scheduler/daemon, automated volume provisioning, remote workers, fenced volume migration and safe published-tree cleanup |
 | MCP adapter | Planned; not implemented | Shared-service adapter, scoped tools and real client interoperability tests |
 | Connected | Not implemented | Real GitHub PR/checks/merge queue and credential separation |
-| Standalone S2 | Partial: durable native admission/publication through CLI/API without Git, explicit validator/runtime transport fixtures | Actual CI executor, rebase/history CLI, full lifecycle, cutover, restore and export |
+| Standalone S2 | Partial: durable native admission/publication through CLI/API without Git, managed offline checks plus explicitly separate transport fixtures | Rebase/history CLI, full lifecycle, cutover, restore and export |
 | Release and benchmarks | Not released or measured | Clean installation, artifacts, SBOM/provenance, comparison and operating cost |
 
 ## Local verification

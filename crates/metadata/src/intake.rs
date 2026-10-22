@@ -170,26 +170,7 @@ impl Metadata {
             Begin::Replay(value) => return Ok(value),
             Begin::Fresh(tx) => tx,
         };
-        let scope = &ctx.scope;
-        let row = tx
-            .tx
-            .query_opt(
-                "SELECT pin_holder FROM th_bases WHERE tenant=$1 AND repository=$2 AND revision=$3",
-                &[&scope.tenant, &scope.repository, &revision],
-            )
-            .await?
-            .ok_or(Error::NotFound)?;
-        let profile_row=tx.tx.query_opt("SELECT definition FROM th_source_profiles WHERE tenant=$1 AND repository=$2 AND digest=$3", &[&scope.tenant,&scope.repository,&spec.profile.as_slice()]).await?.ok_or(Error::NotFound)?;
-        let profile = treeharbor_core::SourceProfile::decode(&profile_row.get::<_, Vec<u8>>(0))?;
-        if profile.id().as_bytes() != &spec.profile {
-            return Err(Error::SchemaMismatch);
-        }
-        let holder = workspace_pin(spec.id);
-        tx.copy_root_pin(&row.get::<_, String>(0), &holder).await?;
-        tx.tx.execute(r#"INSERT INTO th_workspaces (tenant,repository,workspace,base_revision,principal,profile,format,state,epoch,pin_holder,resolved_profile)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,'requested',$8,$9,$6)"#,
-            &[&scope.tenant,&scope.repository,&spec.id,&revision,&ctx.principal,&spec.profile.as_slice(),&spec.format.name(),&ctx.epoch,&holder]).await?;
-        let result = json!({"workspace":spec.id.to_string(),"generation":1,"state":"requested","base":revision});
+        let result = tx.create_workspace_effect(spec).await?;
         tx.complete(
             result,
             vec![event(
@@ -560,5 +541,34 @@ impl Mutation<'_> {
             return Err(Error::ReceiptMismatch);
         }
         Ok(())
+    }
+}
+
+impl crate::Mutation<'_> {
+    pub(crate) async fn create_workspace_effect(&self, spec: &WorkspaceSpec) -> Result<Value> {
+        let revision = spec.base.to_string();
+        let ctx = &self.request;
+        let scope = &ctx.scope;
+        let row = self
+            .tx
+            .query_opt(
+                "SELECT pin_holder FROM th_bases WHERE tenant=$1 AND repository=$2 AND revision=$3",
+                &[&scope.tenant, &scope.repository, &revision],
+            )
+            .await?
+            .ok_or(Error::NotFound)?;
+        let profile_row=self.tx.query_opt("SELECT definition FROM th_source_profiles WHERE tenant=$1 AND repository=$2 AND digest=$3", &[&scope.tenant,&scope.repository,&spec.profile.as_slice()]).await?.ok_or(Error::NotFound)?;
+        let profile = treeharbor_core::SourceProfile::decode(&profile_row.get::<_, Vec<u8>>(0))?;
+        if profile.id().as_bytes() != &spec.profile {
+            return Err(Error::SchemaMismatch);
+        }
+        let holder = workspace_pin(spec.id);
+        self.copy_root_pin(&row.get::<_, String>(0), &holder)
+            .await?;
+        self.tx.execute(r#"INSERT INTO th_workspaces (tenant,repository,workspace,base_revision,principal,profile,format,state,epoch,pin_holder,resolved_profile)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,'requested',$8,$9,$6)"#,
+            &[&scope.tenant,&scope.repository,&spec.id,&revision,&ctx.principal,&spec.profile.as_slice(),&spec.format.name(),&ctx.epoch,&holder]).await?;
+        let result = json!({"workspace":spec.id.to_string(),"generation":1,"state":"requested","base":revision});
+        Ok(result)
     }
 }

@@ -41,6 +41,32 @@ fn main() {
     );
     let args: Vec<_> = std::env::args().collect();
     match args[1].as_str() {
+        "check" => {
+            assert!(std::env::var_os("TH_TEST_SECRET").is_none());
+            assert!(!std::path::Path::new("/var/run/docker.sock").exists());
+            assert!(
+                TcpStream::connect_timeout(
+                    &"1.1.1.1:443".parse().unwrap(),
+                    Duration::from_millis(100)
+                )
+                .is_err()
+            );
+            assert!(std::env::vars().all(|(_, v)| !v.contains("thv1_")));
+            let actual = fs::read_to_string("same.txt").unwrap();
+            let mut file = OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open("check-executions")
+                .unwrap();
+            file.write_all(b"one check\n").unwrap();
+            file.sync_all().unwrap();
+            if let Some(delay) = args.get(3) {
+                thread::sleep(Duration::from_millis(delay.parse().unwrap()));
+            }
+            if actual != args[2] {
+                std::process::exit(23);
+            }
+        }
         "once" => {
             let mut file = OpenOptions::new()
                 .create(true)

@@ -4,6 +4,7 @@
 compile_error!("The native materializer currently supports Unix only");
 
 mod filesystem;
+mod pristine;
 mod publication;
 mod recovery;
 mod selection;

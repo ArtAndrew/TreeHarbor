@@ -693,7 +693,6 @@ async fn populated_v8_upgrade_preserves_managed_run_and_can_accept_new_uploads()
         f.db.request_run(&ctx(&owner, "request"), &input)
             .await
             .unwrap();
-    let plan = claim(&mut f, &node).await;
     let before = upgrade_snapshot(&raw).await;
     let managed: serde_json::Value = raw
         .query_one("SELECT to_jsonb(m) FROM th_managed_runs m", &[])
@@ -721,6 +720,7 @@ async fn populated_v8_upgrade_preserves_managed_run_and_can_accept_new_uploads()
             .await
             .unwrap()
     );
+    let plan = claim(&mut f, &node).await;
     assert_eq!(
         f.db.finish_run(&node.auth, &plan).await.unwrap()["state"],
         "lost"

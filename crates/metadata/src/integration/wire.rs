@@ -4,6 +4,29 @@ use serde::Deserialize;
 #[derive(Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
 pub enum WireCommand {
+    ProgramPut {
+        key: String,
+        epoch: i64,
+        program: CheckProgram,
+    },
+    CheckPrepare {
+        key: String,
+        epoch: i64,
+        run: String,
+    },
+    CheckStart {
+        key: String,
+        epoch: i64,
+        run: String,
+    },
+    CheckCollect {
+        key: String,
+        epoch: i64,
+        run: String,
+    },
+    CheckStatus {
+        run: String,
+    },
     PolicyPut {
         key: String,
         epoch: i64,
@@ -113,22 +136,47 @@ fn native(s: &str) -> Result<ObjectId> {
 impl WireCommand {
     pub fn permission(&self) -> Permission {
         match self {
-            Self::PolicyPut { .. } | Self::RefPolicy { .. } => Permission::PolicyWrite,
+            Self::ProgramPut { .. } | Self::PolicyPut { .. } | Self::RefPolicy { .. } => {
+                Permission::PolicyWrite
+            }
             Self::RefCreate { .. } => Permission::RepositoryWrite,
             Self::Enqueue { .. } | Self::Cancel { .. } => Permission::QueueRequest,
             Self::CandidateStart { .. }
             | Self::CandidateFail { .. }
             | Self::CheckAssign { .. }
             | Self::Land { .. } => Permission::IntegrationControl,
-            Self::ValidationReport { .. } | Self::ValidationRevoke { .. } => {
-                Permission::ValidationReport
-            }
+            Self::CheckPrepare { .. }
+            | Self::CheckStart { .. }
+            | Self::CheckCollect { .. }
+            | Self::ValidationReport { .. }
+            | Self::ValidationRevoke { .. } => Permission::ValidationReport,
             Self::Review { .. } | Self::ReviewRevoke { .. } => Permission::Review,
             _ => Permission::Read,
         }
     }
     pub async fn execute(self, db: &mut Metadata, auth: &Authorization) -> Result<Value> {
         match self {
+            Self::ProgramPut {
+                key,
+                epoch,
+                program,
+            } => {
+                db.put_native_check_program(auth, &Command { key, epoch }, &program)
+                    .await
+            }
+            Self::CheckPrepare { key, epoch, run } => {
+                db.prepare_native_check(auth, &Command { key, epoch }, uuid(&run)?)
+                    .await
+            }
+            Self::CheckStart { key, epoch, run } => {
+                db.start_native_check(auth, &Command { key, epoch }, uuid(&run)?)
+                    .await
+            }
+            Self::CheckCollect { key, epoch, run } => {
+                db.collect_native_check(auth, &Command { key, epoch }, uuid(&run)?)
+                    .await
+            }
+            Self::CheckStatus { run } => db.native_check_execution_status(auth, uuid(&run)?).await,
             Self::PolicyPut { key, epoch, policy } => {
                 db.put_native_policy(auth, &Command { key, epoch }, &policy)
                     .await
