@@ -18,6 +18,7 @@ pub enum Permission {
     RuntimeControl,
     ValidationReport,
     HostPublish,
+    HostRead,
     Review,
     PolicyWrite,
     IntegrationControl,
@@ -33,6 +34,7 @@ impl Permission {
             Self::RuntimeControl => "runtime.control",
             Self::ValidationReport => "validation.report",
             Self::HostPublish => "host.publish",
+            Self::HostRead => "host.read",
             Self::Review => "review",
             Self::PolicyWrite => "policy.write",
             Self::IntegrationControl => "integration.control",
@@ -40,6 +42,8 @@ impl Permission {
     }
     pub(crate) fn for_command(kind: &str) -> Result<Self> {
         match kind {
+            "github.bind.v1" | "github.revoke.v1" => Ok(Self::RepositoryWrite),
+            "github.probe.begin.v1" | "github.probe.finish.v1" => Ok(Self::HostRead),
             "native.program.put.v1" | "native.policy.put.v1" | "native.ref.policy.v1" => {
                 Ok(Self::PolicyWrite)
             }
@@ -123,6 +127,7 @@ impl PrincipalKind {
             Permission::RuntimeControl => self == Self::Node,
             Permission::ValidationReport => self == Self::Validator,
             Permission::HostPublish => self == Self::Bridge,
+            Permission::HostRead => self == Self::Bridge,
             Permission::Review | Permission::PolicyWrite => self == Self::Human,
             Permission::IntegrationControl => self == Self::Integrator,
         }

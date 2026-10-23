@@ -429,6 +429,7 @@ async fn handle(
                 | "candidate_stale"
                 | "admission_blocked"
                 | "rebase_state_changed"
+                | "host_binding_state"
                 | "version_conflict" => StatusCode::CONFLICT,
                 "upload_state_changed" | "upload_membership" | "object_busy" | "lease_expired" => {
                     StatusCode::CONFLICT

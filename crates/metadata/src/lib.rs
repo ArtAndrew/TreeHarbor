@@ -13,6 +13,7 @@ pub mod catalog;
 pub mod cleanup;
 pub mod commands;
 pub mod exports;
+pub mod github;
 pub mod intake;
 pub mod integration;
 pub mod preparations;
@@ -40,6 +41,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/012_change_rebase.sql"),
     include_str!("../migrations/013_workspace_seals.sql"),
     include_str!("../migrations/014_workspace_cleanup.sql"),
+    include_str!("../migrations/015_github_bindings.sql"),
 ];
 const MAX_JSON: usize = 1024 * 1024;
 
@@ -99,6 +101,8 @@ pub enum Error {
     StaleCandidate,
     #[error("native candidate lacks current checks or review authorization")]
     AdmissionBlocked,
+    #[error("GitHub binding or probe is inactive, changed or expired")]
+    HostBindingState,
 }
 pub type Result<T> = std::result::Result<T, Error>;
 

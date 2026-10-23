@@ -64,6 +64,9 @@ it is not available through HTTP. It provides migrate, repository-create,
 principal-create, access-set, token-issue, token-revoke, principal-disable and node-register.
 Use `--help` for exact arguments. Principal roles and permissions are separate;
 for example, an agent cannot be granted validator or host-publisher power.
+GitHub connection verification uses a Bridge's separate `host.read` grant and
+credential; it does not require `host.publish`. A Human's `repository.write`
+configures or revokes the [repository binding](github-connection.md).
 
 `token-issue` writes a versioned JSON credential to a new mode-0600 file. It never
 overwrites an existing file or prints the secret. Stdout reports the token ID and

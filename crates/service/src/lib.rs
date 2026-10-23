@@ -24,6 +24,8 @@ mod source_read;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    #[error("GitHub binding operation rejected by the TreeHarbor server (HTTP {status})")]
+    GithubBinding { status: u16 },
     #[error("GitHub connection failed: {0}")]
     Github(#[from] treeharbor_github::Error),
     #[error(

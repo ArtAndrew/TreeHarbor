@@ -180,6 +180,8 @@ enum Grant {
     ValidationReport,
     #[value(name = "host.publish")]
     HostPublish,
+    #[value(name = "host.read")]
+    HostRead,
     Review,
     #[value(name = "policy.write")]
     PolicyWrite,
@@ -197,6 +199,7 @@ impl From<Grant> for Permission {
             Grant::RuntimeControl => Self::RuntimeControl,
             Grant::ValidationReport => Self::ValidationReport,
             Grant::HostPublish => Self::HostPublish,
+            Grant::HostRead => Self::HostRead,
             Grant::Review => Self::Review,
             Grant::PolicyWrite => Self::PolicyWrite,
             Grant::IntegrationControl => Self::IntegrationControl,
@@ -495,6 +498,11 @@ enum Agent {
         candidate: Uuid,
     },
     RepositoryInfo,
+    /// Configure or inspect a Connected GitHub binding using private JSON.
+    Github {
+        #[arg(long)]
+        request: PathBuf,
+    },
     /// Execute one native policy/ref/queue/review/check operation from private JSON.
     Native {
         #[arg(long)]
@@ -767,6 +775,16 @@ impl Agent {
                 let _: treeharbor_metadata::integration::WireCommand =
                     serde_json::from_slice(&bytes).map_err(|_| Error::Config)?;
                 json!({"method":"native","request":value})
+            }
+            Self::Github { request } => {
+                let bytes = files::read_private(
+                    &request,
+                    treeharbor_metadata::commands::MAX_REQUEST_BYTES,
+                )?;
+                let value: Value = serde_json::from_slice(&bytes).map_err(|_| Error::Config)?;
+                let _: treeharbor_metadata::github::WireCommand =
+                    serde_json::from_slice(&bytes).map_err(|_| Error::Config)?;
+                json!({"method":"github","request":value})
             }
             Self::RepositoryInfo => json!({"method":"repository_info"}),
             Self::SealRequest {

@@ -1,0 +1,19 @@
+{
+  "action": "bind",
+  "key": "configure-github-example",
+  "epoch": 1,
+  "binding": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+  "specification": {
+    "version": 1,
+    "app_id": 7,
+    "client_id": "Iv1_public_test",
+    "bridge": "bridge",
+    "upstream": {
+      "installation_id": 9,
+      "repository_id": 11,
+      "owner_id": 13,
+      "owner": "example-org",
+      "name": "demo"
+    }
+  }
+}

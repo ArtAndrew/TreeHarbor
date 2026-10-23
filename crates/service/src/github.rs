@@ -1,11 +1,34 @@
-use crate::{Error, Result, files};
+use crate::{
+    Error, Result,
+    client::{self, Credential},
+    files,
+};
 use clap::Subcommand;
 use serde::Deserialize;
+use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 use treeharbor_github::{AppCredentials, Connection, RepositoryBinding};
+use uuid::Uuid;
 
 #[derive(Subcommand)]
 pub enum Action {
+    /// Verify a durable binding as its assigned bridge and retain the observation.
+    /// Reuse the same probe ID after interruption; no source or PR is published.
+    Verify {
+        #[arg(long)]
+        config: PathBuf,
+        #[arg(long)]
+        socket: PathBuf,
+        #[arg(long)]
+        credential_file: PathBuf,
+        #[arg(long)]
+        binding: Uuid,
+        #[arg(long)]
+        probe: Uuid,
+        #[arg(long,value_parser=clap::value_parser!(i64).range(1..))]
+        epoch: i64,
+    },
     /// Verify a selected repository with a temporary read-only App token.
     /// Creates no binding, branch or PR and makes no queue-readiness claim.
     Probe {
@@ -23,7 +46,7 @@ struct Config {
     private_key_file: PathBuf,
     repository: RepositoryBinding,
 }
-fn load(path: &Path) -> Result<(AppCredentials, RepositoryBinding)> {
+fn load(path: &Path) -> Result<(AppCredentials, Config)> {
     let config: Config = serde_json::from_slice(&files::read_private(path, 16 * 1024)?)
         .map_err(|_| treeharbor_github::Error::Configuration)?;
     if config.version != 1 || !config.private_key_file.is_absolute() {
@@ -32,16 +55,91 @@ fn load(path: &Path) -> Result<(AppCredentials, RepositoryBinding)> {
     config.repository.validate()?;
     let credentials = AppCredentials::from_pem(
         config.app_id,
-        config.client_id,
+        config.client_id.clone(),
         files::read_private(&config.private_key_file, 16 * 1024)?,
     )?;
-    Ok((credentials, config.repository))
+    Ok((credentials, config))
+}
+async fn command(socket: &Path, credential: &Credential, request: Value) -> Result<Value> {
+    let body = credential.request(json!({"method":"github","request":request}));
+    let reply = client::send(
+        socket,
+        &credential.token,
+        serde_json::to_vec(&body).map_err(|_| Error::Http)?,
+        Duration::from_secs(15),
+    )
+    .await?;
+    if !reply.status.is_success() {
+        return Err(Error::GithubBinding {
+            status: reply.status.as_u16(),
+        });
+    }
+    if reply.body.get("version") != Some(&json!(1)) {
+        return Err(Error::Http);
+    }
+    reply.body.get("result").cloned().ok_or(Error::Http)
+}
+fn matches_config(config: &Config, spec: &treeharbor_metadata::github::BindingSpec) -> Result<()> {
+    let upstream: treeharbor_metadata::github::Upstream =
+        serde_json::from_value(json!(config.repository)).map_err(|_| Error::Http)?;
+    if config.app_id != spec.app_id
+        || config.client_id != spec.client_id
+        || upstream != spec.upstream
+    {
+        return Err(treeharbor_github::Error::Identity.into());
+    }
+    Ok(())
 }
 pub async fn run(action: Action) -> Result<bool> {
     match action {
+        Action::Verify {
+            config,
+            socket,
+            credential_file,
+            binding,
+            probe,
+            epoch,
+        } => {
+            let credential = Credential::load(&credential_file)?;
+            command(&socket,&credential,json!({"action":"probe_begin","key":format!("github-probe-start-{probe}"),"epoch":epoch,"binding":binding.to_string(),"probe":probe.to_string()})).await?;
+            let context=command(&socket,&credential,json!({"action":"probe_context","epoch":epoch,"binding":binding.to_string(),"probe":probe.to_string()})).await?;
+            if context.get("binding") != Some(&json!(binding.to_string()))
+                || context.get("probe") != Some(&json!(probe.to_string()))
+                || context.get("epoch") != Some(&json!(epoch))
+            {
+                return Err(Error::Http);
+            }
+            let result = if context.get("state") == Some(&json!("observed")) {
+                // A retained receipt needs no App key/network. It remains historical
+                // evidence, not a fresh connection check or publication permission.
+                context
+            } else if context.get("state") == Some(&json!("pending"))
+                && context.get("unexpired") == Some(&json!(true))
+            {
+                let spec: treeharbor_metadata::github::BindingSpec =
+                    serde_json::from_value(context["specification"].clone())
+                        .map_err(|_| Error::Http)?;
+                spec.validate().map_err(|_| Error::Http)?;
+                let (credentials, config) = load(&config)?;
+                matches_config(&config, &spec)?;
+                let observation = Connection::new(credentials)?
+                    .probe(&config.repository)
+                    .await?;
+                command(&socket,&credential,json!({"action":"probe_finish","key":format!("github-probe-finish-{probe}"),"epoch":epoch,"binding":binding.to_string(),"probe":probe.to_string(),"observation":observation})).await?
+            } else {
+                return Err(Error::Http);
+            };
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&result).map_err(|_| Error::Http)?
+            );
+            Ok(true)
+        }
         Action::Probe { config } => {
-            let (credentials, binding) = load(&config)?;
-            let observation = Connection::new(credentials)?.probe(&binding).await?;
+            let (credentials, config) = load(&config)?;
+            let observation = Connection::new(credentials)?
+                .probe(&config.repository)
+                .await?;
             println!(
                 "{}",
                 serde_json::to_string_pretty(&observation).map_err(|_| Error::Http)?
