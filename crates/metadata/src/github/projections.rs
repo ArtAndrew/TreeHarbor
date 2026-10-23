@@ -59,9 +59,9 @@ fn commit(row: &Row, title: &str, changeset: Uuid, version: i64) -> Result<Objec
         message: format!("TreeHarbor ChangeSet {changeset} version {version}\n\n{title}\n"),
     }))
 }
-struct Record {
-    row: Row,
-    object: PreparedObject,
+pub(super) struct Record {
+    pub(super) row: Row,
+    pub(super) object: PreparedObject,
 }
 impl Record {
     fn describe(&self) -> Value {
@@ -75,7 +75,7 @@ impl Record {
             "title":self.row.get::<_,String>("title"),"publication_ready":false})
     }
 }
-async fn load(tx: &Transaction<'_>, s: &Scope, projection: Uuid) -> Result<Record> {
+pub(super) async fn load(tx: &Transaction<'_>, s: &Scope, projection: Uuid) -> Result<Record> {
     let row=tx.query_opt(r"SELECT p.*,v.run,v.base_revision,v.operations,v.result_snapshot,
         floor(extract(epoch from v.accepted_at))::bigint AS timestamp_seconds,c.latest_version,
         p.expires_at>clock_timestamp() AS unexpired,(extract(epoch from p.expires_at)*1000)::bigint AS deadline
@@ -93,7 +93,7 @@ async fn load(tx: &Transaction<'_>, s: &Scope, projection: Uuid) -> Result<Recor
     }
     Ok(Record { row, object })
 }
-async fn active_binding(
+pub(super) async fn active_binding(
     tx: &Transaction<'_>,
     s: &Scope,
     binding_id: Uuid,
@@ -105,7 +105,7 @@ async fn active_binding(
     }
     specification(&b)
 }
-fn live(record: &Record) -> Result<()> {
+pub(super) fn live(record: &Record) -> Result<()> {
     if !record.row.get::<_, bool>("unexpired")
         || record.row.get::<_, String>("state") == "cancelled"
         || record.row.get::<_, i64>("version") != record.row.get::<_, i64>("latest_version")

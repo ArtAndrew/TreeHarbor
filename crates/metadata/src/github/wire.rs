@@ -4,6 +4,43 @@ use serde::Deserialize;
 #[derive(Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
 pub enum WireCommand {
+    PublicationRequest {
+        key: String,
+        epoch: i64,
+        publication: String,
+        specification: PublicationSpec,
+    },
+    PublicationPrepare {
+        key: String,
+        epoch: i64,
+        publication: String,
+        mapping: PublicationMapping,
+    },
+    PublicationBegin {
+        key: String,
+        epoch: i64,
+        publication: String,
+        attempt: String,
+    },
+    PublicationReport {
+        key: String,
+        epoch: i64,
+        publication: String,
+        report: PublicationReport,
+    },
+    PublicationCancel {
+        key: String,
+        epoch: i64,
+        publication: String,
+    },
+    PublicationStatus {
+        epoch: i64,
+        publication: String,
+    },
+    PublicationContext {
+        epoch: i64,
+        publication: String,
+    },
     ProjectionRequest {
         key: String,
         epoch: i64,
@@ -101,6 +138,14 @@ fn id(s: &str) -> Result<Uuid> {
 impl WireCommand {
     pub fn permission(&self) -> Permission {
         match self {
+            Self::PublicationRequest { .. } | Self::PublicationCancel { .. } => {
+                Permission::RepositoryWrite
+            }
+            Self::PublicationStatus { .. } => Permission::Read,
+            Self::PublicationPrepare { .. }
+            | Self::PublicationBegin { .. }
+            | Self::PublicationReport { .. }
+            | Self::PublicationContext { .. } => Permission::HostPublish,
             Self::Bind { .. }
             | Self::Revoke { .. }
             | Self::ImportRequest { .. }
@@ -121,6 +166,78 @@ impl WireCommand {
         backend: Option<&str>,
     ) -> Result<Value> {
         match self {
+            Self::PublicationRequest {
+                key,
+                epoch,
+                publication,
+                specification,
+            } => {
+                db.request_github_publication(
+                    auth,
+                    &Command { key, epoch },
+                    id(&publication)?,
+                    &specification,
+                )
+                .await
+            }
+            Self::PublicationPrepare {
+                key,
+                epoch,
+                publication,
+                mapping,
+            } => {
+                db.prepare_github_publication(
+                    auth,
+                    &Command { key, epoch },
+                    id(&publication)?,
+                    &mapping,
+                )
+                .await
+            }
+            Self::PublicationBegin {
+                key,
+                epoch,
+                publication,
+                attempt,
+            } => {
+                db.begin_github_publication(
+                    auth,
+                    &Command { key, epoch },
+                    id(&publication)?,
+                    id(&attempt)?,
+                )
+                .await
+            }
+            Self::PublicationReport {
+                key,
+                epoch,
+                publication,
+                report,
+            } => {
+                db.report_github_publication(
+                    auth,
+                    &Command { key, epoch },
+                    id(&publication)?,
+                    &report,
+                )
+                .await
+            }
+            Self::PublicationCancel {
+                key,
+                epoch,
+                publication,
+            } => {
+                db.cancel_github_publication(auth, &Command { key, epoch }, id(&publication)?)
+                    .await
+            }
+            Self::PublicationStatus { epoch, publication } => {
+                db.github_publication_status(auth, epoch, id(&publication)?, false)
+                    .await
+            }
+            Self::PublicationContext { epoch, publication } => {
+                db.github_publication_status(auth, epoch, id(&publication)?, true)
+                    .await
+            }
             Self::ProjectionRequest {
                 key,
                 epoch,

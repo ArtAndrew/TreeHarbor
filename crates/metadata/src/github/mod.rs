@@ -3,6 +3,10 @@
 pub(crate) mod imports;
 pub(crate) mod projections;
 pub use projections::ProjectionSpec;
+mod publications;
+pub use publications::{
+    PublicationMapping, PublicationOutcome, PublicationReport, PublicationSpec,
+};
 mod types;
 mod wire;
 use crate::{

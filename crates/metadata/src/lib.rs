@@ -44,6 +44,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/015_github_bindings.sql"),
     include_str!("../migrations/016_github_imports.sql"),
     include_str!("../migrations/017_github_projections.sql"),
+    include_str!("../migrations/018_github_publications.sql"),
 ];
 const MAX_JSON: usize = 1024 * 1024;
 
@@ -107,6 +108,8 @@ pub enum Error {
     HostBindingState,
     #[error("GitHub projection is cancelled, expired or no longer current")]
     HostProjectionState,
+    #[error("GitHub publication state, mapping or attempt is no longer usable")]
+    HostPublicationState,
 }
 pub type Result<T> = std::result::Result<T, Error>;
 

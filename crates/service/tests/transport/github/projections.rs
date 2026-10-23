@@ -1,4 +1,6 @@
 use super::*;
+#[path = "publications.rs"]
+mod publications;
 
 fn github(f: &Fixture, args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_treeharbor"))
@@ -373,6 +375,16 @@ async fn accepted_projection_recovers_before_and_after_commit_and_exports_exact_
         .trim(),
         "3"
     );
+    publications::exercise(
+        &mut f,
+        &mut server,
+        &owner,
+        &publisher,
+        projection,
+        native,
+        &restored,
+    )
+    .await;
     f.credential_path = owner;
     result(request(
         &f,

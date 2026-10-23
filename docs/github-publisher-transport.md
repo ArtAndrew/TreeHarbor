@@ -2,8 +2,8 @@
 
 Development library for the trusted Connected bridge. It converts a retained
 native commit into a verified Git artifact and sends it to one generated service
-branch. It is not yet wired to a public publish command: durable owner publication
-requests, PRs, checks, merge queues and installed-App acceptance remain pending.
+branch. It is not yet wired to a public network-publish command: the durable
+driver, PRs, checks, merge queues and installed-App acceptance remain pending.
 Use [projection preparation](github-projection.md) for the currently exposed
 service/CLI path. Do not treat an exported pack as authorization to publish.
 
@@ -48,8 +48,10 @@ These are observations, not merge approval or proof that this particular request
 caused the host update. A timed-out push can already have taken effect. Absence
 does not prove that an in-flight request cannot still finish. No error authorizes
 an automatic resend. `observe_branch` performs read-only recovery; durable
-orchestration must retain the intended branch, old/new commits and authorization
-before external effects, and record/reconcile the observed result separately.
+orchestration uses the [publication ledger](github-publications.md) to retain the
+intended branch, old/new commits and authorization before external effects, and
+record/reconcile the observed result separately. Connecting the ledger to the
+network worker is still pending.
 
 The temporary App token is revoked after an observed attempt. A successful ref
 observation is preserved with `token_revoked: false` if revocation fails: credential
