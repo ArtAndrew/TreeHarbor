@@ -17,13 +17,19 @@ worker SIGKILL during unlink, after local completion and after metadata commit,
 slot reuse, CLI/HTTP ownership and exact replay. Database tests cover current
 fences, concurrent claims, expiry during writes, populated schema-13 upgrade and
 retention of accepted ChangeSet graphs. These are distinct from real Linux/runtime
-evidence. The required gVisor harness has added removed-runtime proof, worker-loss,
+evidence. The required gVisor harness also passed removed-runtime proof, worker-loss,
 active successor replay, check-file release before publication, and source/Git
-export after agent-file deletion; those additions await CI verification.
+export after agent-file deletion in
+[CI 39932578201](https://github.com/ArtAndrew/TreeHarbor/actions/runs/39932578201).
+A missing real runtime marker blocked deletion despite a database removal record.
+These observations apply to the pinned Linux/runtime profile, not arbitrary
+unmanaged code or host replacement.
 Local verification: 169 ordinary tests and 178 explicit PostgreSQL/materializer/
 node/service integration tests passed (four concurrent integration cases), including
 actual CLI drain/delete/replay and collected-check release. Formatting and strict
-all-target Clippy passed; Linux/runtime evidence is still required on this head.
+all-target Clippy passed. CI independently passed 169 tests on each Linux/macOS
+runner, 178 PostgreSQL integration tests and the actual runtime harness. The five
+required checks remain mandatory for subsequent heads.
 Automatic cleanup scheduling, abandoned-journal/artifact retention, node replacement
 and full release gates remain open. This increment is not a product release.
 
@@ -178,7 +184,7 @@ resource outcomes and worker-loss recovery. No complete authority mode is implie
 | Runtime task supervisor | Linux namespace init, privilege guards, environment clearing, guest process limit, child reaping and deadline; real gVisor CI harness | Automatic workspace cleanup and production runtime provisioning |
 | Local runtime controller | Versioned immutable profiles, restricted Engine API, bounded ext4 identity, exclusive durable volume assignment and create/start/remove journal; real-runtime fault harness and managed-run adapter | Provisioning, host/engine replacement recovery and cleanup automation |
 | Workspace preparation reservations | Operator-registered node storage, scoped job claims, immutable source/slot/attempt identity, renewal/reclaim, exact file-ready observation and drain retention; real PostgreSQL race/upgrade tests | Cleanup scheduling after runtime removal |
-| Workspace cleanup | Exact placement/run, current node claims, durable deletion journal, descriptor-relative physical removal, atomic source-pin/slot release, owner status, node CLI and collected-check release; local crash/reuse/expiry/GC tests | Real-runtime CI for this increment, automatic scheduling, journal retention and node replacement |
+| Workspace cleanup | Exact placement/run, current node claims, durable deletion journal, descriptor-relative physical removal, atomic source-pin/slot release, owner status, node CLI and collected-check release; local crash/reuse/expiry/GC tests | Broader runtime/fault matrix, automatic scheduling, journal retention and node replacement |
 | Local preparation node | Private physical root identity/OS lock, durable placement intent, exact no-replace publication, independent concurrent slots, current authorization and file-ready acknowledgment; actual process-kill recovery and import-to-files CLI tests | Scheduler/daemon, automated volume provisioning, remote workers, fenced volume migration and cleanup scheduling |
 | MCP adapter | Planned; not implemented | Shared-service adapter, scoped tools and real client interoperability tests |
 | Git source export | Local native-pack CLI and bounded Rust full-DAG projection to self-contained Git SHA-1/SHA-256 bundle; isolated batch Git, exact mapping, verified original Git metadata/IDs, restored fsck and no-replace publication | Backup metadata, incremental projection, GitHub delivery |
