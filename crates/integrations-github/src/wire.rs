@@ -3,6 +3,27 @@ use serde::Deserialize;
 use std::collections::BTreeMap;
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
+#[derive(Clone, Copy)]
+pub(crate) enum Capability {
+    Source,
+    Branch,
+}
+impl Capability {
+    pub fn permissions(self) -> BTreeMap<String, String> {
+        BTreeMap::from([
+            (
+                "contents".into(),
+                match self {
+                    Self::Source => "read",
+                    Self::Branch => "write",
+                }
+                .into(),
+            ),
+            ("metadata".into(), "read".into()),
+        ])
+    }
+}
+
 // GitHub can add fields. Required identity/security fields must not default.
 #[derive(Deserialize)]
 pub(crate) struct Account {
@@ -80,10 +101,10 @@ pub(crate) struct Token {
 }
 impl Token {
     pub fn check(&self, repository: u64, now: u64) -> Result<u64> {
-        let expected = BTreeMap::from([
-            ("contents".into(), "read".into()),
-            ("metadata".into(), "read".into()),
-        ]);
+        self.check_for(repository, now, Capability::Source)
+    }
+    pub fn check_for(&self, repository: u64, now: u64, capability: Capability) -> Result<u64> {
+        let expected = capability.permissions();
         if self.permissions != expected
             || self
                 .repositories

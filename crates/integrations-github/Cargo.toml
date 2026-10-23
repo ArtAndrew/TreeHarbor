@@ -19,10 +19,12 @@ tokio.workspace = true
 thiserror.workspace = true
 treeharbor-core.workspace = true
 treeharbor-git-bridge.workspace = true
+uuid.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
 base64 = "0.23"
+treeharbor-storage.workspace = true
 
 [lints]
 workspace = true

@@ -57,6 +57,8 @@ in **Standalone** mode. Both share one Rust engine.
 > download and resumable source acceptance through the assigned bridge.
 > [Accepted-version projection](docs/github-projection.md) prepares and exports an
 > exact ChangeSet version through a separately authorized publisher bridge.
+> A [branch transport library](docs/github-publisher-transport.md) adds scoped App
+> writes and exact expected-old updates; the durable publication command is pending.
 > PR publication, merge-queue integration and installed-App acceptance remain pending.
 > Neither end-to-end mode is released. No packaged installation is available yet.
 > See [implementation status](docs/implementation-status.md) for evidence and gaps.

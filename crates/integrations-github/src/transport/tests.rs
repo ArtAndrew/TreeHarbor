@@ -1,4 +1,6 @@
 use super::*;
+#[path = "tests/publisher.rs"]
+mod publisher_tests;
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use std::{fs, process::Command};
 use tokio::{

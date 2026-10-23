@@ -38,7 +38,7 @@ pub struct Manifest {
 }
 #[derive(Serialize, Deserialize)]
 #[serde(tag = "step", rename_all = "snake_case", deny_unknown_fields)]
-enum Step {
+pub(super) enum Step {
     Fetch {
         owner: String,
         name: String,
@@ -51,10 +51,19 @@ enum Step {
     Bundle {
         output: PathBuf,
     },
+    Unbundle,
+    Push {
+        owner: String,
+        name: String,
+        sha: String,
+        branch: String,
+        expected: Option<String>,
+        token: String,
+    },
 }
 impl Drop for Step {
     fn drop(&mut self) {
-        if let Self::Fetch { token, .. } = self {
+        if let Self::Fetch { token, .. } | Self::Push { token, .. } = self {
             use zeroize::Zeroize;
             token.zeroize();
         }
@@ -62,17 +71,17 @@ impl Drop for Step {
 }
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct Worker {
-    version: u8,
-    parent_pid: u32,
-    git: PathBuf,
-    repo: PathBuf,
-    scratch: PathBuf,
-    cpu_seconds: u64,
-    file_bytes: u64,
-    step: Step,
+pub(super) struct Worker {
+    pub version: u8,
+    pub parent_pid: u32,
+    pub git: PathBuf,
+    pub repo: PathBuf,
+    pub scratch: PathBuf,
+    pub cpu_seconds: u64,
+    pub file_bytes: u64,
+    pub step: Step,
 }
-fn component(s: &str) -> bool {
+pub(super) fn component(s: &str) -> bool {
     !s.is_empty()
         && s.len() <= 100
         && s != "."
@@ -86,7 +95,7 @@ fn sha(s: &str) -> bool {
         && s.bytes()
             .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
-fn token(s: &str) -> bool {
+pub(super) fn token(s: &str) -> bool {
     !s.is_empty() && s.len() <= 8192 && s.bytes().all(|b| b.is_ascii_graphic())
 }
 struct Guard {
@@ -146,7 +155,7 @@ fn usage(root: &Path, limit: u64) -> Result<()> {
     }
     Ok(())
 }
-fn run(worker: &Path, request: &Worker, deadline: Instant, max_disk: u64) -> Result<()> {
+pub(super) fn run(worker: &Path, request: &Worker, deadline: Instant, max_disk: u64) -> Result<()> {
     let input = Zeroizing::new(serde_json::to_vec(request)?);
     if input.len() > 16 * 1024 {
         return Err(Error::Configuration);
@@ -570,6 +579,68 @@ pub fn worker() -> Result<()> {
                     .args(["bundle", "create", "--quiet"])
                     .arg(output)
                     .arg("refs/treeharbor/import");
+            }
+            Step::Unbundle => {
+                command
+                    .args(["bundle", "unbundle"])
+                    .arg(r.scratch.join("history.bundle"));
+            }
+            Step::Push {
+                owner,
+                name,
+                sha: commit,
+                branch,
+                expected,
+                token: password,
+            } => {
+                if !component(owner)
+                    || !component(name)
+                    || !sha(commit)
+                    || commit.bytes().all(|b| b == b'0')
+                    || !token(password)
+                    || !crate::publish::valid_branch(branch)
+                    || expected
+                        .as_ref()
+                        .is_some_and(|s| !sha(s) || s.bytes().all(|b| b == b'0'))
+                {
+                    return Err(Error::Configuration);
+                }
+                let url = format!("https://github.com/{owner}/{name}.git");
+                let plain = Zeroizing::new(format!("x-access-token:{password}"));
+                let encoded = Zeroizing::new(
+                    base64::engine::general_purpose::STANDARD.encode(plain.as_bytes()),
+                );
+                let header = Zeroizing::new(format!("Authorization: Basic {}", encoded.as_str()));
+                command
+                    .env("GIT_CONFIG_COUNT", "1")
+                    .env("GIT_CONFIG_KEY_0", format!("http.{url}.extraHeader"))
+                    .env("GIT_CONFIG_VALUE_0", header.as_str())
+                    .args([
+                        "-c",
+                        "protocol.https.allow=always",
+                        "-c",
+                        "http.followRedirects=false",
+                        "-c",
+                        "http.sslVerify=true",
+                        "-c",
+                        "http.proxy=",
+                        "-c",
+                        "http.saveCookies=false",
+                        "-c",
+                        "transfer.credentialsInUrl=die",
+                        "push",
+                        "--quiet",
+                        "--no-verify",
+                        "--no-recurse-submodules",
+                        "--no-follow-tags",
+                    ])
+                    .arg(format!(
+                        "--force-with-lease={branch}:{}",
+                        expected.as_deref().unwrap_or("")
+                    ))
+                    .arg(url)
+                    .arg(format!("{commit}:{branch}"));
+                password.zeroize();
             }
         }
         // Keep this supervisor in the parent's dedicated process group. Its Git

@@ -1993,6 +1993,7 @@ dependencies = [
  "thiserror",
  "treeharbor-core",
  "treeharbor-storage",
+ "uuid",
  "zeroize",
 ]
 
@@ -2011,6 +2012,8 @@ dependencies = [
  "tokio",
  "treeharbor-core",
  "treeharbor-git-bridge",
+ "treeharbor-storage",
+ "uuid",
  "zeroize",
 ]
 

@@ -58,6 +58,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
             input=self.rfile.read(length), capture_output=True, env=environment,
             timeout=15, check=True,
         ).stdout
+        if url.path.endswith('/git-receive-pack') and pathlib.Path(root, 'drop-push-response').exists():
+            # The backend already applied the mutation. Lose only its response.
+            self.close_connection = True
+            return
         headers, body = response.split(b"\r\n\r\n", 1)
         self.send_response(200)
         for line in headers.decode().split("\r\n"):

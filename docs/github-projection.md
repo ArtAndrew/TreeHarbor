@@ -153,5 +153,8 @@ wire boundary. An independent vector is in
 [`github-projection-v1.json`](../crates/metadata/tests/fixtures/github-projection-v1.json),
 reproduced by `python3 scripts/generate-github-projection-vector.py`.
 
-Actual GitHub PR/check/queue publication, unknown-outcome reconciliation and an
-installed-App acceptance run remain release requirements.
+The [branch transport library](github-publisher-transport.md) can send an exact
+projection using a separate scoped App token and observe the ref after uncertain
+outcomes. It is not yet connected to durable publication requests. Actual GitHub
+PR/check/queue publication, persisted reconciliation and an installed-App acceptance
+run remain release requirements.
