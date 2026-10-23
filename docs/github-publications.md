@@ -203,3 +203,6 @@ reproduced with `python3 scripts/generate-github-publication-vector.py`.
 Tests exercise actual PostgreSQL and Unix-socket CLI/service restarts, including
 SIGKILL before/after begin commit and loss of the original source pack. Observation
 fixtures do not establish actual GitHub App publication or queue acceptance.
+
+After the branch is observed, an owner can request [PR delivery](github-pulls.md).
+This is a separate operation; branch publication does not create or merge a PR.

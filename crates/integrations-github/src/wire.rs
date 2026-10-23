@@ -7,20 +7,34 @@ use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 pub(crate) enum Capability {
     Source,
     Branch,
+    PullRead,
+    PullWrite,
 }
 impl Capability {
     pub fn permissions(self) -> BTreeMap<String, String> {
-        BTreeMap::from([
+        let mut permissions = BTreeMap::from([
             (
                 "contents".into(),
                 match self {
-                    Self::Source => "read",
+                    Self::Source | Self::PullRead | Self::PullWrite => "read",
                     Self::Branch => "write",
                 }
                 .into(),
             ),
             ("metadata".into(), "read".into()),
-        ])
+        ]);
+        if matches!(self, Self::PullRead | Self::PullWrite) {
+            permissions.insert(
+                "pull_requests".into(),
+                if matches!(self, Self::PullWrite) {
+                    "write"
+                } else {
+                    "read"
+                }
+                .into(),
+            );
+        }
+        permissions
     }
 }
 

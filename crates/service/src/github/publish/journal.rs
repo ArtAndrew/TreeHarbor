@@ -1,20 +1,23 @@
 use super::*;
 const MAX_REPORTS: usize = 1024;
-pub(super) struct Journal {
+// A PR acknowledgment contains old/new text plus the observation. JSON may
+// encode each allowed control byte as six bytes; bound the encoded record.
+const MAX_RECORD_BYTES: usize = 256 * 1024;
+pub(in crate::github) struct Journal {
     pub root: PathBuf,
     _lock: File,
 }
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub(super) struct Record {
+pub(in crate::github) struct Record<R = PublicationReport> {
     version: u8,
     pub key: String,
-    pub report: PublicationReport,
+    pub report: R,
     // Not a secret; retained even if reporting to the service is interrupted.
     token_expires_at: Option<String>,
 }
-impl Record {
-    pub fn new(report: PublicationReport, token_expires_at: Option<String>) -> Self {
+impl<R> Record<R> {
+    pub fn new(report: R, token_expires_at: Option<String>) -> Self {
         Self {
             version: 1,
             key: format!("github-publish-report-{}", Uuid::new_v4()),
@@ -24,7 +27,8 @@ impl Record {
     }
 }
 fn read<T: DeserializeOwned>(path: &Path) -> Result<T> {
-    serde_json::from_slice(&files::read_private(path, 32768)?).map_err(|_| Error::PublicationState)
+    serde_json::from_slice(&files::read_private(path, MAX_RECORD_BYTES)?)
+        .map_err(|_| Error::PublicationState)
 }
 impl Journal {
     pub fn open(path: &Path, intent: &Value) -> Result<Self> {
@@ -49,10 +53,11 @@ impl Journal {
     }
     pub fn bind(&self, name: &str, value: &Value) -> Result<()> {
         let path = self.root.join(name);
-        match files::write_private(
-            &path,
-            &serde_json::to_vec(value).map_err(|_| Error::PublicationState)?,
-        ) {
+        let bytes = serde_json::to_vec(value).map_err(|_| Error::PublicationState)?;
+        if bytes.len() > MAX_RECORD_BYTES {
+            return Err(Error::Size);
+        }
+        match files::write_private(&path, &bytes) {
             Ok(()) => {}
             Err(Error::Io(e)) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
             Err(e) => return Err(e),
@@ -102,14 +107,14 @@ impl Journal {
         }
         Ok(ids.len())
     }
-    pub fn pending(&self) -> Result<Option<(usize, Record)>> {
+    pub fn pending<R: DeserializeOwned>(&self) -> Result<Option<(usize, Record<R>)>> {
         let count = self.count()?;
         for i in 0..count {
             if !self.root.join(format!("ack-{i:04}.json")).try_exists()? {
                 if i + 1 != count {
                     return Err(Error::PublicationState);
                 }
-                let r: Record = read(&self.root.join(format!("report-{i:04}.json")))?;
+                let r: Record<R> = read(&self.root.join(format!("report-{i:04}.json")))?;
                 if r.version != 1
                     || !r.key.starts_with("github-publish-report-")
                     || r.key.len() > 128
@@ -122,8 +127,8 @@ impl Journal {
         }
         Ok(None)
     }
-    pub fn append(&self, record: &Record) -> Result<()> {
-        if self.pending()?.is_some() {
+    pub fn append<R: Serialize>(&self, record: &Record<R>) -> Result<()> {
+        if self.pending::<Value>()?.is_some() {
             return Err(Error::PublicationState);
         }
         let i = self.count()?;
@@ -177,14 +182,14 @@ mod tests {
         drop(j);
         let j = Journal::open(dir.path(), &identity).unwrap();
         assert_eq!(j.attempt().unwrap(), attempt);
-        let (index, pending) = j.pending().unwrap().unwrap();
+        let (index, pending) = j.pending::<PublicationReport>().unwrap().unwrap();
         assert_eq!(json!(pending), json!(record));
         assert!(!pending.report.token_revoked);
         j.ack(index, &json!({"state":"uncertain"})).unwrap();
-        assert!(j.pending().unwrap().is_none());
+        assert!(j.pending::<PublicationReport>().unwrap().is_none());
         assert!(j.ack(index, &json!({"state":"observed"})).is_err());
         j.append(&report()).unwrap();
-        assert_eq!(j.pending().unwrap().unwrap().0, 1);
+        assert_eq!(j.pending::<PublicationReport>().unwrap().unwrap().0, 1);
         drop(j);
         assert!(Journal::open(dir.path(), &json!({"publication":"other"})).is_err());
         assert_eq!(
@@ -205,7 +210,32 @@ mod tests {
         fs::remove_file(dir.path().join("intent.json")).unwrap();
         let j = Journal::open(dir.path(), &json!({})).unwrap();
         j.bind("report-0001.json", &json!(report())).unwrap();
-        assert!(j.pending().is_err());
+        assert!(j.pending::<PublicationReport>().is_err());
         assert!(j.append(&report()).is_err());
+    }
+
+    #[test]
+    fn pull_text_with_json_expansion_survives_restart_and_oversized_records_are_not_written() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::set_permissions(dir.path(), fs::Permissions::from_mode(0o700)).unwrap();
+        let text = "\u{1}".repeat(9000);
+        let intent = json!({"target":{"body":text,"previous":{"body":text}}});
+        let observed = json!({"intent":intent,"observation":{"body":text}});
+        let record = Record::new(json!({"body":text}), None);
+        let j = Journal::open(dir.path(), &intent).unwrap();
+        j.append(&record).unwrap();
+        j.ack(0, &observed).unwrap();
+        drop(j);
+        let j = Journal::open(dir.path(), &intent).unwrap();
+        assert!(j.pending::<Value>().unwrap().is_none());
+        assert_eq!(
+            read::<Value>(&dir.path().join("ack-0000.json")).unwrap(),
+            observed
+        );
+        assert!(matches!(
+            j.bind("oversized.json", &json!("x".repeat(MAX_RECORD_BYTES))),
+            Err(Error::Size)
+        ));
+        assert!(!dir.path().join("oversized.json").exists());
     }
 }

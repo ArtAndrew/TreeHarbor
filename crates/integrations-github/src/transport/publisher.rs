@@ -60,7 +60,7 @@ fn sha(oid: GitOid) -> Result<String> {
     }
 }
 impl Connection {
-    async fn reference(
+    pub(super) async fn reference(
         &self,
         binding: &RepositoryBinding,
         token: &wire::Token,

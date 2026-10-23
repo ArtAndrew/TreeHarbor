@@ -10,7 +10,7 @@ use std::{
 use treeharbor_core::{GitOid, ObjectId, RevisionRef};
 use treeharbor_git_bridge::publish::{self, Prepared};
 use treeharbor_metadata::github::{PublicationMapping, PublicationOutcome, PublicationReport};
-mod journal;
+pub(super) mod journal;
 use journal::Journal;
 
 pub(super) struct Request {
@@ -27,7 +27,7 @@ struct Session<'a> {
     credential: &'a Credential,
     identity: Value,
 }
-fn uuid(v: &Value) -> Result<Uuid> {
+pub(super) fn uuid(v: &Value) -> Result<Uuid> {
     let s = v.as_str().ok_or(Error::PublicationState)?;
     let id: Uuid = s.parse().map_err(|_| Error::PublicationState)?;
     if id.is_nil() || id.to_string() != s {
@@ -35,7 +35,7 @@ fn uuid(v: &Value) -> Result<Uuid> {
     }
     Ok(id)
 }
-fn native(v: &Value) -> Result<ObjectId> {
+pub(super) fn native(v: &Value) -> Result<ObjectId> {
     let s = v.as_str().ok_or(Error::PublicationState)?;
     match s.parse::<RevisionRef>() {
         Ok(RevisionRef::Native(id)) if RevisionRef::Native(id).to_string() == s => Ok(id),
@@ -53,7 +53,7 @@ fn git(v: &Value) -> Result<GitOid> {
         _ => Err(Error::PublicationState),
     }
 }
-fn now() -> Result<i64> {
+pub(super) fn now() -> Result<i64> {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .ok()
@@ -186,7 +186,7 @@ impl Session<'_> {
         })
     }
     async fn pending(&self, journal: &Journal, c: &Value) -> Result<()> {
-        if let Some((index, record)) = journal.pending()? {
+        if let Some((index, record)) = journal.pending::<PublicationReport>()? {
             let mapping = mapping(c)?;
             self.matches(c, &mapping, uuid(&json!(record.report.attempt))?)?;
             if record.report.binding != self.identity["binding"]

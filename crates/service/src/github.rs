@@ -13,9 +13,26 @@ use uuid::Uuid;
 mod import;
 pub(crate) mod projection;
 mod publish;
+mod pulls;
 
 #[derive(Subcommand)]
 pub enum Action {
+    /// Create/update an owner-selected PR, or reconcile its previous attempt.
+    Pull {
+        #[arg(long)]
+        config: PathBuf,
+        #[arg(long)]
+        socket: PathBuf,
+        #[arg(long)]
+        credential_file: PathBuf,
+        #[arg(long)]
+        pull: Uuid,
+        #[arg(long,value_parser=clap::value_parser!(i64).range(1..))]
+        epoch: i64,
+        /// Existing private directory; retain it across interruption and retries.
+        #[arg(long)]
+        state: PathBuf,
+    },
     /// Publish an owner-selected projection, or reconcile its sole previous attempt.
     Publish {
         #[arg(long)]
@@ -157,6 +174,24 @@ fn matches_config(config: &Config, spec: &treeharbor_metadata::github::BindingSp
 }
 pub async fn run(action: Action) -> Result<bool> {
     match action {
+        Action::Pull {
+            config,
+            socket,
+            credential_file,
+            pull,
+            epoch,
+            state,
+        } => {
+            pulls::run(pulls::Request {
+                config,
+                socket,
+                credential_file,
+                id: pull,
+                epoch,
+                state,
+            })
+            .await
+        }
         Action::Publish {
             config,
             socket,
