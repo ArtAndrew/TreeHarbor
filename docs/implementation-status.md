@@ -3,6 +3,23 @@
 Updated: 2026-10-23. This file describes implemented behavior and remaining release
 gates. A foundation milestone does not complete either mode.
 
+Workspace cleanup now has an internal PostgreSQL protocol in schema 14: stable
+placement identity, leased node claims/reclaim, immutable deletion-intent admission
+and atomic receipt/pin/slot release. Completed replay preserves historical records
+and does not release a later preparation on the same slot. Current node access and
+repository authority/epoch are rechecked; unmanaged runtimes remain quarantined.
+An accepted owner drain remains a cleanup request if that owner's access is later
+revoked. Node access is still required. Ten new database tests cover lifecycle,
+concurrency, expiry during final writes, populated schema-13 upgrade and retention
+of an actual accepted ChangeSet's object graph after workspace pin release.
+The fixtures supply trusted deletion observations: **physical deletion is not yet
+implemented**, and these methods are not exposed through owner HTTP/CLI. A guarded
+node deletion journal and real Linux recovery/reuse tests must precede that feature.
+Local verification for this increment: 164 ordinary tests and 174 explicit
+PostgreSQL/materializer/node/service integration tests passed, with four parallel
+test cases. Formatting and strict all-target Clippy passed. This increment has not
+yet been checked by GitHub CI or released.
+
 Experimental [managed seals](managed-seals.md) now connect filesystem capture to
 owner acceptance. A [selected-file capture library](capture-format-v1.md)
 now creates an independently verifiable immutable artifact from an exact baseline,
@@ -138,7 +155,7 @@ resource outcomes and worker-loss recovery. No complete authority mode is implie
 | Local object store | Atomic no-clobber writes, digest verification, file/directory fsync, tenant directories, physical generations and upload receipts | S3, backup/restore, kill fault campaign |
 | Native DAG and admission | Scoped history/log/ancestry/merge-base HTTP/CLI, persisted refs/policies/queue/checks/reviews, verified candidate commits, final transactional admission and no-Git CLI/process-loss tests | General history stack rebase, automatic scheduling, full lifecycle and recovery |
 | Review diff | Read-only exact ChangeSet/candidate/revision HTTP/CLI, retained integration/policy/version/run identity, scoped GC holds, bounded byte paths and text, actual Git path oracle and restart/page/error tests | Review UI, persistent diff indexing and larger-repository profiling |
-| PostgreSQL metadata and outbox | Real database transaction/idempotency/lease tests; repository authority/epoch checks; populated schema upgrades through v13; local service pool and crash/replay | Remote service integration and full server restore |
+| PostgreSQL metadata and outbox | Real database transaction/idempotency/lease tests; repository authority/epoch checks; populated schema upgrades through v14; local service pool and crash/replay | Remote service integration and full server restore |
 | Native ChangeSet intake | HTTP/CLI immutable proposals and separate ready-seal acceptance, scoped blobs, computed versions, original run lineage, atomic pins/outbox and process-loss replay | GitHub base synchronization, remote transport and retention |
 | Protected incremental source reads | Pinned sessions, verified frontiers, bounded prefix batches and descriptors surviving local GC; authenticated workspace-root sessions | Per-tenant service quotas, bulk node delivery and S3 |
 | Native file materialization | Private copies from exact snapshots, full/sparse selection, staged expansion preserving edits/deletions, bounded IO and filesystem checks; guarded node publication and selected capture after runtime removal | Cache/reflink, wider capture fault matrix and Git-compatible format |
@@ -154,6 +171,7 @@ resource outcomes and worker-loss recovery. No complete authority mode is implie
 | Runtime task supervisor | Linux namespace init, privilege guards, environment clearing, guest process limit, child reaping and deadline; real gVisor CI harness | Complete workspace cleanup and production runtime provisioning |
 | Local runtime controller | Versioned immutable profiles, restricted Engine API, bounded ext4 identity, exclusive durable volume assignment and create/start/remove journal; real-runtime fault harness and managed-run adapter | Provisioning, host/engine replacement recovery and workspace cleanup |
 | Workspace preparation reservations | Operator-registered node storage, scoped job claims, immutable source/slot/attempt identity, renewal/reclaim, exact file-ready observation and drain retention; real PostgreSQL race/upgrade tests | Automatic source/slot release after runtime removal |
+| Workspace cleanup metadata | Exact original placement/run, current node claims, durable deletion intent, atomic source pin/slot release, retained history, replay and real PostgreSQL expiry/GC tests | Physical deletion adapter/journal, owner status and node CLI, actual runtime failure/reuse evidence |
 | Local preparation node | Private physical root identity/OS lock, durable placement intent, exact no-replace publication, independent concurrent slots, current authorization and file-ready acknowledgment; actual process-kill recovery and import-to-files CLI tests | Scheduler/daemon, automated volume provisioning, remote workers, fenced volume migration and safe published-tree cleanup |
 | MCP adapter | Planned; not implemented | Shared-service adapter, scoped tools and real client interoperability tests |
 | Git source export | Local native-pack CLI and bounded Rust full-DAG projection to self-contained Git SHA-1/SHA-256 bundle; isolated batch Git, exact mapping, verified original Git metadata/IDs, restored fsck and no-replace publication | Backup metadata, incremental projection, GitHub delivery |
