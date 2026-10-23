@@ -17,6 +17,7 @@ diffy = "=0.5.2"
 treeharbor-core.workspace = true
 treeharbor-history.workspace = true
 treeharbor-git-bridge.workspace = true
+treeharbor-github.workspace = true
 treeharbor-merge.workspace = true
 treeharbor-storage.workspace = true
 treeharbor-metadata.workspace = true

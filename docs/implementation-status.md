@@ -3,6 +3,24 @@
 Updated: 2026-10-23. This file describes implemented behavior and remaining release
 gates. A foundation milestone does not complete either mode.
 
+New [GitHub App connection probe](github-connection.md): an explicit trusted
+operator command checks App/installation/repository/owner identity, requests and
+verifies one-repository read access, independently enumerates token scope, reads
+repository metadata and revokes the temporary token. HTTPS/API version, response
+bounds, deadlines, redaction and no-redirect/no-retry behavior are explicit.
+Queue ownership eligibility is reported separately from unverified configuration.
+No repository binding, source import, PR publication or queue admission occurs.
+
+Local verification: 182 ordinary workspace tests and 178 explicit PostgreSQL/
+materializer/node/service tests passed; strict all-target Clippy and formatting
+passed. New HTTP-client fixtures include identity substitution, scope escalation,
+expiry/suspension, lost token response, bounded slow/large responses and revocation
+failure. OpenSSL independently verifies a fixture JWT signature. A separate real
+public GitHub HTTPS test passed with API version 2026-03-10 and no credentials.
+These are not installed-App/real-host integration evidence: authenticated App
+setup, durable binding/import, PR/check/queue reconciliation and confirmed merge
+remain release gates. Existing native runtime checks remain required in CI.
+
 Explicit [workspace cleanup](workspace-cleanup.md) now joins schema-14 release
 metadata to a guarded physical node operation, owner status and `node cleanup-once`.
 A durable intent precedes unlink; a separate completion record precedes atomic
@@ -163,6 +181,7 @@ resource outcomes and worker-loss recovery. No complete authority mode is implie
 
 | Component | Evidence | Remaining |
 |---|---|---|
+| GitHub App connection | Trusted operator CLI, pinned identity, scoped short-lived read token and revocation; local HTTP/RSA tests and real public HTTPS API check | Installed-App evidence, durable binding, network import, projection/outbox, webhooks, PR/check/merge queue and real-host confirmation |
 | Canonical SHA-256 object format | Versioned framing, independent golden vectors, strict decoder | Compatibility policy for later formats |
 | Immutable directory trees and operations | Exact expected-before checks, canonical subtree operations v2, bounded structural diff, structural sharing, explicit deletes; native merge and Git reference matrix | General history rebase, broader rename/base support, live-server Git interop |
 | Local object store | Atomic no-clobber writes, digest verification, file/directory fsync, tenant directories, physical generations and upload receipts | S3, backup/restore, kill fault campaign |

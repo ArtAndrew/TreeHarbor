@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/core", "crates/storage", "crates/history", "crates/merge", "crates/metadata", "crates/validation", "crates/materializer", "crates/node", "crates/service", "crates/runtime", "crates/git-bridge"]
+members = ["crates/core", "crates/storage", "crates/history", "crates/merge", "crates/metadata", "crates/validation", "crates/materializer", "crates/node", "crates/service", "crates/runtime", "crates/git-bridge", "crates/integrations-github"]
 resolver = "3"
 
 [workspace.package]
@@ -16,6 +16,7 @@ thiserror = "2"
 tempfile = "3"
 treeharbor-core = { path = "crates/core" }
 treeharbor-git-bridge = { path = "crates/git-bridge" }
+treeharbor-github = { path = "crates/integrations-github" }
 treeharbor-history = { path = "crates/history" }
 treeharbor-merge = { path = "crates/merge" }
 treeharbor-validation = { path = "crates/validation" }

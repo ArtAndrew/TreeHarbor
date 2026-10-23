@@ -3,6 +3,9 @@
 /.env
 *.pem
 *.key
+# Public test-only RSA pair; never registered with a GitHub App.
+!/crates/integrations-github/tests/fixtures/test-app.pem
+!/crates/integrations-github/tests/fixtures/test-app.pub.pem
 .DS_Store
 
 # Internal planning documents belong outside the public repository.

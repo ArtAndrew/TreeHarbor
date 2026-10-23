@@ -51,6 +51,9 @@ in **Standalone** mode. Both share one Rust engine.
 > now materializes files, acknowledges exact placements and recovers them after process loss.
 > Explicit [workspace cleanup](docs/workspace-cleanup.md) connects owner drain,
 > verified runtime removal and durable deletion to safe slot reuse.
+> A trusted [GitHub App connection probe](docs/github-connection.md) now checks
+> selected repository identity with a temporary read-only token. PR publication
+> and merge-queue integration remain pending.
 > Neither end-to-end mode is released. No packaged installation is available yet.
 > See [implementation status](docs/implementation-status.md) for evidence and gaps.
 
@@ -69,7 +72,8 @@ measurements, including server, cleanup and build costs.
 
 ## Current developer quickstart
 
-Prerequisites: Git and [Rust via rustup](https://rustup.rs/). The pinned toolchain
+Prerequisites: Git, a C compiler, CMake, OpenSSL (for signature tests), and
+[Rust via rustup](https://rustup.rs/). The pinned toolchain
 is in `rust-toolchain.toml`. First dependency downloads and compilation depend
 on your machine and network; this is not the planned five-minute product install.
 

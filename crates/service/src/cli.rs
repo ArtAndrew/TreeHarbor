@@ -28,6 +28,11 @@ pub struct Cli {
 }
 #[derive(Subcommand)]
 enum Command {
+    /// Trusted GitHub App connection; never run inside an agent workspace/runtime.
+    Github {
+        #[command(subcommand)]
+        action: crate::github::Action,
+    },
     /// Import the full ancestry and trees of one exact Git commit from a complete bundle.
     GitImport {
         #[arg(long)]
@@ -920,6 +925,7 @@ impl Agent {
 }
 pub async fn run(cli: Cli) -> Result<bool> {
     match cli.command {
+        Command::Github { action } => crate::github::run(action).await,
         Command::GitImport {
             bundle,
             commit,

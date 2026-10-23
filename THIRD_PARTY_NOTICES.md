@@ -36,3 +36,11 @@ are preserved verbatim; these files are not licensed as TreeHarbor original code
 This incremental inventory is not a complete distribution SBOM. The first binary
 release must include a complete dependency/license inventory and corresponding
 notices for every shipped component. No binary release is available yet.
+
+The GitHub connection increment adds reqwest 0.13.5, jsonwebtoken 11.1.0,
+rustls/AWS-LC and their supporting dependencies. Original upstream license and
+notice texts for the newly reachable Linux/macOS dependency graph are preserved
+in the [GitHub connection inventory](third-party/github/README.md). This includes
+the crypto implementation's combined third-party notices; those components are
+not relicensed under ELv2. Dependencies for unsupported targets in Cargo.lock are
+not a claim that TreeHarbor ships or supports those targets.
