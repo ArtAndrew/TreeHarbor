@@ -206,20 +206,82 @@ pub async fn download(
     output: &Path,
     timeout: std::time::Duration,
 ) -> crate::Result<crate::client::Reply> {
+    download_inner(socket, credential, Download::Source(fence), output, timeout).await
+}
+
+enum Download {
+    Source(treeharbor_metadata::exports::ExportFence),
+    Projection {
+        projection: uuid::Uuid,
+        epoch: i64,
+        revision: ObjectId,
+    },
+}
+
+pub async fn download_projection(
+    socket: &Path,
+    credential: &crate::client::Credential,
+    projection: uuid::Uuid,
+    epoch: i64,
+    revision: ObjectId,
+    output: &Path,
+    timeout: std::time::Duration,
+) -> crate::Result<crate::client::Reply> {
+    download_inner(
+        socket,
+        credential,
+        Download::Projection {
+            projection,
+            epoch,
+            revision,
+        },
+        output,
+        timeout,
+    )
+    .await
+}
+
+async fn download_inner(
+    socket: &Path,
+    credential: &crate::client::Credential,
+    purpose: Download,
+    output: &Path,
+    timeout: std::time::Duration,
+) -> crate::Result<crate::client::Reply> {
     let parent = files::private_directory(output.parent().ok_or(crate::Error::UnsafeFile)?)?;
     if output.symlink_metadata().is_ok() {
         return Err(crate::Error::UnsafeFile);
     }
     let archive = tempfile::tempfile_in(parent)?;
-    let raw = crate::client::source_export(
-        socket,
-        credential,
-        serde_json::json!({"authority":fence.authority.as_str(),"epoch":fence.epoch,
+    let (revision, raw) = match purpose {
+        Download::Source(fence) => (
+            fence.revision,
+            crate::client::source_export(
+                socket,
+                credential,
+                serde_json::json!({"authority":fence.authority.as_str(),"epoch":fence.epoch,
             "revision":treeharbor_core::RevisionRef::Native(fence.revision).to_string()}),
-        archive,
-        timeout,
-    )
-    .await?;
+                archive,
+                timeout,
+            )
+            .await?,
+        ),
+        Download::Projection {
+            projection,
+            epoch,
+            revision,
+        } => (
+            revision,
+            crate::client::github_projection_export(
+                socket,
+                credential,
+                serde_json::json!({"projection":projection.to_string(),"epoch":epoch}),
+                archive,
+                timeout,
+            )
+            .await?,
+        ),
+    };
     if !raw.status.is_success() {
         return Ok(crate::client::Reply {
             status: raw.status,
@@ -230,7 +292,7 @@ pub async fn download(
     let output = output.to_path_buf();
     let pack = tokio::task::spawn_blocking(move || {
         std::io::Seek::rewind(&mut archive)?;
-        receive(&mut archive, fence.revision, &output)
+        receive(&mut archive, revision, &output)
     })
     .await
     .map_err(|_| crate::Error::ExportWorker)??;

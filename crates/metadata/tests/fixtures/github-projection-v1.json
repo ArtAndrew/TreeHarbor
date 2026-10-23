@@ -1,0 +1,19 @@
+{
+  "tenant": "projection-vector",
+  "repository": "00112233-4455-6677-8899-aabbccddeeff",
+  "object": "sha256:1717171717171717171717171717171717171717171717171717171717171717",
+  "hold_token": "2b2346dc-a14f-f52d-2242-b806a6549c03",
+  "request": {
+    "action": "projection_request",
+    "key": "project-version-2",
+    "epoch": 1,
+    "projection": "ffeeddcc-bbaa-9988-7766-554433221100",
+    "binding": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    "specification": {
+      "changeset": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      "version": 2,
+      "title": "Update selected files",
+      "ttl_seconds": 600
+    }
+  }
+}

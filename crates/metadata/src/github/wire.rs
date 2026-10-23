@@ -4,6 +4,26 @@ use serde::Deserialize;
 #[derive(Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
 pub enum WireCommand {
+    ProjectionRequest {
+        key: String,
+        epoch: i64,
+        projection: String,
+        binding: String,
+        specification: ProjectionSpec,
+    },
+    ProjectionCancel {
+        key: String,
+        epoch: i64,
+        projection: String,
+    },
+    ProjectionStatus {
+        epoch: i64,
+        projection: String,
+    },
+    ProjectionContext {
+        epoch: i64,
+        projection: String,
+    },
     ImportRequest {
         key: String,
         epoch: i64,
@@ -85,6 +105,11 @@ impl WireCommand {
             | Self::Revoke { .. }
             | Self::ImportRequest { .. }
             | Self::ImportCancel { .. } => Permission::RepositoryWrite,
+            Self::ProjectionRequest { .. } | Self::ProjectionCancel { .. } => {
+                Permission::RepositoryWrite
+            }
+            Self::ProjectionStatus { .. } => Permission::Read,
+            Self::ProjectionContext { .. } => Permission::HostPublish,
             Self::Status { .. } | Self::ImportStatus { .. } => Permission::Read,
             _ => Permission::HostRead,
         }
@@ -96,6 +121,38 @@ impl WireCommand {
         backend: Option<&str>,
     ) -> Result<Value> {
         match self {
+            Self::ProjectionRequest {
+                key,
+                epoch,
+                projection,
+                binding,
+                specification,
+            } => {
+                db.request_github_projection(
+                    auth,
+                    &Command { key, epoch },
+                    id(&projection)?,
+                    id(&binding)?,
+                    &specification,
+                )
+                .await
+            }
+            Self::ProjectionCancel {
+                key,
+                epoch,
+                projection,
+            } => {
+                db.cancel_github_projection(auth, &Command { key, epoch }, id(&projection)?)
+                    .await
+            }
+            Self::ProjectionStatus { epoch, projection } => {
+                db.github_projection_status(auth, epoch, id(&projection)?)
+                    .await
+            }
+            Self::ProjectionContext { epoch, projection } => {
+                db.github_projection_context(auth, epoch, id(&projection)?)
+                    .await
+            }
             Self::ImportRequest {
                 key,
                 epoch,

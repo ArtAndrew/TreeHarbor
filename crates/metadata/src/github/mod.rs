@@ -1,6 +1,8 @@
 //! Durable Connected configuration and assigned-bridge connection observations.
 //! Neither configuration nor a successful probe grants publication or validation.
 pub(crate) mod imports;
+pub(crate) mod projections;
+pub use projections::ProjectionSpec;
 mod types;
 mod wire;
 use crate::{
@@ -78,7 +80,16 @@ async fn assigned(
     epoch: i64,
     id: Uuid,
 ) -> Result<(Row, BindingSpec)> {
-    context(tx, auth, epoch, Permission::HostRead).await?;
+    assigned_for(tx, auth, epoch, id, Permission::HostRead).await
+}
+async fn assigned_for(
+    tx: &Transaction<'_>,
+    auth: &Authorization,
+    epoch: i64,
+    id: Uuid,
+    permission: Permission,
+) -> Result<(Row, BindingSpec)> {
+    context(tx, auth, epoch, permission).await?;
     let row = binding(tx, auth.scope(), id).await?;
     let spec = specification(&row)?;
     if row.get::<_, i64>("epoch") != epoch || row.get::<_, String>("state") != "active" {

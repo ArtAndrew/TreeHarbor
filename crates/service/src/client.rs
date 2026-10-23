@@ -453,10 +453,43 @@ pub(crate) async fn source_read(
 pub(crate) async fn source_export(
     socket: &Path,
     credential: &Credential,
-    mut fields: Value,
+    fields: Value,
     output: std::fs::File,
     timeout: Duration,
 ) -> Result<RawReply> {
+    export_request(
+        socket,
+        credential,
+        fields,
+        output,
+        timeout,
+        "/v1/source/export",
+    )
+    .await
+}
+
+pub(crate) async fn github_projection_export(
+    socket: &Path,
+    credential: &Credential,
+    fields: Value,
+    output: std::fs::File,
+    timeout: Duration,
+) -> Result<RawReply> {
+    export_request(
+        socket,
+        credential,
+        fields,
+        output,
+        timeout,
+        "/v1/github/projections/export",
+    )
+    .await
+}
+
+fn scoped_fields(credential: &Credential, mut fields: Value) -> Result<Vec<u8>> {
+    if !fields.is_object() {
+        return Err(Error::Config);
+    }
     fields["version"] = json!(1);
     fields["tenant"] = json!(credential.scope.tenant());
     fields["repository"] = json!(credential.scope.repository().to_string());
@@ -464,12 +497,42 @@ pub(crate) async fn source_export(
     if body.len() > MAX_REQUEST_BYTES {
         return Err(Error::Size);
     }
+    Ok(body)
+}
+
+pub(crate) async fn github_projection_prepare(
+    socket: &Path,
+    credential: &Credential,
+    fields: Value,
+    timeout: Duration,
+) -> Result<Reply> {
+    send_request(
+        socket,
+        &credential.token,
+        "POST",
+        "/v1/github/projections/prepare".into(),
+        "application/json",
+        scoped_fields(credential, fields)?,
+        timeout,
+    )
+    .await
+}
+
+async fn export_request(
+    socket: &Path,
+    credential: &Credential,
+    fields: Value,
+    output: std::fs::File,
+    timeout: Duration,
+    uri: &'static str,
+) -> Result<RawReply> {
+    let body = scoped_fields(credential, fields)?;
     exchange(
         socket,
         &credential.token,
         Exchange {
             method: "POST",
-            uri: "/v1/source/export".into(),
+            uri: uri.into(),
             content_type: "application/json",
             body,
             max_response: MAX_RESPONSE,

@@ -47,6 +47,41 @@ struct Wire {
     epoch: i64,
     revision: String,
 }
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ProjectionWire {
+    version: u8,
+    tenant: String,
+    repository: String,
+    epoch: i64,
+    projection: String,
+}
+enum Purpose {
+    Source(ExportFence),
+    Projection { epoch: i64, projection: Uuid },
+}
+fn projection_request(body: &[u8]) -> Result<(Scope, Purpose)> {
+    let w: ProjectionWire =
+        serde_json::from_slice(body).map_err(|_| fail(400, "invalid_request"))?;
+    let id = |s: &str| -> Result<Uuid> {
+        let id: Uuid = s.parse().map_err(|_| fail(400, "invalid_request"))?;
+        if id.is_nil() || id.to_string() != s {
+            return Err(fail(400, "invalid_request"));
+        }
+        Ok(id)
+    };
+    if w.version != 1 || w.epoch <= 0 {
+        return Err(fail(400, "invalid_request"));
+    }
+    Ok((
+        Scope::new(w.tenant, id(&w.repository)?).map_err(|_| fail(400, "invalid_request"))?,
+        Purpose::Projection {
+            epoch: w.epoch,
+            projection: id(&w.projection)?,
+        },
+    ))
+}
+
 fn parse(body: &[u8]) -> Result<(Scope, ExportFence)> {
     let w: Wire = serde_json::from_slice(body).map_err(|_| fail(400, "invalid_request"))?;
     let repo: Uuid = w
@@ -202,15 +237,29 @@ pub(crate) async fn export(
     credential: &SecretToken,
     backend: Backend,
     pool: Pool<Database>,
+    projection: bool,
 ) -> Result<Delivery> {
-    let (scope, fence) = parse(body)?;
+    let (scope, purpose) = if projection {
+        projection_request(body)?
+    } else {
+        let (s, f) = parse(body)?;
+        (s, Purpose::Source(f))
+    };
     let mut db = pool
         .get()
         .await
         .map_err(|_| fail(503, "database_unavailable"))?;
     let auth = db
         .metadata
-        .authorize(credential, &scope, Permission::Read)
+        .authorize(
+            credential,
+            &scope,
+            if projection {
+                Permission::HostPublish
+            } else {
+                Permission::Read
+            },
+        )
         .await
         .map_err(metadata)?;
     let permit = Arc::new(
@@ -231,11 +280,15 @@ pub(crate) async fn export(
     })
     .await
     .map_err(|_| fail(500, "source_worker_failed"))??;
-    let read = db
-        .metadata
-        .open_source_export(&auth, fence, 120)
-        .await
-        .map_err(metadata)?;
+    let read = match purpose {
+        Purpose::Source(fence) => db.metadata.open_source_export(&auth, fence, 120).await,
+        Purpose::Projection { epoch, projection } => {
+            db.metadata
+                .open_github_projection_export(&auth, epoch, projection, 120)
+                .await
+        }
+    }
+    .map_err(metadata)?;
     let result = spool(&mut db.metadata, &store, &read, file, permit.clone()).await;
     db.metadata
         .finish_source_export(read)
@@ -252,4 +305,30 @@ pub(crate) async fn export(
         buffer: vec![0; 64 * 1024],
         _permit: permit,
     })
+}
+
+#[cfg(test)]
+mod projection_tests {
+    use super::*;
+    use serde_json::json;
+    #[test]
+    fn projection_export_accepts_only_an_exact_operation_not_an_arbitrary_root() {
+        let valid = json!({"version":1,"tenant":"test","repository":"00112233-4455-6677-8899-aabbccddeeff","epoch":1,"projection":"ffeeddcc-bbaa-9988-7766-554433221100"});
+        assert!(projection_request(&serde_json::to_vec(&valid).unwrap()).is_ok());
+        for field in ["revision", "authority", "token", "key"] {
+            let mut invalid = valid.clone();
+            invalid[field] = json!("forged");
+            assert!(projection_request(&serde_json::to_vec(&invalid).unwrap()).is_err());
+        }
+        for (field, value) in [
+            ("version", json!(2)),
+            ("epoch", json!(0)),
+            ("projection", json!(Uuid::nil().to_string())),
+            ("repository", json!("00112233445566778899aabbccddeeff")),
+        ] {
+            let mut invalid = valid.clone();
+            invalid[field] = value;
+            assert!(projection_request(&serde_json::to_vec(&invalid).unwrap()).is_err());
+        }
+    }
 }

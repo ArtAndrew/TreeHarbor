@@ -208,6 +208,8 @@ async fn handle(
     let upload = crate::source::route(request.uri().path());
     let source_read = request.uri().path() == "/v1/source/read";
     let source_export = request.uri().path() == "/v1/source/export";
+    let projection_export = request.uri().path() == "/v1/github/projections/export";
+    let projection_prepare = request.uri().path() == "/v1/github/projections/prepare";
     let review_read = request.uri().path() == "/v1/review/diff";
     let history_read = request.uri().path() == "/v1/history/read";
     let rebase_prepare = request.uri().path() == "/v1/changes/rebase";
@@ -218,6 +220,8 @@ async fn handle(
         && upload.is_none()
         && !source_read
         && !source_export
+        && !projection_export
+        && !projection_prepare
         && !history_read
         && !review_read
         && !seal_accept
@@ -303,6 +307,18 @@ async fn handle(
         Ok(Err(_)) => return error(StatusCode::BAD_REQUEST, "invalid_body"),
         Err(_) => return error(StatusCode::REQUEST_TIMEOUT, "body_timeout"),
     };
+    if projection_prepare {
+        let Some(backend) = backend else {
+            return error(StatusCode::SERVICE_UNAVAILABLE, "storage_not_configured");
+        };
+        return match crate::github::projection::prepare(&body, &credential, backend, pool).await {
+            Ok(value) => response(StatusCode::OK, value),
+            Err(f) => error(
+                StatusCode::from_u16(f.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+                f.code,
+            ),
+        };
+    }
     if seal_accept {
         let Some(backend) = backend else {
             return error(StatusCode::SERVICE_UNAVAILABLE, "storage_not_configured");
@@ -351,11 +367,19 @@ async fn handle(
             ),
         };
     }
-    if source_export {
+    if source_export || projection_export {
         let Some(backend) = backend else {
             return error(StatusCode::SERVICE_UNAVAILABLE, "storage_not_configured");
         };
-        return match crate::source_export::export(&body, &credential, backend, pool).await {
+        return match crate::source_export::export(
+            &body,
+            &credential,
+            backend,
+            pool,
+            projection_export,
+        )
+        .await
+        {
             Ok(delivery) => {
                 let mut result = Response::new(delivery.boxed());
                 result.headers_mut().insert(
@@ -430,6 +454,7 @@ async fn handle(
                 | "admission_blocked"
                 | "rebase_state_changed"
                 | "host_binding_state"
+                | "host_projection_state"
                 | "version_conflict" => StatusCode::CONFLICT,
                 "upload_state_changed" | "upload_membership" | "object_busy" | "lease_expired" => {
                     StatusCode::CONFLICT

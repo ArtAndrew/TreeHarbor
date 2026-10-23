@@ -1,4 +1,6 @@
 mod common;
+#[path = "intake/github_projection.rs"]
+mod github_projection;
 #[path = "intake/integration.rs"]
 mod integration;
 #[path = "intake/proposals.rs"]

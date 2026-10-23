@@ -45,6 +45,9 @@ impl Permission {
             "github.bind.v1" | "github.revoke.v1" => Ok(Self::RepositoryWrite),
             "github.import.request.v1" | "github.import.cancel.v1" => Ok(Self::RepositoryWrite),
             "github.import.begin.v1" | "github.import.finish.v1" => Ok(Self::HostRead),
+            "github.projection.request.v1"
+            | "github.projection.cancel.v1"
+            | "github.projection.prepare.v1" => Ok(Self::RepositoryWrite),
             "github.probe.begin.v1" | "github.probe.finish.v1" => Ok(Self::HostRead),
             "native.program.put.v1" | "native.policy.put.v1" | "native.ref.policy.v1" => {
                 Ok(Self::PolicyWrite)
