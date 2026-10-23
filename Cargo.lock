@@ -2006,15 +2006,27 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
+ "sha2",
  "tempfile",
  "thiserror",
  "time",
  "tokio",
  "treeharbor-core",
  "treeharbor-git-bridge",
+ "treeharbor-github-contract",
  "treeharbor-storage",
  "uuid",
  "zeroize",
+]
+
+[[package]]
+name = "treeharbor-github-contract"
+version = "0.1.0-dev"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror",
+ "treeharbor-core",
 ]
 
 [[package]]
@@ -2067,6 +2079,7 @@ dependencies = [
  "tokio",
  "tokio-postgres",
  "treeharbor-core",
+ "treeharbor-github-contract",
  "treeharbor-merge",
  "treeharbor-runtime",
  "treeharbor-storage",
@@ -2133,6 +2146,7 @@ dependencies = [
  "treeharbor-core",
  "treeharbor-git-bridge",
  "treeharbor-github",
+ "treeharbor-github-contract",
  "treeharbor-history",
  "treeharbor-materializer",
  "treeharbor-merge",

@@ -9,6 +9,7 @@ pub(crate) enum Capability {
     Branch,
     PullRead,
     PullWrite,
+    Evidence,
 }
 impl Capability {
     pub fn permissions(self) -> BTreeMap<String, String> {
@@ -16,14 +17,14 @@ impl Capability {
             (
                 "contents".into(),
                 match self {
-                    Self::Source | Self::PullRead | Self::PullWrite => "read",
+                    Self::Source | Self::PullRead | Self::PullWrite | Self::Evidence => "read",
                     Self::Branch => "write",
                 }
                 .into(),
             ),
             ("metadata".into(), "read".into()),
         ]);
-        if matches!(self, Self::PullRead | Self::PullWrite) {
+        if matches!(self, Self::PullRead | Self::PullWrite | Self::Evidence) {
             permissions.insert(
                 "pull_requests".into(),
                 if matches!(self, Self::PullWrite) {
@@ -33,6 +34,9 @@ impl Capability {
                 }
                 .into(),
             );
+        }
+        if matches!(self, Self::Evidence) {
+            permissions.insert("checks".into(), "read".into());
         }
         permissions
     }

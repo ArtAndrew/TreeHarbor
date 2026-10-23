@@ -1,4 +1,6 @@
 use super::*;
+#[path = "inspections.rs"]
+mod inspections;
 
 fn cli(f: &Fixture, id: Uuid, state: &Path, config: &Path) -> Command {
     let mut command = Command::new(env!("CARGO_BIN_EXE_treeharbor"));
@@ -158,6 +160,8 @@ pub(super) async fn exercise(
     assert_eq!(observed["merge_authorized"], false);
     assert_eq!(observed["observation"]["token_revoked"], false);
     assert!(state.join("ack-0000.json").is_file());
+    inspections::exercise(f, server, owner, publisher, id).await;
+    f.credential_path = publisher.to_owned();
     assert!(
         cli(f, id, &f.dir.path().join("missing-state"), &app)
             .output()

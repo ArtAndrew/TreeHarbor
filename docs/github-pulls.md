@@ -149,3 +149,6 @@ revocation fences, concurrent claims, lost POST/PATCH responses, closed/ambiguou
 searches and actual CLI/server process loss. Automatic uncertain-outcome resolution,
 retention cleanup, real installed-App verification and the full merge workflow
 remain unfinished.
+
+Use [exact check observations](github-inspections.md) after PR delivery to retain
+selected check evidence. A PR observation alone does not satisfy validation.

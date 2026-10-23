@@ -4,6 +4,35 @@ use serde::Deserialize;
 #[derive(Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
 pub enum WireCommand {
+    InspectionRequest {
+        key: String,
+        epoch: i64,
+        inspection: String,
+        specification: InspectionSpec,
+    },
+    InspectionReport {
+        key: String,
+        epoch: i64,
+        inspection: String,
+        report: Box<treeharbor_github_contract::InspectionReport>,
+    },
+    InspectionCancel {
+        key: String,
+        epoch: i64,
+        inspection: String,
+    },
+    InspectionStatus {
+        epoch: i64,
+        inspection: String,
+    },
+    InspectionContext {
+        epoch: i64,
+        inspection: String,
+    },
+    InspectionCollectContext {
+        epoch: i64,
+        inspection: String,
+    },
     PullRequest {
         key: String,
         epoch: i64,
@@ -179,6 +208,13 @@ fn id(s: &str) -> Result<Uuid> {
 impl WireCommand {
     pub fn permission(&self) -> Permission {
         match self {
+            Self::InspectionRequest { .. } | Self::InspectionCancel { .. } => {
+                Permission::RepositoryWrite
+            }
+            Self::InspectionStatus { .. } => Permission::Read,
+            Self::InspectionReport { .. }
+            | Self::InspectionContext { .. }
+            | Self::InspectionCollectContext { .. } => Permission::HostRead,
             Self::PullRequest { .. } | Self::PullCancel { .. } => Permission::RepositoryWrite,
             Self::PullStatus { .. } => Permission::Read,
             Self::PullBegin { .. }
@@ -214,6 +250,54 @@ impl WireCommand {
         backend: Option<&str>,
     ) -> Result<Value> {
         match self {
+            Self::InspectionRequest {
+                key,
+                epoch,
+                inspection,
+                specification,
+            } => {
+                db.request_github_inspection(
+                    auth,
+                    &Command { key, epoch },
+                    id(&inspection)?,
+                    &specification,
+                )
+                .await
+            }
+            Self::InspectionReport {
+                key,
+                epoch,
+                inspection,
+                report,
+            } => {
+                db.report_github_inspection(
+                    auth,
+                    &Command { key, epoch },
+                    id(&inspection)?,
+                    &report,
+                )
+                .await
+            }
+            Self::InspectionCancel {
+                key,
+                epoch,
+                inspection,
+            } => {
+                db.cancel_github_inspection(auth, &Command { key, epoch }, id(&inspection)?)
+                    .await
+            }
+            Self::InspectionStatus { epoch, inspection } => {
+                db.github_inspection_context(auth, epoch, id(&inspection)?, false, false)
+                    .await
+            }
+            Self::InspectionContext { epoch, inspection } => {
+                db.github_inspection_context(auth, epoch, id(&inspection)?, true, false)
+                    .await
+            }
+            Self::InspectionCollectContext { epoch, inspection } => {
+                db.github_inspection_context(auth, epoch, id(&inspection)?, true, true)
+                    .await
+            }
             Self::PullRequest {
                 key,
                 epoch,

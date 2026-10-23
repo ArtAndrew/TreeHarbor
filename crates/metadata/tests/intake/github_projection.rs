@@ -1,4 +1,6 @@
 use super::*;
+#[path = "github_inspection.rs"]
+mod inspections;
 #[path = "github_publication.rs"]
 mod publication;
 #[path = "github_pull.rs"]
