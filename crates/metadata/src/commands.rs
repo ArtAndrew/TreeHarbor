@@ -350,7 +350,7 @@ impl Metadata {
             .authorize(credential, &scope, request.command.permission())
             .await?;
         let result = match request.command {
-            Command::Github { request } => request.execute(self, &auth).await?,
+            Command::Github { request } => request.execute(self, &auth, backend).await?,
             Command::Native { request } => request.execute(self, &auth).await?,
             Command::RepositoryInfo {} => self.authorized_repository_info(&auth).await?,
             Command::ChangeBegin {

@@ -1982,6 +1982,7 @@ dependencies = [
 name = "treeharbor-git-bridge"
 version = "0.1.0-dev"
 dependencies = [
+ "base64 0.23.1",
  "flate2",
  "rustix",
  "serde",
@@ -1992,6 +1993,7 @@ dependencies = [
  "thiserror",
  "treeharbor-core",
  "treeharbor-storage",
+ "zeroize",
 ]
 
 [[package]]
@@ -2007,6 +2009,8 @@ dependencies = [
  "thiserror",
  "time",
  "tokio",
+ "treeharbor-core",
+ "treeharbor-git-bridge",
  "zeroize",
 ]
 

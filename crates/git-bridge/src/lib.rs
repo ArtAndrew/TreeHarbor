@@ -6,6 +6,7 @@
 mod ingest;
 mod origin;
 pub use ingest::{Import, Imported, import};
+pub mod download;
 mod pack;
 mod process;
 mod stream;

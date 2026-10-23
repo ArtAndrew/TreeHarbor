@@ -18,6 +18,8 @@ tempfile.workspace = true
 rustix.workspace = true
 sha1-checked = "0.10.0"
 flate2 = "1.1.10"
+base64 = "0.23"
+zeroize = "1"
 
 [dev-dependencies]
 treeharbor-storage.workspace = true

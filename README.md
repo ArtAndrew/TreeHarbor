@@ -53,7 +53,9 @@ in **Standalone** mode. Both share one Rust engine.
 > verified runtime removal and durable deletion to safe slot reuse.
 > [GitHub App connections](docs/github-connection.md) now support durable repository
 > bindings and revocable, assigned-bridge verification with read-only tokens.
-> Network source import, PR publication and merge-queue integration remain pending.
+> [Exact GitHub source import](docs/github-import.md) adds owner-requested full-history
+> download and resumable source acceptance through the assigned bridge.
+> PR publication, merge-queue integration and installed-App acceptance remain pending.
 > Neither end-to-end mode is released. No packaged installation is available yet.
 > See [implementation status](docs/implementation-status.md) for evidence and gaps.
 

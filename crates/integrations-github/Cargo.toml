@@ -17,6 +17,8 @@ serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
 thiserror.workspace = true
+treeharbor-core.workspace = true
+treeharbor-git-bridge.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

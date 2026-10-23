@@ -17,6 +17,7 @@
 - Managed isolated agent execution with durable requests, resource limits and process-loss recovery.
 - Resumable immutable ChangeSet API/CLI with server-computed trees and exact run/base lineage.
 - Native policies, refs and serial integration queue with exact candidate checks/reviews, atomic publication and crash-safe CLI/API replay.
+- GitHub App bindings and owner-requested exact source import, scoped read access, private Linux download and resumable full-history acceptance without publication permission.
 - Contract tests and product documentation.
 
 There is no installable product release yet.

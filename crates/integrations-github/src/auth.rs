@@ -72,6 +72,9 @@ impl<'de> Deserialize<'de> for Secret {
     }
 }
 impl Secret {
+    pub(crate) fn copy_for_git(&self) -> Zeroizing<String> {
+        Zeroizing::new(self.0.to_string())
+    }
     pub(crate) fn header(&self) -> Result<HeaderValue> {
         if self.0.is_empty() || self.0.len() > 8192 || !self.0.bytes().all(|b| b.is_ascii_graphic())
         {

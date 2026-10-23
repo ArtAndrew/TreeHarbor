@@ -1,5 +1,6 @@
 //! Durable Connected configuration and assigned-bridge connection observations.
 //! Neither configuration nor a successful probe grants publication or validation.
+pub(crate) mod imports;
 mod types;
 mod wire;
 use crate::{
@@ -7,6 +8,7 @@ use crate::{
     access::{Authorization, Permission, repository_lock},
     catalog::settings,
 };
+pub use imports::ImportSpec;
 use serde_json::{Value, json};
 use tokio_postgres::{Row, Transaction};
 pub use types::{BindingSpec, Observation, Upstream};
