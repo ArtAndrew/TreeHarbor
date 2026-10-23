@@ -30,6 +30,8 @@ in **Standalone** mode. Both share one Rust engine.
 > owner requests to prepared files, bounded gVisor execution and recoverable results.
 > [Immutable change proposals](docs/change-proposals.md) add resumable blob uploads
 > and server-computed ChangeSets through the local API/CLI, with original run lineage.
+> Experimental [managed seals](docs/managed-seals.md) capture selected files after
+> verified runtime removal and separately accept them as immutable ChangeSets.
 > A [native merge library](docs/native-merge.md) now computes bounded three-way
 > snapshot results and structured conflicts. [Native integration](docs/native-integration.md)
 > adds durable refs, serial admission, scoped checks/reviews and atomic publication

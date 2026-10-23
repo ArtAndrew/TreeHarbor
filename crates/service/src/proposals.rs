@@ -24,6 +24,7 @@ use treeharbor_metadata::{
     catalog::ObjectLease,
     proposals::{ProposalCommand, ProposalRead, ProposalStart},
     reads::{ReadBatch, ReadNode, ReadObject},
+    seals::SealAcceptRead,
 };
 use treeharbor_storage::{ManagedStore, PreparedObject, TenantId};
 use uuid::Uuid;
@@ -243,24 +244,59 @@ async fn verify(batch: ReadBatch, permit: Permit) -> Result<ReadObject> {
     .pop()
     .ok_or(fail(500, "proposal_object_error"))
 }
+enum ChangeSource<'a> {
+    Proposal(&'a ProposalRead),
+    Seal {
+        read: &'a SealAcceptRead,
+        replacements: BTreeMap<ObjectId, ReadNode>,
+    },
+}
+impl ChangeSource<'_> {
+    fn root(&self) -> Result<ReadNode> {
+        match self {
+            Self::Proposal(r) => Ok(r.root()),
+            Self::Seal { read, .. } => read.root(0).map_err(meta),
+        }
+    }
+    fn snapshot(&self) -> ObjectId {
+        match self {
+            Self::Proposal(r) => r.snapshot(),
+            Self::Seal { read, .. } => read.snapshot(),
+        }
+    }
+}
 async fn source(
     db: &mut Metadata,
     store: &ManagedStore,
-    read: &ProposalRead,
+    read: &ChangeSource<'_>,
     node: ReadNode,
     permit: Permit,
 ) -> Result<ReadObject> {
-    let batch = db
-        .open_proposal_source_batch(
-            read,
-            store,
-            &[node],
-            treeharbor_metadata::reads::MAX_READ_BYTES,
-        )
-        .await
-        .map_err(meta)?;
+    let batch = match read {
+        ChangeSource::Proposal(r) => {
+            db.open_proposal_source_batch(
+                r,
+                store,
+                &[node],
+                treeharbor_metadata::reads::MAX_READ_BYTES,
+            )
+            .await
+        }
+        ChangeSource::Seal { read, .. } => {
+            db.read_seal_acceptance(
+                read,
+                0,
+                store,
+                &[node],
+                treeharbor_metadata::reads::MAX_READ_BYTES,
+            )
+            .await
+        }
+    }
+    .map_err(meta)?;
     verify(batch, permit).await
 }
+
 fn child(object: &ReadObject, id: ObjectId) -> Result<ReadNode> {
     object
         .children()
@@ -271,12 +307,12 @@ fn child(object: &ReadObject, id: ObjectId) -> Result<ReadNode> {
 async fn compute(
     db: &mut Metadata,
     store: &ManagedStore,
-    read: &ProposalRead,
-    command: &ProposalCommand,
+    read: ChangeSource<'_>,
+    operations: Changes,
     permit: Permit,
 ) -> Result<(AppliedChange, Vec<PreparedObject>)> {
     let scratch = Scratch::new();
-    let commit = source(db, store, read, read.root(), permit.clone()).await?;
+    let commit = source(db, store, &read, read.root()?, permit.clone()).await?;
     let Object::NativeCommit(commit_value) = commit.object() else {
         return Err(fail(500, "proposal_object_error"));
     };
@@ -286,7 +322,7 @@ async fn compute(
     let snapshot = source(
         db,
         store,
-        read,
+        &read,
         child(&commit, read.snapshot())?,
         permit.clone(),
     )
@@ -295,14 +331,14 @@ async fn compute(
         return Err(fail(500, "proposal_object_error"));
     };
     let root = *root;
-    let root_node = source(db, store, read, child(&snapshot, root)?, permit.clone()).await?;
+    let root_node = source(db, store, &read, child(&snapshot, root)?, permit.clone()).await?;
     let mut directory_bytes = snapshot.encoded_length() + root_node.encoded_length();
     scratch.load(snapshot).map_err(core)?;
     let mut directories = BTreeMap::new();
     directories.insert(root, root_node);
     // Fetch ancestor directories of explicit edits, not whole history or blobs of
     // unchanged files. Every node was derived from verified pinned source bytes.
-    for op in command.operations.operations() {
+    for op in operations.operations() {
         let mut current = root;
         let parts: Vec<_> = op.path.components().collect();
         for part in &parts[..parts.len() - 1] {
@@ -325,7 +361,7 @@ async fn compute(
                 let value = source(
                     db,
                     store,
-                    read,
+                    &read,
                     child(parent, entry.target)?,
                     permit.clone(),
                 )
@@ -342,18 +378,32 @@ async fn compute(
     for (_, object) in directories {
         scratch.load(object).map_err(core)?;
     }
-    let blobs: BTreeSet<_> = command
-        .operations
+    let blobs: BTreeSet<_> = operations
         .operations()
         .iter()
         .filter_map(|o| o.replacement.map(|r| r.target))
         .collect();
     for id in blobs {
-        let batch = db.open_proposal_blob(read, store, id).await.map_err(meta)?;
+        let batch = match &read {
+            ChangeSource::Proposal(r) => db.open_proposal_blob(r, store, id).await,
+            ChangeSource::Seal { read, replacements } => {
+                db.read_seal_acceptance(
+                    read,
+                    1,
+                    store,
+                    &[replacements
+                        .get(&id)
+                        .ok_or(fail(500, "proposal_object_error"))?
+                        .clone()],
+                    treeharbor_metadata::reads::MAX_READ_BYTES,
+                )
+                .await
+            }
+        }
+        .map_err(meta)?;
         let object = verify(batch, permit.clone()).await?;
         scratch.load(object).map_err(core)?;
     }
-    let operations = command.operations.clone();
     let base = read.snapshot();
     tokio::task::spawn_blocking(move || {
         let _permit = permit;
@@ -366,6 +416,40 @@ async fn compute(
     .await
     .map_err(|_| fail(500, "proposal_worker_failed"))?
 }
+pub(crate) async fn compute_seal(
+    db: &mut Metadata,
+    store: &ManagedStore,
+    read: &SealAcceptRead,
+    permit: Permit,
+) -> Result<(AppliedChange, Vec<PreparedObject>)> {
+    let batch = db
+        .read_seal_acceptance(
+            read,
+            1,
+            store,
+            &[read.root(1).map_err(meta)?],
+            treeharbor_metadata::reads::MAX_READ_BYTES,
+        )
+        .await
+        .map_err(meta)?;
+    let value = verify(batch, permit.clone()).await?;
+    if value.id() != read.operations() {
+        return Err(fail(500, "proposal_object_error"));
+    }
+    let Object::ChangeOperations(operations) = value.object() else {
+        return Err(fail(500, "proposal_object_error"));
+    };
+    let replacements = value.children().map(|n| (n.id(), n)).collect();
+    compute(
+        db,
+        store,
+        ChangeSource::Seal { read, replacements },
+        operations.clone(),
+        permit,
+    )
+    .await
+}
+
 async fn publish(
     db: &mut Metadata,
     store: &ManagedStore,
@@ -416,7 +500,14 @@ async fn execute(
     store: &ManagedStore,
     permit: Permit,
 ) -> Result<Value> {
-    let (applied, objects) = compute(db, store, read, command, permit.clone()).await?;
+    let (applied, objects) = compute(
+        db,
+        store,
+        ChangeSource::Proposal(read),
+        command.operations.clone(),
+        permit.clone(),
+    )
+    .await?;
     let (ops, result) = publish(db, store, auth, command.upload, &applied, objects, permit).await?;
     let outcome = db
         .finish_change_proposal(auth, command, &applied, &ops, &result)

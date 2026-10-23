@@ -18,6 +18,12 @@ pub struct Publication {
     _guard: Arc<dyn Send + Sync>,
 }
 impl Publication {
+    pub(crate) fn destination(&self) -> &Path {
+        &self.destination
+    }
+    pub(crate) fn binding(&self) -> [u8; 32] {
+        self.binding
+    }
     /// Paths and guard come only from a trusted local controller. The guard must
     /// own BOTH process exclusion and in-process operation exclusion. It is a
     /// lifetime mechanism, not an authentication token or runtime sandbox.
@@ -124,7 +130,7 @@ impl PublicationReceipt {
     }
 }
 
-fn directory(path: &Path) -> Result<File> {
+pub(crate) fn directory(path: &Path) -> Result<File> {
     let file = OpenOptions::new()
         .read(true)
         .custom_flags((OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::NONBLOCK).bits() as i32)
@@ -138,7 +144,7 @@ fn directory(path: &Path) -> Result<File> {
     }
     Ok(file)
 }
-fn read_file(parent: &File, name: &str) -> Result<File> {
+pub(crate) fn read_file(parent: &File, name: &str) -> Result<File> {
     let file = File::from(
         openat(
             parent,

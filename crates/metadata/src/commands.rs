@@ -140,6 +140,27 @@ enum Command {
         workspace: String,
         generation: i64,
     },
+    SealRequest {
+        key: String,
+        authority: Mode,
+        epoch: i64,
+        seal: String,
+        run: String,
+        generation: i64,
+        selection: SelectionWire,
+        max_objects: i64,
+        max_bytes: i64,
+        ttl_seconds: i32,
+    },
+    SealStatus {
+        seal: String,
+    },
+    SealCancel {
+        key: String,
+        authority: Mode,
+        epoch: i64,
+        seal: String,
+    },
     RunRequest {
         key: String,
         authority: Mode,
@@ -202,6 +223,49 @@ impl ProfileWire {
         }
     }
 }
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SelectionWire {
+    replace_hex: Vec<String>,
+    delete_hex: Vec<String>,
+    exclude_hex: Vec<String>,
+}
+impl SelectionWire {
+    fn decode(self) -> Result<treeharbor_core::CaptureSelection, CommandError> {
+        fn paths(values: Vec<String>) -> Result<Vec<RepoPath>, CommandError> {
+            if values.len() > 256 {
+                return Err(CommandError::InvalidRequest);
+            }
+            values
+                .into_iter()
+                .map(|v| {
+                    if v.len() > 8192
+                        || v.len() % 2 != 0
+                        || !v
+                            .bytes()
+                            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+                    {
+                        return Err(CommandError::InvalidRequest);
+                    }
+                    let bytes = (0..v.len())
+                        .step_by(2)
+                        .map(|i| {
+                            u8::from_str_radix(&v[i..i + 2], 16)
+                                .map_err(|_| CommandError::InvalidRequest)
+                        })
+                        .collect::<Result<Vec<_>, _>>()?;
+                    RepoPath::new(bytes).map_err(|_| CommandError::InvalidRequest)
+                })
+                .collect()
+        }
+        treeharbor_core::CaptureSelection::new(
+            paths(self.replace_hex)?,
+            paths(self.delete_hex)?,
+            paths(self.exclude_hex)?,
+        )
+        .map_err(|_| CommandError::InvalidRequest)
+    }
+}
 #[derive(Clone, Copy, Deserialize)]
 #[serde(rename_all = "lowercase")]
 enum Mode {
@@ -231,6 +295,8 @@ impl Command {
             | Self::WorkspaceDelete { .. }
             | Self::RunRequest { .. }
             | Self::RunStop { .. }
+            | Self::SealRequest { .. }
+            | Self::SealCancel { .. }
             | Self::SourceProfilePut { .. } => Permission::WorkspaceWrite,
             _ => Permission::Read,
         }
@@ -320,6 +386,47 @@ impl Metadata {
                 self.abort_change_upload(
                     &auth.context(key, authority.into(), epoch),
                     uuid(&upload)?,
+                )
+                .await?
+            }
+            Command::SealRequest {
+                key,
+                authority,
+                epoch,
+                seal,
+                run,
+                generation,
+                selection,
+                max_objects,
+                max_bytes,
+                ttl_seconds,
+            } => {
+                self.request_workspace_seal(
+                    &auth.context(key, authority.into(), epoch),
+                    &crate::seals::SealRequest {
+                        seal: uuid(&seal)?,
+                        run: uuid(&run)?,
+                        generation,
+                        selection: selection.decode()?,
+                        limits: crate::uploads::UploadLimits {
+                            objects: max_objects,
+                            bytes: max_bytes,
+                            ttl_seconds,
+                        },
+                    },
+                )
+                .await?
+            }
+            Command::SealStatus { seal } => self.workspace_seal_status(&auth, uuid(&seal)?).await?,
+            Command::SealCancel {
+                key,
+                authority,
+                epoch,
+                seal,
+            } => {
+                self.cancel_workspace_seal(
+                    &auth.context(key, authority.into(), epoch),
+                    uuid(&seal)?,
                 )
                 .await?
             }
@@ -487,6 +594,38 @@ impl Metadata {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn capture_selection_rejects_ambiguous_paths_and_preserves_raw_bytes() {
+        let raw: SelectionWire = serde_json::from_value(json!({
+            "replace_hex":["7372632fff"], "delete_hex":[], "exclude_hex":[]
+        }))
+        .unwrap();
+        assert_eq!(raw.decode().unwrap().replace()[0].as_bytes(), b"src/\xff");
+        for value in [
+            json!({"replace_hex":["2e2e2f61"],"delete_hex":[],"exclude_hex":[]}),
+            json!({"replace_hex":["61","612f62"],"delete_hex":[],"exclude_hex":[]}),
+            json!({"replace_hex":["61"],"delete_hex":["61"],"exclude_hex":[]}),
+            json!({"replace_hex":["61"],"delete_hex":[],"exclude_hex":["62"]}),
+            json!({"replace_hex":["FF"],"delete_hex":[],"exclude_hex":[]}),
+            json!({"replace_hex":["f"],"delete_hex":[],"exclude_hex":[]}),
+            json!({"replace_hex":["2e676974"],"delete_hex":[],"exclude_hex":[]}),
+            json!({"replace_hex":["61".repeat(4097)],"delete_hex":[],"exclude_hex":[]}),
+            json!({"replace_hex":vec!["61";257],"delete_hex":[],"exclude_hex":[]}),
+        ] {
+            assert!(
+                serde_json::from_value::<SelectionWire>(value)
+                    .unwrap()
+                    .decode()
+                    .is_err()
+            );
+        }
+        assert!(
+            serde_json::from_value::<SelectionWire>(json!({
+                "replace_hex":["61"],"delete_hex":[],"exclude_hex":[],"quiescent":true
+            }))
+            .is_err()
+        );
+    }
     #[test]
     fn protocol_rejects_identity_injection_unsupported_commands_and_ambiguous_json() {
         let prefix = r#"{"version":1,"tenant":"test","repository":"00000000-0000-0000-0000-000000000000","command":"#;

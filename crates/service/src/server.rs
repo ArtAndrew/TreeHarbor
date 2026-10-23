@@ -212,6 +212,7 @@ async fn handle(
     let history_read = request.uri().path() == "/v1/history/read";
     let rebase_prepare = request.uri().path() == "/v1/changes/rebase";
     let native_prepare = request.uri().path() == "/v1/native/prepare";
+    let seal_accept = request.uri().path() == "/v1/workspaces/seals/accept";
     let change_submit = request.uri().path() == "/v1/changes/submit";
     if (request.uri().path() != "/v1/commands"
         && upload.is_none()
@@ -219,6 +220,7 @@ async fn handle(
         && !source_export
         && !history_read
         && !review_read
+        && !seal_accept
         && !change_submit
         && !native_prepare
         && !rebase_prepare)
@@ -301,6 +303,18 @@ async fn handle(
         Ok(Err(_)) => return error(StatusCode::BAD_REQUEST, "invalid_body"),
         Err(_) => return error(StatusCode::REQUEST_TIMEOUT, "body_timeout"),
     };
+    if seal_accept {
+        let Some(backend) = backend else {
+            return error(StatusCode::SERVICE_UNAVAILABLE, "storage_not_configured");
+        };
+        return match crate::seals::accept(&body, &credential, backend, pool).await {
+            Ok(value) => response(StatusCode::OK, value),
+            Err(f) => error(
+                StatusCode::from_u16(f.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+                f.code,
+            ),
+        };
+    }
     if rebase_prepare {
         let Some(backend) = backend else {
             return error(StatusCode::SERVICE_UNAVAILABLE, "storage_not_configured");

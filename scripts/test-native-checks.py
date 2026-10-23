@@ -162,13 +162,29 @@ class Checks(managed.Harness):
         self.ci = self.principal("ci", "validator", ["read", "validation.report"])
         agent = self.case("isolation", "candidate\n", self.secret)
         self.finish(agent, self.start(agent))
-        self.change = self.propose(agent)
+        self.change = self.seal(agent)
         passed = self.check_case()
         self.completed_check(passed, self.start(passed))
         assert (passed["files"] / "check-executions").read_bytes() == b"one check\n"
         landed = self.native("land", self.integrator, candidate=passed["candidate"])
         assert landed["state"] == "landed"
         assert self.native("ref_resolve", self.policy_admin, name=passed["target"])["head"] == landed["revision"]
+        exported = self.root / "sealed-export"
+        downloaded = self.value("client", "--socket", self.socket, "--credential-file", self.reviewer,
+                                "source-export", "--authority", "standalone", "--epoch", "1",
+                                "--revision", landed["revision"], "--output", exported)
+        assert downloaded["revision"] == landed["revision"]
+        # Git is introduced only at the explicit interoperability boundary;
+        # all agent/capture/accept/check/land/export requests above use no Git.
+        projected = self.root / "sealed-git"
+        self.value("git-export", "--pack", exported, "--output", projected)
+        restored = self.root / "sealed-restored.git"
+        managed.command("/usr/bin/git", "-c", "core.hooksPath=/dev/null", "clone", "--bare",
+                        projected / "history.bundle", restored)
+        managed.command("/usr/bin/git", "--git-dir", restored, "fsck", "--strict")
+        assert managed.command("/usr/bin/git", "--git-dir", restored, "show", "main:same.txt").stdout == "candidate\n"
+        assert int(managed.command("/usr/bin/git", "--git-dir", restored, "rev-list", "--count", "main").stdout) >= 2
+        print("PASS managed capture export: actual sealed, checked, reviewed and landed agent bytes restore in ordinary Git", flush=True)
         print("PASS native CI: actual candidate files, immutable offline program, protected collector and publication", flush=True)
         print("PASS native review: exact candidate revision, target and policy match checked and published code", flush=True)
 

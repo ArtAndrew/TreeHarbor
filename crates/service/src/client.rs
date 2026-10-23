@@ -145,6 +145,27 @@ pub async fn send_native_prepare(
     )
     .await
 }
+pub async fn send_seal_accept(
+    socket: &Path,
+    token: &SecretToken,
+    body: Vec<u8>,
+    timeout: Duration,
+) -> Result<Reply> {
+    if body.len() > MAX_REQUEST_BYTES {
+        return Err(Error::Size);
+    }
+    send_request(
+        socket,
+        token,
+        "POST",
+        "/v1/workspaces/seals/accept".into(),
+        "application/json",
+        body,
+        timeout,
+    )
+    .await
+}
+
 pub async fn send_rebase_prepare(
     socket: &Path,
     token: &SecretToken,

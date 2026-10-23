@@ -15,6 +15,7 @@ pub mod pack;
 mod proposals;
 mod rebases;
 mod review;
+mod seals;
 pub mod server;
 mod source;
 mod source_export;

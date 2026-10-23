@@ -1,5 +1,7 @@
 #[path = "native/rebases.rs"]
 mod rebases;
+#[path = "native/seals.rs"]
+mod seals;
 use super::*;
 use treeharbor_core::{ObjectId, ObjectStore};
 

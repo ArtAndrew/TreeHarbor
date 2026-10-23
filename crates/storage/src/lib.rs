@@ -117,7 +117,9 @@ impl ObjectStore for LocalStore {
 }
 
 impl LocalStore {
-    fn open_object(&self, id: ObjectId) -> Result<OpenedObject> {
+    /// Open a verified local locator so callers can enforce their aggregate byte
+    /// budget before decoding. This provides no repository authorization or pin.
+    pub fn open_object(&self, id: ObjectId) -> Result<OpenedObject> {
         let path = self.path(id);
         let metadata = fs::symlink_metadata(&path).map_err(|e| {
             if e.kind() == std::io::ErrorKind::NotFound {

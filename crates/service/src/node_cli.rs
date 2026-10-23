@@ -49,6 +49,13 @@ pub enum Action {
         #[arg(long, value_parser=clap::value_parser!(u64).range(67_108_864..=68_719_476_736))]
         limit_bytes: u64,
     },
+    /// Capture one owner-requested, removed managed run and publish its snapshot.
+    SealOnce {
+        #[command(flatten)]
+        node: Arguments,
+        #[arg(long)]
+        engine_socket: PathBuf,
+    },
     /// Execute or recover one persisted run using a trusted local Docker/runsc.
     RunOnce {
         #[command(flatten)]
@@ -88,7 +95,8 @@ pub async fn run(action: Action) -> Result<bool> {
         Action::PrepareOnce { node, .. }
         | Action::Prepared { node, .. }
         | Action::VolumeRegister { node, .. }
-        | Action::RunOnce { node, .. } => node,
+        | Action::RunOnce { node, .. }
+        | Action::SealOnce { node, .. } => node,
         Action::Initialize { .. } => unreachable!(),
     };
     let config = Config::load(&args.config)?;
@@ -141,6 +149,37 @@ pub async fn run(action: Action) -> Result<bool> {
                 "{}",
                 json!({"state":"registered","slot":slot.to_string(),"volume_digest":treeharbor_core::ObjectId::from_bytes(registration.digest()?).to_string()})
             );
+            return Ok(true);
+        }
+        Action::SealOnce { engine_socket, .. } => {
+            let Some(plan) = node.claim_seal(&mut session.metadata, &auth).await? else {
+                println!("{}", json!({"state":"idle"}));
+                return Ok(true);
+            };
+            let storage = config.storage.as_ref().ok_or(Error::Config)?;
+            let store = ManagedStore::open(
+                &storage.root,
+                TenantId::new(credential.scope.tenant()).map_err(|_| Error::Config)?,
+                &storage.backend,
+            )
+            .map_err(|_| Error::Config)?;
+            let mut heartbeat = database.connect(true).await?;
+            let limits = Limits {
+                max_workspace_bytes: plan.context().profile().definition().workspace_bytes,
+                ..Limits::default()
+            };
+            let result = node
+                .seal_workspace(
+                    &mut session.metadata,
+                    &mut heartbeat.metadata,
+                    &auth,
+                    &plan,
+                    &engine_socket,
+                    &store,
+                    limits,
+                )
+                .await?;
+            println!("{result}");
             return Ok(true);
         }
         Action::RunOnce { engine_socket, .. } => {

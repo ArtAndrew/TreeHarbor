@@ -291,6 +291,85 @@ class Harness:
         assert self.client("change-status", "--upload", upload, credential=case["credential"])["state"] == "completed"
         return result
 
+    def request_seal(self, case):
+        seal = str(uuid.uuid4())
+        request = ["seal-request", "--key", "seal-" + seal, "--authority", "standalone", "--epoch", "1",
+                   "--seal", seal, "--run", case["run"], "--generation", "1", "--replace", "same.txt"]
+        first = self.client(*request, credential=case["credential"])
+        assert first == self.client(*request, credential=case["credential"])
+        assert first["state"] == "waiting"
+        return seal
+
+    def start_seal(self, case):
+        child = subprocess.Popen([str(self.binary), *self.node_args(case["node"], "seal-once"),
+                                  "--engine-socket", str(self.transport / "engine.sock")],
+                                 env=self.env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        self.children.append(child)
+        return child
+
+    def accept_seal(self, case, seal, content, changeset=None, previous_version=0):
+        ready = self.client("seal-status", "--seal", seal, credential=case["credential"])
+        assert ready["state"] == "ready"
+        request = ["seal-accept", "--key", "accept-" + seal, "--authority", "standalone", "--epoch", "1",
+                   "--seal", seal, "--changeset", changeset or str(uuid.uuid4()),
+                   "--previous-version", str(previous_version)]
+        result = self.client(*request, credential=case["credential"])
+        assert result == self.client(*request, credential=case["credential"])
+        assert result["state"] == "accepted" and result["seal"] == seal
+        assert result["run"] == case["run"] and result["base_revision"] == self.revision
+        assert result["version"] == previous_version + 1
+
+        def oid(kind, payload):
+            return sha256(b"treeharbor\0" + (1).to_bytes(2, "big") + bytes([kind])
+                          + len(payload).to_bytes(8, "big") + payload).digest()
+
+        directory = ((1).to_bytes(4, "big") + (8).to_bytes(4, "big") + b"same.txt"
+                     + (0o100644).to_bytes(4, "big") + oid(1, content))
+        assert result["result_snapshot"] == "sha256:" + oid(3, oid(2, directory)).hex()
+        other = self.agents[1 - case["node_index"]]
+        assert self.client("seal-status", "--seal", seal, credential=other, check=False).returncode != 0
+        assert self.client(*request, credential=case["node"]["credential"], check=False).returncode != 0
+        return result
+
+    def seal(self, case, changeset=None, previous_version=0):
+        content = (case["files"] / "same.txt").read_bytes()
+        seal = self.request_seal(case)
+        child = self.start_seal(case)
+        out, err = child.communicate(timeout=45)
+        assert child.returncode == 0, (out, err)
+        assert json.loads(out)["state"] == "ready", out
+        return self.accept_seal(case, seal, content, changeset, previous_version)
+
+    def seal_recovery(self, case, remove_marker):
+        # Delay only the metadata declaration, after real stopped-file capture
+        # and its durability barriers. Kill the actual worker at this boundary.
+        content = (case["files"] / "same.txt").read_bytes()
+        seal = self.request_seal(case)
+        self.sql("CREATE FUNCTION capture_fault() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN PERFORM pg_sleep(45); RETURN NEW; END $$; CREATE TRIGGER capture_fault BEFORE INSERT ON th_seal_artifacts FOR EACH ROW EXECUTE FUNCTION capture_fault()")
+        child = self.start_seal(case)
+        record = case["node"]["root"] / "seals" / seal
+        wait_until(lambda: (record / "complete.json").exists() or child.poll() is not None)
+        assert child.poll() is None, child.communicate()
+        wait_until(lambda: self.sql("SELECT count(*) FROM pg_stat_activity WHERE application_name='treeharbor' AND wait_event='PgSleep' AND query LIKE 'INSERT INTO th_seal_artifacts%' ") == "1")
+        manifest = (record / "artifact" / "manifest.json").read_bytes()
+        child.kill()
+        child.communicate(timeout=10)
+        self.sql("DROP TRIGGER capture_fault ON th_seal_artifacts; DROP FUNCTION capture_fault()")
+        assert self.client("seal-status", "--seal", seal, credential=case["credential"])["state"] == "capturing"
+        self.sql(f"UPDATE th_workspace_seals SET lease_until=clock_timestamp()-interval '1 second' WHERE seal='{seal}'")
+        if remove_marker:
+            # Exercise the ambiguous artifact-without-node-marker state. The
+            # successor must re-prove physical removal, then reuse exact bytes.
+            (record / "complete.json").unlink()
+        (case["files"] / "same.txt").write_bytes(b"operator changed mutable files after capture\n")
+        resumed = self.start_seal(case)
+        out, err = resumed.communicate(timeout=45)
+        assert resumed.returncode == 0, (out, err)
+        assert json.loads(out)["state"] == "ready"
+        assert (record / "artifact" / "manifest.json").read_bytes() == manifest
+        self.accept_seal(case, seal, content)
+        (case["files"] / "same.txt").write_bytes(content)
+
     def exercise(self):
         a = self.case("isolation", "agent-a", self.secret, "2000")
         b = self.case("isolation", "agent-b", self.secret, "2000", node=1)
@@ -308,6 +387,26 @@ class Harness:
         assert changes[0]["result_snapshot"] != changes[1]["result_snapshot"]
         assert self.sql("SELECT count(*) FROM th_change_versions") == "2"
         print("PASS managed proposals: actual stopped agents submit overlapping edits with distinct durable results and original lineage", flush=True)
+        captured = [self.seal(case, change["changeset"], 1) for case, change in zip((a, b), changes)]
+        assert [c["result_snapshot"] for c in captured] == [c["result_snapshot"] for c in changes]
+        assert self.sql("SELECT count(*) FROM th_change_versions") == "4"
+        print("PASS managed capture: real two-agent files, original lineage, version CAS, owner-only acceptance and exact independent trees", flush=True)
+        for remove_marker in (False, True):
+            self.seal_recovery(a, remove_marker)
+        print("PASS managed capture recovery: actual worker death after durable files, missing completion marker and changed mutable source never recapture", flush=True)
+
+        writing = self.case("attack", timeout=20000)
+        worker = self.start(writing)
+        wait_until(lambda: (writing["files"] / "heartbeat").exists())
+        pending = self.request_seal(writing)
+        self.finish(writing, worker, "cancelled", None)
+        count = (writing["files"] / "heartbeat").stat().st_size
+        capture = self.start_seal(writing)
+        out, err = capture.communicate(timeout=45)
+        assert capture.returncode == 0, (out, err)
+        self.accept_seal(writing, pending, b"base\n")
+        assert (writing["files"] / "heartbeat").stat().st_size == count
+        print("PASS managed capture stop: request terminates active writers and descendants before taking selected files", flush=True)
 
         bad = self.case("exit", "23")
         self.finish(bad, self.start(bad), "failed", 23)

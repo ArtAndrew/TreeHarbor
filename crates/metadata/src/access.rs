@@ -63,12 +63,17 @@ impl Permission {
             | "workspace.drain.v1"
             | "profile.put.v1"
             | "run.request.v1"
+            | "workspace.seal.request.v1"
+            | "workspace.seal.cancel.v1"
             | "run.stop.v1" => Ok(Self::WorkspaceWrite),
-            "workspace.ready.v1" | "run.running.v1" => Ok(Self::RuntimeControl),
+            "workspace.ready.v1" | "run.running.v1" | "workspace.seal.ready.v1" => {
+                Ok(Self::RuntimeControl)
+            }
             "change.accept.v1"
             | "change.begin.v1"
             | "change.abort.v1"
             | "change.submit.v1"
+            | "workspace.seal.accept.v1"
             | "change.rebase.start.v1"
             | "change.rebase.prepare.v1"
             | "change.rebase.cancel.v1" => Ok(Self::ChangeWrite),

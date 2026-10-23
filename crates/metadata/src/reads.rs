@@ -56,6 +56,14 @@ pub struct ReadObject {
     token: Uuid,
 }
 impl ReadObject {
+    /// In-process proof minted only by a verified read of this exact session.
+    /// This cannot be reconstructed from a caller-supplied digest or JSON.
+    pub(crate) fn scoped_key(&self, session: &ReadSession) -> Result<&ObjectKey> {
+        if self.anchor != *session.lease.key() || self.token != session.lease.token() {
+            return Err(Error::ReadScope);
+        }
+        Ok(&self.key)
+    }
     pub fn encoded_length(&self) -> u64 {
         self.encoded_length
     }
@@ -80,6 +88,12 @@ impl ReadObject {
                 id,
                 kind: Some(kind),
             })
+    }
+}
+
+impl ReadSession {
+    pub(crate) async fn check(&self, tx: &tokio_postgres::Transaction<'_>) -> Result<()> {
+        live_read_lease(tx, &self.lease).await
     }
 }
 
