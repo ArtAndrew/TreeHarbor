@@ -4,6 +4,42 @@ use serde::Deserialize;
 #[derive(Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
 pub enum WireCommand {
+    PullRequest {
+        key: String,
+        epoch: i64,
+        pull: String,
+        specification: PullSpec,
+    },
+    PullBegin {
+        key: String,
+        epoch: i64,
+        pull: String,
+        attempt: String,
+    },
+    PullReport {
+        key: String,
+        epoch: i64,
+        pull: String,
+        report: PullReport,
+    },
+    PullCancel {
+        key: String,
+        epoch: i64,
+        pull: String,
+    },
+    PullStatus {
+        epoch: i64,
+        pull: String,
+    },
+    PullContext {
+        epoch: i64,
+        pull: String,
+    },
+    PullDispatchContext {
+        epoch: i64,
+        pull: String,
+        attempt: String,
+    },
     PublicationDispatchContext {
         epoch: i64,
         publication: String,
@@ -143,6 +179,12 @@ fn id(s: &str) -> Result<Uuid> {
 impl WireCommand {
     pub fn permission(&self) -> Permission {
         match self {
+            Self::PullRequest { .. } | Self::PullCancel { .. } => Permission::RepositoryWrite,
+            Self::PullStatus { .. } => Permission::Read,
+            Self::PullBegin { .. }
+            | Self::PullReport { .. }
+            | Self::PullContext { .. }
+            | Self::PullDispatchContext { .. } => Permission::HostPublish,
             Self::PublicationRequest { .. } | Self::PublicationCancel { .. } => {
                 Permission::RepositoryWrite
             }
@@ -172,6 +214,53 @@ impl WireCommand {
         backend: Option<&str>,
     ) -> Result<Value> {
         match self {
+            Self::PullRequest {
+                key,
+                epoch,
+                pull,
+                specification,
+            } => {
+                db.request_github_pull(auth, &Command { key, epoch }, id(&pull)?, &specification)
+                    .await
+            }
+            Self::PullBegin {
+                key,
+                epoch,
+                pull,
+                attempt,
+            } => {
+                db.begin_github_pull(auth, &Command { key, epoch }, id(&pull)?, id(&attempt)?)
+                    .await
+            }
+            Self::PullReport {
+                key,
+                epoch,
+                pull,
+                report,
+            } => {
+                db.report_github_pull(auth, &Command { key, epoch }, id(&pull)?, &report)
+                    .await
+            }
+            Self::PullCancel { key, epoch, pull } => {
+                db.cancel_github_pull(auth, &Command { key, epoch }, id(&pull)?)
+                    .await
+            }
+            Self::PullStatus { epoch, pull } => {
+                db.github_pull_context(auth, epoch, id(&pull)?, false, None)
+                    .await
+            }
+            Self::PullContext { epoch, pull } => {
+                db.github_pull_context(auth, epoch, id(&pull)?, true, None)
+                    .await
+            }
+            Self::PullDispatchContext {
+                epoch,
+                pull,
+                attempt,
+            } => {
+                db.github_pull_context(auth, epoch, id(&pull)?, true, Some(id(&attempt)?))
+                    .await
+            }
             Self::PublicationDispatchContext {
                 epoch,
                 publication,

@@ -3,6 +3,28 @@
 Updated: 2026-10-23. This file describes implemented behavior and remaining release
 gates. A foundation milestone does not complete either mode.
 
+New [GitHub pull request delivery](github-pulls.md) connects an owner-selected
+observed branch publication to PR creation or explicit title/body updates. Schema
+19 retains immutable intent/lineage/full-graph pins, one-shot dispatch, scoped
+provider identity and uncertain-outcome recovery. The Rust CLI journals before
+claim, uses narrowed App tokens and checks current eligibility before token creation
+and the single host write. Repeated attempts observe only; they cannot authorize
+another POST/PATCH. Code updates remain separate branch publications.
+
+Tests cover lost host responses, closed/ambiguous PR search, stale sources, scope/
+revocation/epoch/deadline fences, concurrent claims, populated schema18 upgrade and
+actual CLI/server restart after losing a committed grant. Host observations are
+explicit fixtures, not real installed-App evidence. Large escaped PR text survives
+journal recovery. Metadata PATCH preflight is not atomic with a simultaneous human
+edit on GitHub. Full installed-App, exact checks/queue, automatic lifecycle,
+operational recovery and installable two-mode release gates remain open.
+
+Local verification: 209 ordinary tests and 214 explicit database/materializer/node/
+service tests passed. A final focused run passed all eight PR transport tests and
+the additional escaped-text journal regression. Formatting and strict workspace
+Clippy passed. Linux-only host/runtime paths remain subject to required CI; none
+of these results substitutes for installed-App acceptance.
+
 New [accepted-version GitHub projection](github-projection.md): an owner selects
 the exact current accepted ChangeSet version and binding. The service derives one
 immutable commit from the retained base/operations/result and acceptance time,

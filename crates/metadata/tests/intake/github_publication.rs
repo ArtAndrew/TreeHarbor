@@ -3,7 +3,7 @@ use treeharbor_metadata::github::{
     PublicationMapping, PublicationOutcome, PublicationReport, PublicationSpec,
 };
 
-async fn requested(p: &mut Projection) -> (Uuid, PublicationSpec, Value) {
+pub(super) async fn requested(p: &mut Projection) -> (Uuid, PublicationSpec, Value) {
     p.ready().await;
     let id = Uuid::new_v4();
     let spec = PublicationSpec {
@@ -18,14 +18,18 @@ async fn requested(p: &mut Projection) -> (Uuid, PublicationSpec, Value) {
             .unwrap();
     (id, spec, value)
 }
-fn mapping(value: &Value) -> PublicationMapping {
+pub(super) fn mapping(value: &Value) -> PublicationMapping {
     PublicationMapping {
         branch_id: value["branch_id"].as_str().unwrap().into(),
         native_revision: value["native_revision"].as_str().unwrap().into(),
         git_revision: format!("git:sha1:{}", "11".repeat(20)),
     }
 }
-async fn report(p: &Projection, attempt: Uuid, m: &PublicationMapping) -> PublicationReport {
+pub(super) async fn report(
+    p: &Projection,
+    attempt: Uuid,
+    m: &PublicationMapping,
+) -> PublicationReport {
     let now: i64 = connection(&p.f.schema)
         .await
         .query_one(
@@ -508,6 +512,16 @@ async fn publication_upgrade_retains_a_ready_projection_and_its_export() {
             .get::<_, i64>(0),
         0
     );
+    assert_eq!(
+        raw.query_one("SELECT count(*) FROM th_github_pulls", &[])
+            .await
+            .unwrap()
+            .get::<_, i64>(0),
+        0
+    );
+    raw.batch_execute("DROP TABLE th_github_pulls; DROP FUNCTION th_github_pull_immutable()")
+        .await
+        .unwrap();
     // Undo only the empty additive v18 schema to reconstruct the actual v17
     // tables, including a real accepted projection and its retained graph.
     raw.batch_execute(

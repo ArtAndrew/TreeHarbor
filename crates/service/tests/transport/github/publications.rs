@@ -2,6 +2,8 @@ use super::*;
 use std::path::Path;
 #[path = "publication_driver.rs"]
 mod driver;
+#[path = "pulls.rs"]
+mod pulls;
 
 pub(super) async fn exercise(
     f: &mut Fixture,
@@ -209,6 +211,7 @@ pub(super) async fn exercise(
         &json!({"action":"publication_status","epoch":1,"publication":id}),
     ));
     assert_eq!(status["state"], "observed");
+    pulls::exercise(f, server, owner, publisher, publication).await;
     #[cfg(target_os = "linux")]
     driver::lost_dispatch(f, server, owner, publisher, projection).await;
 }

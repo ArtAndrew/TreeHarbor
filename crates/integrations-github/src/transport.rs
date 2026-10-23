@@ -9,6 +9,7 @@ use std::{sync::Arc, time::Duration};
 use tokio::sync::Semaphore;
 use zeroize::Zeroizing;
 pub(crate) mod publisher;
+pub(crate) mod pulls;
 
 const MAX_RESPONSE: usize = 128 * 1024;
 const PROBE_TIMEOUT: Duration = Duration::from_secs(45);

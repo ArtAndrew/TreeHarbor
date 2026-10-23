@@ -4,9 +4,11 @@ pub(crate) mod imports;
 pub(crate) mod projections;
 pub use projections::ProjectionSpec;
 mod publications;
+mod pulls;
 pub use publications::{
     PublicationMapping, PublicationOutcome, PublicationReport, PublicationSpec,
 };
+pub use pulls::{ExpectedPull, PullIdentity, PullReport, PullSnapshot, PullSpec, PullTarget};
 mod types;
 mod wire;
 use crate::{

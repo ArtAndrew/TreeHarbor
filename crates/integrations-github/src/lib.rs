@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
 pub use transport::Connection;
 pub use transport::publisher::{BranchObservation, BranchOutcome, BranchResult};
+pub use transport::pulls::{ExpectedPull, PullIdentity, PullObservation, PullSnapshot, PullTarget};
 
 pub const API_VERSION: &str = "2026-03-10";
 pub struct GitDownload {
@@ -94,11 +95,18 @@ pub enum Stage {
     Repository,
     RevokeToken,
     Reference,
+    PullRequest,
 }
 /// Never retains response bodies, URLs, private keys, tokens or upstream errors.
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum Error {
-    #[error("TreeHarbor publication eligibility could not be confirmed; no new push was started")]
+    #[error("GitHub pull request does not match the selected identity or expected metadata")]
+    PullChanged,
+    #[error("GitHub pull request search was ambiguous or exceeded its bound")]
+    PullSearch,
+    #[error(
+        "TreeHarbor publication eligibility could not be confirmed; no new host write was started"
+    )]
     PublicationStopped,
     #[error("GitHub branch publication may have happened; reconcile its exact ref before retry")]
     PublicationUnknown,

@@ -1,6 +1,8 @@
 use super::*;
 #[path = "github_publication.rs"]
 mod publication;
+#[path = "github_pull.rs"]
+mod pulls;
 use treeharbor_metadata::{
     access::{Authorization, Permission as P, PrincipalKind as K},
     github::{BindingSpec, Command, ProjectionSpec},

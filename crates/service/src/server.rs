@@ -456,6 +456,7 @@ async fn handle(
                 | "host_binding_state"
                 | "host_projection_state"
                 | "host_publication_state"
+                | "host_pull_state"
                 | "version_conflict" => StatusCode::CONFLICT,
                 "upload_state_changed" | "upload_membership" | "object_busy" | "lease_expired" => {
                     StatusCode::CONFLICT
