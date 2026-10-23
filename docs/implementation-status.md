@@ -3,13 +3,33 @@
 Updated: 2026-10-23. This file describes implemented behavior and remaining release
 gates. A foundation milestone does not complete either mode.
 
-New [GitHub App connection probe](github-connection.md): an explicit trusted
+New [durable GitHub bindings](github-connection.md): Human repository owners
+configure/revoke immutable Connected bindings; only the assigned Bridge with
+`host.read` can register a bounded connection attempt and its immutable observation.
+This permission is separate from publication and cannot be granted to agents.
+Schema 15 preserves existing tokens/grants without expanding their permissions.
+Current scope, assignment, authority epoch, revocation and post-write expiry are
+checked. CLI retries retrieve completed observations without the App key or a new
+network probe. Historical receipts do not reactivate revoked bindings or confer
+publication readiness. PostgreSQL stores identifiers/observations, never App keys
+or temporary GitHub tokens. The server trusts its assigned bridge reporter.
+
+Local verification: 183 ordinary tests and 187 explicit PostgreSQL/materializer/
+node/service tests passed. New cases cover concurrent binding/report requests,
+post-write expiry, immutable receipts, cross-tenant/role/epoch/revocation fences,
+unchanged existing credentials after upgrade, and actual CLI/server restart.
+The CLI rejects substituted App pins before network access and reads completed
+observations with the App configuration removed. Those observations are trusted
+fixtures; they do not establish an installed-App or complete Connected pass.
+
+The earlier [GitHub App connection probe](github-connection.md): an explicit trusted
 operator command checks App/installation/repository/owner identity, requests and
 verifies one-repository read access, independently enumerates token scope, reads
 repository metadata and revokes the temporary token. HTTPS/API version, response
 bounds, deadlines, redaction and no-redirect/no-retry behavior are explicit.
 Queue ownership eligibility is reported separately from unverified configuration.
-No repository binding, source import, PR publication or queue admission occurs.
+That probe alone does not bind a repository. Source import, PR publication and
+queue admission remain unimplemented.
 
 Local verification: 182 ordinary workspace tests and 178 explicit PostgreSQL/
 materializer/node/service tests passed; strict all-target Clippy and formatting
@@ -18,7 +38,7 @@ expiry/suspension, lost token response, bounded slow/large responses and revocat
 failure. OpenSSL independently verifies a fixture JWT signature. A separate real
 public GitHub HTTPS test passed with API version 2026-03-10 and no credentials.
 These are not installed-App/real-host integration evidence: authenticated App
-setup, durable binding/import, PR/check/queue reconciliation and confirmed merge
+setup, network import, PR/check/queue reconciliation and confirmed merge
 remain release gates. Existing native runtime checks remain required in CI.
 
 Explicit [workspace cleanup](workspace-cleanup.md) now joins schema-14 release
@@ -181,13 +201,13 @@ resource outcomes and worker-loss recovery. No complete authority mode is implie
 
 | Component | Evidence | Remaining |
 |---|---|---|
-| GitHub App connection | Trusted operator CLI, pinned identity, scoped short-lived read token and revocation; local HTTP/RSA tests and real public HTTPS API check | Installed-App evidence, durable binding, network import, projection/outbox, webhooks, PR/check/merge queue and real-host confirmation |
+| GitHub App connection | Trusted operator CLI, scoped short-lived read token, pinned durable bindings, separate bridge permission, immutable observations, revoke/replay; local HTTP/RSA, PostgreSQL and CLI tests | Installed-App evidence, network import, projection/outbox, webhooks, PR/check/merge queue and real-host confirmation |
 | Canonical SHA-256 object format | Versioned framing, independent golden vectors, strict decoder | Compatibility policy for later formats |
 | Immutable directory trees and operations | Exact expected-before checks, canonical subtree operations v2, bounded structural diff, structural sharing, explicit deletes; native merge and Git reference matrix | General history rebase, broader rename/base support, live-server Git interop |
 | Local object store | Atomic no-clobber writes, digest verification, file/directory fsync, tenant directories, physical generations and upload receipts | S3, backup/restore, kill fault campaign |
 | Native DAG and admission | Scoped history/log/ancestry/merge-base HTTP/CLI, persisted refs/policies/queue/checks/reviews, verified candidate commits, final transactional admission and no-Git CLI/process-loss tests | General history stack rebase, automatic scheduling, full lifecycle and recovery |
 | Review diff | Read-only exact ChangeSet/candidate/revision HTTP/CLI, retained integration/policy/version/run identity, scoped GC holds, bounded byte paths and text, actual Git path oracle and restart/page/error tests | Review UI, persistent diff indexing and larger-repository profiling |
-| PostgreSQL metadata and outbox | Real database transaction/idempotency/lease tests; repository authority/epoch checks; populated schema upgrades through v14; local service pool and crash/replay | Remote service integration and full server restore |
+| PostgreSQL metadata and outbox | Real database transaction/idempotency/lease tests; repository authority/epoch checks; populated schema upgrades through v15; local service pool and crash/replay | Remote service integration and full server restore |
 | Native ChangeSet intake | HTTP/CLI immutable proposals and separate ready-seal acceptance, scoped blobs, computed versions, original run lineage, atomic pins/outbox and process-loss replay | GitHub base synchronization, remote transport and retention |
 | Protected incremental source reads | Pinned sessions, verified frontiers, bounded prefix batches and descriptors surviving local GC; authenticated workspace-root sessions | Per-tenant service quotas, bulk node delivery and S3 |
 | Native file materialization | Private copies from exact snapshots, full/sparse selection, staged expansion preserving edits/deletions, bounded IO and filesystem checks; guarded node publication and selected capture after runtime removal | Cache/reflink, wider capture fault matrix and Git-compatible format |

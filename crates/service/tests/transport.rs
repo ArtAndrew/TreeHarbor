@@ -1,6 +1,8 @@
 #![cfg(unix)]
 #[path = "support/git.rs"]
 mod git_reference;
+#[path = "transport/github.rs"]
+mod github;
 #[path = "transport/history.rs"]
 mod history;
 #[path = "transport/native.rs"]
@@ -1102,6 +1104,9 @@ impl Drop for Fixture {
 }
 impl Fixture {
     async fn new() -> Self {
+        Self::new_with_authority(Authority::Standalone).await
+    }
+    async fn new_with_authority(authority: Authority) -> Self {
         let database_url = std::env::var("TH_SERVICE_TEST_DATABASE_URL").expect(
             "set TH_SERVICE_TEST_DATABASE_URL to disposable PostgreSQL over a trusted Unix socket",
         );
@@ -1158,7 +1163,7 @@ impl Fixture {
             "--repository",
             &f.scope.repository().to_string(),
             "--authority",
-            "standalone",
+            authority.as_str(),
         ]);
         f.admin_ok(&[
             "principal-create",

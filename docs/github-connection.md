@@ -1,9 +1,10 @@
-# GitHub App connection probe
+# GitHub App connection and repository bindings
 
-Development command for an operator preparing a Connected installation. It verifies
-the App installation, selected repository access and stable numeric identities.
-It does **not** create a TreeHarbor repository binding, import source, publish a
-branch/PR, inspect branch rules or enqueue a change. Connected is not released.
+Development commands for an operator preparing a Connected installation. The
+standalone `github probe` verifies the App installation, selected repository access
+and stable numeric identities. A server binding can retain that configuration and
+observations from its assigned bridge. Neither path imports source, publishes a
+branch/PR, inspects branch rules or enqueues a change. Connected is not released.
 
 ## Prepare an App
 
@@ -111,6 +112,102 @@ cryptographic/TLS libraries and the OS may retain transient copies. This is not 
 claim of protection against a compromised operator process, memory dump or host.
 Agents never receive the App key or upstream token.
 
+## Retain a connection in a running TreeHarbor server
+
+First migrate the [local service](local-service.md) to schema 15 and create a
+repository with `--authority connected`. Provision a Human principal with
+`repository.write` and `read` for that repository. Separately provision a Bridge
+principal with **`host.read`** and issue its scoped credential. Existing tokens and
+grants do not acquire this permission on migration. `host.publish` is a separate
+permission and is unnecessary for connection verification. Agents cannot receive
+either bridge permission. Keep both TreeHarbor credentials private as well.
+
+Write a private request file using your actual IDs and a fresh non-nil UUID:
+
+```json
+{
+  "action": "bind",
+  "key": "connect-repository-1",
+  "epoch": 1,
+  "binding": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+  "specification": {
+    "version": 1,
+    "app_id": 123456,
+    "client_id": "Iv1_example",
+    "bridge": "github-reader",
+    "upstream": {
+      "installation_id": 234567,
+      "repository_id": 345678,
+      "owner_id": 456789,
+      "owner": "example-org",
+      "name": "example-repository"
+    }
+  }
+}
+```
+
+Using the compiled development binary:
+
+```sh
+treeharbor client --socket /absolute/private/service.sock \
+  --credential-file /absolute/private/owner.json \
+  github --request /absolute/private/bind.json
+
+treeharbor github verify --config /absolute/private/treeharbor/github-app.json \
+  --socket /absolute/private/service.sock \
+  --credential-file /absolute/private/bridge.json \
+  --binding aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa \
+  --probe bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb --epoch 1
+```
+
+The assigned bridge compares its local App configuration with the server's pins,
+performs the read-only probe and records its immutable observation. Neither the App
+key nor the temporary GitHub token enters PostgreSQL. The server authenticates the
+bridge's report; it does not independently attest the remote HTTP exchange. Do not
+run the bridge with agent-supplied configuration or within the agent sandbox.
+
+An attempt has a fixed 120-second server deadline, which a retry cannot extend.
+Reuse its `--probe` ID after interruption: a pending attempt may repeat the read-only
+GitHub probe; an observed attempt returns its retained result without accessing the
+App key or network. At most four unexpired pending attempts per binding are allowed
+as a resource bound. After expiry use a new probe UUID; retained evidence is not
+erased. A lost token response can still leave a temporary GitHub token as described
+above. There is no distributed transaction between GitHub and PostgreSQL.
+
+Other requests use the same `client ... github --request FILE` command:
+
+```json
+{"action":"status","epoch":1,"binding":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"}
+```
+
+```json
+{"action":"revoke","key":"disconnect-repository-1","epoch":1,"binding":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"}
+```
+
+Status requires `read`; revocation requires the Human's `repository.write`.
+Revocation is irreversible. Reconfiguration requires a new binding UUID after
+revoking the previous active binding. Only one active binding is allowed per
+TreeHarbor repository. Connection observations remain audit evidence. A committed
+mutation replay may return its historical receipt after revocation; that does not
+reactivate the binding. Use `status` for current binding state. `github verify`
+checks current assignment, authorization, authority epoch and active state even
+when retrieving an observed attempt.
+
+Revocation prevents acceptance of new reports, but cannot cancel a GitHub request
+already in flight. Revoke the App installation/key as necessary for emergency
+upstream access removal. A connection observation never grants CI approval, source
+import or permission to publish. `publication_ready` stays false.
+
+The command API also exposes assigned-Bridge actions `probe_begin`, `probe_context`
+and `probe_finish` for custom trusted adapters. All take `epoch`, `binding` and
+`probe`; mutations additionally take a unique `key`, and finish takes `observation`
+in the exact v1 probe format. Unknown fields are rejected. A successful command
+returns the standard `version`/`result` envelope. Wrong scope/assignment is refused;
+inactive, expired or completed attempts reject new effects with
+`host_binding_state` (HTTP 409). A reused key with different input produces an
+idempotency conflict. Retry transport failures with the same key and input, then
+inspect current state; do not interpret an old receipt as current readiness.
+
 ## Verification and remaining gates
 
 ```sh
@@ -125,7 +222,12 @@ lost token responses, response bounds and revocation errors. OpenSSL independent
 verifies a test JWT signature. The public fixture key is never an App credential.
 The optional public HTTPS check proves only TLS/API-version compatibility.
 
+Database/CLI tests additionally exercise durable bindings, immutable observations,
+permission separation, concurrent reports, deadline expiry during commit,
+revocation, populated schema upgrades and real server restart. Their reported
+observations use trusted test fixtures, not an installed GitHub App.
+
 A real installed-App probe and PR/check/merge-queue scenario remain separate
-acceptance gates. Durable binding, network Git import, projection/outbox,
-webhook validation, PR/check reconciliation and merge confirmation are not
-implemented by this increment. No branch protection is changed or bypassed.
+acceptance gates. Network Git import, projection/outbox, webhook validation,
+PR/check reconciliation and merge confirmation are not implemented by this
+increment. No branch protection is changed or bypassed.

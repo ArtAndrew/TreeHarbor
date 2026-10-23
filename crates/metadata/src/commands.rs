@@ -42,6 +42,7 @@ impl CommandError {
             Self::Metadata(Error::IntegrationState) => "integration_state_changed",
             Self::Metadata(Error::StaleCandidate) => "candidate_stale",
             Self::Metadata(Error::AdmissionBlocked) => "admission_blocked",
+            Self::Metadata(Error::HostBindingState) => "host_binding_state",
             Self::Metadata(Error::Invalid(_)) => "invalid_request",
             Self::Metadata(_) => "internal_error",
         }
@@ -64,6 +65,9 @@ struct Envelope {
 #[derive(Deserialize)]
 #[serde(tag = "method", rename_all = "snake_case", deny_unknown_fields)]
 enum Command {
+    Github {
+        request: crate::github::WireCommand,
+    },
     Native {
         request: crate::integration::WireCommand,
     },
@@ -283,6 +287,7 @@ impl From<Mode> for Authority {
 impl Command {
     fn permission(&self) -> Permission {
         match self {
+            Self::Github { request } => request.permission(),
             Self::Native { request } => request.permission(),
             Self::ChangeBegin { .. } | Self::ChangeStatus { .. } | Self::ChangeAbort { .. } => {
                 Permission::ChangeWrite
@@ -345,6 +350,7 @@ impl Metadata {
             .authorize(credential, &scope, request.command.permission())
             .await?;
         let result = match request.command {
+            Command::Github { request } => request.execute(self, &auth).await?,
             Command::Native { request } => request.execute(self, &auth).await?,
             Command::RepositoryInfo {} => self.authorized_repository_info(&auth).await?,
             Command::ChangeBegin {

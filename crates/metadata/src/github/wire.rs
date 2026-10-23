@@ -1,0 +1,172 @@
+use super::*;
+use serde::Deserialize;
+
+#[derive(Deserialize)]
+#[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
+pub enum WireCommand {
+    Bind {
+        key: String,
+        epoch: i64,
+        binding: String,
+        specification: BindingSpec,
+    },
+    Revoke {
+        key: String,
+        epoch: i64,
+        binding: String,
+    },
+    Status {
+        epoch: i64,
+        binding: String,
+    },
+    ProbeBegin {
+        key: String,
+        epoch: i64,
+        binding: String,
+        probe: String,
+    },
+    ProbeContext {
+        epoch: i64,
+        binding: String,
+        probe: String,
+    },
+    ProbeFinish {
+        key: String,
+        epoch: i64,
+        binding: String,
+        probe: String,
+        observation: Observation,
+    },
+}
+fn id(s: &str) -> Result<Uuid> {
+    let id: Uuid = s
+        .parse()
+        .map_err(|_| Error::Invalid("GitHub operation id"))?;
+    if id.is_nil() || id.to_string() != s {
+        return Err(Error::Invalid("GitHub operation id"));
+    }
+    Ok(id)
+}
+impl WireCommand {
+    pub fn permission(&self) -> Permission {
+        match self {
+            Self::Bind { .. } | Self::Revoke { .. } => Permission::RepositoryWrite,
+            Self::Status { .. } => Permission::Read,
+            _ => Permission::HostRead,
+        }
+    }
+    pub async fn execute(self, db: &mut Metadata, auth: &Authorization) -> Result<Value> {
+        match self {
+            Self::Bind {
+                key,
+                epoch,
+                binding,
+                specification,
+            } => {
+                db.bind_github(auth, &Command { key, epoch }, id(&binding)?, &specification)
+                    .await
+            }
+            Self::Revoke {
+                key,
+                epoch,
+                binding,
+            } => {
+                db.revoke_github(auth, &Command { key, epoch }, id(&binding)?)
+                    .await
+            }
+            Self::Status { epoch, binding } => {
+                db.github_binding_status(auth, epoch, id(&binding)?).await
+            }
+            Self::ProbeBegin {
+                key,
+                epoch,
+                binding,
+                probe,
+            } => {
+                db.begin_github_probe(auth, &Command { key, epoch }, id(&binding)?, id(&probe)?)
+                    .await
+            }
+            Self::ProbeContext {
+                epoch,
+                binding,
+                probe,
+            } => {
+                db.github_probe_context(auth, epoch, id(&binding)?, id(&probe)?)
+                    .await
+            }
+            Self::ProbeFinish {
+                key,
+                epoch,
+                binding,
+                probe,
+                observation,
+            } => {
+                db.finish_github_probe(
+                    auth,
+                    &Command { key, epoch },
+                    id(&binding)?,
+                    id(&probe)?,
+                    &observation,
+                )
+                .await
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn binding_wire_rejects_secret_fields_and_noncanonical_ids() {
+        let fixture = include_str!("../../tests/fixtures/github-bind-v1.json");
+        let command: WireCommand = serde_json::from_str(fixture).unwrap();
+        assert_eq!(command.permission(), Permission::RepositoryWrite);
+        let WireCommand::Bind {
+            binding,
+            specification,
+            ..
+        } = command
+        else {
+            panic!("wrong fixture action")
+        };
+        id(&binding).unwrap();
+        specification.validate().unwrap();
+        let observation: Observation = serde_json::from_slice(include_bytes!(
+            "../../../integrations-github/tests/fixtures/probe-v1.json"
+        ))
+        .unwrap();
+        observation.validate(&specification).unwrap();
+        for invalid in [
+            "00000000-0000-0000-0000-000000000000",
+            "aaaaaaaaaaaa4aaa8aaaaaaaaaaaaaaa",
+            "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA",
+        ] {
+            assert!(id(invalid).is_err());
+        }
+        for field in ["token", "private_key", "api_url"] {
+            let mut value: Value = serde_json::from_str(fixture).unwrap();
+            value["specification"][field] = json!("never accepted");
+            assert!(serde_json::from_value::<WireCommand>(value).is_err());
+        }
+        let mut value: Value = serde_json::from_str(fixture).unwrap();
+        value["permission"] = json!("host.publish");
+        assert!(serde_json::from_value::<WireCommand>(value).is_err());
+        for action in ["probe_begin", "probe_context", "probe_finish"] {
+            let mut value = json!({"action":action,"epoch":1,"binding":binding,"probe":binding});
+            if action != "probe_context" {
+                value["key"] = json!("request");
+            }
+            if action == "probe_finish" {
+                value["observation"] = json!(observation);
+            }
+            assert_eq!(
+                serde_json::from_value::<WireCommand>(value)
+                    .unwrap()
+                    .permission(),
+                Permission::HostRead
+            );
+        }
+    }
+}

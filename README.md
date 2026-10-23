@@ -51,9 +51,9 @@ in **Standalone** mode. Both share one Rust engine.
 > now materializes files, acknowledges exact placements and recovers them after process loss.
 > Explicit [workspace cleanup](docs/workspace-cleanup.md) connects owner drain,
 > verified runtime removal and durable deletion to safe slot reuse.
-> A trusted [GitHub App connection probe](docs/github-connection.md) now checks
-> selected repository identity with a temporary read-only token. PR publication
-> and merge-queue integration remain pending.
+> [GitHub App connections](docs/github-connection.md) now support durable repository
+> bindings and revocable, assigned-bridge verification with read-only tokens.
+> Network source import, PR publication and merge-queue integration remain pending.
 > Neither end-to-end mode is released. No packaged installation is available yet.
 > See [implementation status](docs/implementation-status.md) for evidence and gaps.
 

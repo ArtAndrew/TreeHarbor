@@ -730,7 +730,7 @@ async fn cleanup_v13_upgrade_preserves_existing_workspace_and_run_records() {
             .await
             .unwrap()
             .get::<_, i32>(0),
-        14
+        15
     );
     drain(&mut f, run.workspace).await;
     let stopped = claim(&mut f, &node).await;
