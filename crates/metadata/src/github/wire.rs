@@ -4,6 +4,11 @@ use serde::Deserialize;
 #[derive(Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
 pub enum WireCommand {
+    PublicationDispatchContext {
+        epoch: i64,
+        publication: String,
+        attempt: String,
+    },
     PublicationRequest {
         key: String,
         epoch: i64,
@@ -143,6 +148,7 @@ impl WireCommand {
             }
             Self::PublicationStatus { .. } => Permission::Read,
             Self::PublicationPrepare { .. }
+            | Self::PublicationDispatchContext { .. }
             | Self::PublicationBegin { .. }
             | Self::PublicationReport { .. }
             | Self::PublicationContext { .. } => Permission::HostPublish,
@@ -166,6 +172,19 @@ impl WireCommand {
         backend: Option<&str>,
     ) -> Result<Value> {
         match self {
+            Self::PublicationDispatchContext {
+                epoch,
+                publication,
+                attempt,
+            } => {
+                db.github_publication_dispatch_context(
+                    auth,
+                    epoch,
+                    id(&publication)?,
+                    id(&attempt)?,
+                )
+                .await
+            }
             Self::PublicationRequest {
                 key,
                 epoch,

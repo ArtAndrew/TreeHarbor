@@ -2,10 +2,10 @@
 
 Development library for the trusted Connected bridge. It converts a retained
 native commit into a verified Git artifact and sends it to one generated service
-branch. It is not yet wired to a public network-publish command: the durable
-driver, PRs, checks, merge queues and installed-App acceptance remain pending.
-Use [projection preparation](github-projection.md) for the currently exposed
-service/CLI path. Do not treat an exported pack as authorization to publish.
+branch. The trusted [`github publish` command](github-publications.md#publisher-command)
+connects it to durable owner intent and one-shot dispatch. PRs, checks, merge queues
+and installed-App acceptance remain pending. Do not treat an exported pack as
+authorization to publish.
 
 ## Exact branch updates
 
@@ -23,6 +23,10 @@ requires the branch to be absent. Git uses one refspec and an explicit
 tracking refs. This permits an authorized non-fast-forward replacement of a
 service branch while rejecting a stale writer. It never writes main, tags or an
 arbitrary caller-selected ref and does not bypass host branch protections.
+
+The service driver uses `publish_branch_guarded`, rechecking its current attempt
+before minting access and again immediately before push. This does not make a
+local cancellation atomic with the remote operation or issue a second dispatch.
 
 Before network IO, the worker copies and hashes the private bundle, loads it into
 a fresh bare repository and checks it with Git. Changed bytes fail before a push.
@@ -50,8 +54,8 @@ does not prove that an in-flight request cannot still finish. No error authorize
 an automatic resend. `observe_branch` performs read-only recovery; durable
 orchestration uses the [publication ledger](github-publications.md) to retain the
 intended branch, old/new commits and authorization before external effects, and
-record/reconcile the observed result separately. Connecting the ledger to the
-network worker is still pending.
+record/reconcile the observed result separately. Its CLI journal retains mappings,
+attempt identity and unacknowledged reports; restarting never blindly resends.
 
 The temporary App token is revoked after an observed attempt. A successful ref
 observation is preserved with `token_revoked: false` if revocation fails: credential

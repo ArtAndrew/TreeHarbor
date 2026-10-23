@@ -71,6 +71,40 @@ fn oid(p: &publish::Prepared) -> String {
 }
 
 #[tokio::test]
+async fn publication_guard_checks_before_mint_and_again_before_push() {
+    for stop_at in [1, 2] {
+        let (_d, p) = prepared();
+        let responses = if stop_at == 1 {
+            vec![]
+        } else {
+            let mut responses = access(write_token());
+            responses.push(response(404, json!({"message":"missing"})));
+            responses.push(revoked());
+            responses
+        };
+        let (c, server) = host(responses).await;
+        let mut calls = 0;
+        let outcome = c
+            .publish_branch_guarded(&binding(), "/absent-worker".into(), p, None, || {
+                calls += 1;
+                std::future::ready(if calls == stop_at {
+                    Err(Error::PublicationStopped)
+                } else {
+                    Ok(())
+                })
+            })
+            .await;
+        assert_eq!(outcome.unwrap_err(), Error::PublicationStopped);
+        assert_eq!(calls, stop_at);
+        assert_eq!(
+            server.await.unwrap().len(),
+            if stop_at == 1 { 0 } else { 6 }
+        );
+        assert_eq!(c.slots.available_permits(), 4);
+    }
+}
+
+#[tokio::test]
 async fn publisher_scopes_write_token_and_reconciles_an_already_present_exact_commit() {
     let (_d, p) = prepared();
     let expected = oid(&p);
