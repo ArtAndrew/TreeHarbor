@@ -457,6 +457,11 @@ async fn upgrade_preserves_binding_observation_and_in_progress_human_source_uplo
 async fn projection_upgrade_preserves_import_and_does_not_grant_host_publish() {
     upgrade(16).await;
 }
+#[tokio::test]
+#[ignore = "requires PostgreSQL; populated schema17 imports/bindings and scoped credentials survive publication migration"]
+async fn publication_upgrade_preserves_imports_and_scoped_credentials() {
+    upgrade(17).await;
+}
 async fn upgrade(version: i32) {
     use sha2::{Digest, Sha256};
     use treeharbor_metadata::uploads::UploadLimits;
@@ -485,6 +490,7 @@ async fn upgrade(version: i32) {
         include_str!("../../migrations/014_workspace_cleanup.sql"),
         include_str!("../../migrations/015_github_bindings.sql"),
         include_str!("../../migrations/016_github_imports.sql"),
+        include_str!("../../migrations/017_github_projections.sql"),
     ];
     for sql in migrations.into_iter().take(version as usize) {
         raw.batch_execute(sql).await.unwrap();

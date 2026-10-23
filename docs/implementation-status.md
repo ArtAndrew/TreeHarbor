@@ -248,13 +248,13 @@ resource outcomes and worker-loss recovery. No complete authority mode is implie
 
 | Component | Evidence | Remaining |
 |---|---|---|
-| GitHub App connection/import/projection | Scoped read token, durable bindings and exact owner requests, isolated download, resumable import, retained accepted-version projection and assigned publisher export; separate exact-branch transport with scoped write tokens and uncertain-outcome observation | Installed-App evidence, durable upstream publication/outbox, incremental reuse, webhooks, PR/check/merge queue and real-host confirmation |
+| GitHub App connection/import/projection | Scoped read token, durable bindings and exact owner requests, isolated download, resumable import, accepted-version projection/export, exact-branch transport, durable publication intents/mappings/one-shot dispatch and recovery observations | Installed-App evidence, network publication driver, incremental reuse, webhooks, PR/check/merge queue and real-host confirmation |
 | Canonical SHA-256 object format | Versioned framing, independent golden vectors, strict decoder | Compatibility policy for later formats |
 | Immutable directory trees and operations | Exact expected-before checks, canonical subtree operations v2, bounded structural diff, structural sharing, explicit deletes; native merge and Git reference matrix | General history rebase, broader rename/base support, live-server Git interop |
 | Local object store | Atomic no-clobber writes, digest verification, file/directory fsync, tenant directories, physical generations and upload receipts | S3, backup/restore, kill fault campaign |
 | Native DAG and admission | Scoped history/log/ancestry/merge-base HTTP/CLI, persisted refs/policies/queue/checks/reviews, verified candidate commits, final transactional admission and no-Git CLI/process-loss tests | General history stack rebase, automatic scheduling, full lifecycle and recovery |
 | Review diff | Read-only exact ChangeSet/candidate/revision HTTP/CLI, retained integration/policy/version/run identity, scoped GC holds, bounded byte paths and text, actual Git path oracle and restart/page/error tests | Review UI, persistent diff indexing and larger-repository profiling |
-| PostgreSQL metadata and outbox | Real database transaction/idempotency/lease tests; repository authority/epoch checks; populated schema upgrades through v17; local service pool and crash/replay | Remote service integration and full server restore |
+| PostgreSQL metadata and outbox | Real database transaction/idempotency/lease tests; repository authority/epoch checks; additive schema 18 publication ledger; local service pool and crash/replay | Remote service integration and full server restore |
 | Native ChangeSet intake | HTTP/CLI immutable proposals and separate ready-seal acceptance, scoped blobs, computed versions, original run lineage, atomic pins/outbox and process-loss replay | GitHub base synchronization, remote transport and retention |
 | Protected incremental source reads | Pinned sessions, verified frontiers, bounded prefix batches and descriptors surviving local GC; authenticated workspace-root sessions | Per-tenant service quotas, bulk node delivery and S3 |
 | Native file materialization | Private copies from exact snapshots, full/sparse selection, staged expansion preserving edits/deletions, bounded IO and filesystem checks; guarded node publication and selected capture after runtime removal | Cache/reflink, wider capture fault matrix and Git-compatible format |
@@ -661,3 +661,26 @@ No service endpoint or public CLI bypasses durable publication authorization:
 owner intents/outbox integration, PR/check/queue operations, persisted recovery and
 real installed-App evidence remain unfinished. The library alone does not make
 Connected complete. See [branch transport](github-publisher-transport.md).
+
+## Durable publication intent and dispatch ledger
+
+The coordinator now retains owner requests for exact ready projections, derives
+branch identities per tenant/repository/ChangeSet, pins their full graphs and
+accepts verified mappings only from the assigned HostPublish bridge. A fresh begin
+commit issues one dispatch flag; replay returns its receipt without another flag.
+Uncertain attempts cannot be reclaimed as permission to send again. Cancellation
+after dispatch preserves the attempt; scoped observations can record a remote
+effect after a projection or binding stops accepting new work. Main and check
+authorization remain unchanged.
+
+Schema 18 is additive. Tests cover populated upgrades, retention, foreign scope,
+wrong report/mapping identity, concurrent claims, replay, revoked credentials,
+version/epoch/cancellation/deadline fences and rollback after delayed receipt/outbox
+writes. The actual Unix-socket CLI/service test kills the server before and after
+begin commit, then verifies historical recovery without redispatch permission.
+Its Git mapping comes from a real self-contained Git export; its upstream reports
+are explicitly trusted fixtures, not installed-App evidence.
+
+The network driver connecting these records to branch transport, PR/check/queue,
+automatic uncertain-result reconciliation, cleanup/cutover and real installed-App
+acceptance remain required. See [publication requests](github-publications.md).

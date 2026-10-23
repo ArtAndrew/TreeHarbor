@@ -59,6 +59,8 @@ in **Standalone** mode. Both share one Rust engine.
 > exact ChangeSet version through a separately authorized publisher bridge.
 > A [branch transport library](docs/github-publisher-transport.md) adds scoped App
 > writes and exact expected-old updates; the durable publication command is pending.
+> [Publication requests](docs/github-publications.md) now retain owner intent,
+> one-shot dispatch receipts and recovery observations; the network driver is pending.
 > PR publication, merge-queue integration and installed-App acceptance remain pending.
 > Neither end-to-end mode is released. No packaged installation is available yet.
 > See [implementation status](docs/implementation-status.md) for evidence and gaps.
