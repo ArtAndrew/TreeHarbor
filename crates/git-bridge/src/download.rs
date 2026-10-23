@@ -437,7 +437,7 @@ pub fn worker() -> Result<()> {
         use zeroize::Zeroize;
         bytes.zeroize();
         if r.version != 1
-            || rustix::process::getppid().map(|pid| pid.as_raw() as u32) != Some(r.parent_pid)
+            || rustix::process::getppid().map(|pid| pid.as_raw_pid() as u32) != Some(r.parent_pid)
             || rustix::process::getpgid(None).map_err(std::io::Error::from)?
                 != rustix::process::getpid()
             || !(1..=3600).contains(&r.cpu_seconds)
@@ -579,7 +579,7 @@ pub fn worker() -> Result<()> {
         let mut child = command.spawn()?;
         loop {
             let parent_alive =
-                rustix::process::getppid().map(|pid| pid.as_raw() as u32) == Some(r.parent_pid);
+                rustix::process::getppid().map(|pid| pid.as_raw_pid() as u32) == Some(r.parent_pid);
             if !parent_alive
                 || check_deadline(deadline).is_err()
                 || usage(&r.scratch, r.file_bytes.saturating_mul(3)).is_err()
