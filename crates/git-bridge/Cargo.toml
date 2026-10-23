@@ -20,6 +20,7 @@ sha1-checked = "0.10.0"
 flate2 = "1.1.10"
 base64 = "0.23"
 zeroize = "1"
+uuid.workspace = true
 
 [dev-dependencies]
 treeharbor-storage.workspace = true

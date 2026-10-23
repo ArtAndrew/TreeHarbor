@@ -9,6 +9,7 @@ pub use auth::AppCredentials;
 use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
 pub use transport::Connection;
+pub use transport::publisher::{BranchObservation, BranchOutcome, BranchResult};
 
 pub const API_VERSION: &str = "2026-03-10";
 pub struct GitDownload {
@@ -92,10 +93,17 @@ pub enum Stage {
     TokenRepositories,
     Repository,
     RevokeToken,
+    Reference,
 }
 /// Never retains response bodies, URLs, private keys, tokens or upstream errors.
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum Error {
+    #[error("GitHub branch publication may have happened; reconcile its exact ref before retry")]
+    PublicationUnknown,
+    #[error("GitHub service branch differs from the explicit expected head")]
+    RefChanged,
+    #[error("GitHub repository is archived or disabled")]
+    RepositoryUnavailable,
     #[error("GitHub Git download failed; no new completed connection result was returned")]
     GitDownload,
     #[error("invalid GitHub App configuration or pinned repository identity")]
@@ -125,7 +133,7 @@ pub enum Error {
     #[error("GitHub App installation is suspended")]
     Suspended,
     #[error(
-        "GitHub installation token is not restricted to the requested repository and read permissions"
+        "GitHub installation token is not restricted to the requested repository and explicit permissions"
     )]
     TokenScope,
     #[error("GitHub installation token has insufficient or invalid remaining lifetime")]

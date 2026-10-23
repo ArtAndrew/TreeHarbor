@@ -9,6 +9,7 @@ pub use ingest::{Import, Imported, import};
 pub mod download;
 mod pack;
 mod process;
+pub mod publish;
 mod stream;
 
 use serde::{Deserialize, Serialize};
@@ -25,6 +26,10 @@ use treeharbor_core::{ObjectId, ObjectStore};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    #[error(
+        "Git branch mutation outcome may be unknown; reconcile the exact remote ref before retry"
+    )]
+    PublicationUnknown,
     #[error("Git interop filesystem operation failed: {0}")]
     Io(#[from] std::io::Error),
     #[error("invalid source object: {0}")]
@@ -35,7 +40,7 @@ pub enum Error {
     Unsupported(&'static str),
     #[error("invalid Git interop configuration or unsafe path")]
     Configuration,
-    #[error("Git subprocess failed during {0}; no completed result was published")]
+    #[error("Git subprocess failed during {0}; verify the operation outcome")]
     Git(&'static str),
     #[error("Git returned an invalid projection")]
     InvalidProjection,

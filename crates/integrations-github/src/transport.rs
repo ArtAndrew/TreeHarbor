@@ -8,6 +8,7 @@ use serde_json::{Value, json};
 use std::{sync::Arc, time::Duration};
 use tokio::sync::Semaphore;
 use zeroize::Zeroizing;
+pub(crate) mod publisher;
 
 const MAX_RESPONSE: usize = 128 * 1024;
 const PROBE_TIMEOUT: Duration = Duration::from_secs(45);
@@ -49,6 +50,13 @@ impl Connection {
     }
 
     async fn mint(&self, binding: &RepositoryBinding) -> Result<(wire::Installation, wire::Token)> {
+        self.mint_for(binding, wire::Capability::Source).await
+    }
+    async fn mint_for(
+        &self,
+        binding: &RepositoryBinding,
+        capability: wire::Capability,
+    ) -> Result<(wire::Installation, wire::Token)> {
         let jwt = self.credentials.jwt(now()?)?;
         let installation: wire::Installation = self
             .json(
@@ -64,7 +72,7 @@ impl Connection {
         let token: wire::Token = self.json(
             Stage::Token, Method::POST,
             &format!("app/installations/{}/access_tokens", binding.installation_id), jwt.header()?,
-            Some(json!({"repository_ids": [binding.repository_id], "permissions": {"contents":"read", "metadata":"read"}})),
+            Some(json!({"repository_ids": [binding.repository_id], "permissions": capability.permissions()})),
             StatusCode::CREATED,
         ).await?;
         Ok((installation, token))
@@ -178,7 +186,17 @@ impl Connection {
         installation: &wire::Installation,
         token: &wire::Token,
     ) -> Result<Probe> {
-        let expiry = token.check(binding.repository_id, now()?)?;
+        self.observe_for(binding, installation, token, wire::Capability::Source)
+            .await
+    }
+    async fn observe_for(
+        &self,
+        binding: &RepositoryBinding,
+        installation: &wire::Installation,
+        token: &wire::Token,
+        capability: wire::Capability,
+    ) -> Result<Probe> {
+        let expiry = token.check_for(binding.repository_id, now()?, capability)?;
         let repos: wire::TokenRepositories = self
             .json(
                 Stage::TokenRepositories,
