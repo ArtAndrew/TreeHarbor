@@ -7,6 +7,7 @@ pub mod config;
 pub mod database;
 pub mod download;
 pub mod files;
+mod github;
 mod history;
 pub mod import;
 mod native;
@@ -23,6 +24,8 @@ mod source_read;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    #[error("GitHub connection failed: {0}")]
+    Github(#[from] treeharbor_github::Error),
     #[error(
         "local export worker failed; inspect the output before retrying with a new destination"
     )]
