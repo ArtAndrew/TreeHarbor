@@ -47,6 +47,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/018_github_publications.sql"),
     include_str!("../migrations/019_github_pulls.sql"),
     include_str!("../migrations/020_github_inspections.sql"),
+    include_str!("../migrations/021_github_queue.sql"),
 ];
 const MAX_JSON: usize = 1024 * 1024;
 
@@ -116,6 +117,8 @@ pub enum Error {
     HostPullState,
     #[error("GitHub inspection is no longer collectable or report does not match its request")]
     HostInspectionState,
+    #[error("GitHub queue request is unavailable, stale or incompatible with the observation")]
+    HostQueueState,
 }
 pub type Result<T> = std::result::Result<T, Error>;
 

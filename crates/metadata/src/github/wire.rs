@@ -4,6 +4,43 @@ use serde::Deserialize;
 #[derive(Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
 pub enum WireCommand {
+    QueueRequest {
+        key: String,
+        epoch: i64,
+        queue: String,
+        specification: QueueSpec,
+    },
+    QueueBegin {
+        key: String,
+        epoch: i64,
+        queue: String,
+        attempt: String,
+    },
+    QueueReport {
+        key: String,
+        epoch: i64,
+        queue: String,
+        attempt: String,
+        report: Box<treeharbor_github_contract::queue::QueueObservation>,
+    },
+    QueueCancel {
+        key: String,
+        epoch: i64,
+        queue: String,
+    },
+    QueueStatus {
+        epoch: i64,
+        queue: String,
+    },
+    QueueContext {
+        epoch: i64,
+        queue: String,
+    },
+    QueueDispatchContext {
+        epoch: i64,
+        queue: String,
+        attempt: String,
+    },
     InspectionRequest {
         key: String,
         epoch: i64,
@@ -208,6 +245,12 @@ fn id(s: &str) -> Result<Uuid> {
 impl WireCommand {
     pub fn permission(&self) -> Permission {
         match self {
+            Self::QueueRequest { .. } | Self::QueueCancel { .. } => Permission::HostQueue,
+            Self::QueueBegin { .. }
+            | Self::QueueReport { .. }
+            | Self::QueueContext { .. }
+            | Self::QueueDispatchContext { .. } => Permission::HostMerge,
+            Self::QueueStatus { .. } => Permission::Read,
             Self::InspectionRequest { .. } | Self::InspectionCancel { .. } => {
                 Permission::RepositoryWrite
             }
@@ -250,6 +293,60 @@ impl WireCommand {
         backend: Option<&str>,
     ) -> Result<Value> {
         match self {
+            Self::QueueRequest {
+                key,
+                epoch,
+                queue,
+                specification,
+            } => {
+                db.request_github_queue(auth, &Command { key, epoch }, id(&queue)?, &specification)
+                    .await
+            }
+            Self::QueueBegin {
+                key,
+                epoch,
+                queue,
+                attempt,
+            } => {
+                db.begin_github_queue(auth, &Command { key, epoch }, id(&queue)?, id(&attempt)?)
+                    .await
+            }
+            Self::QueueReport {
+                key,
+                epoch,
+                queue,
+                attempt,
+                report,
+            } => {
+                db.report_github_queue(
+                    auth,
+                    &Command { key, epoch },
+                    id(&queue)?,
+                    id(&attempt)?,
+                    &report,
+                )
+                .await
+            }
+            Self::QueueCancel { key, epoch, queue } => {
+                db.cancel_github_queue(auth, &Command { key, epoch }, id(&queue)?)
+                    .await
+            }
+            Self::QueueStatus { epoch, queue } => {
+                db.github_queue_context(auth, epoch, id(&queue)?, false, None)
+                    .await
+            }
+            Self::QueueContext { epoch, queue } => {
+                db.github_queue_context(auth, epoch, id(&queue)?, true, None)
+                    .await
+            }
+            Self::QueueDispatchContext {
+                epoch,
+                queue,
+                attempt,
+            } => {
+                db.github_queue_context(auth, epoch, id(&queue)?, true, Some(id(&attempt)?))
+                    .await
+            }
             Self::InspectionRequest {
                 key,
                 epoch,

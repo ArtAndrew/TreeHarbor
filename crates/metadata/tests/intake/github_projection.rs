@@ -5,6 +5,8 @@ mod inspections;
 mod publication;
 #[path = "github_pull.rs"]
 mod pulls;
+#[path = "github_queue.rs"]
+mod queue;
 use treeharbor_metadata::{
     access::{Authorization, Permission as P, PrincipalKind as K},
     github::{BindingSpec, Command, ProjectionSpec},

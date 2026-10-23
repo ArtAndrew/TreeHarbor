@@ -25,7 +25,7 @@ fn spec(pull: Uuid) -> InspectionSpec {
         ttl_seconds: 60,
     }
 }
-async fn requested(p: &mut Projection) -> (Uuid, InspectionSpec, Value) {
+pub(super) async fn requested(p: &mut Projection) -> (Uuid, InspectionSpec, Value) {
     let pull = observed_pull(p).await;
     let id = Uuid::new_v4();
     let spec = spec(pull);
@@ -36,7 +36,7 @@ async fn requested(p: &mut Projection) -> (Uuid, InspectionSpec, Value) {
             .unwrap();
     (id, spec, v)
 }
-async fn report(p: &Projection, v: &Value) -> InspectionReport {
+pub(super) async fn report(p: &Projection, v: &Value) -> InspectionReport {
     let f: Value = serde_json::from_str(include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/../github-contract/tests/fixtures/inspection-v1.json"
@@ -391,6 +391,7 @@ async fn inspection_upgrade_preserves_published_pr_and_creates_exact_evidence_re
             .get::<_, i64>(0),
         0
     );
+    super::queue::drop_unpopulated_v21(&raw).await;
     raw.batch_execute(
         "DROP TABLE th_github_inspections; DROP FUNCTION th_github_inspection_immutable()",
     )

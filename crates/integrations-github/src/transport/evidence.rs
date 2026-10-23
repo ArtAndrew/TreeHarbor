@@ -81,7 +81,7 @@ impl Connection {
         p.validate(t).map_err(|_| Error::Evidence)?;
         Ok(p)
     }
-    async fn evidence_rules(
+    pub(super) async fn evidence_rules(
         &self,
         b: &RepositoryBinding,
         t: &InspectionTarget,

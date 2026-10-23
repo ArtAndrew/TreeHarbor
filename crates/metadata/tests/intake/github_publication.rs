@@ -526,6 +526,7 @@ async fn publication_upgrade_retains_a_ready_projection_and_its_export() {
             .get::<_, i64>(0),
         0
     );
+    super::queue::drop_unpopulated_v21(&raw).await;
     raw.batch_execute(
         "DROP TABLE th_github_inspections; DROP FUNCTION th_github_inspection_immutable()",
     )

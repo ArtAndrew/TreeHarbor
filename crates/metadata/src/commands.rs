@@ -46,6 +46,7 @@ impl CommandError {
             Self::Metadata(Error::HostProjectionState) => "host_projection_state",
             Self::Metadata(Error::HostPublicationState) => "host_publication_state",
             Self::Metadata(Error::HostPullState) => "host_pull_state",
+            Self::Metadata(Error::HostQueueState) => "host_queue_state",
             Self::Metadata(Error::HostInspectionState) => "host_inspection_state",
             Self::Metadata(Error::Invalid(_)) => "invalid_request",
             Self::Metadata(_) => "internal_error",

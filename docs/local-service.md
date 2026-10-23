@@ -67,6 +67,9 @@ for example, an agent cannot be granted validator or host-publisher power.
 GitHub connection verification uses a Bridge's separate `host.read` grant and
 credential; it does not require `host.publish`. A Human's `repository.write`
 configures or revokes the [repository binding](github-connection.md).
+Experimental [GitHub queue delivery](github-queues.md) requires an explicit Human
+`host.queue` grant and an assigned Bridge's `host.merge` grant. Existing access is
+not expanded automatically during schema upgrades.
 
 `token-issue` writes a versioned JSON credential to a new mode-0600 file. It never
 overwrites an existing file or prints the secret. Stdout reports the token ID and

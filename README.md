@@ -66,8 +66,11 @@ in **Standalone** mode. Both share one Rust engine.
 > [Pull request delivery](docs/github-pulls.md) adds explicit PR creation and text
 > updates with retained identities and recovery after a lost response.
 > [Check observations](docs/github-inspections.md) capture selected App-issued checks
-> on the exact PR head and detect head/base/ruleset drift. Full policy admission,
-> merge-group checks, queue integration and installed-App acceptance remain pending.
+> on the exact PR head and detect head/base/ruleset drift.
+> Experimental [queue delivery](docs/github-queues.md) adds explicit owner permission,
+> one-shot native queue requests and recovery of retained asynchronous results.
+> Remote dequeue, complete policy/group/final-tree verification and installed-App
+> acceptance remain pending.
 > Neither end-to-end mode is released. No packaged installation is available yet.
 > See [implementation status](docs/implementation-status.md) for evidence and gaps.
 

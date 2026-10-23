@@ -3,6 +3,31 @@
 Updated: 2026-10-23. This file describes implemented behavior and remaining release
 gates. A foundation milestone does not complete either mode.
 
+Experimental [GitHub queue delivery](github-queues.md) joins an explicit Human
+`host.queue` request to the assigned Bridge's `host.merge` capability, durable
+one-shot dispatch and private CLI recovery journal. Selected head checks, PR/base,
+rules and queue configuration are recollected before an exact-head native queue
+PUT. Replay or an unknown response cannot trigger another PUT. Async result GETs
+use the retained UUID and a separately narrowed Contents-write token; that API
+requires write permission even though recovery only reads it.
+
+Schema21 preserves previous records/grants and retains append-only queue reports.
+Late journal reports preserve the provider UUID without replacing a newer snapshot.
+Terminal async results survive later missing responses. A confirmed failure permits
+a new explicit owner request; a404, expiry or local post-dispatch cancellation does
+not. Actual CLI/server process-loss tests and provider transport fixtures cover
+recovery, scope, concurrency and stale targets. No fixture proves a live installed
+App. Remote dequeue, durable merge-group events, membership/check/final-tree proof
+and real host acceptance remain unfinished; `merge_verified` stays false.
+
+Local verification: 231 ordinary tests passed. The explicit database/materializer/
+node/service run passed 228 tests and exposed a malformed key in the new CLI test
+journal. After correcting that fixture, the remaining CLI scenario passed, including
+late-UUID and terminal-result replay without App configuration or Git. Formatting
+and strict all-target Clippy passed. Required Linux/macOS, PostgreSQL and actual
+gVisor CI are still required before merge; these local results are not live-host
+acceptance.
+
 New [exact GitHub check observations](github-inspections.md) provide an owner
 request, assigned read-only bridge, typed capture and recoverable `github inspect`
 command. Check names and App IDs are pinned to the exact published head. PR head,

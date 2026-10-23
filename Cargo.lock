@@ -2027,6 +2027,7 @@ dependencies = [
  "serde_json",
  "thiserror",
  "treeharbor-core",
+ "uuid",
 ]
 
 [[package]]
