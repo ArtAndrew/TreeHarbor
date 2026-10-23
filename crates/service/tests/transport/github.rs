@@ -1,4 +1,6 @@
 use super::*;
+#[path = "github/projections.rs"]
+mod projections;
 
 fn provision_bridge(f: &Fixture) -> PathBuf {
     let bridge = f.dir.path().join("bridge-import.json");

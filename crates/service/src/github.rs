@@ -11,9 +11,36 @@ use std::time::Duration;
 use treeharbor_github::{AppCredentials, Connection, RepositoryBinding};
 use uuid::Uuid;
 mod import;
+pub(crate) mod projection;
 
 #[derive(Subcommand)]
 pub enum Action {
+    /// Prepare an owner's exact accepted ChangeSet for optional GitHub publication.
+    Prepare {
+        #[arg(long)]
+        socket: PathBuf,
+        #[arg(long)]
+        credential_file: PathBuf,
+        #[arg(long)]
+        projection: Uuid,
+        #[arg(long)]
+        key: String,
+        #[arg(long,value_parser=clap::value_parser!(i64).range(1..))]
+        epoch: i64,
+    },
+    /// Download a ready projection as the assigned HostPublish bridge; no upstream write.
+    Export {
+        #[arg(long)]
+        socket: PathBuf,
+        #[arg(long)]
+        credential_file: PathBuf,
+        #[arg(long)]
+        projection: Uuid,
+        #[arg(long,value_parser=clap::value_parser!(i64).range(1..))]
+        epoch: i64,
+        #[arg(long)]
+        output: PathBuf,
+    },
     /// Download and import an owner's exact Git revision through its assigned bridge.
     Import {
         #[arg(long)]
@@ -111,6 +138,61 @@ fn matches_config(config: &Config, spec: &treeharbor_metadata::github::BindingSp
 }
 pub async fn run(action: Action) -> Result<bool> {
     match action {
+        Action::Prepare {
+            socket,
+            credential_file,
+            projection,
+            key,
+            epoch,
+        } => {
+            let credential = Credential::load(&credential_file)?;
+            let reply = client::github_projection_prepare(
+                &socket,
+                &credential,
+                json!({"projection":projection.to_string(),"key":key,"epoch":epoch}),
+                Duration::from_secs(120),
+            )
+            .await?;
+            println!("{}", reply.body);
+            Ok(reply.status.is_success())
+        }
+        Action::Export {
+            socket,
+            credential_file,
+            projection,
+            epoch,
+            output,
+        } => {
+            let credential = Credential::load(&credential_file)?;
+            let context=command(&socket,&credential,json!({"action":"projection_context","epoch":epoch,"projection":projection.to_string()})).await?;
+            if context["projection"] != projection.to_string()
+                || context["epoch"] != epoch
+                || context["state"] != "ready"
+                || context["is_current_version"] != true
+            {
+                return Err(Error::Http);
+            }
+            let treeharbor_core::RevisionRef::Native(revision) = context["revision"]
+                .as_str()
+                .ok_or(Error::Http)?
+                .parse()
+                .map_err(|_| Error::Http)?
+            else {
+                return Err(Error::Http);
+            };
+            let reply = crate::archive::download_projection(
+                &socket,
+                &credential,
+                projection,
+                epoch,
+                revision,
+                &output,
+                Duration::from_secs(120),
+            )
+            .await?;
+            println!("{}", reply.body);
+            Ok(reply.status.is_success())
+        }
         Action::Import {
             config,
             socket,

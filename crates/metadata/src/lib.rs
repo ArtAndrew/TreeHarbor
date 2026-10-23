@@ -43,6 +43,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/014_workspace_cleanup.sql"),
     include_str!("../migrations/015_github_bindings.sql"),
     include_str!("../migrations/016_github_imports.sql"),
+    include_str!("../migrations/017_github_projections.sql"),
 ];
 const MAX_JSON: usize = 1024 * 1024;
 
@@ -104,6 +105,8 @@ pub enum Error {
     AdmissionBlocked,
     #[error("GitHub binding or probe is inactive, changed or expired")]
     HostBindingState,
+    #[error("GitHub projection is cancelled, expired or no longer current")]
+    HostProjectionState,
 }
 pub type Result<T> = std::result::Result<T, Error>;
 

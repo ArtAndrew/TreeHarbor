@@ -450,6 +450,14 @@ async fn expiry_during_import_request_begin_finish_receipt_and_outbox_rolls_back
 #[tokio::test]
 #[ignore = "requires PostgreSQL; populated schema15 bindings and source uploads survive migration"]
 async fn upgrade_preserves_binding_observation_and_in_progress_human_source_upload() {
+    upgrade(15).await;
+}
+#[tokio::test]
+#[ignore = "requires PostgreSQL; populated schema16 import and credentials survive projection migration"]
+async fn projection_upgrade_preserves_import_and_does_not_grant_host_publish() {
+    upgrade(16).await;
+}
+async fn upgrade(version: i32) {
     use sha2::{Digest, Sha256};
     use treeharbor_metadata::uploads::UploadLimits;
     let schema = format!("th_test_{}", Uuid::new_v4().simple());
@@ -460,7 +468,7 @@ async fn upgrade_preserves_binding_observation_and_in_progress_human_source_uplo
         .unwrap();
     let raw = connection(&schema).await;
     let mut digest = Vec::new();
-    for sql in [
+    let migrations = [
         include_str!("../../migrations/001_transactions.sql"),
         include_str!("../../migrations/002_object_catalog.sql"),
         include_str!("../../migrations/003_change_intake.sql"),
@@ -476,7 +484,9 @@ async fn upgrade_preserves_binding_observation_and_in_progress_human_source_uplo
         include_str!("../../migrations/013_workspace_seals.sql"),
         include_str!("../../migrations/014_workspace_cleanup.sql"),
         include_str!("../../migrations/015_github_bindings.sql"),
-    ] {
+        include_str!("../../migrations/016_github_imports.sql"),
+    ];
+    for sql in migrations.into_iter().take(version as usize) {
         raw.batch_execute(sql).await.unwrap();
         let mut h = Sha256::new();
         h.update(digest);
@@ -484,8 +494,8 @@ async fn upgrade_preserves_binding_observation_and_in_progress_human_source_uplo
         digest = h.finalize().to_vec();
     }
     raw.execute(
-        "INSERT INTO th_schema_version(version,migration_digest) VALUES(15,$1)",
-        &[&digest],
+        "INSERT INTO th_schema_version(version,migration_digest) VALUES($1,$2)",
+        &[&version, &digest],
     )
     .await
     .unwrap();
@@ -554,6 +564,19 @@ async fn upgrade_preserves_binding_observation_and_in_progress_human_source_uplo
             .await
             .unwrap();
     }
+    let pending = Uuid::new_v4();
+    let before_import = if version == 16 {
+        request(&mut f, pending, &spec_import()).await;
+        begin(&mut f, pending, &graph).await;
+        put(&mut f, &bridge, pending, &store, &graph[0]).await;
+        Some(
+            f.db.github_source_upload_status(&bridge, pending)
+                .await
+                .unwrap(),
+        )
+    } else {
+        None
+    };
     let snapshot = "SELECT jsonb_build_object('bindings',(SELECT jsonb_agg(to_jsonb(b)) FROM th_github_bindings b),'probes',(SELECT jsonb_agg(to_jsonb(p)) FROM th_github_probes p),'tokens',(SELECT jsonb_agg(to_jsonb(t)) FROM th_access_tokens t),'operations',(SELECT jsonb_agg(to_jsonb(o) ORDER BY key) FROM th_operations o))";
     let before: serde_json::Value = raw.query_one(snapshot, &[]).await.unwrap().get(0);
     let before_upload = f.db.source_upload_status(&owner, upload).await.unwrap();
@@ -564,8 +587,30 @@ async fn upgrade_preserves_binding_observation_and_in_progress_human_source_uplo
     f.db.migrate().await.unwrap();
     f.db.migrate().await.unwrap();
     f.db.check_schema().await.unwrap();
+    if let Some(status) = before_import {
+        assert_eq!(
+            f.db.github_source_upload_status(&bridge, pending)
+                .await
+                .unwrap(),
+            status
+        );
+        for object in &graph[1..] {
+            put(&mut f, &bridge, pending, &store, object).await;
+        }
+        // Finish below the snapshot comparison so that new receipts are excluded.
+    }
+    assert!(
+        f.db.authorize(&f.bridge.secret, &f.scope, P::HostPublish)
+            .await
+            .is_err()
+    );
     let after: serde_json::Value = raw.query_one(snapshot, &[]).await.unwrap().get(0);
     assert_eq!(before, after);
+    if version == 16 {
+        f.db.finish_github_import(&bridge, &cmd("old-import-finish"), pending)
+            .await
+            .unwrap();
+    }
     assert_eq!(
         f.db.source_upload_status(&owner, upload).await.unwrap(),
         before_upload

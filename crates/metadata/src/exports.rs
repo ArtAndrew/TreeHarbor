@@ -18,9 +18,29 @@ pub struct ExportFence {
 }
 pub struct SourceExport {
     auth: Authorization,
-    fence: ExportFence,
+    fence: Fence,
     snapshot: ObjectId,
     session: ReadSession,
+}
+#[derive(Clone, Copy)]
+enum Fence {
+    Source(ExportFence),
+    GithubProjection { epoch: i64, projection: Uuid },
+}
+async fn input(
+    tx: &Transaction<'_>,
+    auth: &Authorization,
+    fence: Fence,
+) -> Result<(ObjectId, ObjectId, String)> {
+    match fence {
+        Fence::Source(fence) => {
+            let (snapshot, pin) = context(tx, auth, fence).await?;
+            Ok((fence.revision, snapshot, pin))
+        }
+        Fence::GithubProjection { epoch, projection } => {
+            crate::github::projections::export_context(tx, auth, epoch, projection).await
+        }
+    }
 }
 impl SourceExport {
     pub fn root(&self) -> ReadNode {
@@ -71,16 +91,33 @@ impl Metadata {
         fence: ExportFence,
         ttl: i32,
     ) -> Result<SourceExport> {
+        self.open_export(auth, Fence::Source(fence), ttl).await
+    }
+    pub async fn open_github_projection_export(
+        &mut self,
+        auth: &Authorization,
+        epoch: i64,
+        projection: Uuid,
+        ttl: i32,
+    ) -> Result<SourceExport> {
+        self.open_export(auth, Fence::GithubProjection { epoch, projection }, ttl)
+            .await
+    }
+    async fn open_export(
+        &mut self,
+        auth: &Authorization,
+        fence: Fence,
+        ttl: i32,
+    ) -> Result<SourceExport> {
         let tx = self.client.transaction().await?;
         settings(&tx).await?;
         repository_lock(&tx, auth.scope(), true).await?;
-        let (snapshot, holder) = context(&tx, auth, fence).await?;
+        let (revision, snapshot, holder) = input(&tx, auth, fence).await?;
         let lease = lease_pin_in(&tx, auth.scope(), &holder, Uuid::new_v4(), ttl).await?;
-        if lease.key().id() != fence.revision {
+        if lease.key().id() != revision {
             return Err(Error::ReadScope);
         }
-        auth.check_transaction(&tx, auth.scope(), auth.principal(), Permission::Read)
-            .await?;
+        input(&tx, auth, fence).await?;
         tx.commit().await?;
         Ok(SourceExport {
             auth: auth.clone(),
@@ -93,8 +130,8 @@ impl Metadata {
         let tx = self.client.transaction().await?;
         settings(&tx).await?;
         repository_lock(&tx, read.auth.scope(), false).await?;
-        let (snapshot, _) = context(&tx, &read.auth, read.fence).await?;
-        if snapshot != read.snapshot {
+        let (revision, snapshot, _) = input(&tx, &read.auth, read.fence).await?;
+        if snapshot != read.snapshot || revision != read.root().id() {
             return Err(Error::ReadScope);
         }
         tx.commit().await?;

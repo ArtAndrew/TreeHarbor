@@ -55,6 +55,8 @@ in **Standalone** mode. Both share one Rust engine.
 > bindings and revocable, assigned-bridge verification with read-only tokens.
 > [Exact GitHub source import](docs/github-import.md) adds owner-requested full-history
 > download and resumable source acceptance through the assigned bridge.
+> [Accepted-version projection](docs/github-projection.md) prepares and exports an
+> exact ChangeSet version through a separately authorized publisher bridge.
 > PR publication, merge-queue integration and installed-App acceptance remain pending.
 > Neither end-to-end mode is released. No packaged installation is available yet.
 > See [implementation status](docs/implementation-status.md) for evidence and gaps.

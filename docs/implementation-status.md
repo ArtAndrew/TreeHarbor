@@ -3,6 +3,28 @@
 Updated: 2026-10-23. This file describes implemented behavior and remaining release
 gates. A foundation milestone does not complete either mode.
 
+New [accepted-version GitHub projection](github-projection.md): an owner selects
+the exact current accepted ChangeSet version and binding. The service derives one
+immutable commit from the retained base/operations/result and acceptance time,
+reserves and syncs it, then commits a full-graph pin and replayable ready receipt.
+Version, binding, authority, permission and deadline fences apply after IO and
+after receipt/outbox writes. The assigned publisher exports through a separate
+`host.publish` purpose; `host.read` tokens do not gain publication access. This
+does not register a base, move a ref or approve any checks/merge.
+
+Local verification: 187 ordinary tests and 200 explicit PostgreSQL/materializer/
+node/service tests passed, plus the separate public HTTPS connection test.
+Five focused projection tests passed again after final HTTP/error assertions.
+Coverage includes concurrent completion, cancellation/version/access changes after
+disk IO, expiry inside receipt/outbox writes, full-graph retention, populated
+schema-16 upgrade and actual CLI/server kills before and after commit. Exported
+Git history passes strict fsck with the exact original parent and accepted content.
+These fixtures do not prove a real installed App or PR/queue workflow.
+
+Schema 17 preserves existing imports/bindings/credentials without added grants.
+Actual GitHub branch/PR creation, check/queue reconciliation and installed-App
+acceptance remain release gates, as do the full two-mode operational requirements.
+
 New [exact GitHub source import](github-import.md): an owner fixes the Git commit,
 binding, epoch, deadline and budgets. Only the assigned Bridge's `host.read` may
 upload that request; Human source routes remain separate. Schema 16 preserves
@@ -226,7 +248,7 @@ resource outcomes and worker-loss recovery. No complete authority mode is implie
 
 | Component | Evidence | Remaining |
 |---|---|---|
-| GitHub App connection/import | Scoped read token, durable bindings and exact owner requests, isolated network download, resumable graph upload, pinned source and immutable receipts; local HTTP/RSA/PostgreSQL/CLI tests | Installed-App evidence, incremental reuse, projection/outbox, webhooks, PR/check/merge queue and real-host confirmation |
+| GitHub App connection/import/projection | Scoped read token, durable bindings and exact owner requests, isolated download, resumable import, retained accepted-version projection and assigned publisher export; local HTTP/RSA/PostgreSQL/CLI tests | Installed-App evidence, incremental reuse, upstream publication/outbox, webhooks, PR/check/merge queue and real-host confirmation |
 | Canonical SHA-256 object format | Versioned framing, independent golden vectors, strict decoder | Compatibility policy for later formats |
 | Immutable directory trees and operations | Exact expected-before checks, canonical subtree operations v2, bounded structural diff, structural sharing, explicit deletes; native merge and Git reference matrix | General history rebase, broader rename/base support, live-server Git interop |
 | Local object store | Atomic no-clobber writes, digest verification, file/directory fsync, tenant directories, physical generations and upload receipts | S3, backup/restore, kill fault campaign |
@@ -254,7 +276,7 @@ resource outcomes and worker-loss recovery. No complete authority mode is implie
 | Git source export | Local native-pack CLI and bounded Rust full-DAG projection to self-contained Git SHA-1/SHA-256 bundle; isolated batch Git, exact mapping, verified original Git metadata/IDs, restored fsck and no-replace publication | Backup metadata, incremental projection, GitHub delivery |
 | Live source export | Scoped registered-base reads with GC holds and authority/credential fences; streaming archive v1 and atomically verified pack v3; actual CLI restart/merge/origin roundtrip | Other retained proposals, all-ref export, full metadata backup, incremental transfer, longer jobs and cleanup |
 | Git history import | Pinned self-contained SHA-1/SHA-256 bundle, all-parent native graph, replayed deltas, exact original metadata, atomic full-source pack v2 and resumable HTTP/CLI upload; separate scoped Linux/SHA-1 GitHub download | Real installed-App gate, incremental imports, multi-ref cutover, automated cleanup, larger-repository profiling |
-| Connected | Partial: binding, read-only App access, exact source import and retained native base | Real installed-App acceptance, GitHub PR/checks/merge queue and publication reconciliation |
+| Connected | Partial: binding, read-only App access, exact source import, retained native base and exact accepted-version projection/export | Real installed-App acceptance, GitHub PR/checks/merge queue and publication reconciliation |
 | Standalone S2 | Partial: durable native admission/publication, scoped history/candidate diff and single-ChangeSet rebase through CLI/API without Git, managed offline checks, registered-source export, plus explicitly separate transport fixtures | General history stack rewriting, full lifecycle, cutover, full server backup/restore |
 | Release and benchmarks | Not released or measured | Clean installation, artifacts, SBOM/provenance, comparison and operating cost |
 
