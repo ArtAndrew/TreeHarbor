@@ -1,4 +1,5 @@
 //! Immutable evidence shapes and conservative evaluation, without HTTP or credentials.
+pub mod queue;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use treeharbor_core::{GitOid, RevisionRef};

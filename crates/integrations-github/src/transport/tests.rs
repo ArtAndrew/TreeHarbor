@@ -582,3 +582,6 @@ async fn live_public_github_https_api() {
     assert_eq!(body["id"], 1_428_127_654_u64);
     assert_eq!(body["full_name"], "ArtAndrew/TreeHarbor");
 }
+
+#[path = "tests/queue.rs"]
+mod queue_tests;

@@ -11,6 +11,7 @@ use zeroize::Zeroizing;
 pub(crate) mod evidence;
 pub(crate) mod publisher;
 pub(crate) mod pulls;
+pub(crate) mod queue;
 
 const MAX_RESPONSE: usize = 128 * 1024;
 const PROBE_TIMEOUT: Duration = Duration::from_secs(45);
@@ -277,6 +278,19 @@ impl Connection {
         body: Option<Value>,
         expected: StatusCode,
     ) -> Result<Zeroizing<Vec<u8>>> {
+        self.request_status(stage, method, path, authorization, body, &[expected])
+            .await
+            .map(|(_, bytes)| bytes)
+    }
+    async fn request_status(
+        &self,
+        stage: Stage,
+        method: Method,
+        path: &str,
+        authorization: header::HeaderValue,
+        body: Option<Value>,
+        accepted: &[StatusCode],
+    ) -> Result<(StatusCode, Zeroizing<Vec<u8>>)> {
         let url = self.base.join(path).map_err(|_| Error::Configuration)?;
         // Defense in depth if later routes become dynamic. Never trust URLs
         // returned by GitHub, including pagination and API error links.
@@ -300,7 +314,8 @@ impl Connection {
             .send()
             .await
             .map_err(|_| Error::Transport { stage })?;
-        if response.status() != expected {
+        let status = response.status();
+        if !accepted.contains(&status) {
             let retry_after_seconds = response
                 .headers()
                 .get(header::RETRY_AFTER)
@@ -318,7 +333,7 @@ impl Connection {
         {
             return Err(Error::Size { stage });
         }
-        if expected != StatusCode::NO_CONTENT {
+        if status != StatusCode::NO_CONTENT {
             let content_type = response
                 .headers()
                 .get(header::CONTENT_TYPE)
@@ -347,10 +362,10 @@ impl Connection {
             }
             bytes.extend_from_slice(&chunk);
         }
-        if expected == StatusCode::NO_CONTENT && !bytes.is_empty() {
+        if status == StatusCode::NO_CONTENT && !bytes.is_empty() {
             return Err(Error::Response { stage });
         }
-        Ok(bytes)
+        Ok((status, bytes))
     }
 }
 

@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "request_uuid": "a15d30c6-3af7-4191-9a68-600000000001",
+  "cases": [
+    {
+      "http_status": 200,
+      "body": {"status":"pending","details":{"uuid":"a15d30c6-3af7-4191-9a68-600000000001","expected_head_sha":"1111111111111111111111111111111111111111","merge_action":"merge_queue","bypass_rules":false}},
+      "outcome": {"status":"pending","expected_head_revision":"git:sha1:1111111111111111111111111111111111111111","merge_action":"merge_queue","bypass_rules":false},
+      "state": "host_pending", "terminal": false
+    },
+    {
+      "http_status": 200,
+      "body": {"status":"enqueued","details":{"message":"Pull request is in the merge queue."}},
+      "outcome": {"status":"enqueued"},
+      "state": "host_enqueued", "terminal": true
+    },
+    {
+      "http_status": 200,
+      "body": {"status":"failed","details":{"message":"Provider diagnostic must not be stored or printed."}},
+      "outcome": {"status":"failed"},
+      "state": "request_failed", "terminal": true
+    },
+    {
+      "http_status": 200,
+      "body": {"status":"merged","details":{"sha":"3333333333333333333333333333333333333333"}},
+      "outcome": {"status":"merged","final_revision":"git:sha1:3333333333333333333333333333333333333333"},
+      "state": "host_merged_unverified", "terminal": true
+    },
+    {
+      "http_status": 404,
+      "body": {"message":"Not Found"},
+      "outcome": {"status":"unavailable"},
+      "state": "result_unavailable", "terminal": false
+    }
+  ]
+}

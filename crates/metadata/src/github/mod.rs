@@ -4,6 +4,8 @@ pub(crate) mod imports;
 pub(crate) mod projections;
 pub use projections::ProjectionSpec;
 mod inspections;
+mod queue;
+pub use queue::QueueSpec;
 mod publications;
 mod pulls;
 pub use inspections::InspectionSpec;

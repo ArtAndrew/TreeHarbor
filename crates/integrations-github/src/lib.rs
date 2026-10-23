@@ -4,6 +4,7 @@
 mod auth;
 mod transport;
 pub use transport::evidence::ObservedInspection;
+pub use transport::queue::ObservedQueue;
 mod wire;
 
 pub use auth::AppCredentials;
@@ -98,10 +99,15 @@ pub enum Stage {
     Reference,
     PullRequest,
     CheckEvidence,
+    Queue,
 }
 /// Never retains response bodies, URLs, private keys, tokens or upstream errors.
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum Error {
+    #[error(
+        "GitHub queue configuration, identity or preflight evidence is missing or inconsistent"
+    )]
+    Queue,
     #[error("GitHub check evidence is inconsistent, out of scope or exceeds its bound")]
     Evidence,
     #[error("GitHub pull request does not match the selected identity or expected metadata")]

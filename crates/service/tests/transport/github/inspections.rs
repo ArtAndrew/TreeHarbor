@@ -1,4 +1,6 @@
 use super::*;
+#[path = "queue.rs"]
+mod queue;
 fn cli(f: &Fixture, id: Uuid, state: &Path) -> Command {
     let mut c = Command::new(env!("CARGO_BIN_EXE_treeharbor"));
     c.env("PATH", "/no-executables")
@@ -227,4 +229,5 @@ pub(super) async fn exercise(
         &json!({"action":"inspection_status","epoch":1,"inspection":id.to_string()}),
     ));
     assert_eq!(status["report"], report);
+    queue::exercise(f, server, owner, publisher, id).await;
 }

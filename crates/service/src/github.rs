@@ -15,9 +15,26 @@ mod inspections;
 pub(crate) mod projection;
 mod publish;
 mod pulls;
+mod queue;
 
 #[derive(Subcommand)]
 pub enum Action {
+    /// Deliver one owner-authorized queue request, or observe its existing attempt.
+    Queue {
+        #[arg(long)]
+        config: PathBuf,
+        #[arg(long)]
+        socket: PathBuf,
+        #[arg(long)]
+        credential_file: PathBuf,
+        #[arg(long)]
+        queue: Uuid,
+        #[arg(long,value_parser=clap::value_parser!(i64).range(1..))]
+        epoch: i64,
+        /// Existing private directory; preserve it for recovery.
+        #[arg(long)]
+        state: PathBuf,
+    },
     /// Capture exact selected PR checks and active rulesets; does not authorize merge.
     Inspect {
         #[arg(long)]
@@ -191,6 +208,24 @@ fn matches_config(config: &Config, spec: &treeharbor_metadata::github::BindingSp
 }
 pub async fn run(action: Action) -> Result<bool> {
     match action {
+        Action::Queue {
+            config,
+            socket,
+            credential_file,
+            queue,
+            epoch,
+            state,
+        } => {
+            queue::run(queue::Request {
+                config,
+                socket,
+                credential_file,
+                id: queue,
+                epoch,
+                state,
+            })
+            .await
+        }
         Action::Inspect {
             config,
             socket,

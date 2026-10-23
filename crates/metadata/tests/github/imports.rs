@@ -472,6 +472,12 @@ async fn pull_upgrade_preserves_imports_and_scoped_credentials() {
 async fn inspection_upgrade_preserves_imports_and_scoped_credentials() {
     upgrade(19).await;
 }
+#[tokio::test]
+#[ignore = "requires PostgreSQL; schema20 source data and grants survive queue migration"]
+async fn schema20_import_upgrade() {
+    upgrade(20).await;
+}
+
 async fn upgrade(version: i32) {
     use sha2::{Digest, Sha256};
     use treeharbor_metadata::uploads::UploadLimits;
@@ -503,6 +509,7 @@ async fn upgrade(version: i32) {
         include_str!("../../migrations/017_github_projections.sql"),
         include_str!("../../migrations/018_github_publications.sql"),
         include_str!("../../migrations/019_github_pulls.sql"),
+        include_str!("../../migrations/020_github_inspections.sql"),
     ];
     for sql in migrations.into_iter().take(version as usize) {
         raw.batch_execute(sql).await.unwrap();
