@@ -3,20 +3,21 @@
 Updated: 2026-10-23. This file describes implemented behavior and remaining release
 gates. A foundation milestone does not complete either mode.
 
-Capture integration is in progress. A [selected-file capture library](capture-format-v1.md)
+Experimental [managed seals](managed-seals.md) now connect filesystem capture to
+owner acceptance. A [selected-file capture library](capture-format-v1.md)
 now creates an independently verifiable immutable artifact from an exact baseline,
 with explicit replacements/deletions/exclusions and sparse coverage checks. This
 library does not prove runtime quiescence. Schema 13 now adds durable owner requests,
 stop/cancel, fixed deadlines and fenced node claims, with PostgreSQL tests. A node
-adapter rechecks removed runtime identity and persists a separate completion record;
-its real Linux capture test is still pending. Scoped server publication now binds an immutable declaration, proves baseline
+adapter rechecks removed runtime identity and persists a separate completion record.
+Scoped server publication binds an immutable declaration, proves baseline
 membership from the exact original snapshot and commits ready pins/receipts
 atomically. The node adapter connects capture to publication and supports exact
 completed-response replay. [Owner HTTP/CLI commands](managed-seals.md) now request,
 inspect, cancel and accept seals. Acceptance computes the exact sealed operations
 through the shared native engine, preserves original run/base lineage, enforces
 version CAS and atomically retains the result without carrying over checks.
-Actual Linux capture acceptance and physical workspace cleanup remain release gates.
+Physical workspace cleanup, the wider fault matrix and full release gates remain open.
 
 Local capture/acceptance verification: 164 ordinary tests passed; 164 explicit
 PostgreSQL/materializer/node/service tests passed with four parallel test cases.
@@ -28,11 +29,14 @@ access/epoch/drain fences, GC retention and expiry inside final commit. An actua
 CLI/server test kills the server before object publication and after commit,
 recovers the exact accepted binary/directory result and rejects forged identities
 or result bytes. Independent reservation vectors and strict wire tests are included.
-These local tests do not cover the new real-Linux capture adapter. The required
-gVisor harness now exercises two real writing agents, capture/acceptance, worker
+These local tests do not prove the real-Linux capture adapter. The required
+gVisor harness separately exercises two real writing agents, capture/acceptance, worker
 loss after artifact durability, markerless recovery, active-writer stop, exact
-checks/review/publication and restoration into ordinary Git. Its CI result remains
-required before treating the managed path as verified.
+checks/review/publication and restoration into ordinary Git. This path passed in
+[CI 39912060970](https://github.com/ArtAndrew/TreeHarbor/actions/runs/39912060970),
+together with Linux/macOS Rust checks and PostgreSQL contracts. It remains required
+on subsequent changes. This evidence covers that pinned Linux/runtime profile,
+not arbitrary unmanaged writers, other runtimes or a complete mode release.
 
 New review increment: [immutable review diffs](review-diff.md) show an exact
 accepted ChangeSet version, prepared integration candidate or two registered
@@ -135,9 +139,9 @@ resource outcomes and worker-loss recovery. No complete authority mode is implie
 | Native DAG and admission | Scoped history/log/ancestry/merge-base HTTP/CLI, persisted refs/policies/queue/checks/reviews, verified candidate commits, final transactional admission and no-Git CLI/process-loss tests | General history stack rebase, automatic scheduling, full lifecycle and recovery |
 | Review diff | Read-only exact ChangeSet/candidate/revision HTTP/CLI, retained integration/policy/version/run identity, scoped GC holds, bounded byte paths and text, actual Git path oracle and restart/page/error tests | Review UI, persistent diff indexing and larger-repository profiling |
 | PostgreSQL metadata and outbox | Real database transaction/idempotency/lease tests; repository authority/epoch checks; populated schema upgrades through v13; local service pool and crash/replay | Remote service integration and full server restore |
-| Native ChangeSet intake | HTTP/CLI immutable proposals and separate ready-seal acceptance, scoped blobs, computed versions, original run lineage, atomic pins/outbox and process-loss replay | Linux capture gate, GitHub base synchronization, remote transport and retention |
+| Native ChangeSet intake | HTTP/CLI immutable proposals and separate ready-seal acceptance, scoped blobs, computed versions, original run lineage, atomic pins/outbox and process-loss replay | GitHub base synchronization, remote transport and retention |
 | Protected incremental source reads | Pinned sessions, verified frontiers, bounded prefix batches and descriptors surviving local GC; authenticated workspace-root sessions | Per-tenant service quotas, bulk node delivery and S3 |
-| Native file materialization | Private copies from exact snapshots, full/sparse selection, staged expansion preserving edits/deletions, bounded IO and filesystem checks; exact baseline loading and guarded atomic node publication | Runtime-proven quiescence, cache/reflink, changed-file sealing and Git-compatible format |
+| Native file materialization | Private copies from exact snapshots, full/sparse selection, staged expansion preserving edits/deletions, bounded IO and filesystem checks; guarded node publication and selected capture after runtime removal | Cache/reflink, wider capture fault matrix and Git-compatible format |
 | Object catalog and retention | Receipt-bound publication, typed edges, atomic persistent pins, read holds, generation-safe retirement/retry; independent reachability model | Automatic GC/reconciliation/dry-run, abandoned-upload cleanup, S3 and full restore |
 | Exact validation and native publication | Context binding, immutable scoped receipts, current check runs, reviewer policy, final target/policy/revocation checks and atomic ref/audit/queue/pin commit | CI artifacts/logs, automatic check scheduling, evidence retention policy, review UI |
 | Credentials and agent commands | Repository-scoped opaque tokens, transactional revocation, distinct actor classes, owner-bound reads and strict command dispatch | Remote transport, MCP, production identity/admission integration |
@@ -146,7 +150,7 @@ resource outcomes and worker-loss recovery. No complete authority mode is implie
 | Source graph uploads | Authenticated scoped sessions, child membership, fixed deadlines/budgets, backend identity, binary HTTP/CLI, concurrent retry, restart and schema-v5 upgrade tests | Incremental reuse, streaming/batching and automatic cleanup |
 | Native directory import | Explicit selection, descriptor-relative capture, durable pack/journal v1, independent vector, actual CLI-to-server partial-upload recovery and completed replay with Git absent from PATH | Incremental reuse, automatic spool cleanup and runtime-proven snapshots |
 | Source delivery profiles | Canonical full/sparse format with independent vectors, immutable scoped definitions, workspace foreign-key binding, v4 upgrade, authenticated CLI/HTTP and exact node use | Profile retention and generation-aware expansion |
-| Workspaces and runtime | Owner-bound requests, exact source/runtime bindings, trusted actual observations, drain and terminal replay; real CLI/PostgreSQL/gVisor recovery tests; selected capture/accept API | Linux capture gate, automatic resource release, scheduling and host replacement |
+| Workspaces and runtime | Owner-bound requests, exact source/runtime bindings, trusted actual observations, drain and terminal replay; real CLI/PostgreSQL/gVisor recovery tests; selected capture/accept API | Automatic resource release, scheduling, wider fault matrix and host replacement |
 | Runtime task supervisor | Linux namespace init, privilege guards, environment clearing, guest process limit, child reaping and deadline; real gVisor CI harness | Complete workspace cleanup and production runtime provisioning |
 | Local runtime controller | Versioned immutable profiles, restricted Engine API, bounded ext4 identity, exclusive durable volume assignment and create/start/remove journal; real-runtime fault harness and managed-run adapter | Provisioning, host/engine replacement recovery and workspace cleanup |
 | Workspace preparation reservations | Operator-registered node storage, scoped job claims, immutable source/slot/attempt identity, renewal/reclaim, exact file-ready observation and drain retention; real PostgreSQL race/upgrade tests | Automatic source/slot release after runtime removal |
@@ -195,8 +199,9 @@ Linux runtime evidence comes from the required CI job, not macOS tests. The addi
 managed-run harness uses actual owner CLI requests, native import and volume-backed
 preparation. It covers independent same-path writers, owner-bound results, nonzero/OOM/
 deadline/disk outcomes, cancellation/drain and real worker death around Engine RPCs.
-Permission changes on the task directory cannot disable cleanup. Source sealing and
-workspace deletion remain absent; task results cannot grant trusted Validation.
+Permission changes on the task directory cannot disable runtime cleanup. Managed
+source sealing is described above; workspace deletion remains unfinished. Task
+results cannot grant trusted Validation.
 
 The real runtime run above passed isolation, rejected invalid bootstrap settings,
 primary exit and descendant teardown, PID-1 signal/proc attacks, timeout after the
@@ -217,7 +222,7 @@ database completion, and published-v1 schema upgrade. Native intake now commits 
 ChangeSet version, lineage, graph pins, response and outbox atomically, and recovers
 the same receipt after a worker process is killed. ChangeSet submission is now
 exposed through local HTTP/CLI with explicit immutable blobs and operations.
-Remote transport, stopped-file sealing, full application
+Remote transport, full workspace cleanup, full application
 failure injection, fenced restore and automatic maintenance remain release gates.
 
 Protected local reads now resolve only requested object frontiers and retain opened
