@@ -3,6 +3,27 @@
 Updated: 2026-10-23. This file describes implemented behavior and remaining release
 gates. A foundation milestone does not complete either mode.
 
+Experimental [explicit queue removal](github-dequeue.md) adds an independent Human
+PR-scoped authorization, one-shot Bridge dispatch, immutable PostgreSQL reports
+and a recoverable `github dequeue` command. Original local queue cancellation
+never gains remote-write authority on upgrade. Dequeue waits for terminal original
+enqueue evidence; absence, elapsed time or an unavailable result cannot substitute.
+
+Schema22 retains source/grant/history data and adds monotonic positive no-send
+evidence. QueueObservation v2 distinguishes a completed preflight failure from a
+lost host response; v1 reports remain readable and cannot assert no-send. A new
+explicit intent is fenced while an earlier removal could still execute. Known
+merge revisions/trees and late receipts survive newer missing observations.
+
+Local verification: 239 ordinary workspace tests passed, as did nine final focused
+PostgreSQL cancellation tests. The actual CLI/server kill scenario recovered lost
+committed grants and reports without the App key or a Git executable. Strict
+all-target Clippy passed. The full explicit database/materializer/node/service run
+passed 239 tests. All required exact-head CI remain mandatory before merge. Provider tests are labelled fixtures: minimal
+live App permissions, real queue behavior and complete group/final-tree proof
+remain unverified. Both-mode lifecycle, operations, installation and benchmark
+release gates remain open.
+
 Experimental [GitHub queue delivery](github-queues.md) joins an explicit Human
 `host.queue` request to the assigned Bridge's `host.merge` capability, durable
 one-shot dispatch and private CLI recovery journal. Selected head checks, PR/base,
@@ -17,7 +38,7 @@ Terminal async results survive later missing responses. A confirmed failure perm
 a new explicit owner request; a404, expiry or local post-dispatch cancellation does
 not. Actual CLI/server process-loss tests and provider transport fixtures cover
 recovery, scope, concurrency and stale targets. No fixture proves a live installed
-App. Remote dequeue, durable merge-group events, membership/check/final-tree proof
+App. Durable merge-group events, membership/check/final-tree proof
 and real host acceptance remain unfinished; `merge_verified` stays false.
 
 Local verification: 231 ordinary tests passed. The explicit database/materializer/

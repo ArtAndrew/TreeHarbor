@@ -24,7 +24,7 @@ impl QueueTarget {
             && r.rules_before == self.expected_rules
     }
 }
-fn node(s: &str) -> Result<()> {
+pub(crate) fn node(s: &str) -> Result<()> {
     text(s, 256)?;
     if s.bytes()
         .all(|b| b.is_ascii_alphanumeric() || b"=_-".contains(&b))
@@ -286,12 +286,21 @@ pub struct QueueObservation {
     pub snapshot: Option<QueueSnapshot>,
     pub receipt: Option<QueueReceipt>,
     pub async_result: Option<QueueAsyncResult>,
+    /// Version 2 positive completion evidence from the sole enqueue invocation.
+    /// Version 1 reports remain readable and cannot assert this fact.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub mutation_not_sent: bool,
     pub token_revoked: bool,
+}
+fn is_false(value: &bool) -> bool {
+    !value
 }
 impl QueueObservation {
     pub fn validate(&self, t: &QueueTarget) -> Result<()> {
         t.validate()?;
-        if self.version != 1
+        if !matches!(self.version, 1 | 2)
+            || (self.mutation_not_sent
+                && (self.version != 2 || self.receipt.is_some() || self.async_result.is_some()))
             || self.started_at_unix_ms <= 0
             || self.finished_at_unix_ms < self.started_at_unix_ms
             || self.finished_at_unix_ms - self.started_at_unix_ms > 180_000
@@ -337,6 +346,9 @@ impl QueueObservation {
         }
         if let Some(r) = &self.async_result {
             return r.state();
+        }
+        if self.mutation_not_sent {
+            return "not_sent";
         }
         // A receipt does not establish continued membership of a mutable queue.
         match self.receipt.as_ref().map(|r| r.status.as_str()) {

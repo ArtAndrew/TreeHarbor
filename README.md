@@ -69,8 +69,9 @@ in **Standalone** mode. Both share one Rust engine.
 > on the exact PR head and detect head/base/ruleset drift.
 > Experimental [queue delivery](docs/github-queues.md) adds explicit owner permission,
 > one-shot native queue requests and recovery of retained asynchronous results.
-> Remote dequeue, complete policy/group/final-tree verification and installed-App
-> acceptance remain pending.
+> Explicit [queue removal](docs/github-dequeue.md) adds PR-scoped owner requests,
+> one-shot dequeue and recovery without automatically replaying mutations.
+> Complete policy/group/final-tree verification and installed-App acceptance remain pending.
 > Neither end-to-end mode is released. No packaged installation is available yet.
 > See [implementation status](docs/implementation-status.md) for evidence and gaps.
 

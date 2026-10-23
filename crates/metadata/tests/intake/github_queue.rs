@@ -1,6 +1,8 @@
 use super::*;
 use treeharbor_github_contract::queue::*;
 use treeharbor_metadata::github::QueueSpec;
+#[path = "github_dequeue.rs"]
+mod dequeues;
 struct QueueFixture {
     p: Projection,
     owner: Authorization,
@@ -86,11 +88,13 @@ impl QueueFixture {
             snapshot: None,
             receipt: None,
             async_result: None,
+            mutation_not_sent: false,
             token_revoked: false,
         }
     }
 }
 pub(super) async fn drop_unpopulated_v21(raw: &tokio_postgres::Client) {
+    dequeues::drop_unpopulated_v22(raw).await;
     assert_eq!(raw.query_one("SELECT (SELECT count(*) FROM th_github_queue)+(SELECT count(*) FROM th_github_queue_reports)",&[]).await.unwrap().get::<_,i64>(0),0);
     raw.batch_execute("DROP TABLE th_github_queue_reports; DROP TABLE th_github_queue; DROP FUNCTION th_github_queue_immutable(); ALTER TABLE th_repository_access DROP CONSTRAINT th_repository_access_permissions_check; ALTER TABLE th_repository_access ADD CHECK(permissions <@ ARRAY['read','workspace.write','change.write','queue.request','repository.write','runtime.control','validation.report','host.read','host.publish','review','policy.write','integration.control']::text[]); ALTER TABLE th_access_tokens DROP CONSTRAINT th_access_tokens_permissions_check; ALTER TABLE th_access_tokens ADD CHECK(cardinality(permissions)>0 AND permissions <@ ARRAY['read','workspace.write','change.write','queue.request','repository.write','runtime.control','validation.report','host.read','host.publish','review','policy.write','integration.control']::text[])").await.unwrap();
 }

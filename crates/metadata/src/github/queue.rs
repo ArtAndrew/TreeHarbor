@@ -11,10 +11,10 @@ pub struct QueueSpec {
     pub inspection: String,
     pub ttl_seconds: i32,
 }
-async fn load(tx: &Transaction<'_>, s: &Scope, id: Uuid) -> Result<Row> {
+pub(super) async fn load(tx: &Transaction<'_>, s: &Scope, id: Uuid) -> Result<Row> {
     tx.query_opt("SELECT *,expires_at>clock_timestamp() AS unexpired,(extract(epoch from expires_at)*1000)::bigint AS deadline,(extract(epoch from started_at)*1000)::bigint AS started,(extract(epoch from clock_timestamp())*1000)::bigint AS now_ms FROM th_github_queue WHERE tenant=$1 AND repository=$2 AND queue=$3",&[&s.tenant(),&s.repository(),&id]).await?.ok_or(Error::NotFound)
 }
-fn target(r: &Row) -> Result<QueueTarget> {
+pub(super) fn target(r: &Row) -> Result<QueueTarget> {
     serde_json::from_value(r.get("target")).map_err(|_| Error::SchemaMismatch)
 }
 async fn current(tx: &Transaction<'_>, s: &Scope, r: &Row) -> Result<bool> {
@@ -24,7 +24,7 @@ async fn current(tx: &Transaction<'_>, s: &Scope, r: &Row) -> Result<bool> {
         && p.row.get::<_, i64>("version") == p.row.get::<_, i64>("latest_version")
         && p.object.id().as_bytes().as_slice() == r.get::<_, Vec<u8>>("native_commit"))
 }
-async fn retained_merge(
+pub(super) async fn retained_merge(
     tx: &Transaction<'_>,
     s: &Scope,
     id: Uuid,
@@ -32,7 +32,7 @@ async fn retained_merge(
 ) -> Result<Option<Value>> {
     Ok(tx.query_opt("SELECT report#>'{snapshot,final_commit}' AS commit FROM th_github_queue_reports WHERE tenant=$1 AND repository=$2 AND queue=$3 AND report#>>'{snapshot,pull,merged}'='true' AND report#>>'{snapshot,pull,head_revision}'=$4 ORDER BY sequence DESC LIMIT 1",&[&s.tenant(),&s.repository(),&id,&t.pull.head_revision]).await?.map(|r|r.get("commit")))
 }
-async fn retained_result(
+pub(super) async fn retained_result(
     tx: &Transaction<'_>,
     s: &Scope,
     id: Uuid,
@@ -52,6 +52,7 @@ async fn describe(tx: &Transaction<'_>, s: &Scope, r: &Row, dynamic: bool) -> Re
     let retained = retained_merge(tx, s, r.get("queue"), &t).await?;
     let provider_result = retained_result(tx, s, r.get("queue")).await?;
     let failed = r.get::<_, bool>("dispatch_failed");
+    let not_sent = r.get::<_, bool>("mutation_not_sent");
     let state = if retained.is_some()
         || provider_result
             .as_ref()
@@ -60,13 +61,17 @@ async fn describe(tx: &Transaction<'_>, s: &Scope, r: &Row, dynamic: bool) -> Re
         "host_merged_unverified"
     } else if attempt.is_none() {
         if cancelled { "cancelled" } else { "requested" }
-    } else if failed
+    } else if (failed || not_sent)
         && observation
             .as_ref()
             .and_then(|o| o.snapshot.as_ref())
             .is_none_or(|s| s.entry.is_none())
     {
-        "request_failed"
+        if not_sent {
+            "not_sent"
+        } else {
+            "request_failed"
+        }
     } else {
         observation
             .as_ref()
@@ -78,14 +83,14 @@ async fn describe(tx: &Transaction<'_>, s: &Scope, r: &Row, dynamic: bool) -> Re
         "target":t,"state":state,"cancel_requested":cancelled,"attempt":attempt.map(|u|u.to_string()),"expires_at_unix_ms":r.get::<_,i64>("deadline"),
         "provider_request":r.get::<_,Option<Uuid>>("provider_request").map(|u|u.to_string()),"report_sequence":r.get::<_,i64>("report_sequence"),
         "observation":observation,"retained_merge":retained,"provider_result":provider_result,
-        "dispatch_failed":failed,"merge_verified":false,"host_policy_verified":false});
+        "dispatch_failed":failed,"mutation_not_sent":not_sent,"merge_verified":false,"host_policy_verified":false});
     if dynamic {
         v["is_current_version"] = json!(current(tx, s, r).await?);
         v["unexpired"] = json!(r.get::<_, bool>("unexpired"));
     }
     Ok(v)
 }
-async fn assigned(
+pub(super) async fn assigned(
     tx: &Transaction<'_>,
     auth: &Authorization,
     epoch: i64,
@@ -114,6 +119,7 @@ async fn fresh(
         return Err(Error::Fenced);
     }
     if r.get::<_, bool>("cancel_requested")
+        || r.get::<_, bool>("mutation_not_sent")
         || !r.get::<_, bool>("unexpired")
         || !current(tx, auth.scope(), &r).await?
     {
@@ -177,9 +183,12 @@ impl Metadata {
         }
         let binding_id: Uuid = i.get("binding");
         let binding = projections::active_binding(&m.tx, s, binding_id, c.epoch).await?;
-        let old=m.tx.query_opt("SELECT queue FROM th_github_queue WHERE tenant=$1 AND repository=$2 AND binding=$3 AND target#>>'{pull,pull_number}'=$4 AND NOT dispatch_failed AND (NOT cancel_requested OR attempt IS NOT NULL) LIMIT 1",&[&s.tenant(),&s.repository(),&binding_id,&t.pull.pull_number.to_string()]).await?;
+        let old=m.tx.query_opt("SELECT q.queue FROM th_github_queue q WHERE q.tenant=$1 AND q.repository=$2 AND q.binding=$3 AND q.target#>>'{pull,pull_number}'=$4 AND NOT q.dispatch_failed AND NOT q.mutation_not_sent AND (NOT q.cancel_requested OR q.attempt IS NOT NULL) AND NOT (q.cancel_requested AND EXISTS(SELECT 1 FROM th_github_dequeues d WHERE d.tenant=q.tenant AND d.repository=q.repository AND d.queue=q.queue AND d.attempt IS NOT NULL AND (d.retained_receipt IS NOT NULL OR d.mutation_not_sent) AND d.latest_observation#>>'{after,pull,merged}'='false' AND d.latest_observation#>'{after,entry}'='null'::jsonb)) LIMIT 1",&[&s.tenant(),&s.repository(),&binding_id,&t.pull.pull_number.to_string()]).await?;
         // Cancellation is not proof that an already dispatched remote operation stopped.
         if old.is_some() {
+            return Err(Error::HostQueueState);
+        }
+        if dequeues::unsettled_for_pull(&m.tx, s, binding_id, t.pull.pull_number).await? {
             return Err(Error::HostQueueState);
         }
         let pin = format!("github-queue:{id}");
@@ -329,6 +338,11 @@ impl Metadata {
             return Err(Error::HostQueueState);
         }
         let mut provider = r.get::<_, Option<Uuid>>("provider_request");
+        let not_sent = r.get::<_, bool>("mutation_not_sent") || report.mutation_not_sent;
+        if not_sent && (report.receipt.is_some() || report.async_result.is_some()
+            || m.tx.query_one("SELECT EXISTS(SELECT 1 FROM th_github_queue_reports WHERE tenant=$1 AND repository=$2 AND queue=$3 AND (report->'receipt' <> 'null'::jsonb OR report->'async_result' <> 'null'::jsonb))",&[&s.tenant(),&s.repository(),&id]).await?.get::<_,bool>(0)) {
+            return Err(Error::HostQueueState);
+        }
         if let Some(result) = &report.async_result {
             if provider.map(|p| p.to_string()).as_deref() != Some(&result.request_uuid) {
                 return Err(Error::HostQueueState);
@@ -387,7 +401,7 @@ impl Metadata {
             r.get::<_, Option<Value>>("latest_observation")
                 .ok_or(Error::SchemaMismatch)?
         };
-        m.tx.execute("UPDATE th_github_queue SET latest_observation=$4,report_sequence=$5,provider_request=$6,dispatch_failed=$7 WHERE tenant=$1 AND repository=$2 AND queue=$3",&[&s.tenant(),&s.repository(),&id,&latest,&seq,&provider,&failed]).await?;
+        m.tx.execute("UPDATE th_github_queue SET latest_observation=$4,report_sequence=$5,provider_request=$6,dispatch_failed=$7,mutation_not_sent=$8 WHERE tenant=$1 AND repository=$2 AND queue=$3",&[&s.tenant(),&s.repository(),&id,&latest,&seq,&provider,&failed,&not_sent]).await?;
         let mut v = describe(&m.tx, s, &load(&m.tx, s, id).await?, false).await?;
         v["recorded_observation"] = json!(report);
         m.write_completion(
