@@ -170,9 +170,9 @@ class Checks(managed.Harness):
         assert landed["state"] == "landed"
         assert self.native("ref_resolve", self.policy_admin, name=passed["target"])["head"] == landed["revision"]
         exported = self.root / "sealed-export"
-        downloaded = self.client("source-export", "--authority", "standalone", "--epoch", "1",
-                                 "--revision", landed["revision"], "--output", exported,
-                                 credential=self.reviewer)
+        downloaded = self.value("client", "--socket", self.socket, "--credential-file", self.reviewer,
+                                "source-export", "--authority", "standalone", "--epoch", "1",
+                                "--revision", landed["revision"], "--output", exported)
         assert downloaded["revision"] == landed["revision"]
         # Git is introduced only at the explicit interoperability boundary;
         # all agent/capture/accept/check/land/export requests above use no Git.

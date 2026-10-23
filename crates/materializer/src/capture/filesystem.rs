@@ -78,6 +78,8 @@ impl Root {
             before,
         })
     }
+    // libc's device field is narrower on macOS; Linux already uses u64.
+    #[allow(clippy::unnecessary_cast)]
     pub fn device(&self) -> u64 {
         self.before.st_dev as u64
     }
