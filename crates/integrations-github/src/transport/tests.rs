@@ -136,6 +136,12 @@ async fn probe_scopes_each_request_pins_identities_and_revokes_without_publicati
     );
     let json = serde_json::to_string(&probe).unwrap();
     assert!(!json.contains(TEST_TOKEN));
+    let mut wire: Value = serde_json::from_str(&json).unwrap();
+    assert!(wire["observed_at_unix"].as_u64().unwrap() > 42);
+    wire["observed_at_unix"] = 42.into();
+    let golden: Value =
+        serde_json::from_slice(include_bytes!("../../tests/fixtures/probe-v1.json")).unwrap();
+    assert_eq!(wire, golden);
     let requests = server.await.unwrap();
     let expected = [
         "GET /app/installations/9 ",

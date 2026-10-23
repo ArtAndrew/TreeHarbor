@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "api_version": "2026-03-10",
+  "observed_at_unix": 42,
+  "app_id": 7,
+  "binding": {
+    "installation_id": 9,
+    "repository_id": 11,
+    "owner_id": 13,
+    "owner": "example-org",
+    "name": "demo"
+  },
+  "repository_node_id": "R_test",
+  "owner_type": "Organization",
+  "private": false,
+  "default_branch": "main",
+  "archived": false,
+  "disabled": false,
+  "read_connection_verified": true,
+  "probe_token_revoked": true,
+  "queue_eligibility": "public_organization_eligible",
+  "queue_configuration_verified": false,
+  "publication_ready": false
+}

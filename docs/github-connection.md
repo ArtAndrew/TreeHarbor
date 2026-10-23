@@ -60,6 +60,8 @@ Success returns JSON with the observed repository node ID, default branch name,
 privacy/archive/disabled flags, `read_connection_verified: true` and
 `probe_token_revoked: true`. This verifies repository metadata/access, not a source
 checkout. `publication_ready` and `queue_configuration_verified` remain **false**.
+The complete [version 1 output fixture](../crates/integrations-github/tests/fixtures/probe-v1.json)
+defines the current field names/types with synthetic IDs and time.
 An archived or disabled repository may still be readable; that is not a grant to
 publish. Errors produce a nonzero exit without exposing keys, tokens or API bodies.
 
