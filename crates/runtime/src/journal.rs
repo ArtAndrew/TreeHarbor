@@ -1,6 +1,6 @@
 use crate::{
     Container, Engine, Error, Inspection, Profile, Result, RuntimeState, Specification, Task,
-    VolumeIdentity, profile::hex,
+    Volume, VolumeIdentity, profile::hex,
 };
 use rustix::fs::{FlockOperation, OFlags, flock};
 use serde_json::{Value, json};
@@ -54,6 +54,135 @@ impl RemovedGuard {
         }
         Ok(())
     }
+}
+
+/// Immutable execution context from trusted metadata, never supplied by an agent.
+pub struct RemovalExpectation<'a> {
+    pub attempt: uuid::Uuid,
+    pub binding: [u8; 32],
+    pub profile: &'a Profile,
+    pub task: &'a Task,
+    pub engine: Option<&'a str>,
+    pub container: Option<&'a str>,
+    pub files: &'a Path,
+}
+
+/// Holds the existing removed-runtime journal and stable operator placement.
+/// Unlike a capture guard, it intentionally permits the child files to disappear.
+/// It proves only managed runtime absence, not the safety of arbitrary host IO.
+pub struct CleanupGuard {
+    journal: Journal,
+    placement: Volume,
+    intent: Vec<u8>,
+}
+impl CleanupGuard {
+    pub async fn open(
+        root: &Path,
+        engine: &Engine,
+        placement: Volume,
+        expected: RemovalExpectation<'_>,
+    ) -> Result<Self> {
+        placement.verify()?;
+        let parent = root.parent().ok_or(Error::Invalid)?.canonicalize()?;
+        if parent.starts_with(&placement.identity().mount)
+            || fs::metadata(&parent)?.dev() == placement.identity().device
+        {
+            return Err(Error::Mismatch);
+        }
+        // Reopen only; missing proof is not repaired by creating a new journal.
+        let journal = Journal::open_existing(root)?;
+        if fs::metadata(&journal.root)?.dev() == placement.identity().device {
+            return Err(Error::Mismatch);
+        }
+        journal.validate()?;
+        journal.check_marker("removed.json")?;
+        let intent = read(&journal.root.join("intent.json"), 128 * 1024)?;
+        let value: Value = serde_json::from_slice(&intent)?;
+        let original: VolumeIdentity = serde_json::from_value(value["volume"].clone())?;
+        check_cleanup_volume(placement.identity(), &original, expected.files)?;
+        if expected.engine.is_some_and(|id| id != engine.identity())
+            || intent
+                != intent_bytes(
+                    engine.identity(),
+                    expected.attempt,
+                    expected.binding,
+                    expected.profile,
+                    expected.task,
+                    &original,
+                )?
+        {
+            return Err(Error::Mismatch);
+        }
+        let saved = journal.saved_id()?;
+        if expected
+            .container
+            .is_some_and(|id| saved.as_deref() != Some(id))
+        {
+            return Err(Error::Mismatch);
+        }
+        engine
+            .require_absent(expected.attempt, saved.as_deref())
+            .await?;
+        placement.verify()?;
+        let record = placement.identity().mount.join("treeharbor-execution.json");
+        if exists(&record)? {
+            let assignment = serde_json::to_vec(
+                &json!({"version":1,"attempt":expected.attempt,"intent_sha256":hex(&Sha256::digest(&intent))}),
+            )?;
+            if read(&record, 4096)? != assignment {
+                return Err(Error::Mismatch);
+            }
+            fs::remove_file(&record)?;
+            File::open(&placement.identity().mount)?.sync_all()?;
+        }
+        let guard = Self {
+            journal,
+            placement,
+            intent,
+        };
+        guard.verify()?;
+        Ok(guard)
+    }
+    pub fn verify(&self) -> Result<()> {
+        self.placement.verify()?;
+        self.journal.validate()?;
+        self.journal.check_marker("removed.json")?;
+        if read(&self.journal.root.join("intent.json"), 128 * 1024)? != self.intent
+            || exists(
+                &self
+                    .placement
+                    .identity()
+                    .mount
+                    .join("treeharbor-execution.json"),
+            )?
+        {
+            return Err(Error::Mismatch);
+        }
+        Ok(())
+    }
+}
+fn check_cleanup_volume(
+    parent: &VolumeIdentity,
+    original: &VolumeIdentity,
+    files: &Path,
+) -> Result<()> {
+    if original.files != files
+        || !files.is_absolute()
+        || files
+            .components()
+            .any(|p| matches!(p, std::path::Component::ParentDir))
+        || files == parent.files
+        || !files.starts_with(&parent.files)
+        || original.mount != parent.mount
+        || original.device != parent.device
+        || original.mount_inode != parent.mount_inode
+        || original.mount_id != parent.mount_id
+        || original.capacity_bytes != parent.capacity_bytes
+        || original.limit_bytes != parent.limit_bytes
+    {
+        return Err(Error::Mismatch);
+    }
+    Ok(())
 }
 
 impl<'a> Controller<'a> {
@@ -299,6 +428,24 @@ fn intent_bytes(
     )?)
 }
 impl Journal {
+    fn open_existing(root: &Path) -> Result<Self> {
+        if !root.is_absolute() {
+            return Err(Error::Invalid);
+        }
+        private_dir(root.parent().ok_or(Error::Invalid)?)?;
+        private_dir(root)?;
+        let lock = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .custom_flags((OFlags::NOFOLLOW | OFlags::NONBLOCK).bits() as i32)
+            .open(root.join("task.lock"))?;
+        private_file(&lock)?;
+        flock(&lock, FlockOperation::NonBlockingLockExclusive).map_err(|_| Error::State)?;
+        Ok(Self {
+            root: root.canonicalize()?,
+            _lock: lock,
+        })
+    }
     fn open(root: &Path, intent: &[u8]) -> Result<Self> {
         if !root.is_absolute() || intent.len() > 128 * 1024 {
             return Err(Error::Invalid);
@@ -458,6 +605,80 @@ fn write_new(path: &Path, bytes: &[u8]) -> Result<()> {
 mod tests {
     use super::*;
     use std::os::unix::fs::{PermissionsExt, symlink};
+
+    #[test]
+    fn cleanup_reopen_never_creates_missing_execution_evidence() {
+        let parent = tempfile::tempdir().unwrap();
+        fs::set_permissions(parent.path(), fs::Permissions::from_mode(0o700)).unwrap();
+        let path = parent.path().join("missing");
+        assert!(Journal::open_existing(&path).is_err());
+        assert!(!path.exists());
+        let created = Journal::open(&path, b"original").unwrap();
+        assert!(Journal::open_existing(&path).is_err());
+        created.mark("removed.json").unwrap();
+        drop(created);
+        let reopened = Journal::open_existing(&path).unwrap();
+        reopened.validate().unwrap();
+        reopened.check_marker("removed.json").unwrap();
+        assert_eq!(read(&path.join("intent.json"), 128).unwrap(), b"original");
+    }
+
+    #[test]
+    fn cleanup_keeps_parent_identity_when_the_child_files_no_longer_exist() {
+        let parent = VolumeIdentity {
+            mount: "/volume".into(),
+            files: "/volume/placement".into(),
+            device: 1795,
+            mount_inode: 2,
+            files_inode: 12,
+            mount_id: 42,
+            capacity_bytes: 120000000,
+            limit_bytes: 134217728,
+        };
+        let files = Path::new("/volume/placement/tree/files");
+        let original = VolumeIdentity {
+            files: files.into(),
+            files_inode: 24,
+            ..parent.clone()
+        };
+        check_cleanup_volume(&parent, &original, files).unwrap();
+        for changed in [
+            VolumeIdentity {
+                mount_id: 43,
+                ..original.clone()
+            },
+            VolumeIdentity {
+                device: 1796,
+                ..original.clone()
+            },
+            VolumeIdentity {
+                mount_inode: 3,
+                ..original.clone()
+            },
+            VolumeIdentity {
+                capacity_bytes: 110000000,
+                ..original.clone()
+            },
+            VolumeIdentity {
+                files: "/volume/another/tree/files".into(),
+                ..original.clone()
+            },
+        ] {
+            assert!(check_cleanup_volume(&parent, &changed, files).is_err());
+        }
+        let traversal = Path::new("/volume/placement/../other");
+        assert!(
+            check_cleanup_volume(
+                &parent,
+                &VolumeIdentity {
+                    files: traversal.into(),
+                    ..original
+                },
+                traversal
+            )
+            .is_err()
+        );
+    }
 
     #[test]
     fn independent_intent_vector_binds_engine_profile_task_and_physical_volume() {

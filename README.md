@@ -49,6 +49,8 @@ in **Standalone** mode. Both share one Rust engine.
 > [Preparation reservations](docs/workspace-preparations.md) now persist node/storage
 > ownership and fence retries before physical work. The [local preparation node](docs/local-node.md)
 > now materializes files, acknowledges exact placements and recovers them after process loss.
+> Explicit [workspace cleanup](docs/workspace-cleanup.md) connects owner drain,
+> verified runtime removal and durable deletion to safe slot reuse.
 > Neither end-to-end mode is released. No packaged installation is available yet.
 > See [implementation status](docs/implementation-status.md) for evidence and gaps.
 

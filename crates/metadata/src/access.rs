@@ -53,6 +53,7 @@ impl Permission {
             "native.check.prepare.v1"
             | "native.check.start.v1"
             | "native.check.collect.v1"
+            | "native.check.release.v1"
             | "native.validation.report.v1"
             | "native.validation.revoke.v1" => Ok(Self::ValidationReport),
             "native.review.record.v1" | "native.review.revoke.v1" => Ok(Self::Review),
@@ -568,7 +569,9 @@ impl Metadata {
         auth.check_transaction(&tx, &auth.scope, &auth.principal, Permission::Read)
             .await?;
         let row = tx.query_opt("SELECT base_revision,state,generation,epoch,format,profile,resolved_profile IS NOT NULL FROM th_workspaces WHERE tenant=$1 AND repository=$2 AND workspace=$3 AND principal=$4", &[&auth.scope.tenant,&auth.scope.repository,&workspace,&auth.principal]).await?.ok_or(Error::NotFound)?;
-        let result = serde_json::json!({"workspace":workspace.to_string(),"base":row.get::<_,String>(0),"state":row.get::<_,String>(1),"generation":row.get::<_,i64>(2),"epoch":row.get::<_,i64>(3),"format":row.get::<_,String>(4),"profile_digest":treeharbor_core::ObjectId::from_bytes(row.get::<_,Vec<u8>>(5).try_into().map_err(|_|Error::SchemaMismatch)?).to_string(),"profile_resolved":row.get::<_,bool>(6)});
+        let cleanup = tx.query_opt("SELECT cleanup,state FROM th_workspace_cleanups WHERE tenant=$1 AND repository=$2 AND workspace=$3", &[&auth.scope.tenant,&auth.scope.repository,&workspace]).await?
+            .map(|r| serde_json::json!({"id":r.get::<_,Uuid>(0).to_string(),"state":r.get::<_,String>(1)}));
+        let result = serde_json::json!({"workspace":workspace.to_string(),"base":row.get::<_,String>(0),"state":row.get::<_,String>(1),"generation":row.get::<_,i64>(2),"epoch":row.get::<_,i64>(3),"format":row.get::<_,String>(4),"profile_digest":treeharbor_core::ObjectId::from_bytes(row.get::<_,Vec<u8>>(5).try_into().map_err(|_|Error::SchemaMismatch)?).to_string(),"profile_resolved":row.get::<_,bool>(6),"cleanup":cleanup});
         auth.check_transaction(&tx, &auth.scope, &auth.principal, Permission::Read)
             .await?;
         tx.commit().await?;

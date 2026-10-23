@@ -79,7 +79,9 @@ are rejected by this development connector, not silently downgraded to plaintext
 
 [Native refs/admission](native-integration.md) now persist exact candidates, checks,
 reviews and atomic publication. Remote transport, automatic CI/queue scheduling,
-full workspace cleanup and automatic GC/reconciliation are still unimplemented. Restore must stop/fence existing
+automatic workspace cleanup and GC/reconciliation remain unimplemented. Explicit
+[workspace cleanup](workspace-cleanup.md) has a separate node durability protocol.
+Restore must stop/fence existing
 workers before replacing metadata or objects. An outbox
 worker must use the repository's current authority/epoch when executing its
 effect, and must reconcile external effects after a crash. A valid delivery lease

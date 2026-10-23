@@ -286,6 +286,26 @@ impl Engine {
     pub async fn discover(&self, spec: &Specification) -> Result<Option<Inspection>> {
         self.inspect_name(spec, &spec.name()).await
     }
+    /// Cleanup recovery cannot require deleted agent files. Only absence is
+    /// accepted here: any existing ID/name, even with different labels, blocks
+    /// deletion. This never starts, adopts or removes a container.
+    pub(crate) async fn require_absent(&self, attempt: Uuid, id: Option<&str>) -> Result<()> {
+        if attempt.is_nil() || id.is_some_and(|id| !container_id(id)) {
+            return Err(Error::Invalid);
+        }
+        let name = format!("treeharbor-{attempt}");
+        for target in id.into_iter().chain(std::iter::once(name.as_str())) {
+            let (status, _) = self
+                .request("GET", &format!("/containers/{target}/json"), None)
+                .await?;
+            match status {
+                StatusCode::NOT_FOUND => (),
+                StatusCode::OK => return Err(Error::Unknown),
+                _ => return Err(Error::EngineStatus(status.as_u16())),
+            }
+        }
+        Ok(())
+    }
     pub async fn inspect(
         &self,
         spec: &Specification,

@@ -41,6 +41,11 @@ pub enum WireCommand {
         epoch: i64,
         run: String,
     },
+    CheckRelease {
+        key: String,
+        epoch: i64,
+        run: String,
+    },
     CheckStatus {
         run: String,
     },
@@ -168,6 +173,7 @@ impl WireCommand {
             Self::CheckPrepare { .. }
             | Self::CheckStart { .. }
             | Self::CheckCollect { .. }
+            | Self::CheckRelease { .. }
             | Self::ValidationReport { .. }
             | Self::ValidationRevoke { .. } => Permission::ValidationReport,
             Self::Review { .. } | Self::ReviewRevoke { .. } => Permission::Review,
@@ -224,6 +230,10 @@ impl WireCommand {
                     .await
             }
             Self::CheckStatus { run } => db.native_check_execution_status(auth, uuid(&run)?).await,
+            Self::CheckRelease { key, epoch, run } => {
+                db.release_native_check_workspace(auth, &Command { key, epoch }, uuid(&run)?)
+                    .await
+            }
             Self::PolicyPut { key, epoch, policy } => {
                 db.put_native_policy(auth, &Command { key, epoch }, &policy)
                     .await

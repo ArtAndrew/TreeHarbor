@@ -56,6 +56,16 @@ pub enum Action {
         #[arg(long)]
         engine_socket: PathBuf,
     },
+    /// Delete an explicitly drained workspace after proving managed runtime removal.
+    CleanupOnce {
+        #[command(flatten)]
+        node: Arguments,
+        #[arg(long)]
+        workspace: Uuid,
+        /// Required if the workspace has a managed execution journal.
+        #[arg(long)]
+        engine_socket: Option<PathBuf>,
+    },
     /// Execute or recover one persisted run using a trusted local Docker/runsc.
     RunOnce {
         #[command(flatten)]
@@ -96,6 +106,7 @@ pub async fn run(action: Action) -> Result<bool> {
         | Action::Prepared { node, .. }
         | Action::VolumeRegister { node, .. }
         | Action::RunOnce { node, .. }
+        | Action::CleanupOnce { node, .. }
         | Action::SealOnce { node, .. } => node,
         Action::Initialize { .. } => unreachable!(),
     };
@@ -112,6 +123,18 @@ pub async fn run(action: Action) -> Result<bool> {
         )
         .await
         .map_err(|_| Error::Credential)?;
+    // A completed receipt is an authenticated metadata read. Do not acquire the
+    // node root or old volume: a successor may already be executing there.
+    if let Action::CleanupOnce { workspace, .. } = &action
+        && let Some(result) = session
+            .metadata
+            .completed_workspace_cleanup(&auth, *workspace, args.storage)
+            .await
+            .map_err(|_| Error::Administration)?
+    {
+        println!("{result}");
+        return Ok(true);
+    }
     let node = Node::open(
         &args.root,
         credential.scope.tenant(),
@@ -120,6 +143,35 @@ pub async fn run(action: Action) -> Result<bool> {
         args.parallelism,
     )?;
     let (workspace, tree) = match action {
+        Action::CleanupOnce {
+            workspace,
+            engine_socket,
+            ..
+        } => {
+            let result = if let Some(plan) = node
+                .claim_cleanup(&mut session.metadata, &auth, workspace)
+                .await?
+            {
+                let mut heartbeat = database.connect(true).await?;
+                node.cleanup_workspace(
+                    &mut session.metadata,
+                    &mut heartbeat.metadata,
+                    &auth,
+                    &plan,
+                    engine_socket.as_deref(),
+                )
+                .await?
+            } else {
+                session
+                    .metadata
+                    .completed_workspace_cleanup(&auth, workspace, node.identity().storage())
+                    .await
+                    .map_err(|_| Error::Administration)?
+                    .unwrap_or_else(|| json!({"workspace":workspace.to_string(),"state":"busy"}))
+            };
+            println!("{result}");
+            return Ok(true);
+        }
         Action::VolumeRegister {
             slot,
             mount,

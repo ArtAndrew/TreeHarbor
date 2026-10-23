@@ -22,9 +22,10 @@ Each reservation binds:
 - preparation event and a stable attempt UUID.
 
 One workspace generation has one attempt. One storage slot cannot belong to two
-attempts, including attempts in different repositories. Slot ownership and source
-pins remain retained during drain. This version provides no physical cleanup or
-slot-release operation; lease expiry is never a reason to reuse a directory.
+active attempts, including attempts in different repositories. Slot ownership and
+source pins remain retained during drain. The separate [cleanup protocol](workspace-cleanup.md)
+releases them only after durable physical deletion and preserves historical
+preparation rows. Lease expiry is never a reason to reuse a directory.
 
 ## Node operations
 

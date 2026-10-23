@@ -2,6 +2,8 @@
 //! trusted test inputs, not evidence that these tests executed a real sandbox.
 #[path = "managed_seals.rs"]
 mod seals;
+#[path = "cleanup.rs"]
+mod workspace_cleanup;
 use super::*;
 use treeharbor_metadata::runs::{RunPlan, RunRequest, RuntimeVolume};
 use treeharbor_runtime::{Definition, Profile};

@@ -205,6 +205,118 @@ async fn seal_acceptance_replays_after_drain_and_retains_original_run_base_and_p
     assert!(f.db.open_seal_acceptance(&auth, &cmd).await.is_err());
     cleanup(&f.schema).await;
 }
+
+#[tokio::test]
+#[ignore = "requires disposable PostgreSQL; trusted deletion receipt, actual retained graph"]
+async fn accepted_seal_survives_workspace_cleanup_and_object_gc() {
+    use treeharbor_metadata::cleanup::DeletedFiles;
+    let (mut f, owner, node, id, items) = ready().await;
+    let cmd = command(id);
+    let (auth, read) = open(&mut f, &owner, &cmd).await;
+    let (applied, frames) = compute(&f, &items);
+    let (ops, result) = publish(&mut f, &read, &frames).await;
+    let accepted =
+        f.db.finish_seal_acceptance(&read, &applied, &ops, &result)
+            .await
+            .unwrap();
+    f.db.close_seal_acceptance(*read).await.unwrap();
+    let raw = connection(&f.schema).await;
+    let before: serde_json::Value = raw
+        .query_one("SELECT to_jsonb(v) FROM th_change_versions v", &[])
+        .await
+        .unwrap()
+        .get(0);
+    let workspace: Uuid = raw
+        .query_one("SELECT workspace FROM th_workspaces", &[])
+        .await
+        .unwrap()
+        .get(0);
+    f.db.drain_workspace(&ctx(&owner, "drain"), workspace, 1)
+        .await
+        .unwrap();
+    let plan =
+        f.db.claim_workspace_cleanup(&node.auth, workspace, node.storage, Uuid::new_v4(), 60)
+            .await
+            .unwrap()
+            .unwrap();
+    let proof = DeletedFiles {
+        intent_digest: [51; 32],
+        receipt_digest: [52; 32],
+    };
+    f.db.admit_workspace_cleanup(&node.auth, &plan, proof.intent_digest)
+        .await
+        .unwrap();
+    f.db.complete_workspace_cleanup(&node.auth, &plan, &proof)
+        .await
+        .unwrap();
+    raw.execute("DELETE FROM th_object_holds", &[])
+        .await
+        .unwrap();
+    assert_eq!(
+        raw.query_one("SELECT to_jsonb(v) FROM th_change_versions v", &[])
+            .await
+            .unwrap()
+            .get::<_, serde_json::Value>(0),
+        before
+    );
+    assert_eq!(
+        raw.query_one("SELECT pin_holder FROM th_workspaces", &[])
+            .await
+            .unwrap()
+            .get::<_, Option<String>>(0),
+        None
+    );
+    assert!(
+        f.db.try_retire_object(ops.key(), 0)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        f.db.try_retire_object(result.key(), 0)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    // Exercise retention of all real published objects, including blob descendants,
+    // after removing temporary upload/read holds and the workspace pin.
+    let store = depot(&f);
+    let mut retained: Vec<_> = items
+        .iter()
+        .map(|o| PreparedObject::new(o).unwrap())
+        .collect();
+    retained.extend(frames);
+    for bytes in retained {
+        let lease =
+            f.db.reserve_object(&store, &bytes, Uuid::new_v4(), 60)
+                .await
+                .unwrap();
+        assert!(!lease.requires_upload());
+        assert_eq!(
+            store
+                .get(lease.key().generation(), bytes.id())
+                .unwrap()
+                .id()
+                .unwrap(),
+            bytes.id()
+        );
+        raw.execute("DELETE FROM th_object_holds", &[])
+            .await
+            .unwrap();
+        assert!(
+            f.db.try_retire_object(lease.key(), 0)
+                .await
+                .unwrap()
+                .is_none()
+        );
+    }
+    let SealAcceptStart::Replay(replay) = f.db.open_seal_acceptance(&auth, &cmd).await.unwrap()
+    else {
+        panic!()
+    };
+    assert_eq!(replay, accepted);
+    cleanup(&f.schema).await;
+}
 #[tokio::test]
 #[ignore = "requires disposable PostgreSQL; competing owner versions"]
 async fn seal_acceptance_version_cas_has_one_winner_and_does_not_reuse_other_request_leases() {

@@ -304,7 +304,7 @@ impl Metadata {
         workspace: Uuid,
         generation: i64,
     ) -> Result<Value> {
-        let next = generation
+        generation
             .checked_add(1)
             .filter(|_| generation > 0)
             .ok_or(Error::Invalid("workspace generation"))?;
@@ -316,32 +316,7 @@ impl Metadata {
             Begin::Replay(value) => return Ok(value),
             Begin::Fresh(tx) => tx,
         };
-        let scope = &ctx.scope;
-        let count = tx
-            .tx
-            .execute(
-                r#"UPDATE th_workspaces SET state='draining',generation=$4
-            WHERE tenant=$1 AND repository=$2 AND workspace=$3 AND generation=$5 AND epoch=$6
-            AND principal=$7 AND state IN ('requested','ready','in_use')"#,
-                &[
-                    &scope.tenant,
-                    &scope.repository,
-                    &workspace,
-                    &next,
-                    &generation,
-                    &ctx.epoch,
-                    &ctx.principal,
-                ],
-            )
-            .await?;
-        if count != 1 {
-            return Err(Error::ExecutionState);
-        }
-        tx.tx.execute("UPDATE th_agent_runs SET state='stopping' WHERE tenant=$1 AND repository=$2 AND workspace=$3 AND state IN ('requested','launching','running')",&[&scope.tenant,&scope.repository,&workspace]).await?;
-        tx.tx.execute("UPDATE th_managed_runs m SET stop_requested=true FROM th_agent_runs r WHERE m.tenant=r.tenant AND m.repository=r.repository AND m.run=r.run AND r.tenant=$1 AND r.repository=$2 AND r.workspace=$3 AND NOT m.removed",&[&scope.tenant,&scope.repository,&workspace]).await?;
-        tx.tx.execute("UPDATE th_workspace_preparations SET state='draining' WHERE tenant=$1 AND repository=$2 AND workspace=$3 AND state<>'draining'",&[&scope.tenant,&scope.repository,&workspace]).await?;
-        let result =
-            json!({"workspace":workspace.to_string(),"generation":next,"state":"draining"});
+        let result = tx.drain_workspace_effect(workspace, generation).await?;
         tx.complete(result.clone(), vec![event("workspace.drain", result)])
             .await
     }
@@ -410,6 +385,47 @@ fn change_version_number(change: &ChangeSubmission<'_>) -> Result<i64> {
 }
 
 impl Mutation<'_> {
+    /// Internal effect shared by an owner drain and the assigned validator's
+    /// explicit release of a collected check. Callers own authorization/replay.
+    pub(crate) async fn drain_workspace_effect(
+        &self,
+        workspace: Uuid,
+        generation: i64,
+    ) -> Result<Value> {
+        let next = generation
+            .checked_add(1)
+            .filter(|_| generation > 0)
+            .ok_or(Error::Invalid("workspace generation"))?;
+        let ctx = &self.request;
+        let scope = &ctx.scope;
+        let count = self
+            .tx
+            .execute(
+                r#"UPDATE th_workspaces SET state='draining',generation=$4
+            WHERE tenant=$1 AND repository=$2 AND workspace=$3 AND generation=$5 AND epoch=$6
+            AND principal=$7 AND state IN ('requested','ready','in_use')"#,
+                &[
+                    &scope.tenant,
+                    &scope.repository,
+                    &workspace,
+                    &next,
+                    &generation,
+                    &ctx.epoch,
+                    &ctx.principal,
+                ],
+            )
+            .await?;
+        if count != 1 {
+            return Err(Error::ExecutionState);
+        }
+        self.tx.execute("UPDATE th_agent_runs SET state='stopping' WHERE tenant=$1 AND repository=$2 AND workspace=$3 AND state IN ('requested','launching','running')",&[&scope.tenant,&scope.repository,&workspace]).await?;
+        self.tx.execute("UPDATE th_managed_runs m SET stop_requested=true FROM th_agent_runs r WHERE m.tenant=r.tenant AND m.repository=r.repository AND m.run=r.run AND r.tenant=$1 AND r.repository=$2 AND r.workspace=$3 AND NOT m.removed",&[&scope.tenant,&scope.repository,&workspace]).await?;
+        self.tx.execute("UPDATE th_workspace_preparations SET state='draining' WHERE tenant=$1 AND repository=$2 AND workspace=$3 AND state<>'draining'",&[&scope.tenant,&scope.repository,&workspace]).await?;
+        let result =
+            json!({"workspace":workspace.to_string(),"generation":next,"state":"draining"});
+        Ok(result)
+    }
+
     pub(crate) async fn accept_change_version(
         &self,
         change: &ChangeSubmission<'_>,

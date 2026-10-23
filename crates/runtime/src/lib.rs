@@ -5,7 +5,7 @@ mod journal;
 mod profile;
 mod volume;
 pub use engine::{Container, Engine, Inspection, RuntimeState, Specification};
-pub use journal::{Controller, Outcome, RemovedGuard};
+pub use journal::{CleanupGuard, Controller, Outcome, RemovalExpectation, RemovedGuard};
 pub use profile::{Definition, Profile, Task};
 pub use volume::{Volume, VolumeIdentity};
 

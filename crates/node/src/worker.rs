@@ -48,6 +48,28 @@ struct Intent {
     volume: Option<String>,
 }
 impl Intent {
+    fn cleanup(p: &treeharbor_metadata::cleanup::CleanupPlan) -> Result<Self> {
+        let source = p.placement().ok_or(Error::Identity)?;
+        Ok(Self {
+            version: if source.volume_digest.is_some() { 2 } else { 1 },
+            tenant: p.scope().tenant().into(),
+            repository: p.scope().repository().to_string(),
+            node: p.node().into(),
+            storage: p.storage().to_string(),
+            slot: source.slot.slot.to_string(),
+            attempt: source.attempt.to_string(),
+            workspace: p.workspace().to_string(),
+            generation: source.generation,
+            authority: p.authority().as_str().into(),
+            epoch: p.epoch(),
+            revision: source.revision.to_string(),
+            snapshot: source.snapshot.to_string(),
+            profile: source.profile.id().to_string(),
+            volume: source
+                .volume_digest
+                .map(|v| treeharbor_core::ObjectId::from_bytes(v).to_string()),
+        })
+    }
     fn plan(p: &Preparation) -> Self {
         Self {
             version: if p.volume_digest().is_some() { 2 } else { 1 },
@@ -102,6 +124,10 @@ impl Intent {
         }
         Ok(())
     }
+}
+
+pub(crate) fn cleanup_intent(plan: &treeharbor_metadata::cleanup::CleanupPlan) -> Result<Vec<u8>> {
+    Ok(serde_json::to_vec(&Intent::cleanup(plan)?)?)
 }
 
 impl Node {

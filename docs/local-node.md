@@ -104,8 +104,9 @@ Keep the root's ancestor directories under operator control. Same-OS-user hostil
 processes, copied credentials, network filesystems with unverified locking semantics,
 and hostile host administrators are outside this local ownership boundary.
 
-No automatic published-tree removal or slot/pin release is implemented here. That
-requires observed stopped runtime writers and the complete drain/cleanup protocol.
+Explicit [workspace cleanup](workspace-cleanup.md) uses observed stopped runtime
+writers and a durable deletion journal before releasing slots/pins. Automatic
+scheduling and cleanup of retained journals/artifacts are not implemented.
 
 ## Local records v1
 

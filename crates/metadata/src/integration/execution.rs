@@ -104,6 +104,61 @@ async fn still_authorized(tx: &Transaction<'_>, s: &Scope, e: &Execution) -> Res
     Ok(())
 }
 impl Metadata {
+    /// Discard only the caller's collected check workspace. Evidence and check
+    /// identity remain immutable; this does not revoke or grant publication.
+    pub async fn release_native_check_workspace(
+        &mut self,
+        auth: &Authorization,
+        cmd: &Command,
+        check: Uuid,
+    ) -> Result<Value> {
+        let tx = match self
+            .begin(request(
+                auth,
+                cmd,
+                "native.check.release.v1",
+                json!([1, check.to_string()]),
+            )?)
+            .await?
+        {
+            Begin::Replay(v) => return Ok(v),
+            Begin::Fresh(tx) => tx,
+        };
+        let s = auth.scope();
+        let e = execution(&tx.tx, s, check).await?.ok_or(Error::NotFound)?;
+        if e.validator != auth.principal() {
+            return Err(Error::Forbidden);
+        }
+        if e.state != "collected" || e.receipt.is_none() {
+            return Err(Error::ExecutionState);
+        }
+        let w = tx.tx.query_one("SELECT state,generation,epoch,principal FROM th_workspaces WHERE tenant=$1 AND repository=$2 AND workspace=$3", &[&s.tenant,&s.repository,&e.workspace]).await?;
+        if w.get::<_, i64>("epoch") != cmd.epoch
+            || w.get::<_, String>("principal") != auth.principal()
+        {
+            return Err(Error::Fenced);
+        }
+        let state: String = w.get("state");
+        let (mut result, events) = if matches!(state.as_str(), "draining" | "deleted") {
+            if w.get::<_, i64>("generation") != 2 {
+                return Err(Error::ExecutionState);
+            }
+            (
+                json!({"workspace":e.workspace.to_string(),"generation":2,"state":state}),
+                vec![],
+            )
+        } else {
+            let result = tx.drain_workspace_effect(e.workspace, 1).await?;
+            let event = Event {
+                kind: "workspace.drain".into(),
+                payload: result.clone(),
+            };
+            (result, vec![event])
+        };
+        result["check_run"] = json!(check.to_string());
+        tx.complete(result, events).await
+    }
+
     pub async fn prepare_native_check(
         &mut self,
         auth: &Authorization,

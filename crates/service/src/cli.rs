@@ -720,7 +720,7 @@ enum Agent {
         #[arg(long)]
         workspace: Uuid,
     },
-    /// Begin draining; physical deletion needs the later runtime binding.
+    /// Begin draining; the assigned node must separately confirm physical cleanup.
     WorkspaceDelete {
         #[command(flatten)]
         mutation: Mutation,

@@ -216,6 +216,98 @@ async fn import_to_node_files_and_reopen(git_history: bool) {
         serde_json::from_slice::<Value>(&idle.stdout).unwrap()["state"],
         "idle"
     );
+    assert!(
+        !node_cli(
+            "cleanup-once",
+            &["--workspace", &workspace],
+            &node_credential
+        )
+        .status
+        .success()
+    );
+    let drain_args = [
+        "workspace-delete",
+        "--key",
+        "node-drain",
+        "--authority",
+        "standalone",
+        "--epoch",
+        "1",
+        "--workspace",
+        &workspace,
+        "--generation",
+        "1",
+    ];
+    let drained = f.cli(&drain_args);
+    assert!(drained.status.success());
+    assert_eq!(
+        serde_json::from_slice::<Value>(&drained.stdout).unwrap()["result"]["state"],
+        "draining"
+    );
+    assert!(
+        !node_cli(
+            "cleanup-once",
+            &["--workspace", &workspace],
+            &f.credential_path
+        )
+        .status
+        .success()
+    );
+    let cleaned = node_cli(
+        "cleanup-once",
+        &["--workspace", &workspace],
+        &node_credential,
+    );
+    assert!(
+        cleaned.status.success(),
+        "{}",
+        String::from_utf8_lossy(&cleaned.stderr)
+    );
+    let deleted: Value = serde_json::from_slice(&cleaned.stdout).unwrap();
+    assert_eq!(deleted["state"], "deleted");
+    assert!(!files.exists());
+    let status = f.cli(&["workspace-status", "--workspace", &workspace]);
+    assert!(status.status.success());
+    let status: Value = serde_json::from_slice(&status.stdout).unwrap();
+    assert_eq!(status["result"]["state"], "deleted");
+    assert_eq!(status["result"]["cleanup"]["state"], "deleted");
+    assert_eq!(status["result"]["cleanup"]["id"], deleted["cleanup"]);
+    let replay = node_cli(
+        "cleanup-once",
+        &["--workspace", &workspace],
+        &node_credential,
+    );
+    assert!(replay.status.success());
+    assert_eq!(
+        serde_json::from_slice::<Value>(&replay.stdout).unwrap(),
+        deleted
+    );
+    // A completed cleanup is readable while another process owns the node root;
+    // it must not open the placement or interfere with later work.
+    let held = treeharbor_node::Node::open(
+        &root,
+        f.scope.tenant(),
+        "node-local",
+        storage.parse().unwrap(),
+        1,
+    )
+    .unwrap();
+    let concurrent = node_cli(
+        "cleanup-once",
+        &["--workspace", &workspace],
+        &node_credential,
+    );
+    assert!(
+        concurrent.status.success(),
+        "{}",
+        String::from_utf8_lossy(&concurrent.stderr)
+    );
+    assert_eq!(
+        serde_json::from_slice::<Value>(&concurrent.stdout).unwrap(),
+        deleted
+    );
+    drop(held);
+    assert_eq!(f.cli(&drain_args).stdout, drained.stdout);
     drop(server);
     f.cleanup().await;
 }

@@ -1,3 +1,5 @@
+#[path = "preparation/cleanup.rs"]
+mod cleanup_tests;
 mod support;
 use serde_json::json;
 use std::{

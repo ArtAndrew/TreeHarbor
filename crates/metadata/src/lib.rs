@@ -10,6 +10,7 @@ use uuid::Uuid;
 
 pub mod access;
 pub mod catalog;
+pub mod cleanup;
 pub mod commands;
 pub mod exports;
 pub mod intake;
@@ -38,6 +39,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/011_check_execution.sql"),
     include_str!("../migrations/012_change_rebase.sql"),
     include_str!("../migrations/013_workspace_seals.sql"),
+    include_str!("../migrations/014_workspace_cleanup.sql"),
 ];
 const MAX_JSON: usize = 1024 * 1024;
 
