@@ -3,22 +3,29 @@
 Updated: 2026-10-23. This file describes implemented behavior and remaining release
 gates. A foundation milestone does not complete either mode.
 
-Workspace cleanup now has an internal PostgreSQL protocol in schema 14: stable
-placement identity, leased node claims/reclaim, immutable deletion-intent admission
-and atomic receipt/pin/slot release. Completed replay preserves historical records
-and does not release a later preparation on the same slot. Current node access and
-repository authority/epoch are rechecked; unmanaged runtimes remain quarantined.
-An accepted owner drain remains a cleanup request if that owner's access is later
-revoked. Node access is still required. Ten new database tests cover lifecycle,
-concurrency, expiry during final writes, populated schema-13 upgrade and retention
-of an actual accepted ChangeSet's object graph after workspace pin release.
-The fixtures supply trusted deletion observations: **physical deletion is not yet
-implemented**, and these methods are not exposed through owner HTTP/CLI. A guarded
-node deletion journal and real Linux recovery/reuse tests must precede that feature.
-Local verification for this increment: 164 ordinary tests and 174 explicit
-PostgreSQL/materializer/node/service integration tests passed, with four parallel
-test cases. Formatting and strict all-target Clippy passed. This increment has not
-yet been checked by GitHub CI or released.
+Explicit [workspace cleanup](workspace-cleanup.md) now joins schema-14 release
+metadata to a guarded physical node operation, owner status and `node cleanup-once`.
+A durable intent precedes unlink; a separate completion record precedes atomic
+source-pin/slot release. The node checks the existing runtime journal and current
+Engine, retains the registered placement inode, and resumes after partial deletion.
+Completed receipt reads avoid the node/slot locks, including during successor work.
+The assigned validator can explicitly release a collected native check's workspace;
+immutable evidence remains available and final publication still rechecks context.
+
+Local tests cover real file deletion, permissions, symlink/hardlink containment,
+worker SIGKILL during unlink, after local completion and after metadata commit,
+slot reuse, CLI/HTTP ownership and exact replay. Database tests cover current
+fences, concurrent claims, expiry during writes, populated schema-13 upgrade and
+retention of accepted ChangeSet graphs. These are distinct from real Linux/runtime
+evidence. The required gVisor harness has added removed-runtime proof, worker-loss,
+active successor replay, check-file release before publication, and source/Git
+export after agent-file deletion; those additions await CI verification.
+Local verification: 169 ordinary tests and 178 explicit PostgreSQL/materializer/
+node/service integration tests passed (four concurrent integration cases), including
+actual CLI drain/delete/replay and collected-check release. Formatting and strict
+all-target Clippy passed; Linux/runtime evidence is still required on this head.
+Automatic cleanup scheduling, abandoned-journal/artifact retention, node replacement
+and full release gates remain open. This increment is not a product release.
 
 Experimental [managed seals](managed-seals.md) now connect filesystem capture to
 owner acceptance. A [selected-file capture library](capture-format-v1.md)
@@ -34,7 +41,7 @@ completed-response replay. [Owner HTTP/CLI commands](managed-seals.md) now reque
 inspect, cancel and accept seals. Acceptance computes the exact sealed operations
 through the shared native engine, preserves original run/base lineage, enforces
 version CAS and atomically retains the result without carrying over checks.
-Physical workspace cleanup, the wider fault matrix and full release gates remain open.
+Automatic workspace cleanup, the wider fault matrix and full release gates remain open.
 
 Local capture/acceptance verification: 164 ordinary tests passed; 164 explicit
 PostgreSQL/materializer/node/service tests passed with four parallel test cases.
@@ -168,11 +175,11 @@ resource outcomes and worker-loss recovery. No complete authority mode is implie
 | Native directory import | Explicit selection, descriptor-relative capture, durable pack/journal v1, independent vector, actual CLI-to-server partial-upload recovery and completed replay with Git absent from PATH | Incremental reuse, automatic spool cleanup and runtime-proven snapshots |
 | Source delivery profiles | Canonical full/sparse format with independent vectors, immutable scoped definitions, workspace foreign-key binding, v4 upgrade, authenticated CLI/HTTP and exact node use | Profile retention and generation-aware expansion |
 | Workspaces and runtime | Owner-bound requests, exact source/runtime bindings, trusted actual observations, drain and terminal replay; real CLI/PostgreSQL/gVisor recovery tests; selected capture/accept API | Automatic resource release, scheduling, wider fault matrix and host replacement |
-| Runtime task supervisor | Linux namespace init, privilege guards, environment clearing, guest process limit, child reaping and deadline; real gVisor CI harness | Complete workspace cleanup and production runtime provisioning |
-| Local runtime controller | Versioned immutable profiles, restricted Engine API, bounded ext4 identity, exclusive durable volume assignment and create/start/remove journal; real-runtime fault harness and managed-run adapter | Provisioning, host/engine replacement recovery and workspace cleanup |
-| Workspace preparation reservations | Operator-registered node storage, scoped job claims, immutable source/slot/attempt identity, renewal/reclaim, exact file-ready observation and drain retention; real PostgreSQL race/upgrade tests | Automatic source/slot release after runtime removal |
-| Workspace cleanup metadata | Exact original placement/run, current node claims, durable deletion intent, atomic source pin/slot release, retained history, replay and real PostgreSQL expiry/GC tests | Physical deletion adapter/journal, owner status and node CLI, actual runtime failure/reuse evidence |
-| Local preparation node | Private physical root identity/OS lock, durable placement intent, exact no-replace publication, independent concurrent slots, current authorization and file-ready acknowledgment; actual process-kill recovery and import-to-files CLI tests | Scheduler/daemon, automated volume provisioning, remote workers, fenced volume migration and safe published-tree cleanup |
+| Runtime task supervisor | Linux namespace init, privilege guards, environment clearing, guest process limit, child reaping and deadline; real gVisor CI harness | Automatic workspace cleanup and production runtime provisioning |
+| Local runtime controller | Versioned immutable profiles, restricted Engine API, bounded ext4 identity, exclusive durable volume assignment and create/start/remove journal; real-runtime fault harness and managed-run adapter | Provisioning, host/engine replacement recovery and cleanup automation |
+| Workspace preparation reservations | Operator-registered node storage, scoped job claims, immutable source/slot/attempt identity, renewal/reclaim, exact file-ready observation and drain retention; real PostgreSQL race/upgrade tests | Cleanup scheduling after runtime removal |
+| Workspace cleanup | Exact placement/run, current node claims, durable deletion journal, descriptor-relative physical removal, atomic source-pin/slot release, owner status, node CLI and collected-check release; local crash/reuse/expiry/GC tests | Real-runtime CI for this increment, automatic scheduling, journal retention and node replacement |
+| Local preparation node | Private physical root identity/OS lock, durable placement intent, exact no-replace publication, independent concurrent slots, current authorization and file-ready acknowledgment; actual process-kill recovery and import-to-files CLI tests | Scheduler/daemon, automated volume provisioning, remote workers, fenced volume migration and cleanup scheduling |
 | MCP adapter | Planned; not implemented | Shared-service adapter, scoped tools and real client interoperability tests |
 | Git source export | Local native-pack CLI and bounded Rust full-DAG projection to self-contained Git SHA-1/SHA-256 bundle; isolated batch Git, exact mapping, verified original Git metadata/IDs, restored fsck and no-replace publication | Backup metadata, incremental projection, GitHub delivery |
 | Live source export | Scoped registered-base reads with GC holds and authority/credential fences; streaming archive v1 and atomically verified pack v3; actual CLI restart/merge/origin roundtrip | Other retained proposals, all-ref export, full metadata backup, incremental transfer, longer jobs and cleanup |
@@ -240,7 +247,7 @@ database completion, and published-v1 schema upgrade. Native intake now commits 
 ChangeSet version, lineage, graph pins, response and outbox atomically, and recovers
 the same receipt after a worker process is killed. ChangeSet submission is now
 exposed through local HTTP/CLI with explicit immutable blobs and operations.
-Remote transport, full workspace cleanup, full application
+Remote transport, automatic workspace cleanup, full application
 failure injection, fenced restore and automatic maintenance remain release gates.
 
 Protected local reads now resolve only requested object frontiers and retain opened

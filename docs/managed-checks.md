@@ -105,8 +105,10 @@ Retries reuse one execution binding, one runtime attempt and one immutable recei
 A new request key for an already requested/collected check does not rerun it. Use a
 new integrator-assigned check run to request another execution. Old receipts cannot
 satisfy that new assignment. Unknown or incomplete cleanup retains the placement.
-Workspace/pin reclamation is still conservative; there is no automated CI retention
-policy or validator-owned deletion command yet.
+After collection the assigned validator can request `check_release` through the
+native API. The [workspace cleanup protocol](workspace-cleanup.md) then allows the
+assigned node to remove files and release the slot/pin while retaining check evidence.
+Automatic CI retention and cleanup scheduling remain unfinished.
 
 ## Version 1 encoding
 

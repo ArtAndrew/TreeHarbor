@@ -1,7 +1,9 @@
 //! Trusted local node: durable files, managed external-runtime tasks and capture.
 mod capture;
+mod cleanup;
 mod execution;
 mod private;
+mod removal;
 mod seal_publication;
 mod storage;
 mod volumes;
@@ -34,5 +36,7 @@ pub enum Error {
     Incomplete,
     #[error("invalid node configuration")]
     Configuration,
+    #[error("workspace cleanup exceeded its traversal budget; cleanup remains incomplete")]
+    CleanupLimit,
 }
 pub type Result<T> = std::result::Result<T, Error>;

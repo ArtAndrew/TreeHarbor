@@ -127,6 +127,11 @@ async fn managed_checks_bind_fresh_sources_replay_and_reject_manual_success() {
             .await,
         Err(Error::ExecutionState)
     ));
+    assert!(matches!(
+        f.db.release_native_check_workspace(&validator, &cmd("early-release"), run)
+            .await,
+        Err(Error::ExecutionState)
+    ));
     let node_token = actor(
         &mut f,
         "check-node",
@@ -236,6 +241,69 @@ async fn managed_checks_bind_fresh_sources_replay_and_reject_manual_success() {
     let row=raw.query_one("SELECT outcome,encode(evidence,'hex'),encode(digest,'hex') FROM th_native_validations v JOIN th_check_execution_evidence e USING(tenant,repository,receipt)",&[]).await.unwrap();
     assert_eq!(row.get::<_, String>(0), "error");
     assert_eq!(row.get::<_, String>(1), row.get::<_, String>(2));
+    let evidence: serde_json::Value = raw
+        .query_one("SELECT to_jsonb(e) FROM th_check_execution_evidence e", &[])
+        .await
+        .unwrap()
+        .get(0);
+    assert!(matches!(
+        f.db.release_native_check_workspace(&owner, &cmd("owner-release"), run)
+            .await,
+        Err(Error::Forbidden)
+    ));
+    let other_token = actor(
+        &mut f,
+        "other-ci",
+        PrincipalKind::Validator,
+        &[P::ValidationReport],
+    )
+    .await;
+    let other = auth(&mut f, &other_token, P::ValidationReport).await;
+    assert!(matches!(
+        f.db.release_native_check_workspace(&other, &cmd("other-release"), run)
+            .await,
+        Err(Error::Forbidden)
+    ));
+    let release =
+        f.db.release_native_check_workspace(&validator, &cmd("release"), run)
+            .await
+            .unwrap();
+    assert_eq!(release["state"], "draining");
+    assert_eq!(release["workspace"], first["workspace"]);
+    assert_eq!(
+        release,
+        f.db.release_native_check_workspace(&validator, &cmd("release"), run)
+            .await
+            .unwrap()
+    );
+    assert_eq!(
+        release,
+        f.db.release_native_check_workspace(&validator, &cmd("release-again"), run)
+            .await
+            .unwrap()
+    );
+    assert_eq!(
+        raw.query_one("SELECT to_jsonb(e) FROM th_check_execution_evidence e", &[])
+            .await
+            .unwrap()
+            .get::<_, serde_json::Value>(0),
+        evidence
+    );
+    assert_eq!(
+        f.db.collect_native_check(&validator, &cmd("collect-after-release"), run)
+            .await
+            .unwrap(),
+        collected
+    );
+    let changed = Command {
+        key: "release-stale".into(),
+        epoch: 2,
+    };
+    assert!(
+        f.db.release_native_check_workspace(&validator, &changed, run)
+            .await
+            .is_err()
+    );
     assert!(
         f.db.land_native_candidate(&worker, &cmd("land-lost"), cid)
             .await

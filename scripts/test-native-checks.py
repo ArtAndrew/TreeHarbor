@@ -84,7 +84,7 @@ class Checks(managed.Harness):
         key = "check-prepare-" + case["check"]
         first = self.native("check_prepare", self.ci, key=key, run=case["check"])
         assert first == self.native("check_prepare", self.ci, key=key, run=case["check"])
-        case.update(node=node, credential=self.ci, workspace=first["workspace"], run=first["run"], mount=mount)
+        case.update(node=node, credential=self.ci, workspace=first["workspace"], run=first["run"], mount=mount, slot=slot)
         # Neither validator nor agent can inject a passing receipt or choose argv.
         assert self.native("validation_report", self.ci, check=False, run=case["check"],
                            receipt=str(uuid.uuid4()), outcome="passed", evidence="sha256:" + "ab" * 32).returncode != 0
@@ -102,6 +102,7 @@ class Checks(managed.Harness):
         case["attempt"] = self.sql(f"SELECT attempt FROM th_managed_runs WHERE run='{case['run']}'")
         self.cases.append(case)
         assert self.native("check_collect", self.ci, check=False, run=case["check"]).returncode != 0
+        assert self.native("check_release", self.ci, check=False, run=case["check"]).returncode != 0
         assert self.native("land", self.integrator, check=False, candidate=case["candidate"]).returncode != 0
         return case
 
@@ -154,6 +155,24 @@ class Checks(managed.Harness):
         assert evidence["outcome"] == {"succeeded": "passed", "failed": "failed", "lost": "error", "cancelled": "cancelled"}[state]
         return result
 
+    def export_and_restore(self, landed, label):
+        exported = self.root / ("sealed-export-" + label)
+        downloaded = self.value("client", "--socket", self.socket, "--credential-file", self.reviewer,
+                                "source-export", "--authority", "standalone", "--epoch", "1",
+                                "--revision", landed["revision"], "--output", exported)
+        assert downloaded["revision"] == landed["revision"]
+        # Git is introduced only at the explicit interoperability boundary;
+        # all agent/capture/accept/check/land/export requests above use no Git.
+        projected = self.root / ("sealed-git-" + label)
+        self.value("git-export", "--pack", exported, "--output", projected)
+        restored = self.root / ("sealed-restored-" + label + ".git")
+        managed.command("/usr/bin/git", "-c", "core.hooksPath=/dev/null", "clone", "--bare",
+                        projected / "history.bundle", restored)
+        managed.command("/usr/bin/git", "--git-dir", restored, "fsck", "--strict")
+        assert managed.command("/usr/bin/git", "--git-dir", restored, "show", "main:same.txt").stdout == "candidate\n"
+        assert int(managed.command("/usr/bin/git", "--git-dir", restored, "rev-list", "--count", "main").stdout) >= 2
+        print("PASS managed capture export: actual sealed, checked, reviewed and landed agent bytes restore in ordinary Git", flush=True)
+
     def exercise(self):
         self.empty_proposal = False
         self.policy_admin = self.principal("policy-admin", "human", ["read", "repository.write", "policy.write"])
@@ -166,25 +185,19 @@ class Checks(managed.Harness):
         passed = self.check_case()
         self.completed_check(passed, self.start(passed))
         assert (passed["files"] / "check-executions").read_bytes() == b"one check\n"
+        original_check = self.native("check_status", self.ci, run=passed["check"])
+        assert self.native("check_release", self.agents[0], check=False, run=passed["check"]).returncode != 0
+        release = self.native("check_release", self.ci, key="release-check", run=passed["check"])
+        assert release["state"] == "draining"
+        assert release == self.native("check_release", self.ci, key="release-check", run=passed["check"])
+        self.cleanup_workspace(passed, already_drained=True)
+        assert self.native("check_status", self.ci, run=passed["check"]) == original_check
+        assert self.native("check_release", self.ci, run=passed["check"])["state"] == "deleted"
         landed = self.native("land", self.integrator, candidate=passed["candidate"])
         assert landed["state"] == "landed"
         assert self.native("ref_resolve", self.policy_admin, name=passed["target"])["head"] == landed["revision"]
-        exported = self.root / "sealed-export"
-        downloaded = self.value("client", "--socket", self.socket, "--credential-file", self.reviewer,
-                                "source-export", "--authority", "standalone", "--epoch", "1",
-                                "--revision", landed["revision"], "--output", exported)
-        assert downloaded["revision"] == landed["revision"]
-        # Git is introduced only at the explicit interoperability boundary;
-        # all agent/capture/accept/check/land/export requests above use no Git.
-        projected = self.root / "sealed-git"
-        self.value("git-export", "--pack", exported, "--output", projected)
-        restored = self.root / "sealed-restored.git"
-        managed.command("/usr/bin/git", "-c", "core.hooksPath=/dev/null", "clone", "--bare",
-                        projected / "history.bundle", restored)
-        managed.command("/usr/bin/git", "--git-dir", restored, "fsck", "--strict")
-        assert managed.command("/usr/bin/git", "--git-dir", restored, "show", "main:same.txt").stdout == "candidate\n"
-        assert int(managed.command("/usr/bin/git", "--git-dir", restored, "rev-list", "--count", "main").stdout) >= 2
-        print("PASS managed capture export: actual sealed, checked, reviewed and landed agent bytes restore in ordinary Git", flush=True)
+        self.export_and_restore(landed, "before-cleanup")
+        print("PASS native CI cleanup: collected evidence survives workspace release and still permits exact publication", flush=True)
         print("PASS native CI: actual candidate files, immutable offline program, protected collector and publication", flush=True)
         print("PASS native review: exact candidate revision, target and policy match checked and published code", flush=True)
 
@@ -280,6 +293,11 @@ class Checks(managed.Harness):
                    self.sql(f"SELECT 'sha256:'||encode(profile,'hex') FROM th_managed_runs WHERE run='{revoked['run']}'"))
         assert self.native("land", self.integrator, check=False, candidate=revoked["candidate"]).returncode != 0
         print("PASS native CI: revoking the execution environment invalidates pending passing evidence", flush=True)
+
+        self.cleanup_workspace(agent)
+        self.export_and_restore(landed, "after-cleanup")
+        assert self.native("check_status", self.ci, run=passed["check"]) == original_check
+        print("PASS cleanup export: removed agent/check files preserve native history, exact check evidence and ordinary Git restoration", flush=True)
 
 
 if __name__ == "__main__":

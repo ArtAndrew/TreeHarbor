@@ -198,7 +198,7 @@ class Harness:
         attempt = self.sql(f"SELECT attempt FROM th_managed_runs WHERE run='{run}'")
         case = {"node": assigned, "credential": credential, "workspace": workspace, "run": run,
                 "attempt": attempt, "files": files, "mount": mount, "request": request, "first": first,
-                "profile": digest, "node_index": node}
+                "profile": digest, "node_index": node, "slot": slot}
         self.cases.append(case)
         return case
 
@@ -370,6 +370,107 @@ class Harness:
         self.accept_seal(case, seal, content)
         (case["files"] / "same.txt").write_bytes(content)
 
+    def start_cleanup(self, case):
+        child = subprocess.Popen([str(self.binary), *self.node_args(case["node"], "cleanup-once"),
+                                  "--workspace", case["workspace"],
+                                  "--engine-socket", str(self.transport / "engine.sock")],
+                                 env=self.env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        self.children.append(child)
+        return child
+
+    def cleanup_workspace(self, case, already_drained=False, fault=None):
+        if not already_drained:
+            self.stop(case, drain=True)
+        state = self.client("workspace-status", "--workspace", case["workspace"], credential=case["credential"])
+        assert state["state"] == "draining"
+        placement = case["mount"] / "placement"
+        identity = (placement.stat().st_dev, placement.stat().st_ino)
+        if fault == "unlink":
+            # Many small directories make the partial-unlink window observable
+            # on fast CI disks without filling the bounded volume's inode quota.
+            (case["files"] / "000-cleanup-marker").touch()
+            for i in range(500):
+                directory = case["files"] / f"zz-cleanup-{i:04d}"
+                directory.mkdir()
+                for j in range(8):
+                    (directory / str(j)).touch()
+        elif fault == "receipt":
+            self.sql("CREATE FUNCTION cleanup_fault() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.state='deleted' THEN PERFORM pg_sleep(10); END IF; RETURN NEW; END $$; CREATE TRIGGER cleanup_fault BEFORE UPDATE ON th_workspace_cleanups FOR EACH ROW EXECUTE FUNCTION cleanup_fault()")
+        child = self.start_cleanup(case)
+        if fault:
+            if fault == "unlink":
+                deadline = time.monotonic() + 20
+                while (case["files"] / "000-cleanup-marker").exists() and child.poll() is None:
+                    assert time.monotonic() < deadline
+                    time.sleep(0.001)
+                assert child.poll() is None, child.communicate()
+                child.kill()
+                child.communicate(timeout=10)
+                assert (case["files"] / "zz-cleanup-0499").exists(), "missed partial deletion boundary"
+            else:
+                wait_until(lambda: self.sql("SELECT count(*) FROM pg_stat_activity WHERE application_name='treeharbor' AND wait_event='PgSleep' AND query LIKE 'UPDATE th_workspace_cleanups%' ") == "1")
+                child.kill()
+                child.communicate(timeout=10)
+                self.sql("DROP TRIGGER cleanup_fault ON th_workspace_cleanups; DROP FUNCTION cleanup_fault()")
+            # Only the killed worker's lease is expired; runtime observations and
+            # source/result bytes come exclusively from the actual product path.
+            self.sql(f"UPDATE th_workspace_cleanups SET lease_until=clock_timestamp()-interval '1 second' WHERE workspace='{case['workspace']}'")
+            state = self.client("workspace-status", "--workspace", case["workspace"], credential=case["credential"])
+            assert state["state"] == "draining" and state["cleanup"]["state"] == "deleting", state
+            record = case["node"]["root"] / "cleanup" / state["cleanup"]["id"]
+            intent = (record / "intent.json").read_bytes()
+            assert (record / "complete.json").exists() == (fault == "receipt")
+            child = self.start_cleanup(case)
+        out, err = child.communicate(timeout=45)
+        assert child.returncode == 0, (out, err)
+        result = json.loads(out)
+        assert result["state"] == "deleted" and result["workspace"] == case["workspace"]
+        assert not list(placement.iterdir())
+        assert identity == (placement.stat().st_dev, placement.stat().st_ino)
+        assert not (case["mount"] / "treeharbor-execution.json").exists()
+        if fault:
+            assert (record / "intent.json").read_bytes() == intent
+        replay = self.start_cleanup(case)
+        out, err = replay.communicate(timeout=45)
+        assert replay.returncode == 0, (out, err)
+        assert json.loads(out) == result
+        state = self.client("workspace-status", "--workspace", case["workspace"], credential=case["credential"])
+        assert state["state"] == state["cleanup"]["state"] == "deleted"
+        assert state["cleanup"]["id"] == result["cleanup"]
+        other = next(c for c in self.agents if c != case["credential"])
+        assert self.client("workspace-status", "--workspace", case["workspace"], credential=other, check=False).returncode != 0
+        return result
+
+    def cleanup_reuse(self, case):
+        result = self.cleanup_workspace(case, fault="unlink")
+        workspace = str(uuid.uuid4())
+        self.client("workspace-create", "--key", "reuse-" + workspace, "--authority", "standalone", "--epoch", "1",
+                    "--workspace", workspace, "--base", self.revision, "--profile-digest", self.source_profile,
+                    credential=case["credential"])
+        prepared = self.value(*self.node_args(case["node"], "prepare-once"), "--slot", case["slot"])
+        assert prepared["workspace"] == workspace
+        assert Path(prepared["path"]) == case["files"]
+        (case["files"] / "same.txt").write_text("successor edits")
+        run = str(uuid.uuid4())
+        request = ["run-request", "--key", "reuse-run-" + run, "--authority", "standalone", "--epoch", "1",
+                   "--run", run, "--workspace", workspace, "--generation", "1", "--profile-digest", case["profile"],
+                   "--agent", "replacement", "--task", "reuse", "--", "/probe", "once", "3000"]
+        first = self.client(*request, credential=case["credential"])
+        successor = dict(case, workspace=workspace, run=run, request=request, first=first,
+                         attempt=self.sql(f"SELECT attempt FROM th_managed_runs WHERE run='{run}'"))
+        self.cases.append(successor)
+        active = self.start(successor)
+        wait_until(lambda: (case["files"] / "executions").exists())
+        replay = self.start_cleanup(case)
+        out, err = replay.communicate(timeout=45)
+        assert replay.returncode == 0, (out, err)
+        assert json.loads(out) == result
+        assert (case["files"] / "same.txt").read_text() == "successor edits"
+        assert self.status(successor)["state"] == "running"
+        self.finish(successor, active)
+        assert (case["files"] / "executions").read_bytes() == b"one execution\n"
+        self.cleanup_workspace(successor)
+
     def exercise(self):
         a = self.case("isolation", "agent-a", self.secret, "2000")
         b = self.case("isolation", "agent-b", self.secret, "2000", node=1)
@@ -487,6 +588,41 @@ class Harness:
         case["files"].chmod(0o700)
         assert (case["files"] / "before-chmod").read_bytes() == b"saved"
         print("PASS task chmod cannot prevent exact runtime cleanup", flush=True)
+
+        # The removal engine must handle agent permissions and untrusted links,
+        # leaving outside data intact and retaining the registered placement inode.
+        (case["files"] / "outside").symlink_to(self.secret)
+        (case["files"] / "locked").mkdir()
+        (case["files"] / "locked" / "file").write_text("remove")
+        (case["files"] / "locked").chmod(0)
+        case["files"].chmod(0)
+        self.cleanup_workspace(case)
+        assert self.secret.read_text() == "not-mounted"
+        print("PASS workspace cleanup: actual removed runtime, chmod000 files, symlink containment and retained placement", flush=True)
+        self.cleanup_reuse(a)
+        print("PASS workspace cleanup recovery: actual worker killed during unlink, identical intent, same-slot reuse and harmless old replay", flush=True)
+        self.stop(b, drain=True)
+        journal = b["node"]["root"] / "runtime" / b["attempt"]
+        marker = journal / "removed.json"
+        saved = journal / "removed.saved"
+        marker.rename(saved)
+        refused = self.start_cleanup(b)
+        out, err = refused.communicate(timeout=45)
+        assert refused.returncode != 0, (out, err)
+        assert (b["files"] / "same.txt").read_text() == "agent-b"
+        saved.rename(marker)
+        self.sql(f"UPDATE th_workspace_cleanups SET lease_until=clock_timestamp()-interval '1 second' WHERE workspace='{b['workspace']}'")
+        print("PASS workspace cleanup proof: a missing real runtime journal marker blocks deletion despite database removal", flush=True)
+        self.cleanup_workspace(b, fault="receipt")
+        print("PASS workspace cleanup receipt: killed worker after durable deletion retries without recreating files", flush=True)
+        self.cleanup_workspace(writing)
+        assert self.sql("SELECT count(*) FROM th_change_versions") == "7"
+        for change in captured:
+            credential = a["credential"] if change["run"] == a["run"] else b["credential"]
+            diff = self.client("diff", "--authority", "standalone", "--epoch", "1", "change",
+                               "--changeset", change["changeset"], "--version", "2", credential=credential)
+            assert diff["after_snapshot"] == change["result_snapshot"]
+        print("PASS workspace cleanup retention: accepted overlapping agent changes remain inspectable after physical deletion", flush=True)
 
     def diagnostics(self):
         # Fixture identifiers/state only; no credential files, source bytes or

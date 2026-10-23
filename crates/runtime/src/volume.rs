@@ -61,6 +61,15 @@ impl Volume {
     pub fn files(&self) -> &Path {
         &self.identity.files
     }
+    /// Duplicate the same held mount lock and physical placement identity.
+    pub fn try_clone(&self) -> Result<Self> {
+        self.verify()?;
+        Ok(Self {
+            identity: self.identity.clone(),
+            mount: self.mount.try_clone()?,
+            files: self.files.try_clone()?,
+        })
+    }
     /// Keep the same exclusive mount ownership while selecting a descendant
     /// directory to expose to a task. Duplicated descriptors share the lock.
     pub fn for_files(&self, files: &Path) -> Result<Self> {
