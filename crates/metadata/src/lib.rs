@@ -214,11 +214,18 @@ impl Mutation<'_> {
         &self.tx
     }
     pub async fn complete(self, result: Value, events: Vec<Event>) -> Result<Value> {
-        json_bound(&result)?;
+        self.write_completion(&result, &events).await?;
+        self.tx.commit().await?;
+        Ok(result)
+    }
+    /// Stage the same receipt/outbox as complete(), allowing an internal caller
+    /// to check its fixed deadline after every write and before committing.
+    pub(crate) async fn write_completion(&self, result: &Value, events: &[Event]) -> Result<()> {
+        json_bound(result)?;
         if events.len() > 256 {
             return Err(Error::Invalid("too many outbox events"));
         }
-        for event in &events {
+        for event in events {
             identifier(&event.kind, 64)?;
             json_bound(&event.payload)?;
         }
@@ -238,8 +245,7 @@ impl Mutation<'_> {
             )
             .await?;
         }
-        self.tx.commit().await?;
-        Ok(result)
+        Ok(())
     }
 }
 

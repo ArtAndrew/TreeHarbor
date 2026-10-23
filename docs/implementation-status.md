@@ -1,6 +1,6 @@
 # Implementation status
 
-Updated: 2026-10-22. This file describes implemented behavior and remaining release
+Updated: 2026-10-23. This file describes implemented behavior and remaining release
 gates. A foundation milestone does not complete either mode.
 
 Capture integration is in progress. A [selected-file capture library](capture-format-v1.md)
@@ -12,15 +12,27 @@ adapter rechecks removed runtime identity and persists a separate completion rec
 its real Linux capture test is still pending. Scoped server publication now binds an immutable declaration, proves baseline
 membership from the exact original snapshot and commits ready pins/receipts
 atomically. The node adapter connects capture to publication and supports exact
-completed-response replay. Owner HTTP/CLI seal commands, ChangeSet acceptance,
-actual Linux capture acceptance and physical workspace cleanup remain unfinished.
+completed-response replay. [Owner HTTP/CLI commands](managed-seals.md) now request,
+inspect, cancel and accept seals. Acceptance computes the exact sealed operations
+through the shared native engine, preserves original run/base lineage, enforces
+version CAS and atomically retains the result without carrying over checks.
+Actual Linux capture acceptance and physical workspace cleanup remain release gates.
 
-Local capture/publication verification: 161 ordinary tests passed; 159 explicit
+Local capture/acceptance verification: 164 ordinary tests passed; 164 explicit
 PostgreSQL/materializer/node/service tests passed with four parallel test cases.
 Seven new publication tests cover scoped baseline proofs, child-first uploads,
 restart/reclaim, exact replay, quotas, GC retention, current access fences and
 expiry inside finalization. These database tests use trusted runtime fixtures.
-They do not cover the new real-Linux capture adapter or complete sealing.
+Four additional acceptance tests cover version CAS, borrowed reservations, current
+access/epoch/drain fences, GC retention and expiry inside final commit. An actual
+CLI/server test kills the server before object publication and after commit,
+recovers the exact accepted binary/directory result and rejects forged identities
+or result bytes. Independent reservation vectors and strict wire tests are included.
+These local tests do not cover the new real-Linux capture adapter. The required
+gVisor harness now exercises two real writing agents, capture/acceptance, worker
+loss after artifact durability, markerless recovery, active-writer stop, exact
+checks/review/publication and restoration into ordinary Git. Its CI result remains
+required before treating the managed path as verified.
 
 New review increment: [immutable review diffs](review-diff.md) show an exact
 accepted ChangeSet version, prepared integration candidate or two registered
@@ -104,7 +116,8 @@ resumable blobs and server-computed result trees through HTTP/CLI. Schema9 adds
 purpose-specific upload state; accepted proposals preserve original run/base lineage.
 Local PostgreSQL/transport tests passed, including server process loss and exact
 replay. The required Linux harness also submits overlapping real managed-agent output.
-Filesystem sealing remains unfinished. Managed offline checks are described above.
+Managed filesystem sealing now has the separate acceptance path above. Managed
+offline checks are described above.
 
 Development increment: [managed AgentRun](managed-runs.md) requests, owner-bound
 status/cancellation, immutable runtime policy/placement records and terminal receipt
@@ -122,7 +135,7 @@ resource outcomes and worker-loss recovery. No complete authority mode is implie
 | Native DAG and admission | Scoped history/log/ancestry/merge-base HTTP/CLI, persisted refs/policies/queue/checks/reviews, verified candidate commits, final transactional admission and no-Git CLI/process-loss tests | General history stack rebase, automatic scheduling, full lifecycle and recovery |
 | Review diff | Read-only exact ChangeSet/candidate/revision HTTP/CLI, retained integration/policy/version/run identity, scoped GC holds, bounded byte paths and text, actual Git path oracle and restart/page/error tests | Review UI, persistent diff indexing and larger-repository profiling |
 | PostgreSQL metadata and outbox | Real database transaction/idempotency/lease tests; repository authority/epoch checks; populated schema upgrades through v13; local service pool and crash/replay | Remote service integration and full server restore |
-| Native ChangeSet intake | HTTP/CLI immutable proposals, session-owned blobs, computed versions, running/removed-run lineage, atomic pins/session completion/outbox and process-loss replay | Filesystem sealing, GitHub base synchronization, remote transport and retention |
+| Native ChangeSet intake | HTTP/CLI immutable proposals and separate ready-seal acceptance, scoped blobs, computed versions, original run lineage, atomic pins/outbox and process-loss replay | Linux capture gate, GitHub base synchronization, remote transport and retention |
 | Protected incremental source reads | Pinned sessions, verified frontiers, bounded prefix batches and descriptors surviving local GC; authenticated workspace-root sessions | Per-tenant service quotas, bulk node delivery and S3 |
 | Native file materialization | Private copies from exact snapshots, full/sparse selection, staged expansion preserving edits/deletions, bounded IO and filesystem checks; exact baseline loading and guarded atomic node publication | Runtime-proven quiescence, cache/reflink, changed-file sealing and Git-compatible format |
 | Object catalog and retention | Receipt-bound publication, typed edges, atomic persistent pins, read holds, generation-safe retirement/retry; independent reachability model | Automatic GC/reconciliation/dry-run, abandoned-upload cleanup, S3 and full restore |
@@ -133,7 +146,7 @@ resource outcomes and worker-loss recovery. No complete authority mode is implie
 | Source graph uploads | Authenticated scoped sessions, child membership, fixed deadlines/budgets, backend identity, binary HTTP/CLI, concurrent retry, restart and schema-v5 upgrade tests | Incremental reuse, streaming/batching and automatic cleanup |
 | Native directory import | Explicit selection, descriptor-relative capture, durable pack/journal v1, independent vector, actual CLI-to-server partial-upload recovery and completed replay with Git absent from PATH | Incremental reuse, automatic spool cleanup and runtime-proven snapshots |
 | Source delivery profiles | Canonical full/sparse format with independent vectors, immutable scoped definitions, workspace foreign-key binding, v4 upgrade, authenticated CLI/HTTP and exact node use | Profile retention and generation-aware expansion |
-| Workspaces and runtime | Owner-bound requests, exact source/runtime bindings, trusted actual observations, drain and terminal replay; real CLI/PostgreSQL/gVisor recovery tests | Stopped-file sealing, automatic resource release, scheduling and host replacement |
+| Workspaces and runtime | Owner-bound requests, exact source/runtime bindings, trusted actual observations, drain and terminal replay; real CLI/PostgreSQL/gVisor recovery tests; selected capture/accept API | Linux capture gate, automatic resource release, scheduling and host replacement |
 | Runtime task supervisor | Linux namespace init, privilege guards, environment clearing, guest process limit, child reaping and deadline; real gVisor CI harness | Complete workspace cleanup and production runtime provisioning |
 | Local runtime controller | Versioned immutable profiles, restricted Engine API, bounded ext4 identity, exclusive durable volume assignment and create/start/remove journal; real-runtime fault harness and managed-run adapter | Provisioning, host/engine replacement recovery and workspace cleanup |
 | Workspace preparation reservations | Operator-registered node storage, scoped job claims, immutable source/slot/attempt identity, renewal/reclaim, exact file-ready observation and drain retention; real PostgreSQL race/upgrade tests | Automatic source/slot release after runtime removal |

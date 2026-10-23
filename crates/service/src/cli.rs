@@ -559,6 +559,52 @@ enum Agent {
         #[arg(long,default_value_t=3600,value_parser=clap::value_parser!(i32).range(1..=3600))]
         ttl_seconds: i32,
     },
+    /// Stop a managed run and request capture of explicit file/subtree changes.
+    SealRequest {
+        #[command(flatten)]
+        mutation: Mutation,
+        #[arg(long)]
+        seal: Uuid,
+        #[arg(long)]
+        run: Uuid,
+        #[arg(long,value_parser=clap::value_parser!(i64).range(1..))]
+        generation: i64,
+        #[arg(long)]
+        replace: Vec<OsString>,
+        #[arg(long)]
+        delete: Vec<OsString>,
+        #[arg(long)]
+        exclude: Vec<OsString>,
+        #[arg(long, default_value_t = 100_000)]
+        max_objects: i64,
+        #[arg(long, default_value_t = 268_435_456)]
+        max_bytes: i64,
+        #[arg(long, default_value_t = 3600)]
+        ttl_seconds: i32,
+    },
+    SealStatus {
+        #[arg(long)]
+        seal: Uuid,
+    },
+    SealCancel {
+        #[command(flatten)]
+        mutation: Mutation,
+        #[arg(long)]
+        seal: Uuid,
+    },
+    /// Accept an immutable ready capture as a new ChangeSet version; no CI reuse.
+    SealAccept {
+        #[command(flatten)]
+        mutation: Mutation,
+        #[arg(long)]
+        seal: Uuid,
+        #[arg(long)]
+        changeset: Uuid,
+        #[arg(long,default_value_t=0,value_parser=clap::value_parser!(i64).range(0..))]
+        previous_version: i64,
+        #[arg(long,default_value_t=300,value_parser=clap::value_parser!(i32).range(1..=3600))]
+        ttl_seconds: i32,
+    },
     /// Reserve a change upload for an exact run and workspace generation.
     ChangeBegin {
         #[command(flatten)]
@@ -718,6 +764,46 @@ impl Agent {
                 json!({"method":"native","request":value})
             }
             Self::RepositoryInfo => json!({"method":"repository_info"}),
+            Self::SealRequest {
+                mutation,
+                seal,
+                run,
+                generation,
+                replace,
+                delete,
+                exclude,
+                max_objects,
+                max_bytes,
+                ttl_seconds,
+            } => {
+                let decode = |paths: Vec<OsString>| {
+                    paths
+                        .into_iter()
+                        .map(|p| {
+                            treeharbor_core::RepoPath::new(p.as_bytes().to_vec())
+                                .map_err(|_| Error::Config)
+                        })
+                        .collect::<Result<Vec<_>>>()
+                };
+                let selection = treeharbor_core::CaptureSelection::new(
+                    decode(replace)?,
+                    decode(delete)?,
+                    decode(exclude)?,
+                )
+                .map_err(|_| Error::Config)?;
+                let hex = |paths: &[treeharbor_core::RepoPath]| {
+                    paths
+                        .iter()
+                        .map(|p| crate::pack::hex(p.as_bytes()))
+                        .collect::<Vec<_>>()
+                };
+                json!({"method":"seal_request","key":mutation.key,"authority":Authority::from(mutation.authority).as_str(),"epoch":mutation.epoch,"seal":seal.to_string(),"run":run.to_string(),"generation":generation,
+                    "selection":{"replace_hex":hex(selection.replace()),"delete_hex":hex(selection.delete()),"exclude_hex":hex(selection.exclude())},"max_objects":max_objects,"max_bytes":max_bytes,"ttl_seconds":ttl_seconds})
+            }
+            Self::SealStatus { seal } => json!({"method":"seal_status","seal":seal.to_string()}),
+            Self::SealCancel { mutation, seal } => {
+                json!({"method":"seal_cancel","key":mutation.key,"authority":Authority::from(mutation.authority).as_str(),"epoch":mutation.epoch,"seal":seal.to_string()})
+            }
             Self::ChangeBegin {
                 mutation,
                 upload,
@@ -741,6 +827,7 @@ impl Agent {
             | Self::Diff { .. }
             | Self::NativePrepare { .. }
             | Self::RebasePrepare { .. }
+            | Self::SealAccept { .. }
             | Self::ChangePut { .. }
             | Self::ChangeSubmit { .. } => {
                 return Err(Error::Config);
@@ -1084,6 +1171,26 @@ pub async fn run(cli: Cli) -> Result<bool> {
                     ttl_seconds,
                     timeout: Duration::from_millis(timeout_ms),
                 })
+                .await?;
+                println!("{}", reply.body);
+                return Ok(reply.status.is_success());
+            }
+            if let Agent::SealAccept {
+                mutation,
+                seal,
+                changeset,
+                previous_version,
+                ttl_seconds,
+            } = action
+            {
+                let body=json!({"version":1,"tenant":credential.scope.tenant(),"repository":credential.scope.repository().to_string(),"key":mutation.key,"authority":Authority::from(mutation.authority).as_str(),"epoch":mutation.epoch,
+                    "seal":seal.to_string(),"changeset":changeset.to_string(),"previous_version":previous_version,"ttl_seconds":ttl_seconds}).to_string().into_bytes();
+                let reply = client::send_seal_accept(
+                    &socket,
+                    &credential.token,
+                    body,
+                    Duration::from_millis(timeout_ms),
+                )
                 .await?;
                 println!("{}", reply.body);
                 return Ok(reply.status.is_success());

@@ -1,9 +1,8 @@
 # Selected-file capture formats v1
 
-This is a development library primitive in `treeharbor-core` and
-`treeharbor-materializer`. It has no owner-facing seal command yet. Durable
-metadata requests and a node adapter are in development; owner transport, server
-object publication and ChangeSet acceptance are still being integrated. A
+This development format is implemented by `treeharbor-core` and
+`treeharbor-materializer`. [Managed seals](managed-seals.md) add owner commands,
+scoped object publication and separate ChangeSet acceptance. A
 successful library capture is **not** proof that an
 agent stopped, a server-accepted change, CI success or permission to merge.
 
@@ -143,7 +142,8 @@ absence by saved container ID and managed name, and rejects a successor volume
 assignment. Its removed guard retains journal/volume locks through actual blocking
 capture IO together with the node/slot guard. It does not detect arbitrary writers
 introduced by a privileged host administrator. Actual Linux acceptance of this
-new capture path is still pending; it is not exposed by an owner HTTP/CLI command.
+new capture path is a separate required CI gate; library/metadata tests alone
+do not prove it.
 
 Private records live at `NODE_ROOT/seals/SEAL_UUID/`, outside agent mounts:
 

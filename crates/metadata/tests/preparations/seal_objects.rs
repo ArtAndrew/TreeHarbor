@@ -1,4 +1,6 @@
 //! Real database publication tests; no claim of real filesystem/runtime capture.
+#[path = "seal_acceptance.rs"]
+mod acceptance;
 use super::*;
 use std::collections::BTreeMap;
 use treeharbor_core::{ChangeOperation, Entry, EntryMode, EntryRef, Name};

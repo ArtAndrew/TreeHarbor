@@ -73,6 +73,7 @@ impl Permission {
             | "change.begin.v1"
             | "change.abort.v1"
             | "change.submit.v1"
+            | "workspace.seal.accept.v1"
             | "change.rebase.start.v1"
             | "change.rebase.prepare.v1"
             | "change.rebase.cancel.v1" => Ok(Self::ChangeWrite),

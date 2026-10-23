@@ -124,3 +124,51 @@ BEGIN
 END $$;
 CREATE TRIGGER th_seal_item_identity BEFORE UPDATE ON th_seal_items
     FOR EACH ROW EXECUTE FUNCTION th_seal_item_immutable();
+
+-- Owner acceptance is distinct from capture. A ready seal may outlive capture's
+-- deadline; each bounded computation has its own immutable request and deadline.
+CREATE TABLE th_seal_acceptances (
+    tenant text NOT NULL,
+    repository uuid NOT NULL,
+    operation_key text NOT NULL CHECK(length(operation_key) BETWEEN 1 AND 128),
+    request_digest bytea NOT NULL CHECK(octet_length(request_digest)=32),
+    principal text NOT NULL,
+    seal uuid NOT NULL,
+    changeset uuid NOT NULL,
+    previous_version bigint NOT NULL CHECK(previous_version>=0 AND previous_version<9223372036854775807),
+    authority text NOT NULL CHECK(authority IN ('connected','standalone')),
+    epoch bigint NOT NULL CHECK(epoch>0),
+    expires_at timestamptz NOT NULL,
+    backend text,
+    reserved_objects bigint NOT NULL DEFAULT 0 CHECK(reserved_objects BETWEEN 0 AND 4096),
+    reserved_bytes bigint NOT NULL DEFAULT 0 CHECK(reserved_bytes BETWEEN 0 AND 134217728),
+    state text NOT NULL DEFAULT 'preparing' CHECK(state IN ('preparing','completed')),
+    completed_at timestamptz,
+    PRIMARY KEY(tenant,repository,operation_key),
+    FOREIGN KEY(tenant,repository,seal) REFERENCES th_workspace_seals(tenant,repository,seal),
+    CHECK((state='completed')=(completed_at IS NOT NULL))
+);
+CREATE TABLE th_seal_accept_objects (
+    tenant text NOT NULL,
+    repository uuid NOT NULL,
+    operation_key text NOT NULL,
+    digest bytea NOT NULL CHECK(octet_length(digest)=32),
+    generation bigint NOT NULL CHECK(generation>0),
+    hold_token uuid NOT NULL,
+    kind smallint NOT NULL CHECK(kind BETWEEN 2 AND 4),
+    length bigint NOT NULL CHECK(length BETWEEN 22 AND 67108886),
+    PRIMARY KEY(tenant,repository,operation_key,digest),
+    FOREIGN KEY(tenant,repository,operation_key) REFERENCES th_seal_acceptances(tenant,repository,operation_key)
+);
+CREATE FUNCTION th_seal_acceptance_immutable() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    IF ROW(NEW.tenant,NEW.repository,NEW.operation_key,NEW.request_digest,NEW.principal,NEW.seal,NEW.changeset,NEW.previous_version,NEW.authority,NEW.epoch,NEW.expires_at)
+       IS DISTINCT FROM ROW(OLD.tenant,OLD.repository,OLD.operation_key,OLD.request_digest,OLD.principal,OLD.seal,OLD.changeset,OLD.previous_version,OLD.authority,OLD.epoch,OLD.expires_at)
+       OR (OLD.backend IS NOT NULL AND NEW.backend IS DISTINCT FROM OLD.backend)
+       OR NEW.reserved_objects<OLD.reserved_objects OR NEW.reserved_bytes<OLD.reserved_bytes
+       OR (OLD.state='completed' AND NEW IS DISTINCT FROM OLD)
+    THEN RAISE EXCEPTION 'immutable seal acceptance' USING ERRCODE='23514'; END IF;
+    RETURN NEW;
+END $$;
+CREATE TRIGGER th_seal_acceptance_identity BEFORE UPDATE ON th_seal_acceptances
+    FOR EACH ROW EXECUTE FUNCTION th_seal_acceptance_immutable();
