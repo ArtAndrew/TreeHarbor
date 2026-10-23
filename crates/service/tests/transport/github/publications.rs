@@ -1,5 +1,7 @@
 use super::*;
 use std::path::Path;
+#[path = "publication_driver.rs"]
+mod driver;
 
 pub(super) async fn exercise(
     f: &mut Fixture,
@@ -96,6 +98,10 @@ pub(super) async fn exercise(
     let replay = result(request(f, &begin));
     assert_eq!(replay["dispatch_granted"], false);
     assert_eq!(replay["receipt"]["state"], "attempting");
+    let eligible = json!({"action":"publication_dispatch_context","epoch":1,"publication":id,"attempt":attempt.to_string()});
+    let eligibility = result(request(f, &eligible));
+    assert_eq!(eligibility["state"], "attempting");
+    assert!(eligibility.get("dispatch_granted").is_none());
     let mut another = begin.clone();
     another["key"] = json!("pub-begin-again");
     let credential = f.credential();
@@ -120,6 +126,7 @@ pub(super) async fn exercise(
     assert_eq!(cancelled["cancel_requested"], true);
     assert_eq!(cancelled["state"], "attempting");
     f.credential_path = publisher.to_owned();
+    assert!(!request(f, &eligible).status.success());
     let now: i64 = f
         .sql
         .query_one(
@@ -136,11 +143,55 @@ pub(super) async fn exercise(
     observation["key"] = json!("pub-observed");
     observation["report"]["outcome"] = json!("observed");
     observation["report"]["remote_revision"] = mapping["git_revision"].clone();
-    let observed = result(request(f, &observation));
+    let context = result(request(
+        f,
+        &json!({"action":"publication_context","epoch":1,"publication":id}),
+    ));
+    let state = f.dir.path().join("publisher-state");
+    fs::create_dir(&state).unwrap();
+    fs::set_permissions(&state, fs::Permissions::from_mode(0o700)).unwrap();
+    driver::intent(f, &state, &context);
+    // Trusted host fixture: retain an observation before submitting it, then
+    // run the actual publisher CLI with no Git, App configuration or source pack.
+    // This simulates loss after a durable local observation, not a live App.
+    let pending = json!({"version":1,"key":"github-publish-report-fixture","report":observation["report"],"token_expires_at":null});
+    files::write_private(
+        &state.join("report-0000.json"),
+        pending.to_string().as_bytes(),
+    )
+    .unwrap();
+    let replay = driver::cli(
+        f,
+        publication,
+        &state,
+        &f.dir.path().join("missing-app.json"),
+    )
+    .output()
+    .unwrap();
+    assert!(
+        replay.status.success(),
+        "{}",
+        String::from_utf8_lossy(&replay.stderr)
+    );
+    let observed: Value = serde_json::from_slice(&replay.stdout).unwrap();
     assert_eq!(observed["state"], "observed");
     assert_eq!(observed["merge_authorized"], false);
     assert_eq!(observed["cancel_requested"], true);
-    assert_eq!(result(request(f, &observation)), observed);
+    assert!(state.join("ack-0000.json").is_file());
+    assert_eq!(observed["observation"]["token_revoked"], false);
+    let replay = driver::cli(
+        f,
+        publication,
+        &f.dir.path().join("missing-state"),
+        &f.dir.path().join("missing-app.json"),
+    )
+    .output()
+    .unwrap();
+    assert!(replay.status.success());
+    assert_eq!(
+        serde_json::from_slice::<Value>(&replay.stdout).unwrap()["state"],
+        "observed"
+    );
     assert_eq!(
         f.sql
             .query_one(
@@ -158,4 +209,6 @@ pub(super) async fn exercise(
         &json!({"action":"publication_status","epoch":1,"publication":id}),
     ));
     assert_eq!(status["state"], "observed");
+    #[cfg(target_os = "linux")]
+    driver::lost_dispatch(f, server, owner, publisher, projection).await;
 }

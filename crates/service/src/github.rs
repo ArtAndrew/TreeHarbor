@@ -12,9 +12,28 @@ use treeharbor_github::{AppCredentials, Connection, RepositoryBinding};
 use uuid::Uuid;
 mod import;
 pub(crate) mod projection;
+mod publish;
 
 #[derive(Subcommand)]
 pub enum Action {
+    /// Publish an owner-selected projection, or reconcile its sole previous attempt.
+    Publish {
+        #[arg(long)]
+        config: PathBuf,
+        #[arg(long)]
+        socket: PathBuf,
+        #[arg(long)]
+        credential_file: PathBuf,
+        #[arg(long)]
+        publication: Uuid,
+        #[arg(long,value_parser=clap::value_parser!(i64).range(1..))]
+        epoch: i64,
+        /// Existing private directory; retain it across interruption and retries.
+        #[arg(long)]
+        state: PathBuf,
+        #[arg(long, default_value = "/usr/bin/git")]
+        git: PathBuf,
+    },
     /// Prepare an owner's exact accepted ChangeSet for optional GitHub publication.
     Prepare {
         #[arg(long)]
@@ -138,6 +157,26 @@ fn matches_config(config: &Config, spec: &treeharbor_metadata::github::BindingSp
 }
 pub async fn run(action: Action) -> Result<bool> {
     match action {
+        Action::Publish {
+            config,
+            socket,
+            credential_file,
+            publication,
+            epoch,
+            state,
+            git,
+        } => {
+            publish::run(publish::Request {
+                config,
+                socket,
+                credential_file,
+                id: publication,
+                epoch,
+                state,
+                git,
+            })
+            .await
+        }
         Action::Prepare {
             socket,
             credential_file,

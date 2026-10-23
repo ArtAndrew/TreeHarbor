@@ -109,6 +109,27 @@ async fn publication_binds_owner_source_and_preserves_facts_without_authorizing_
             .await
             .unwrap();
     assert_eq!(first["dispatch_granted"], true);
+    let current =
+        p.f.db
+            .github_publication_dispatch_context(&p.bridge, 1, id, attempt)
+            .await
+            .unwrap();
+    assert_eq!(current["state"], "attempting");
+    assert!(current.get("dispatch_granted").is_none());
+    for invalid in [Uuid::nil(), Uuid::new_v4()] {
+        assert!(
+            p.f.db
+                .github_publication_dispatch_context(&p.bridge, 1, id, invalid)
+                .await
+                .is_err()
+        );
+    }
+    assert!(
+        p.f.db
+            .github_publication_dispatch_context(&p.reader, 1, id, attempt)
+            .await
+            .is_err()
+    );
     let retry =
         p.f.db
             .begin_github_publication(&p.bridge, &cmd("pub-begin"), id, attempt)
@@ -151,6 +172,12 @@ async fn publication_binds_owner_source_and_preserves_facts_without_authorizing_
             .await
             .unwrap();
     assert_eq!(done["state"], "observed");
+    assert!(
+        p.f.db
+            .github_publication_dispatch_context(&p.bridge, 1, id, attempt)
+            .await
+            .is_err()
+    );
     assert_eq!(done["merge_authorized"], false);
     assert_eq!(done["observation"]["token_revoked"], false);
     assert_eq!(
@@ -271,99 +298,114 @@ async fn publication_claim_is_one_shot_and_cancel_does_not_erase_an_inflight_eff
 #[tokio::test]
 #[ignore = "requires PostgreSQL; current version, cancellation, assignment, credentials and epoch fence dispatch"]
 async fn publication_dispatch_rejects_changed_context() {
-    for fence in [
-        "version",
-        "projection",
-        "binding",
-        "grant",
-        "epoch",
-        "cancel",
-        "assignment",
-        "credential",
-    ] {
-        let mut p = Projection::new().await;
-        let (id, _, value) = requested(&mut p).await;
-        let m = mapping(&value);
-        p.f.db
-            .prepare_github_publication(&p.bridge, &cmd("map"), id, &m)
-            .await
-            .unwrap();
-        let auth = if fence == "assignment" {
-            actor(&mut p.f, "other", K::Bridge, &[P::HostPublish]).await
-        } else if fence == "credential" {
-            let token =
+    for recheck in [false, true] {
+        for fence in [
+            "version",
+            "projection",
+            "binding",
+            "grant",
+            "epoch",
+            "cancel",
+            "assignment",
+            "credential",
+        ] {
+            let mut p = Projection::new().await;
+            let (id, _, value) = requested(&mut p).await;
+            let m = mapping(&value);
+            p.f.db
+                .prepare_github_publication(&p.bridge, &cmd("map"), id, &m)
+                .await
+                .unwrap();
+            let attempt = Uuid::new_v4();
+            if recheck {
                 p.f.db
+                    .begin_github_publication(&p.bridge, &cmd("original-dispatch"), id, attempt)
+                    .await
+                    .unwrap();
+            }
+            let auth = if fence == "assignment" {
+                actor(&mut p.f, "other", K::Bridge, &[P::HostPublish]).await
+            } else if fence == "credential" {
+                let token = p
+                    .f
+                    .db
                     .issue_repository_token(&p.f.scope, "bridge", &[P::HostPublish], 60, "operator")
                     .await
                     .unwrap();
-            let auth =
+                let auth =
+                    p.f.db
+                        .authorize(&token.secret, &p.f.scope, P::HostPublish)
+                        .await
+                        .unwrap();
                 p.f.db
-                    .authorize(&token.secret, &p.f.scope, P::HostPublish)
+                    .revoke_repository_token(&p.f.scope, token.id, "operator")
                     .await
                     .unwrap();
-            p.f.db
-                .revoke_repository_token(&p.f.scope, token.id, "operator")
-                .await
-                .unwrap();
-            auth
-        } else {
-            p.bridge.clone()
-        };
-        match fence {
-            "version" => p.new_version().await,
-            "projection" => {
-                p.f.db
-                    .cancel_github_projection(&p.owner, &cmd("cancel-projection"), p.id)
-                    .await
-                    .unwrap();
+                auth
+            } else {
+                p.bridge.clone()
+            };
+            match fence {
+                "version" => p.new_version().await,
+                "projection" => {
+                    p.f.db
+                        .cancel_github_projection(&p.owner, &cmd("cancel-projection"), p.id)
+                        .await
+                        .unwrap();
+                }
+                "binding" => {
+                    p.f.db
+                        .revoke_github(&p.owner, &cmd("revoke-binding"), p.binding)
+                        .await
+                        .unwrap();
+                }
+                "grant" => {
+                    p.f.db
+                        .set_repository_access(&p.f.scope, "bridge", &[P::HostRead], "operator")
+                        .await
+                        .unwrap();
+                }
+                "epoch" => {
+                    connection(&p.f.schema)
+                        .await
+                        .execute("UPDATE th_repositories SET epoch=2", &[])
+                        .await
+                        .unwrap();
+                }
+                "cancel" => {
+                    p.f.db
+                        .cancel_github_publication(&p.owner, &cmd("cancel-publication"), id)
+                        .await
+                        .unwrap();
+                }
+                _ => {}
             }
-            "binding" => {
+            let rejected = if recheck {
                 p.f.db
-                    .revoke_github(&p.owner, &cmd("revoke-binding"), p.binding)
+                    .github_publication_dispatch_context(&auth, 1, id, attempt)
                     .await
-                    .unwrap();
-            }
-            "grant" => {
+                    .is_err()
+            } else {
                 p.f.db
-                    .set_repository_access(&p.f.scope, "bridge", &[P::HostRead], "operator")
+                    .begin_github_publication(&auth, &cmd("begin"), id, Uuid::new_v4())
                     .await
-                    .unwrap();
-            }
-            "epoch" => {
+                    .is_err()
+            };
+            assert!(rejected, "{fence}, recheck={recheck}");
+            assert_eq!(
                 connection(&p.f.schema)
                     .await
-                    .execute("UPDATE th_repositories SET epoch=2", &[])
+                    .query_one(
+                        "SELECT count(*) FROM th_github_publications WHERE attempt IS NOT NULL",
+                        &[]
+                    )
                     .await
-                    .unwrap();
-            }
-            "cancel" => {
-                p.f.db
-                    .cancel_github_publication(&p.owner, &cmd("cancel-publication"), id)
-                    .await
-                    .unwrap();
-            }
-            _ => {}
+                    .unwrap()
+                    .get::<_, i64>(0),
+                i64::from(recheck)
+            );
+            cleanup(&p.f.schema).await;
         }
-        assert!(
-            p.f.db
-                .begin_github_publication(&auth, &cmd("begin"), id, Uuid::new_v4())
-                .await
-                .is_err(),
-            "{fence}"
-        );
-        assert_eq!(
-            connection(&p.f.schema)
-                .await
-                .query_one(
-                    "SELECT count(*) FROM th_github_publications WHERE attempt IS NOT NULL",
-                    &[]
-                )
-                .await
-                .unwrap()
-                .get::<_, i64>(0),
-            0
-        );
-        cleanup(&p.f.schema).await;
     }
 }
 

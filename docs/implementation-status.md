@@ -248,7 +248,7 @@ resource outcomes and worker-loss recovery. No complete authority mode is implie
 
 | Component | Evidence | Remaining |
 |---|---|---|
-| GitHub App connection/import/projection | Scoped read token, durable bindings and exact owner requests, isolated download, resumable import, accepted-version projection/export, exact-branch transport, durable publication intents/mappings/one-shot dispatch and recovery observations | Installed-App evidence, network publication driver, incremental reuse, webhooks, PR/check/merge queue and real-host confirmation |
+| GitHub App connection/import/projection | Scoped read token, durable bindings and exact owner requests, isolated download, resumable import, accepted-version projection/export, exact-branch transport, durable publication intents and trusted publication/recovery CLI | Installed-App evidence, incremental reuse, webhooks, PR/check/merge queue and real-host confirmation |
 | Canonical SHA-256 object format | Versioned framing, independent golden vectors, strict decoder | Compatibility policy for later formats |
 | Immutable directory trees and operations | Exact expected-before checks, canonical subtree operations v2, bounded structural diff, structural sharing, explicit deletes; native merge and Git reference matrix | General history rebase, broader rename/base support, live-server Git interop |
 | Local object store | Atomic no-clobber writes, digest verification, file/directory fsync, tenant directories, physical generations and upload receipts | S3, backup/restore, kill fault campaign |
@@ -657,10 +657,9 @@ redirect refusal, modified artifact, deadline and parent-SIGKILL cleanup. These
 do not establish installed-App or real GitHub queue acceptance. The required five
 checks must pass on the exact PR head before merge.
 
-No service endpoint or public CLI bypasses durable publication authorization:
-owner intents/outbox integration, PR/check/queue operations, persisted recovery and
-real installed-App evidence remain unfinished. The library alone does not make
-Connected complete. See [branch transport](github-publisher-transport.md).
+The CLI joins transport to durable owner authorization and persisted reports.
+PR/check/queue operations and real installed-App evidence remain unfinished.
+See [branch transport](github-publisher-transport.md).
 
 ## Durable publication intent and dispatch ledger
 
@@ -681,6 +680,18 @@ begin commit, then verifies historical recovery without redispatch permission.
 Its Git mapping comes from a real self-contained Git export; its upstream reports
 are explicitly trusted fixtures, not installed-App evidence.
 
-The network driver connecting these records to branch transport, PR/check/queue,
-automatic uncertain-result reconciliation, cleanup/cutover and real installed-App
-acceptance remain required. See [publication requests](github-publications.md).
+The trusted `github publish` CLI now connects these records to branch transport.
+It binds a private journal to the exact intent, records mapping/attempt before
+claim, and invokes the write adapter only for a fresh dispatch. Current eligibility
+is checked before App token creation and before push. Replays use read-only branch
+observation, including without Git/source packs. Reports are durable before service
+submission, and terminal receipts require no App credentials. Unknown write-token
+cleanup cannot be cleared by revoking a later read token.
+
+Journal/guard tests and actual CLI/service recovery tests cover retained reports,
+cancelled attempts, exact mappings and missing local/App files. The Linux transport
+test additionally drops the actual CLI's begin response after commit, kills the
+process, restarts the server and checks that a saved observation recovers without
+another dispatch. Its host observation is explicitly a fixture. Full installed-App
+publication, PR/check/queue, automatic reconciliation, cleanup and cutover remain
+required. See [publication requests](github-publications.md).

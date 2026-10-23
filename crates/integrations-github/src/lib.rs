@@ -98,6 +98,8 @@ pub enum Stage {
 /// Never retains response bodies, URLs, private keys, tokens or upstream errors.
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum Error {
+    #[error("TreeHarbor publication eligibility could not be confirmed; no new push was started")]
+    PublicationStopped,
     #[error("GitHub branch publication may have happened; reconcile its exact ref before retry")]
     PublicationUnknown,
     #[error("GitHub service branch differs from the explicit expected head")]

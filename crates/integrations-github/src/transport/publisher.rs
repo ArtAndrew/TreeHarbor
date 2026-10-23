@@ -165,6 +165,23 @@ impl Connection {
         prepared: Prepared,
         expected: Option<GitOid>,
     ) -> Result<BranchResult> {
+        self.publish_branch_guarded(binding, worker, prepared, expected, || async { Ok(()) })
+            .await
+    }
+    /// Recheck the service's current fences before minting and before push. The
+    /// callback does not replace the caller's durable, one-shot dispatch grant.
+    pub async fn publish_branch_guarded<G, F>(
+        &self,
+        binding: &RepositoryBinding,
+        worker: PathBuf,
+        prepared: Prepared,
+        expected: Option<GitOid>,
+        mut eligible: G,
+    ) -> Result<BranchResult>
+    where
+        G: FnMut() -> F,
+        F: std::future::Future<Output = Result<()>>,
+    {
         binding.validate()?;
         let expected_sha = expected.map(sha).transpose()?;
         let new_sha = sha(prepared.git_oid())?;
@@ -178,10 +195,10 @@ impl Connection {
             .await
             .map_err(|_| Error::Deadline)?
             .map_err(|_| Error::Configuration)?;
-        let (installation, token) = tokio::time::timeout(
-            PROBE_TIMEOUT,
-            self.mint_for(binding, wire::Capability::Branch),
-        )
+        let (installation, token) = tokio::time::timeout(PROBE_TIMEOUT, async {
+            eligible().await?;
+            self.mint_for(binding, wire::Capability::Branch).await
+        })
         .await
         .map_err(|_| Error::Deadline)??;
         let attempt = async {
@@ -209,6 +226,7 @@ impl Connection {
             }
             let secret = token.token.copy_for_git();
             let target = binding.clone();
+            eligible().await?;
             let push = tokio::task::spawn_blocking(move || {
                 let _slot = slot;
                 prepared.push(Push {

@@ -3,8 +3,9 @@
 Development coordinator API. An owner can retain a publication request for an
 exact [ready projection](github-projection.md); an assigned bridge can record its
 verified mapping, claim one attempt and report observations after a restart.
-These commands do not themselves contact GitHub. The durable network driver,
-PR/check/merge-queue workflow and installed-App acceptance are still pending.
+The coordinator commands do not themselves contact GitHub. The trusted publisher
+command below drives the actual branch transport. PR/check/merge-queue workflow
+and installed-App acceptance are still pending.
 
 Upgrade the [local service](local-service.md) to schema 18 with its admin migration
 command. Existing sources, bindings, credentials and ready projections are preserved.
@@ -72,6 +73,7 @@ version/tenant/repository/authentication envelope.
 | `publication_context` | None | Retained intent plus pinned binding configuration; no write permission |
 | `publication_prepare` | `mapping: {branch_id, native_revision, git_revision}` | Persisted exact mapping, `prepared` |
 | `publication_begin` | Fresh non-nil `attempt` UUID | Durable `receipt` plus one-shot `dispatch_granted` flag |
+| `publication_dispatch_context` | Original `attempt` UUID | Current eligibility check for the active dispatcher; never a dispatch grant |
 | `publication_report` | `report` described below | Persisted observation and resulting state |
 
 Preparation must use the trusted [branch transport](github-publisher-transport.md)
@@ -106,6 +108,59 @@ trusted driver that finished without invoking push; an error or missing remote r
 is not that evidence. It cannot resolve an already uncertain attempt. The driver
 must validate the upstream binding and branch before translating a transport result
 into a report. Reports are trusted bridge evidence, not direct provider attestations.
+
+## Publisher command
+
+On a trusted Linux bridge host, use the private App configuration described in
+[GitHub connection](github-connection.md). Its pinned repository and App identity
+must match the owner binding. The App needs Contents-write for branch publication;
+read-only source credentials are unchanged. The service credential must belong to
+the assigned Bridge and grant `host.publish`.
+
+```sh
+install -d -m 700 /private/treeharbor/publications/change-1
+treeharbor github publish \
+  --socket /private/treeharbor/service.sock \
+  --credential-file /private/treeharbor/publisher.json \
+  --config /private/treeharbor/github-app.json \
+  --publication 33333333-3333-4333-8333-333333333333 --epoch 1 \
+  --state /private/treeharbor/publications/change-1 --git /usr/bin/git
+```
+
+The command downloads the exact projection, verifies the native pack, derives
+the Git bundle and records its mapping before claiming the sole attempt. A private
+OS lock prevents concurrent drivers sharing that directory. Other directories
+cannot claim another attempt on the server. New dispatch requires a fresh grant;
+current service eligibility is checked before token creation and again before push.
+These checks cannot make cancellation atomic with GitHub's external operation.
+
+Run the same command after interruption. An existing attempt is reconciled by
+reading its exact branch; the command does not retry the push. This recovery path
+works on Linux and macOS without Git or the source pack. It still needs valid App
+configuration for a new read, and current service authorization. Projection expiry,
+version replacement or revoked binding do not erase historical recovery context.
+A retained terminal result or pending local observation can be recovered without
+App configuration. Terminal status alone does not prove the branch is unchanged now.
+
+The state directory retains immutable intent, mapping, attempt, report and report
+acknowledgement files. Keep it outside agent workspaces and backup it with bridge
+state. Packs and temporary projection artifacts may remain after process death;
+automatic cleanup is not implemented. Reports are capped at 1024 per directory;
+this is a local safety bound, not a license limit. Do not modify journal records to
+force a retry. No key or temporary access token is saved there.
+
+Output is the current publication context. Exit zero means `observed`; uncertain,
+cancelled or not-sent outcomes return nonzero. An uncertain result may reflect a
+completed remote effect. Inspect status and rerun for observation, preserving the
+original publication identity. Diagnostic errors do not contain upstream bodies
+or tokens. A different observed head is retained as a fact, not overwritten.
+
+Failed or unknown token cleanup remains separate from branch success. Revoking a
+new read token cannot prove the previous write token was revoked; the driver keeps
+`token_revoked: false` in that case. Known token expiry is retained locally, but
+an interrupted token creation may leave expiry unknown. Operator/provider cleanup
+and expiry reconciliation remain required; the command does not claim that an
+unknown token has been revoked.
 
 ## Cancellation, recovery and retention
 

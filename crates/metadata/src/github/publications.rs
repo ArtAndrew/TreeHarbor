@@ -164,6 +164,30 @@ async fn complete_fresh(
     Ok(result)
 }
 impl Metadata {
+    /// Eligibility recheck for the original live dispatcher, never another grant.
+    pub async fn github_publication_dispatch_context(
+        &mut self,
+        auth: &Authorization,
+        epoch: i64,
+        id: Uuid,
+        attempt: Uuid,
+    ) -> Result<Value> {
+        uuid(id)?;
+        uuid(attempt)?;
+        let tx = self.client.transaction().await?;
+        settings(&tx).await?;
+        repository_lock(&tx, auth.scope(), false).await?;
+        let row = fresh(&tx, auth, epoch, id, Permission::HostPublish).await?;
+        if row.get::<_, String>("state") != "attempting"
+            || row.get::<_, Option<Uuid>>("attempt") != Some(attempt)
+        {
+            return Err(Error::HostPublicationState);
+        }
+        let result = describe(&row)?;
+        fresh(&tx, auth, epoch, id, Permission::HostPublish).await?;
+        tx.commit().await?;
+        Ok(result)
+    }
     pub async fn request_github_publication(
         &mut self,
         auth: &Authorization,
