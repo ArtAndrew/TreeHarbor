@@ -5,7 +5,7 @@ use treeharbor_core::{ObjectId, RevisionRef};
 mod types;
 pub use types::{ExpectedPull, PullIdentity, PullReport, PullSnapshot, PullSpec, PullTarget};
 
-async fn load(tx: &Transaction<'_>, s: &Scope, id: Uuid) -> Result<Row> {
+pub(super) async fn load(tx: &Transaction<'_>, s: &Scope, id: Uuid) -> Result<Row> {
     tx.query_opt("SELECT *,expires_at>clock_timestamp() AS unexpired,(extract(epoch from expires_at)*1000)::bigint AS deadline,(extract(epoch from started_at)*1000)::bigint AS started,(extract(epoch from clock_timestamp())*1000)::bigint AS now_ms FROM th_github_pulls WHERE tenant=$1 AND repository=$2 AND pull=$3",&[&s.tenant(),&s.repository(),&id]).await?.ok_or(Error::NotFound)
 }
 fn target(row: &Row) -> Result<PullTarget> {

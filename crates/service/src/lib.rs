@@ -25,7 +25,7 @@ mod source_read;
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error(
-        "publication state does not match the retained request; preserve the state directory and inspect publication status"
+        "GitHub operation state does not match the retained request; preserve the state directory and inspect that operation's status"
     )]
     PublicationState,
     #[error("GitHub binding operation rejected by the TreeHarbor server (HTTP {status})")]

@@ -64,8 +64,10 @@ in **Standalone** mode. Both share one Rust engine.
 > [`github publish` command](docs/github-publications.md#publisher-command) joins
 > these records to branch transport; real installed-App acceptance remains pending.
 > [Pull request delivery](docs/github-pulls.md) adds explicit PR creation and text
-> updates with retained identities and recovery after a lost response. Exact GitHub
-> checks, merge-queue integration and installed-App acceptance remain pending.
+> updates with retained identities and recovery after a lost response.
+> [Check observations](docs/github-inspections.md) capture selected App-issued checks
+> on the exact PR head and detect head/base/ruleset drift. Full policy admission,
+> merge-group checks, queue integration and installed-App acceptance remain pending.
 > Neither end-to-end mode is released. No packaged installation is available yet.
 > See [implementation status](docs/implementation-status.md) for evidence and gaps.
 

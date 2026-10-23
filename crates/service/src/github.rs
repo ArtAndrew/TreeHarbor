@@ -11,12 +11,29 @@ use std::time::Duration;
 use treeharbor_github::{AppCredentials, Connection, RepositoryBinding};
 use uuid::Uuid;
 mod import;
+mod inspections;
 pub(crate) mod projection;
 mod publish;
 mod pulls;
 
 #[derive(Subcommand)]
 pub enum Action {
+    /// Capture exact selected PR checks and active rulesets; does not authorize merge.
+    Inspect {
+        #[arg(long)]
+        config: PathBuf,
+        #[arg(long)]
+        socket: PathBuf,
+        #[arg(long)]
+        credential_file: PathBuf,
+        #[arg(long)]
+        inspection: Uuid,
+        #[arg(long,value_parser=clap::value_parser!(i64).range(1..))]
+        epoch: i64,
+        /// Existing private directory; retain it for receipt recovery.
+        #[arg(long)]
+        state: PathBuf,
+    },
     /// Create/update an owner-selected PR, or reconcile its previous attempt.
     Pull {
         #[arg(long)]
@@ -174,6 +191,24 @@ fn matches_config(config: &Config, spec: &treeharbor_metadata::github::BindingSp
 }
 pub async fn run(action: Action) -> Result<bool> {
     match action {
+        Action::Inspect {
+            config,
+            socket,
+            credential_file,
+            inspection,
+            epoch,
+            state,
+        } => {
+            inspections::run(inspections::Request {
+                config,
+                socket,
+                credential_file,
+                id: inspection,
+                epoch,
+                state,
+            })
+            .await
+        }
         Action::Pull {
             config,
             socket,

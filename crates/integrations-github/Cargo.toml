@@ -9,6 +9,8 @@ authors.workspace = true
 publish.workspace = true
 
 [dependencies]
+sha2.workspace = true
+treeharbor-github-contract.workspace = true
 reqwest = { version = "=0.13.5", default-features = false, features = ["rustls", "json"] }
 jsonwebtoken = { version = "=11.1.0", default-features = false, features = ["use_pem", "aws_lc_rs"] }
 time = { version = "0.3", features = ["parsing", "formatting"] }

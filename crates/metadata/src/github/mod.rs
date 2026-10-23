@@ -3,8 +3,10 @@
 pub(crate) mod imports;
 pub(crate) mod projections;
 pub use projections::ProjectionSpec;
+mod inspections;
 mod publications;
 mod pulls;
+pub use inspections::InspectionSpec;
 pub use publications::{
     PublicationMapping, PublicationOutcome, PublicationReport, PublicationSpec,
 };

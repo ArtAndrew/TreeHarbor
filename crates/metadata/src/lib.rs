@@ -46,6 +46,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/017_github_projections.sql"),
     include_str!("../migrations/018_github_publications.sql"),
     include_str!("../migrations/019_github_pulls.sql"),
+    include_str!("../migrations/020_github_inspections.sql"),
 ];
 const MAX_JSON: usize = 1024 * 1024;
 
@@ -113,6 +114,8 @@ pub enum Error {
     HostPublicationState,
     #[error("GitHub pull request intent, identity or attempt is no longer usable")]
     HostPullState,
+    #[error("GitHub inspection is no longer collectable or report does not match its request")]
+    HostInspectionState,
 }
 pub type Result<T> = std::result::Result<T, Error>;
 

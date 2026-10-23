@@ -3,6 +3,28 @@
 Updated: 2026-10-23. This file describes implemented behavior and remaining release
 gates. A foundation milestone does not complete either mode.
 
+New [exact GitHub check observations](github-inspections.md) provide an owner
+request, assigned read-only bridge, typed capture and recoverable `github inspect`
+command. Check names and App IDs are pinned to the exact published head. PR head,
+base and active ruleset snapshots are compared before/after capture. Missing,
+ambiguous, rerunning or non-success results never become selected success. These
+are historical observations, not complete host-policy verification or permission
+to merge; legacy protection/statuses and merge-group validation remain distinct.
+
+Schema20 preserves existing PR/publication/source records and grants. A shared pure
+Rust contract evaluates reports without introducing HTTP/JWT into metadata. The
+inspection deadline is independent of earlier branch delivery; current version,
+projection cancellation, binding, credential and epoch still fence collection.
+Capture/report replay, source staleness, populated upgrade and actual CLI/server
+process-loss tests use explicit provider fixtures. Actual installed-App, queue,
+full both-mode lifecycle and installable release gates remain open.
+
+Local verification for this inspection increment: 220 ordinary tests and 221
+explicit PostgreSQL/materializer/node/service tests passed. Six final focused
+inspection tests and the actual CLI/server recovery test passed after historical
+receipt handling was finalized. Formatting and strict all-target Clippy passed.
+Required Linux/macOS, PostgreSQL and real-runtime CI remain mandatory before merge.
+
 New [GitHub pull request delivery](github-pulls.md) connects an owner-selected
 observed branch publication to PR creation or explicit title/body updates. Schema
 19 retains immutable intent/lineage/full-graph pins, one-shot dispatch, scoped

@@ -31,7 +31,7 @@ fn spec(publication: Uuid) -> PullSpec {
         ttl_seconds: 60,
     }
 }
-async fn requested(p: &mut Projection) -> (Uuid, PullSpec, Value) {
+pub(super) async fn requested(p: &mut Projection) -> (Uuid, PullSpec, Value) {
     let publication = published(p).await;
     let id = Uuid::new_v4();
     let spec = spec(publication);
@@ -42,7 +42,7 @@ async fn requested(p: &mut Projection) -> (Uuid, PullSpec, Value) {
             .unwrap();
     (id, spec, result)
 }
-async fn report(p: &Projection, attempt: Uuid, value: &Value) -> PullReport {
+pub(super) async fn report(p: &Projection, attempt: Uuid, value: &Value) -> PullReport {
     let t: PullTarget = serde_json::from_value(value["target"].clone()).unwrap();
     let fixture: Value =
         serde_json::from_str(include_str!("../fixtures/github-bind-v1.json")).unwrap();
@@ -507,6 +507,18 @@ async fn pull_upgrade_preserves_observed_publication_and_export() {
             .get::<_, i64>(0),
         0
     );
+    assert_eq!(
+        raw.query_one("SELECT count(*) FROM th_github_inspections", &[])
+            .await
+            .unwrap()
+            .get::<_, i64>(0),
+        0
+    );
+    raw.batch_execute(
+        "DROP TABLE th_github_inspections; DROP FUNCTION th_github_inspection_immutable()",
+    )
+    .await
+    .unwrap();
     raw.batch_execute("DROP TABLE th_github_pulls; DROP FUNCTION th_github_pull_immutable()")
         .await
         .unwrap();

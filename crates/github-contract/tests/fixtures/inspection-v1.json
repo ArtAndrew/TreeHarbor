@@ -1,0 +1,90 @@
+{
+  "target": {
+    "repository_id": 11,
+    "pull_number": 17,
+    "pull_node": "PR_test_17",
+    "head_ref": "treeharbor/04040404040404040404040404040404",
+    "base_ref": "main",
+    "head_revision": "git:sha1:1111111111111111111111111111111111111111",
+    "required": [
+      {
+        "name": "CI / build",
+        "app_id": 7
+      }
+    ]
+  },
+  "report": {
+    "version": 1,
+    "started_at_unix_ms": 1000,
+    "finished_at_unix_ms": 2000,
+    "before": {
+      "repository_id": 11,
+      "number": 17,
+      "node_id": "PR_test_17",
+      "head_ref": "treeharbor/04040404040404040404040404040404",
+      "base_ref": "main",
+      "head_revision": "git:sha1:1111111111111111111111111111111111111111",
+      "base_revision": "git:sha1:2222222222222222222222222222222222222222",
+      "state": "open",
+      "draft": false,
+      "merged": false
+    },
+    "after": {
+      "repository_id": 11,
+      "number": 17,
+      "node_id": "PR_test_17",
+      "head_ref": "treeharbor/04040404040404040404040404040404",
+      "base_ref": "main",
+      "head_revision": "git:sha1:1111111111111111111111111111111111111111",
+      "base_revision": "git:sha1:2222222222222222222222222222222222222222",
+      "state": "open",
+      "draft": false,
+      "merged": false
+    },
+    "rules_before": {
+      "sha256": "662192301180d77d513caeb16c3b00d096233be6c01ac6247b9a308757e41268",
+      "count": 1,
+      "merge_queue": false
+    },
+    "rules_after": {
+      "sha256": "662192301180d77d513caeb16c3b00d096233be6c01ac6247b9a308757e41268",
+      "count": 1,
+      "merge_queue": false
+    },
+    "checks": [
+      {
+        "required": {
+          "name": "CI / build",
+          "app_id": 7
+        },
+        "total_count": 1,
+        "runs": [
+          {
+            "id": 19,
+            "app_id": 7,
+            "name": "CI / build",
+            "head_revision": "git:sha1:1111111111111111111111111111111111111111",
+            "status": "completed",
+            "conclusion": "success"
+          }
+        ]
+      }
+    ],
+    "token_revoked": true
+  },
+  "raw_rules": [
+    {
+      "ruleset_id": 5,
+      "type": "required_status_checks",
+      "parameters": {
+        "required_status_checks": [
+          {
+            "context": "CI / build",
+            "integration_id": 7
+          }
+        ],
+        "strict_required_status_checks_policy": true
+      }
+    }
+  ]
+}

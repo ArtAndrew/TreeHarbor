@@ -3,6 +3,7 @@
 
 mod auth;
 mod transport;
+pub use transport::evidence::ObservedInspection;
 mod wire;
 
 pub use auth::AppCredentials;
@@ -96,10 +97,13 @@ pub enum Stage {
     RevokeToken,
     Reference,
     PullRequest,
+    CheckEvidence,
 }
 /// Never retains response bodies, URLs, private keys, tokens or upstream errors.
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum Error {
+    #[error("GitHub check evidence is inconsistent, out of scope or exceeds its bound")]
+    Evidence,
     #[error("GitHub pull request does not match the selected identity or expected metadata")]
     PullChanged,
     #[error("GitHub pull request search was ambiguous or exceeded its bound")]
