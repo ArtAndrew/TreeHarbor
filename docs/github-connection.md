@@ -114,7 +114,7 @@ Agents never receive the App key or upstream token.
 
 ## Retain a connection in a running TreeHarbor server
 
-First migrate the [local service](local-service.md) to schema 15 and create a
+First migrate the [local service](local-service.md) to the current schema and create a
 repository with `--authority connected`. Provision a Human principal with
 `repository.write` and `read` for that repository. Separately provision a Bridge
 principal with **`host.read`** and issue its scoped credential. Existing tokens and
@@ -228,6 +228,7 @@ revocation, populated schema upgrades and real server restart. Their reported
 observations use trusted test fixtures, not an installed GitHub App.
 
 A real installed-App probe and PR/check/merge-queue scenario remain separate
-acceptance gates. Network Git import, projection/outbox, webhook validation,
-PR/check reconciliation and merge confirmation are not implemented by this
-increment. No branch protection is changed or bypassed.
+acceptance gates. A separate [exact source import](github-import.md) now uses the
+binding and fresh App access. Projection/outbox, webhook validation, PR/check
+reconciliation and merge confirmation remain open. No branch protection is changed
+or bypassed.

@@ -43,6 +43,8 @@ impl Permission {
     pub(crate) fn for_command(kind: &str) -> Result<Self> {
         match kind {
             "github.bind.v1" | "github.revoke.v1" => Ok(Self::RepositoryWrite),
+            "github.import.request.v1" | "github.import.cancel.v1" => Ok(Self::RepositoryWrite),
+            "github.import.begin.v1" | "github.import.finish.v1" => Ok(Self::HostRead),
             "github.probe.begin.v1" | "github.probe.finish.v1" => Ok(Self::HostRead),
             "native.program.put.v1" | "native.policy.put.v1" | "native.ref.policy.v1" => {
                 Ok(Self::PolicyWrite)

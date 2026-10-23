@@ -30,6 +30,20 @@ impl UploadLimits {
 pub struct UploadTicket {
     upload: Uuid,
     lease: ObjectLease,
+    purpose: Purpose,
+}
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Purpose {
+    Human,
+    Github,
+}
+impl Purpose {
+    fn permission(self) -> Permission {
+        match self {
+            Self::Human => Permission::RepositoryWrite,
+            Self::Github => Permission::HostRead,
+        }
+    }
 }
 impl UploadTicket {
     pub fn generation(&self) -> i64 {
@@ -60,15 +74,28 @@ async fn active(tx: &Transaction<'_>, scope: &Scope, principal: &str, upload: Uu
     }
     Ok(row)
 }
-async fn lock_authorized(tx: &Transaction<'_>, auth: &Authorization) -> Result<()> {
+async fn lock_authorized(
+    tx: &Transaction<'_>,
+    auth: &Authorization,
+    purpose: Purpose,
+) -> Result<()> {
     crate::access::repository_lock(tx, auth.scope(), true).await?;
-    auth.check_transaction(
-        tx,
-        auth.scope(),
-        auth.principal(),
-        Permission::RepositoryWrite,
-    )
-    .await
+    auth.check_transaction(tx, auth.scope(), auth.principal(), purpose.permission())
+        .await
+}
+async fn active_for(
+    tx: &Transaction<'_>,
+    auth: &Authorization,
+    upload: Uuid,
+    purpose: Purpose,
+) -> Result<Row> {
+    let row = active(tx, auth.scope(), auth.principal(), upload).await?;
+    // Human sessions are owned by Human principals; HostRead is Bridge-only.
+    // Both paths always match the authenticated principal in the source row.
+    if purpose == Purpose::Github {
+        crate::github::imports::check_upload(tx, auth, upload).await?;
+    }
+    Ok(row)
 }
 async fn membership(
     tx: &Transaction<'_>,
@@ -158,13 +185,33 @@ impl Metadata {
         auth: &Authorization,
         upload: Uuid,
     ) -> Result<Value> {
+        self.source_upload_status_for(auth, upload, Purpose::Human)
+            .await
+    }
+    pub async fn github_source_upload_status(
+        &mut self,
+        auth: &Authorization,
+        upload: Uuid,
+    ) -> Result<Value> {
+        self.source_upload_status_for(auth, upload, Purpose::Github)
+            .await
+    }
+    async fn source_upload_status_for(
+        &mut self,
+        auth: &Authorization,
+        upload: Uuid,
+        purpose: Purpose,
+    ) -> Result<Value> {
         let tx = self.client.transaction().await?;
         settings(&tx).await?;
-        lock_authorized(&tx, auth).await?;
+        lock_authorized(&tx, auth, purpose).await?;
         let s = auth.scope();
         let row=tx.query_opt("SELECT state,expires_at<=clock_timestamp(),reserved_objects,reserved_bytes,(extract(epoch from expires_at)*1000)::bigint FROM th_source_uploads WHERE tenant=$1 AND repository=$2 AND upload=$3 AND principal=$4", &[&s.tenant,&s.repository,&upload,&auth.principal()]).await?.ok_or(Error::NotFound)?;
+        if purpose == Purpose::Github {
+            active_for(&tx, auth, upload, purpose).await?;
+        }
         let value = json!({"upload":upload.to_string(),"state":row.get::<_,String>(0),"expired":row.get::<_,bool>(1),"reserved_objects":row.get::<_,i64>(2),"reserved_bytes":row.get::<_,i64>(3),"expires_at_unix_ms":row.get::<_,i64>(4)});
-        auth.check_transaction(&tx, s, auth.principal(), Permission::RepositoryWrite)
+        auth.check_transaction(&tx, s, auth.principal(), purpose.permission())
             .await?;
         tx.commit().await?;
         Ok(value)
@@ -176,11 +223,32 @@ impl Metadata {
         store: &ManagedStore,
         object: &PreparedObject,
     ) -> Result<UploadTicket> {
+        self.reserve_source_object_for(auth, upload, store, object, Purpose::Human)
+            .await
+    }
+    pub async fn reserve_github_source_object(
+        &mut self,
+        auth: &Authorization,
+        upload: Uuid,
+        store: &ManagedStore,
+        object: &PreparedObject,
+    ) -> Result<UploadTicket> {
+        self.reserve_source_object_for(auth, upload, store, object, Purpose::Github)
+            .await
+    }
+    async fn reserve_source_object_for(
+        &mut self,
+        auth: &Authorization,
+        upload: Uuid,
+        store: &ManagedStore,
+        object: &PreparedObject,
+        purpose: Purpose,
+    ) -> Result<UploadTicket> {
         let tx = self.client.transaction().await?;
         settings(&tx).await?;
-        lock_authorized(&tx, auth).await?;
+        lock_authorized(&tx, auth, purpose).await?;
         let s = auth.scope();
-        let row = active(&tx, s, auth.principal(), upload).await?;
+        let row = active_for(&tx, auth, upload, purpose).await?;
         if store.tenant() != s.tenant || store.backend() != row.get::<_, String>(0) {
             return Err(Error::ReceiptMismatch);
         }
@@ -202,15 +270,25 @@ impl Metadata {
         } else {
             let snapshot = object.commit_snapshot().map(|id| id.as_bytes().to_vec());
             tx.execute("INSERT INTO th_source_upload_items(tenant,repository,upload,digest,generation,hold_token,kind,length,snapshot) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)", &[&s.tenant,&s.repository,&upload,&digest,&lease.key().generation(),&token,&(object.kind() as i16),&(object.length() as i64),&snapshot]).await?;
+            if purpose == Purpose::Github {
+                let git_origin = object
+                    .commit_git_origin()
+                    .map(|id| RevisionRef::Git(id).to_string());
+                tx.execute("UPDATE th_source_upload_items SET git_origin=$5 WHERE tenant=$1 AND repository=$2 AND upload=$3 AND digest=$4", &[&s.tenant,&s.repository,&upload,&digest,&git_origin]).await?;
+            }
             tx.execute("UPDATE th_source_uploads SET reserved_objects=reserved_objects+1,reserved_bytes=reserved_bytes+$4 WHERE tenant=$1 AND repository=$2 AND upload=$3", &[&s.tenant,&s.repository,&upload,&(object.length() as i64)]).await?;
         }
         // Retrying an object may never extend its session's fixed deadline.
         tx.execute("UPDATE th_object_holds h SET expires_at=u.expires_at FROM th_source_uploads u WHERE u.tenant=$1 AND u.repository=$2 AND u.upload=$3 AND h.tenant=u.tenant AND h.token=$4", &[&s.tenant,&s.repository,&upload,&token]).await?;
-        active(&tx, s, auth.principal(), upload).await?;
-        auth.check_transaction(&tx, s, auth.principal(), Permission::RepositoryWrite)
+        active_for(&tx, auth, upload, purpose).await?;
+        auth.check_transaction(&tx, s, auth.principal(), purpose.permission())
             .await?;
         tx.commit().await?;
-        Ok(UploadTicket { upload, lease })
+        Ok(UploadTicket {
+            upload,
+            lease,
+            purpose,
+        })
     }
     pub async fn publish_source_object(
         &mut self,
@@ -218,11 +296,33 @@ impl Metadata {
         ticket: &UploadTicket,
         receipt: &DurableObject,
     ) -> Result<()> {
+        self.publish_source_object_for(auth, ticket, receipt, Purpose::Human)
+            .await
+    }
+    pub async fn publish_github_source_object(
+        &mut self,
+        auth: &Authorization,
+        ticket: &UploadTicket,
+        receipt: &DurableObject,
+    ) -> Result<()> {
+        self.publish_source_object_for(auth, ticket, receipt, Purpose::Github)
+            .await
+    }
+    async fn publish_source_object_for(
+        &mut self,
+        auth: &Authorization,
+        ticket: &UploadTicket,
+        receipt: &DurableObject,
+        purpose: Purpose,
+    ) -> Result<()> {
+        if ticket.purpose != purpose {
+            return Err(Error::Forbidden);
+        }
         let tx = self.client.transaction().await?;
         settings(&tx).await?;
-        lock_authorized(&tx, auth).await?;
+        lock_authorized(&tx, auth, purpose).await?;
         let s = auth.scope();
-        active(&tx, s, auth.principal(), ticket.upload).await?;
+        active_for(&tx, auth, ticket.upload, purpose).await?;
         if s.tenant != ticket.lease.key().tenant() {
             return Err(Error::ReceiptMismatch);
         }
@@ -236,8 +336,8 @@ impl Metadata {
         membership(&tx, s, ticket.upload, receipt.references()).await?;
         publish_in(&tx, &ticket.lease, receipt).await?;
         tx.execute("UPDATE th_source_upload_items SET complete=true WHERE tenant=$1 AND repository=$2 AND upload=$3 AND digest=$4", &[&s.tenant,&s.repository,&ticket.upload,&digest]).await?;
-        active(&tx, s, auth.principal(), ticket.upload).await?;
-        auth.check_transaction(&tx, s, auth.principal(), Permission::RepositoryWrite)
+        active_for(&tx, auth, ticket.upload, purpose).await?;
+        auth.check_transaction(&tx, s, auth.principal(), purpose.permission())
             .await?;
         tx.commit().await?;
         Ok(())

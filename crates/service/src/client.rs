@@ -82,7 +82,7 @@ pub async fn send_object(
     frame: Vec<u8>,
     timeout: Duration,
 ) -> Result<Reply> {
-    send_uploaded_object(socket, credential, upload, id, frame, timeout, false).await
+    send_uploaded_object(socket, credential, upload, id, frame, timeout, "source").await
 }
 pub async fn send_change_blob(
     socket: &Path,
@@ -92,7 +92,17 @@ pub async fn send_change_blob(
     frame: Vec<u8>,
     timeout: Duration,
 ) -> Result<Reply> {
-    send_uploaded_object(socket, credential, upload, id, frame, timeout, true).await
+    send_uploaded_object(socket, credential, upload, id, frame, timeout, "changes").await
+}
+pub async fn send_github_source_object(
+    socket: &Path,
+    credential: &Credential,
+    upload: Uuid,
+    id: treeharbor_core::ObjectId,
+    frame: Vec<u8>,
+    timeout: Duration,
+) -> Result<Reply> {
+    send_uploaded_object(socket, credential, upload, id, frame, timeout, "github").await
 }
 async fn send_uploaded_object(
     socket: &Path,
@@ -101,14 +111,14 @@ async fn send_uploaded_object(
     id: treeharbor_core::ObjectId,
     frame: Vec<u8>,
     timeout: Duration,
-    change: bool,
+    purpose: &str,
 ) -> Result<Reply> {
     if frame.len() > treeharbor_core::MAX_PAYLOAD + treeharbor_core::FRAME_HEADER {
         return Err(Error::Size);
     }
     let path = format!(
         "/v1/{}/{}/{}/uploads/{}/objects/{}",
-        if change { "changes" } else { "source" },
+        purpose,
         credential.scope.tenant(),
         credential.scope.repository(),
         upload,

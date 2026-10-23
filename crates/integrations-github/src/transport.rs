@@ -5,7 +5,7 @@ use crate::{
 use reqwest::{Client, Method, StatusCode, Url, header};
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 use tokio::sync::Semaphore;
 use zeroize::Zeroizing;
 
@@ -18,7 +18,7 @@ pub struct Connection {
     client: Client,
     base: Url,
     credentials: AppCredentials,
-    slots: Semaphore,
+    slots: Arc<Semaphore>,
 }
 impl Connection {
     pub fn new(credentials: AppCredentials) -> Result<Self> {
@@ -27,7 +27,7 @@ impl Connection {
             client: client(true)?,
             base,
             credentials,
-            slots: Semaphore::new(4),
+            slots: Arc::new(Semaphore::new(4)),
         })
     }
 
@@ -48,7 +48,7 @@ impl Connection {
         .map_err(|_| Error::Deadline)?
     }
 
-    async fn probe_inner(&self, binding: &RepositoryBinding) -> Result<Probe> {
+    async fn mint(&self, binding: &RepositoryBinding) -> Result<(wire::Installation, wire::Token)> {
         let jwt = self.credentials.jwt(now()?)?;
         let installation: wire::Installation = self
             .json(
@@ -67,6 +67,22 @@ impl Connection {
             Some(json!({"repository_ids": [binding.repository_id], "permissions": {"contents":"read", "metadata":"read"}})),
             StatusCode::CREATED,
         ).await?;
+        Ok((installation, token))
+    }
+    async fn revoke(&self, token: &wire::Token) -> Result<()> {
+        self.request(
+            Stage::RevokeToken,
+            Method::DELETE,
+            "installation/token",
+            token.token.header()?,
+            None,
+            StatusCode::NO_CONTENT,
+        )
+        .await
+        .map(|_| ())
+    }
+    async fn probe_inner(&self, binding: &RepositoryBinding) -> Result<Probe> {
+        let (installation, token) = self.mint(binding).await?;
         let observed = self
             .observe_with_token(binding, &installation, &token)
             .await;
@@ -86,6 +102,74 @@ impl Connection {
         let result = observed?;
         revoked?;
         Ok(result)
+    }
+
+    /// Fresh App access for one exact Git commit. A probe receipt cannot be
+    /// substituted. The blocking worker retains the slot after caller cancellation.
+    pub async fn download_git(
+        &self,
+        binding: &RepositoryBinding,
+        request: crate::GitDownload,
+    ) -> Result<treeharbor_git_bridge::download::Manifest> {
+        binding.validate()?;
+        if request.limits.timeout.is_zero() || request.limits.timeout > Duration::from_secs(300) {
+            return Err(Error::Configuration);
+        }
+        let slot = tokio::time::timeout(PROBE_TIMEOUT, self.slots.clone().acquire_owned())
+            .await
+            .map_err(|_| Error::Deadline)?
+            .map_err(|_| Error::Configuration)?;
+        let (installation, token) = tokio::time::timeout(PROBE_TIMEOUT, self.mint(binding))
+            .await
+            .map_err(|_| Error::Deadline)??;
+        let observed = tokio::time::timeout(
+            PROBE_TIMEOUT,
+            self.observe_with_token(binding, &installation, &token),
+        )
+        .await
+        .map_err(|_| Error::Deadline)
+        .and_then(|r| r);
+        let result = match observed {
+            Err(error) => Err(error),
+            Ok(_) => {
+                let enough = now()
+                    .ok()
+                    .and_then(|n| {
+                        token.check(binding.repository_id, n).ok().map(|expiry| {
+                            n.saturating_add(request.limits.timeout.as_secs() + 30) < expiry
+                        })
+                    })
+                    .unwrap_or(false);
+                if !enough {
+                    Err(Error::TokenLifetime)
+                } else {
+                    let secret = token.token.copy_for_git();
+                    let binding = binding.clone();
+                    tokio::task::spawn_blocking(move || {
+                        let _slot = slot;
+                        treeharbor_git_bridge::download::fetch(
+                            treeharbor_git_bridge::download::Request {
+                                worker: &request.worker,
+                                git: &request.git,
+                                output: &request.output,
+                                owner: &binding.owner,
+                                name: &binding.name,
+                                token: &secret,
+                                commit: request.commit,
+                                limits: request.limits,
+                            },
+                        )
+                    })
+                    .await
+                    .map_err(|_| Error::GitDownload)
+                    .and_then(|r| r.map_err(|_| Error::GitDownload))
+                }
+            }
+        };
+        let revoked = self.revoke(&token).await;
+        let value = result?;
+        revoked?;
+        Ok(value)
     }
 
     async fn observe_with_token(

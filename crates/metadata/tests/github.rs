@@ -1,4 +1,6 @@
 mod common;
+#[path = "github/imports.rs"]
+mod imports;
 use common::{cleanup, connection, setup};
 use serde_json::json;
 use treeharbor_metadata::{

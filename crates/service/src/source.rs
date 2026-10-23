@@ -62,12 +62,13 @@ pub(crate) struct Route {
     upload: Uuid,
     object: ObjectId,
     change: bool,
+    github: bool,
 }
 pub(crate) fn route(path: &str) -> Option<Route> {
     let parts: Vec<_> = path.split('/').collect();
     if parts.len() != 9
         || parts[1] != "v1"
-        || !matches!(parts[2], "source" | "changes")
+        || !matches!(parts[2], "source" | "changes" | "github")
         || parts[5] != "uploads"
         || parts[7] != "objects"
     {
@@ -83,6 +84,7 @@ pub(crate) fn route(path: &str) -> Option<Route> {
         upload,
         object: parts[8].parse().ok()?,
         change: parts[2] == "changes",
+        github: parts[2] == "github",
     })
 }
 pub(crate) struct Failure {
@@ -104,6 +106,7 @@ pub(crate) fn metadata(error: treeharbor_metadata::Error) -> Failure {
         | "execution_state_changed"
         | "rebase_state_changed"
         | "version_conflict"
+        | "host_binding_state"
         | "idempotency_conflict"
         | "upload_state_changed"
         | "upload_membership"
@@ -131,6 +134,8 @@ pub(crate) async fn put(
             &route.scope,
             if route.change {
                 Permission::ChangeWrite
+            } else if route.github {
+                Permission::HostRead
             } else {
                 Permission::RepositoryWrite
             },
@@ -140,6 +145,10 @@ pub(crate) async fn put(
     // Refuse unknown/foreign sessions before consuming a large body.
     let state = if route.change {
         db.metadata.change_upload_status(&auth, route.upload).await
+    } else if route.github {
+        db.metadata
+            .github_source_upload_status(&auth, route.upload)
+            .await
     } else {
         db.metadata.source_upload_status(&auth, route.upload).await
     }
@@ -185,11 +194,19 @@ pub(crate) async fn put(
     enum Ticket {
         Source(treeharbor_metadata::uploads::UploadTicket),
         Change(treeharbor_metadata::proposals::ChangeBlobTicket),
+        Github(treeharbor_metadata::uploads::UploadTicket),
     }
     let ticket = if route.change {
         Ticket::Change(
             db.metadata
                 .reserve_change_blob(&auth, route.upload, &store, &object)
+                .await
+                .map_err(metadata)?,
+        )
+    } else if route.github {
+        Ticket::Github(
+            db.metadata
+                .reserve_github_source_object(&auth, route.upload, &store, &object)
                 .await
                 .map_err(metadata)?,
         )
@@ -204,6 +221,7 @@ pub(crate) async fn put(
     drop(db);
     let generation = match &ticket {
         Ticket::Source(t) => t.generation(),
+        Ticket::Github(t) => t.generation(),
         Ticket::Change(t) => t.generation(),
     };
     // Cancellation must not detach unbounded fsync workers: this owned permit
@@ -222,6 +240,11 @@ pub(crate) async fn put(
         .map_err(|_| fail(503, "database_unavailable"))?;
     match ticket {
         Ticket::Source(t) => db.metadata.publish_source_object(&auth, &t, &receipt).await,
+        Ticket::Github(t) => {
+            db.metadata
+                .publish_github_source_object(&auth, &t, &receipt)
+                .await
+        }
         Ticket::Change(t) => db.metadata.publish_change_blob(&auth, &t, &receipt).await,
     }
     .map_err(metadata)?;

@@ -115,13 +115,35 @@ async fn host(responses: Vec<Vec<u8>>) -> (Connection, tokio::task::JoinHandle<V
             client: client(false).unwrap(),
             base,
             credentials: credentials(),
-            slots: Semaphore::new(4),
+            slots: Arc::new(Semaphore::new(4)),
         },
         handle,
     )
 }
 fn request_text(bytes: &[u8]) -> &str {
     std::str::from_utf8(bytes).unwrap()
+}
+
+#[tokio::test]
+async fn failed_git_download_revokes_its_fresh_scoped_token_and_releases_capacity() {
+    let (connection, server) = host(good_responses()).await;
+    let request = crate::GitDownload {
+        worker: "/missing-treeharbor-worker".into(),
+        git: "/missing-git".into(),
+        output: "/missing-output".into(),
+        commit: treeharbor_core::GitOid::Sha1([7; 20]),
+        limits: Default::default(),
+    };
+    let error = connection
+        .download_git(&binding(), request)
+        .await
+        .unwrap_err();
+    assert_eq!(error, Error::GitDownload);
+    assert!(!error.to_string().contains(TEST_TOKEN));
+    assert_eq!(connection.slots.available_permits(), 4);
+    let requests = server.await.unwrap();
+    assert_eq!(requests.len(), 5);
+    assert!(request_text(&requests[4]).starts_with("DELETE /installation/token "));
 }
 
 #[tokio::test]
@@ -507,7 +529,7 @@ async fn slow_response_has_a_deadline_and_releases_its_probe_slot() {
         client: client(false).unwrap(),
         base,
         credentials: credentials(),
-        slots: Semaphore::new(1),
+        slots: Arc::new(Semaphore::new(1)),
     };
     let started = std::time::Instant::now();
     let result = tokio::time::timeout(Duration::from_secs(18), connection.probe(&binding()))

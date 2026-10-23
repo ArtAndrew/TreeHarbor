@@ -3,7 +3,7 @@ use std::{
     fs,
     path::{Path, PathBuf},
 };
-use treeharbor_core::{Error, Object, ObjectId, Result};
+use treeharbor_core::{Error, GitOid, Object, ObjectId, Result};
 
 /// Encode once before reservation/upload. The frame and its descriptors cannot
 /// be independently mutated, so publication metadata is derived from the bytes.
@@ -13,6 +13,7 @@ pub struct PreparedObject {
     kind: u8,
     references: Vec<(ObjectId, u8)>,
     snapshot: Option<ObjectId>,
+    git_origin: Option<GitOid>,
 }
 impl PreparedObject {
     pub fn new(object: &Object) -> Result<Self> {
@@ -21,8 +22,12 @@ impl PreparedObject {
             id: ObjectId::hash_frame(&bytes),
             kind: object.kind(),
             references: object.references(),
-            snapshot: match object {
+            snapshot: match &object {
                 Object::NativeCommit(commit) => Some(commit.snapshot),
+                _ => None,
+            },
+            git_origin: match object {
+                Object::NativeCommit(commit) => commit.git_origin.as_ref().map(|o| o.oid),
                 _ => None,
             },
             bytes,
@@ -35,8 +40,12 @@ impl PreparedObject {
             id,
             kind: object.kind(),
             references: object.references(),
-            snapshot: match object {
+            snapshot: match &object {
                 Object::NativeCommit(commit) => Some(commit.snapshot),
+                _ => None,
+            },
+            git_origin: match &object {
+                Object::NativeCommit(commit) => commit.git_origin.as_ref().map(|o| o.oid),
                 _ => None,
             },
             bytes,
@@ -47,6 +56,10 @@ impl PreparedObject {
     }
     pub fn commit_snapshot(&self) -> Option<ObjectId> {
         self.snapshot
+    }
+    /// Claimed identity decoded from the verified frame, not a remote attestation.
+    pub fn commit_git_origin(&self) -> Option<GitOid> {
+        self.git_origin
     }
     pub fn id(&self) -> ObjectId {
         self.id

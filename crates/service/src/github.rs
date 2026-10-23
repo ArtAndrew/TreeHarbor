@@ -10,9 +10,28 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 use treeharbor_github::{AppCredentials, Connection, RepositoryBinding};
 use uuid::Uuid;
+mod import;
 
 #[derive(Subcommand)]
 pub enum Action {
+    /// Download and import an owner's exact Git revision through its assigned bridge.
+    Import {
+        #[arg(long)]
+        config: PathBuf,
+        #[arg(long)]
+        socket: PathBuf,
+        #[arg(long)]
+        credential_file: PathBuf,
+        #[arg(long)]
+        import: Uuid,
+        #[arg(long,value_parser=clap::value_parser!(i64).range(1..))]
+        epoch: i64,
+        /// Existing private directory; retain it for retry after interruption.
+        #[arg(long)]
+        state: PathBuf,
+        #[arg(long, default_value = "/usr/bin/git")]
+        git: PathBuf,
+    },
     /// Verify a durable binding as its assigned bridge and retain the observation.
     /// Reuse the same probe ID after interruption; no source or PR is published.
     Verify {
@@ -92,6 +111,26 @@ fn matches_config(config: &Config, spec: &treeharbor_metadata::github::BindingSp
 }
 pub async fn run(action: Action) -> Result<bool> {
     match action {
+        Action::Import {
+            config,
+            socket,
+            credential_file,
+            import,
+            epoch,
+            state,
+            git,
+        } => {
+            import::run(import::Request {
+                config,
+                socket,
+                credential_file,
+                id: import,
+                epoch,
+                state,
+                git,
+            })
+            .await
+        }
         Action::Verify {
             config,
             socket,

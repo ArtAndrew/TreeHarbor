@@ -11,6 +11,13 @@ use std::time::{SystemTime, UNIX_EPOCH};
 pub use transport::Connection;
 
 pub const API_VERSION: &str = "2026-03-10";
+pub struct GitDownload {
+    pub worker: std::path::PathBuf,
+    pub git: std::path::PathBuf,
+    pub output: std::path::PathBuf,
+    pub commit: treeharbor_core::GitOid,
+    pub limits: treeharbor_git_bridge::Limits,
+}
 
 /// Operator-pinned identity. A rename requires an explicit configuration update;
 /// a repository or owner replacement must never silently inherit this binding.
@@ -89,6 +96,8 @@ pub enum Stage {
 /// Never retains response bodies, URLs, private keys, tokens or upstream errors.
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum Error {
+    #[error("GitHub Git download failed; no new completed connection result was returned")]
+    GitDownload,
     #[error("invalid GitHub App configuration or pinned repository identity")]
     Configuration,
     #[error("invalid GitHub App RSA key or JWT signing failure")]

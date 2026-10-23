@@ -3,6 +3,31 @@
 Updated: 2026-10-23. This file describes implemented behavior and remaining release
 gates. A foundation milestone does not complete either mode.
 
+New [exact GitHub source import](github-import.md): an owner fixes the Git commit,
+binding, epoch, deadline and budgets. Only the assigned Bridge's `host.read` may
+upload that request; Human source routes remain separate. Schema 16 preserves
+existing bindings/observations/credentials and partially uploaded Human sources.
+Completion checks the native root's GitOrigin and full graph membership, pins the
+source base and commits a replayable receipt/outbox without writing main or granting
+validation. Current access, cancellation, binding and expiry fences apply after IO
+and after transactional writes.
+
+The Rust CLI uses fresh one-repository App access, private full-history fetch and
+native conversion, a durable intent and resumable object upload. The Linux Git
+download supervisor bounds time/per-process resources, detects parent loss and
+refuses redirects; hard aggregate quotas and arbitrary process teardown still
+require an external runtime. Failed partial stores cannot masquerade as completed
+bundles. Network download currently supports GitHub.com/SHA-1/Linux only.
+
+Local verification: 185 ordinary tests and 194 explicit PostgreSQL/materializer/
+node/service tests passed. This includes expiry inside request/begin/finish writes,
+populated schema-15 upgrade, wrong Git identity, revocation between disk write and
+publication, concurrent completion and actual CLI/server restart followed by exact
+Git export. Strict all-target Clippy and formatting passed. Linux smart-HTTP,
+redirect/timeout/parent-loss fixtures run separately in required CI; local macOS
+tests do not prove those Linux behaviors. A real installed-App import and the full
+PR/check/merge-queue workflow remain release gates.
+
 New [durable GitHub bindings](github-connection.md): Human repository owners
 configure/revoke immutable Connected bindings; only the assigned Bridge with
 `host.read` can register a bounded connection attempt and its immutable observation.
@@ -28,8 +53,8 @@ verifies one-repository read access, independently enumerates token scope, reads
 repository metadata and revokes the temporary token. HTTPS/API version, response
 bounds, deadlines, redaction and no-redirect/no-retry behavior are explicit.
 Queue ownership eligibility is reported separately from unverified configuration.
-That probe alone does not bind a repository. Source import, PR publication and
-queue admission remain unimplemented.
+That probe alone does not bind a repository. Source import is a separate command;
+PR publication and queue admission remain unimplemented.
 
 Local verification: 182 ordinary workspace tests and 178 explicit PostgreSQL/
 materializer/node/service tests passed; strict all-target Clippy and formatting
@@ -38,7 +63,7 @@ expiry/suspension, lost token response, bounded slow/large responses and revocat
 failure. OpenSSL independently verifies a fixture JWT signature. A separate real
 public GitHub HTTPS test passed with API version 2026-03-10 and no credentials.
 These are not installed-App/real-host integration evidence: authenticated App
-setup, network import, PR/check/queue reconciliation and confirmed merge
+setup, authenticated real-host import, PR/check/queue reconciliation and confirmed merge
 remain release gates. Existing native runtime checks remain required in CI.
 
 Explicit [workspace cleanup](workspace-cleanup.md) now joins schema-14 release
@@ -201,13 +226,13 @@ resource outcomes and worker-loss recovery. No complete authority mode is implie
 
 | Component | Evidence | Remaining |
 |---|---|---|
-| GitHub App connection | Trusted operator CLI, scoped short-lived read token, pinned durable bindings, separate bridge permission, immutable observations, revoke/replay; local HTTP/RSA, PostgreSQL and CLI tests | Installed-App evidence, network import, projection/outbox, webhooks, PR/check/merge queue and real-host confirmation |
+| GitHub App connection/import | Scoped read token, durable bindings and exact owner requests, isolated network download, resumable graph upload, pinned source and immutable receipts; local HTTP/RSA/PostgreSQL/CLI tests | Installed-App evidence, incremental reuse, projection/outbox, webhooks, PR/check/merge queue and real-host confirmation |
 | Canonical SHA-256 object format | Versioned framing, independent golden vectors, strict decoder | Compatibility policy for later formats |
 | Immutable directory trees and operations | Exact expected-before checks, canonical subtree operations v2, bounded structural diff, structural sharing, explicit deletes; native merge and Git reference matrix | General history rebase, broader rename/base support, live-server Git interop |
 | Local object store | Atomic no-clobber writes, digest verification, file/directory fsync, tenant directories, physical generations and upload receipts | S3, backup/restore, kill fault campaign |
 | Native DAG and admission | Scoped history/log/ancestry/merge-base HTTP/CLI, persisted refs/policies/queue/checks/reviews, verified candidate commits, final transactional admission and no-Git CLI/process-loss tests | General history stack rebase, automatic scheduling, full lifecycle and recovery |
 | Review diff | Read-only exact ChangeSet/candidate/revision HTTP/CLI, retained integration/policy/version/run identity, scoped GC holds, bounded byte paths and text, actual Git path oracle and restart/page/error tests | Review UI, persistent diff indexing and larger-repository profiling |
-| PostgreSQL metadata and outbox | Real database transaction/idempotency/lease tests; repository authority/epoch checks; populated schema upgrades through v15; local service pool and crash/replay | Remote service integration and full server restore |
+| PostgreSQL metadata and outbox | Real database transaction/idempotency/lease tests; repository authority/epoch checks; populated schema upgrades through v16; local service pool and crash/replay | Remote service integration and full server restore |
 | Native ChangeSet intake | HTTP/CLI immutable proposals and separate ready-seal acceptance, scoped blobs, computed versions, original run lineage, atomic pins/outbox and process-loss replay | GitHub base synchronization, remote transport and retention |
 | Protected incremental source reads | Pinned sessions, verified frontiers, bounded prefix batches and descriptors surviving local GC; authenticated workspace-root sessions | Per-tenant service quotas, bulk node delivery and S3 |
 | Native file materialization | Private copies from exact snapshots, full/sparse selection, staged expansion preserving edits/deletions, bounded IO and filesystem checks; guarded node publication and selected capture after runtime removal | Cache/reflink, wider capture fault matrix and Git-compatible format |
@@ -228,8 +253,8 @@ resource outcomes and worker-loss recovery. No complete authority mode is implie
 | MCP adapter | Planned; not implemented | Shared-service adapter, scoped tools and real client interoperability tests |
 | Git source export | Local native-pack CLI and bounded Rust full-DAG projection to self-contained Git SHA-1/SHA-256 bundle; isolated batch Git, exact mapping, verified original Git metadata/IDs, restored fsck and no-replace publication | Backup metadata, incremental projection, GitHub delivery |
 | Live source export | Scoped registered-base reads with GC holds and authority/credential fences; streaming archive v1 and atomically verified pack v3; actual CLI restart/merge/origin roundtrip | Other retained proposals, all-ref export, full metadata backup, incremental transfer, longer jobs and cleanup |
-| Git history import | Pinned self-contained SHA-1/SHA-256 bundle, all-parent native graph, replayed deltas, exact original metadata, atomic full-source pack v2 and resumable HTTP/CLI upload | Network fetch, incremental imports, multi-ref cutover, automated cleanup, larger-repository profiling |
-| Connected | Not implemented | Real GitHub PR/checks/merge queue and credential separation |
+| Git history import | Pinned self-contained SHA-1/SHA-256 bundle, all-parent native graph, replayed deltas, exact original metadata, atomic full-source pack v2 and resumable HTTP/CLI upload; separate scoped Linux/SHA-1 GitHub download | Real installed-App gate, incremental imports, multi-ref cutover, automated cleanup, larger-repository profiling |
+| Connected | Partial: binding, read-only App access, exact source import and retained native base | Real installed-App acceptance, GitHub PR/checks/merge queue and publication reconciliation |
 | Standalone S2 | Partial: durable native admission/publication, scoped history/candidate diff and single-ChangeSet rebase through CLI/API without Git, managed offline checks, registered-source export, plus explicitly separate transport fixtures | General history stack rewriting, full lifecycle, cutover, full server backup/restore |
 | Release and benchmarks | Not released or measured | Clean installation, artifacts, SBOM/provenance, comparison and operating cost |
 

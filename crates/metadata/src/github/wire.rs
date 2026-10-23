@@ -4,6 +4,37 @@ use serde::Deserialize;
 #[derive(Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
 pub enum WireCommand {
+    ImportRequest {
+        key: String,
+        epoch: i64,
+        import: String,
+        binding: String,
+        specification: ImportSpec,
+    },
+    ImportCancel {
+        key: String,
+        epoch: i64,
+        import: String,
+    },
+    ImportStatus {
+        epoch: i64,
+        import: String,
+    },
+    ImportContext {
+        epoch: i64,
+        import: String,
+    },
+    ImportBegin {
+        key: String,
+        epoch: i64,
+        import: String,
+        native_commit: String,
+    },
+    ImportFinish {
+        key: String,
+        epoch: i64,
+        import: String,
+    },
     Bind {
         key: String,
         epoch: i64,
@@ -50,13 +81,68 @@ fn id(s: &str) -> Result<Uuid> {
 impl WireCommand {
     pub fn permission(&self) -> Permission {
         match self {
-            Self::Bind { .. } | Self::Revoke { .. } => Permission::RepositoryWrite,
-            Self::Status { .. } => Permission::Read,
+            Self::Bind { .. }
+            | Self::Revoke { .. }
+            | Self::ImportRequest { .. }
+            | Self::ImportCancel { .. } => Permission::RepositoryWrite,
+            Self::Status { .. } | Self::ImportStatus { .. } => Permission::Read,
             _ => Permission::HostRead,
         }
     }
-    pub async fn execute(self, db: &mut Metadata, auth: &Authorization) -> Result<Value> {
+    pub async fn execute(
+        self,
+        db: &mut Metadata,
+        auth: &Authorization,
+        backend: Option<&str>,
+    ) -> Result<Value> {
         match self {
+            Self::ImportRequest {
+                key,
+                epoch,
+                import,
+                binding,
+                specification,
+            } => {
+                db.request_github_import(
+                    auth,
+                    &Command { key, epoch },
+                    id(&import)?,
+                    id(&binding)?,
+                    &specification,
+                )
+                .await
+            }
+            Self::ImportCancel { key, epoch, import } => {
+                db.cancel_github_import(auth, &Command { key, epoch }, id(&import)?)
+                    .await
+            }
+            Self::ImportStatus { epoch, import } => {
+                db.github_import_status(auth, epoch, id(&import)?).await
+            }
+            Self::ImportContext { epoch, import } => {
+                db.github_import_context(auth, epoch, id(&import)?).await
+            }
+            Self::ImportBegin {
+                key,
+                epoch,
+                import,
+                native_commit,
+            } => {
+                db.begin_github_import_upload(
+                    auth,
+                    &Command { key, epoch },
+                    id(&import)?,
+                    backend.ok_or(Error::Invalid("storage not configured"))?,
+                    native_commit
+                        .parse()
+                        .map_err(|_| Error::Invalid("native import commit"))?,
+                )
+                .await
+            }
+            Self::ImportFinish { key, epoch, import } => {
+                db.finish_github_import(auth, &Command { key, epoch }, id(&import)?)
+                    .await
+            }
             Self::Bind {
                 key,
                 epoch,
@@ -117,6 +203,64 @@ impl WireCommand {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn import_wire_requires_exact_git_revision_and_owner_bridge_separation() {
+        let value: Value =
+            serde_json::from_str(include_str!("../../tests/fixtures/github-import-v1.json"))
+                .unwrap();
+        let command: WireCommand = serde_json::from_value(value.clone()).unwrap();
+        assert_eq!(command.permission(), Permission::RepositoryWrite);
+        let WireCommand::ImportRequest {
+            import,
+            binding,
+            specification,
+            ..
+        } = command
+        else {
+            panic!()
+        };
+        id(&import).unwrap();
+        id(&binding).unwrap();
+        specification.validate().unwrap();
+        for revision in [
+            "main",
+            "HEAD",
+            "git:sha1:123",
+            "native:sha256:7777777777777777777777777777777777777777777777777777777777777777",
+        ] {
+            let mut spec = specification.clone();
+            spec.git_revision = revision.into();
+            assert!(spec.validate().is_err());
+        }
+        for field in ["token", "url", "path", "backend", "force"] {
+            let mut invalid = value.clone();
+            invalid["specification"][field] = json!("forbidden");
+            assert!(serde_json::from_value::<WireCommand>(invalid).is_err());
+        }
+        for (action, permission) in [
+            ("import_cancel", Permission::RepositoryWrite),
+            ("import_status", Permission::Read),
+            ("import_context", Permission::HostRead),
+            ("import_begin", Permission::HostRead),
+            ("import_finish", Permission::HostRead),
+        ] {
+            let mut value = json!({"action":action,"epoch":1,"import":import});
+            if !matches!(action, "import_status" | "import_context") {
+                value["key"] = json!("request");
+            }
+            if action == "import_begin" {
+                value["native_commit"] =
+                    json!(treeharbor_core::ObjectId::from_bytes([7; 32]).to_string());
+            }
+            assert_eq!(
+                serde_json::from_value::<WireCommand>(value)
+                    .unwrap()
+                    .permission(),
+                permission
+            );
+        }
+    }
 
     #[test]
     fn binding_wire_rejects_secret_fields_and_noncanonical_ids() {

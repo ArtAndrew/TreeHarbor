@@ -28,6 +28,8 @@ pub struct Cli {
 }
 #[derive(Subcommand)]
 enum Command {
+    #[command(hide = true)]
+    InternalGitWorker,
     /// Trusted GitHub App connection; never run inside an agent workspace/runtime.
     Github {
         #[command(subcommand)]
@@ -943,6 +945,10 @@ impl Agent {
 }
 pub async fn run(cli: Cli) -> Result<bool> {
     match cli.command {
+        Command::InternalGitWorker => {
+            treeharbor_git_bridge::download::worker()?;
+            Ok(true)
+        }
         Command::Github { action } => crate::github::run(action).await,
         Command::GitImport {
             bundle,
