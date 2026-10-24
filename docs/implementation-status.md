@@ -8,8 +8,25 @@ passed on the public synthetic acceptance repository on 2026-10-24. The actual
 Rust client verified pinned identities and revoked its narrowed temporary token.
 The service retained a separate live observation in PostgreSQL; SIGKILL/restart
 and replay without an App configuration preserved the exact observation and IDs.
-This does not establish source import, publication, callbacks or complete queue
-acceptance. Those steps remain open.
+A subsequent [actual App source import](github-import.md#resource-and-verification-boundaries)
+passed through a trusted Linux aarch64 bridge: the pinned synthetic root commit
+was retained as 15 native objects and restored through server export to ordinary
+Git with the original commit/tree, all seven paths and strict object verification.
+The small fixture contains one commit. SIGKILL/restart retained its identity, and
+recovery required no App key, Git or original local spool. Publication, callbacks
+and complete queue acceptance remain open; this does not test an aarch64 agent
+runtime or supply the planned remote command transport.
+
+Completed `github import` retries now print the same v1 result as the initial
+completion, including exact native revision/snapshot. The assigned bridge's context
+supplies that result from its registered source after current authorization checks;
+pending contexts supply null. No schema migration or new permission is needed.
+Upgrade CLI and service together; older servers do not supply the new context field.
+Local verification passed all 12 metadata import cases, the actual CLI/server
+restart and full-history transport case, strict all-target Clippy and formatting.
+The upgraded Linux client also returned the exact original result for the live
+accepted import without an App key, Git or local spool. Broader live histories,
+PR/check/queue acceptance and release operations remain unfinished.
 
 The experimental [MCP stdio adapter](mcp.md) exposes twenty named agent tools
 through the existing authenticated service. It fixes repository scope from a
@@ -466,7 +483,7 @@ resource outcomes and worker-loss recovery. No complete authority mode is implie
 | MCP adapter | Experimental stdio adapter with twenty scoped tools, pinned official SDK, two real client protocol revisions, exact proposals/queue requests and restart/revocation tests | Full host/runtime onboarding, complete two-mode publication and packaged installation |
 | Git source export | Local native-pack CLI and bounded Rust full-DAG projection to self-contained Git SHA-1/SHA-256 bundle; isolated batch Git, exact mapping, verified original Git metadata/IDs, restored fsck and no-replace publication | Backup metadata, incremental projection, GitHub delivery |
 | Live source export | Scoped registered-base reads with GC holds and authority/credential fences; streaming archive v1 and atomically verified pack v3; actual CLI restart/merge/origin roundtrip | Other retained proposals, all-ref export, full metadata backup, incremental transfer, longer jobs and cleanup |
-| Git history import | Pinned self-contained SHA-1/SHA-256 bundle, all-parent native graph, replayed deltas, exact original metadata, atomic full-source pack v2 and resumable HTTP/CLI upload; separate scoped Linux/SHA-1 GitHub download | Real installed-App gate, incremental imports, multi-ref cutover, automated cleanup, larger-repository profiling |
+| Git history import | Pinned self-contained SHA-1/SHA-256 bundle, all-parent native graph, replayed deltas, exact original metadata, atomic full-source pack v2 and resumable HTTP/CLI upload; scoped Linux/SHA-1 App download verified on the live synthetic root | Broader live histories, incremental imports, multi-ref cutover, automated cleanup, larger-repository profiling |
 | Connected | Partial: live read-only App connection, durable bindings, exact source import/projection, publication/PR/check/queue/event operations with explicit fixture coverage | Complete installed-App source-to-main workflow, exact group/final-tree verification and operational acceptance |
 | Standalone S2 | Partial: durable native admission/publication, scoped history/candidate diff and single-ChangeSet rebase through CLI/API without Git, managed offline checks, registered-source export, plus explicitly separate transport fixtures | General history stack rewriting, full lifecycle, cutover, full server backup/restore |
 | Release and benchmarks | Not released or measured | Clean installation, artifacts, SBOM/provenance, comparison and operating cost |

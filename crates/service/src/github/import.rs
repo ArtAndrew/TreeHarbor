@@ -61,9 +61,30 @@ pub(super) async fn run(r: Request) -> Result<bool> {
         return Err(Error::Http);
     }
     if context["state"] == "completed" {
+        let result = &context["completed_result"];
+        let commit: treeharbor_core::ObjectId = context["native_commit"]
+            .as_str()
+            .ok_or(Error::Http)?
+            .parse()
+            .map_err(|_| Error::Http)?;
+        let snapshot: treeharbor_core::ObjectId = result["snapshot"]
+            .as_str()
+            .ok_or(Error::Http)?
+            .parse()
+            .map_err(|_| Error::Http)?;
+        if result["version"] != 1
+            || result["import"] != r.id.to_string()
+            || result["outcome"] != "completed"
+            || result["git_revision"] != context["git_revision"]
+            || result["revision"] != RevisionRef::Native(commit).to_string()
+            || result["snapshot"] != snapshot.to_string()
+            || result["publication_ready"] != false
+        {
+            return Err(Error::Http);
+        }
         println!(
             "{}",
-            serde_json::to_string_pretty(&context).map_err(|_| Error::Http)?
+            serde_json::to_string_pretty(result).map_err(|_| Error::Http)?
         );
         return Ok(true);
     }

@@ -109,8 +109,14 @@ The current server binding, assignment, epoch and credentials must still permit
 the operation. An incomplete fetch starts fresh; a completed local bundle requires
 fresh App access before reuse. Object uploads and completion resume idempotently.
 A completed server import can be read without the App key or local state directory.
-After expiry/cancellation use a new import UUID and state directory. Do not remove
-an active import directory; stop its supervisor before clearing failed local data.
+Both a fresh completion and a completed retry print the same
+[version 1 completion result](../crates/metadata/tests/fixtures/github-import-completion-v1.json):
+`version`, `import`, `outcome: "completed"`, `git_revision`, native `revision`,
+`snapshot` and `publication_ready: false`. A retry reads the already registered
+source; it does not extend the deadline or repeat a GitHub download. This is a
+historical result, not a claim about the current remote branch.
+For an incomplete expired/cancelled import use a new UUID and state directory.
+Do not remove an active import directory; stop its supervisor before clearing failed local data.
 Automatic removal of abandoned private staging directories is not implemented.
 
 Same-key mutation retries return retained receipts, which are historical effects,
@@ -127,9 +133,16 @@ rejected; responses use the `version`/`result` envelope. Assigned-Bridge actions
 
 | Action | Fields in addition to `action` | Effect |
 |---|---|---|
-| `import_context` | `epoch`, `import` | Current binding, exact request and state |
+| `import_context` | `epoch`, `import` | Current binding, exact request/state and `completed_result` |
 | `import_begin` | `key`, `epoch`, `import`, `native_commit` | Fix native root and begin bounded upload |
 | `import_finish` | `key`, `epoch`, `import` | Verify full membership, pin base, retain receipt |
+
+`completed_result` is null before completion. Once completed, it contains the
+same v1 result as `import_finish`, derived from the retained import and its
+registered source snapshot. Current binding, bridge assignment, credential and
+authority checks still apply. No migration is needed; upgrade the service and
+CLI together. A new CLI refuses a completed response from an older server that
+does not supply this field, rather than printing a different success shape.
 
 Upload canonical native frames child-first with authenticated binary PUT requests
 to `/v1/github/TENANT/REPOSITORY/uploads/IMPORT/objects/OBJECT` using the normal
@@ -168,5 +181,21 @@ Tests include real Git smart HTTP with synthetic credentials, redirect rejection
 process loss, exact history conversion, partial uploads, server restart, revocation,
 wrong Git identity, concurrent completion, expiry during writes and a populated
 schema upgrade. A local transport fixture is not an installed-App acceptance test.
-Actual installed-App import, PR publication, checks, native GitHub queue and merge
+
+On 2026-10-24, the actual App adapter imported the pinned root commit of the public
+[synthetic acceptance repository](https://github.com/TreeHarbor/TreeHarbor-acceptance).
+A trusted Linux aarch64 bridge used the selected installation; the service retained
+15 native objects. Native export and ordinary Git restoration reproduced the exact
+original commit, tree and all seven files; `git fsck --strict` passed. The
+[retained result](evidence/github-app-import-20261024.json) contains the exact
+identities and scope of this check. This small history contains one commit.
+The operator connected the local bridge VM to the service with an SSH Unix-socket
+forward. This is acceptance infrastructure, not a remote product API or an agent
+sandbox acceptance run. Linux x86-64 remains the tested agent runtime platform.
+
+SIGKILL/restart preserved the completed source. A retry with absent App config,
+Git and local import state recovered the same identity. This test exposed differing
+CLI output shapes; an upgraded Linux client and server returned the exact initial
+v1 completion result when the same live import was retried without those inputs.
+PR publication, checks, signed callbacks, native GitHub queue and final merge
 confirmation remain release gates. No performance advantage is claimed.

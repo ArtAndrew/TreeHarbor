@@ -71,6 +71,9 @@ fn describe(row: &Row) -> Result<Value> {
         json!({"version":1,"import":row.get::<_,Uuid>("import").to_string(),"binding":row.get::<_,Uuid>("binding").to_string(),"epoch":row.get::<_,i64>("epoch"),"state":row.get::<_,String>("state"),"bridge":row.get::<_,String>("bridge"),"git_revision":row.get::<_,String>("git_revision"),"max_objects":row.get::<_,i64>("max_objects"),"max_bytes":row.get::<_,i64>("max_bytes"),"expires_at_unix_ms":row.get::<_,i64>("deadline"),"unexpired":row.get::<_,bool>("unexpired"),"native_commit":commit.map(|c|c.to_string()),"publication_ready":false}),
     )
 }
+fn completed_result(row: &Row, commit: ObjectId, snapshot: ObjectId) -> Value {
+    json!({"version":1,"import":row.get::<_,Uuid>("import").to_string(),"outcome":"completed","git_revision":row.get::<_,String>("git_revision"),"revision":RevisionRef::Native(commit).to_string(),"snapshot":snapshot.to_string(),"publication_ready":false})
+}
 async fn bridge_context(
     tx: &Transaction<'_>,
     auth: &Authorization,
@@ -198,6 +201,33 @@ impl Metadata {
         }
         let mut result = describe(&row)?;
         result["specification"] = json!(spec);
+        result["completed_result"] = if row.get::<_, String>("state") == "completed" {
+            let commit = ObjectId::from_bytes(
+                row.get::<_, Option<Vec<u8>>>("native_commit")
+                    .ok_or(Error::SchemaMismatch)?
+                    .try_into()
+                    .map_err(|_| Error::SchemaMismatch)?,
+            );
+            let s = auth.scope();
+            // Completion registers this immutable, repository-scoped base in the
+            // same transaction. No App access, object IO or mutation replay is
+            // needed to recover the result, even after the import deadline.
+            let base = tx
+                .query_opt(
+                    "SELECT snapshot FROM th_bases WHERE tenant=$1 AND repository=$2 AND revision=$3",
+                    &[&s.tenant(), &s.repository(), &RevisionRef::Native(commit).to_string()],
+                )
+                .await?
+                .ok_or(Error::SchemaMismatch)?;
+            let snapshot = ObjectId::from_bytes(
+                base.get::<_, Vec<u8>>("snapshot")
+                    .try_into()
+                    .map_err(|_| Error::SchemaMismatch)?,
+            );
+            completed_result(&row, commit, snapshot)
+        } else {
+            Value::Null
+        };
         bridge_context(&tx, auth, id).await?;
         if row.get::<_, String>("state") != "completed" {
             deadline(&tx, auth.scope(), id).await?;
@@ -334,7 +364,7 @@ impl Metadata {
         mutation.register_base(commit, snapshot, &lease).await?;
         mutation.tx.execute("UPDATE th_source_uploads SET state='completed' WHERE tenant=$1 AND repository=$2 AND upload=$3",&[&s.tenant(),&s.repository(),&id]).await?;
         mutation.tx.execute("UPDATE th_github_imports SET state='completed',completed_at=clock_timestamp() WHERE tenant=$1 AND repository=$2 AND import=$3",&[&s.tenant(),&s.repository(),&id]).await?;
-        let result = json!({"version":1,"import":id.to_string(),"outcome":"completed","git_revision":row.get::<_,String>("git_revision"),"revision":RevisionRef::Native(commit).to_string(),"snapshot":snapshot.to_string(),"publication_ready":false});
+        let result = completed_result(&row, commit, snapshot);
         complete(mutation,auth,id,result,&[Event {kind:"github.import.completed".into(),payload:json!({"import":id.to_string(),"revision":RevisionRef::Native(commit).to_string()})}]).await
     }
 }
