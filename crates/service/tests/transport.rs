@@ -5,6 +5,8 @@ mod git_reference;
 mod github;
 #[path = "transport/history.rs"]
 mod history;
+#[path = "transport/mcp.rs"]
+mod mcp;
 #[path = "transport/native.rs"]
 mod native;
 #[path = "transport/proposals.rs"]

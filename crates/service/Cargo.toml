@@ -13,6 +13,7 @@ name = "treeharbor"
 path = "src/main.rs"
 
 [dependencies]
+rmcp = { version = "=3.7.0", default-features = false, features = ["server", "transport-io"] }
 treeharbor-github-webhook.workspace = true
 treeharbor-github-contract.workspace = true
 diffy = "=0.5.2"
@@ -40,6 +41,9 @@ deadpool.workspace = true
 clap.workspace = true
 rustix.workspace = true
 tempfile.workspace = true
+
+[dev-dependencies]
+rmcp = { version = "=3.7.0", default-features = false, features = ["client", "transport-child-process"] }
 
 [lints]
 workspace = true

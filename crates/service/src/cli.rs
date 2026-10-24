@@ -28,6 +28,15 @@ pub struct Cli {
 }
 #[derive(Subcommand)]
 enum Command {
+    /// Serve agent tools over stdio using a fixed repository-scoped credential.
+    Mcp {
+        #[arg(long)]
+        socket: PathBuf,
+        #[arg(long)]
+        credential_file: PathBuf,
+        #[arg(long, default_value_t=15_000, value_parser=clap::value_parser!(u64).range(100..=60_000))]
+        timeout_ms: u64,
+    },
     /// Receive signed GitHub callbacks on a separate private Unix socket.
     WebhookServe {
         #[arg(long)]
@@ -1077,6 +1086,14 @@ pub async fn run(cli: Cli) -> Result<bool> {
                 "{}",
                 json!({"pack":result.directory.to_str(),"pack_path_hex":crate::pack::hex(result.directory.as_os_str().as_bytes()),"commit":result.commit().to_string(),"snapshot":result.snapshot().to_string(),"objects":result.object_count(),"encoded_bytes":result.encoded_bytes(),"filesystem_entries":result.filesystem_entries()})
             );
+            Ok(true)
+        }
+        Command::Mcp {
+            socket,
+            credential_file,
+            timeout_ms,
+        } => {
+            crate::mcp::serve(socket, credential_file, Duration::from_millis(timeout_ms)).await?;
             Ok(true)
         }
         Command::WebhookServe { config } => {

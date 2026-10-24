@@ -45,7 +45,9 @@ in **Standalone** mode. Both share one Rust engine.
 > [managed native checks](docs/managed-checks.md) execute approved offline commands
 > on exact candidates. Automatic queue/CI
 > scheduling is still pending.
-> Optimized caching, remote transport and MCP integration are still pending.
+> An experimental [MCP stdio adapter](docs/mcp.md) now exposes scoped agent tools
+> through the same local service. Optimized caching and remote command transport
+> are still pending.
 > [Preparation reservations](docs/workspace-preparations.md) now persist node/storage
 > ownership and fence retries before physical work. The [local preparation node](docs/local-node.md)
 > now materializes files, acknowledges exact placements and recovers them after process loss.

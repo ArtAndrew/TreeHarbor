@@ -3,6 +3,26 @@
 Updated: 2026-10-24. This file describes implemented behavior and remaining release
 gates. A foundation milestone does not complete either mode.
 
+The experimental [MCP stdio adapter](mcp.md) exposes twenty named agent tools
+through the existing authenticated service. It fixes repository scope from a
+private credential and adds no validation, approval, runtime or publication
+authority. Native queue request/cancellation is separate from admission; Connected
+queue operations retain the owner/bridge workflow. Candidate identity and managed
+check status are separate tools, and historical passing evidence never grants
+current admission.
+
+The independent wire client passed lifecycle, scope rejection, bounded-input
+recovery and protocol-only output checks. Two actual SDK child clients negotiated
+the two supported protocol revisions against PostgreSQL and the HTTP service.
+They passed overlapping immutable proposals, exact replay, history/diff reads,
+native queue request/replay/cancel without moving main, server/client restart,
+stale generation/foreign workspace refusal, immediate revocation and drain.
+Runtime facts in this test are explicitly fixtures. Local regression passed 263
+ordinary workspace tests and, separately, 257 PostgreSQL/materializer/node/service
+tests. The final extended MCP scenario and independent wire test also passed.
+Strict all-target Clippy and formatting checks passed. Full MCP host/runtime onboarding, complete two-mode
+queue-to-publication acceptance and packaged installation remain release gates.
+
 Experimental [event recovery](github-event-recovery.md) now connects owner-bounded
 requests, explicit `host.recover` bridge permission, durable PostgreSQL scan/detail/
 dispatch records and the resumable `github recover-events` command. Schema 24
@@ -23,8 +43,10 @@ test passed all four lost-commit boundaries (page, detail, send grant and report
 then resumed without the App key and confirmed receipt through the real HMAC
 receiver. Transport/contract regression passed, including read-only content
 inspection and changed payload rejection. Provider observations are explicit
-fixtures; none establishes a real App installation. Full workspace/database/CI
-verification for this increment is in progress. Installed-App and full queue
+fixtures; none establishes a real App installation. All five required PR50 checks
+passed before merge: 262 ordinary tests on each OS, 264 explicit PostgreSQL/Linux
+contracts, strict Clippy/fmt, TLS failure tests, contribution rights and the actual
+gVisor lifecycle/native-publication harness. Installed-App and full queue
 membership/check/final-tree acceptance remain open.
 
 The [webhook HTTPS recipe](webhook-https.md) now supplies a dedicated Caddy 2.11.7
