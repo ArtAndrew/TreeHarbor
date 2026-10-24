@@ -114,8 +114,8 @@ impl Snapshot {
                 {
                     return Err(InvalidEvidence);
                 }
-                if let Some(c) = &r.conclusion {
-                    if r.status != "COMPLETED"
+                if let Some(c) = &r.conclusion
+                    && (r.status != "COMPLETED"
                         || !matches!(
                             c.as_str(),
                             "ACTION_REQUIRED"
@@ -127,10 +127,9 @@ impl Snapshot {
                                 | "STARTUP_FAILURE"
                                 | "SUCCESS"
                                 | "TIMED_OUT"
-                        )
-                    {
-                        return Err(InvalidEvidence);
-                    }
+                        ))
+                {
+                    return Err(InvalidEvidence);
                 }
                 if r.status == "COMPLETED" && r.conclusion.is_none()
                     || r.started_at_unix_ms.is_some_and(|t| t <= 0)
