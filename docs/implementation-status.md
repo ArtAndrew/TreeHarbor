@@ -3,6 +3,24 @@
 Updated: 2026-10-24. This file describes implemented behavior and remaining release
 gates. A foundation milestone does not complete either mode.
 
+The [webhook HTTPS recipe](webhook-https.md) now supplies a dedicated Caddy 2.11.7
+configuration for the existing Rust receiver. It proxies only POST /github/events
+to the private Unix socket, preserves signed bytes, bounds requests/deadlines and
+filters request headers/URI from runtime error logs. Certificates are provided by
+the operator; no public DNS, automatic issuer or App installation is provisioned.
+It does not expose the general command API or act as a sandbox/rate limiter.
+
+Local acceptance passed all eleven scenario groups using the actual config,
+real Caddy, Rust receiver and temporary PostgreSQL schema. Coverage includes TLS
+trust and replacement, HTTP/2, exact body/header limits, slow requests, duplicate
+headers, retained raw group bytes, restart/replay, revocation, proxy SIGKILL before
+and after commit, DB lock timeout and log filtering. An initial test incorrectly
+expected HTTP 504 for a DB lock; the existing 5s database lock timeout returns 503
+before the receiver deadline. The expectation was corrected without changing
+production timeouts. Linux execution is added to the required PostgreSQL CI job;
+all required exact-head checks still need to pass before merge. The App/probe data
+in this test is an explicit fixture, not live GitHub evidence.
+
 The [GitHub queue acceptance kit](../examples/github-queue/README.md) now provides a
 synthetic Rust seed, a pinned `merge_group` workflow, exact overlapping edits and a
 private-App permission template. Its local driver runs actual Git/Cargo: baseline

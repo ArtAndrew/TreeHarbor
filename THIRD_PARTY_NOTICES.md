@@ -44,3 +44,10 @@ in the [GitHub connection inventory](third-party/github/README.md). This include
 the crypto implementation's combined third-party notices; those components are
 not relicensed under ELv2. Dependencies for unsupported targets in Cargo.lock are
 not a claim that TreeHarbor ships or supports those targets.
+
+The optional webhook HTTPS recipe and its CI test use unmodified Caddy 2.11.7 as
+an external executable. Its binary is downloaded separately and is not vendored
+or relicensed here. Preserve its archive's upstream Apache-2.0 LICENSE and the
+notices for components in any future distribution that bundles it. The recipe
+and test are original TreeHarbor code under ELv2; their license does not replace
+[Caddy's upstream license](https://github.com/caddyserver/caddy/blob/v2.11.7/LICENSE).

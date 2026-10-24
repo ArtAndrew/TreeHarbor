@@ -57,6 +57,18 @@ jobs:
           TH_TEST_DATABASE_URL: host=127.0.0.1 user=treeharbor_test password=disposable-ci-only dbname=treeharbor_test
           TH_SERVICE_TEST_DATABASE_URL: host=/var/run/treeharbor-test-pg user=treeharbor_test password=disposable-ci-only dbname=treeharbor_test
         run: cargo test -p treeharbor-metadata -p treeharbor-materializer -p treeharbor-node -p treeharbor-service --locked -- --ignored
+      - name: Install pinned webhook TLS proxy for acceptance
+        working-directory: ${{ runner.temp }}
+        run: |
+          mkdir -p webhook-caddy
+          curl --fail --location --retry 3 --output webhook-caddy/caddy.tar.gz https://github.com/caddyserver/caddy/releases/download/v2.11.7/caddy_2.11.7_linux_amd64.tar.gz
+          echo '727b91701a392de6ebc5027509f548bf39979e5216340d0faed8fa5e69c84f8b  webhook-caddy/caddy.tar.gz' | sha256sum --check --strict
+          tar -xzf webhook-caddy/caddy.tar.gz -C webhook-caddy caddy LICENSE
+      - name: Exercise actual webhook TLS, failure recovery and ingress limits
+        env:
+          TH_CADDY_BIN: ${{ runner.temp }}/webhook-caddy/caddy
+          TH_SERVICE_TEST_DATABASE_URL: host=/var/run/treeharbor-test-pg user=treeharbor_test password=disposable-ci-only dbname=treeharbor_test
+        run: python3 scripts/test-webhook-proxy.py
   runtime:
     name: gVisor task supervision
     runs-on: ubuntu-24.04

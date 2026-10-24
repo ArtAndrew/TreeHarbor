@@ -1,0 +1,51 @@
+{
+	admin off
+	auto_https off
+	persist_config off
+	log default {
+		format filter {
+			wrap json
+			fields {
+				request>headers delete
+				request>uri delete
+			}
+		}
+	}
+	servers {
+		protocols h1 h2
+		max_header_size 8KiB
+		timeouts {
+			read_header 5s
+			read_body 15s
+			write 20s
+			idle 30s
+		}
+	}
+}
+
+https://{$TH_WEBHOOK_ADDRESS} {
+	bind {$TH_WEBHOOK_BIND:0.0.0.0}
+	tls "{$TH_WEBHOOK_TLS_CERT}" "{$TH_WEBHOOK_TLS_KEY}"
+	@delivery {
+		method POST
+		path /github/events
+	}
+	handle @delivery {
+		request_body {
+			max_size 1MiB
+		}
+		reverse_proxy "unix/{$TH_WEBHOOK_SOCKET}" {
+			transport http {
+				dial_timeout 2s
+				response_header_timeout 12s
+				read_timeout 15s
+				write_timeout 15s
+				compression off
+				network_proxy none
+			}
+		}
+	}
+	handle {
+		respond 404
+	}
+}
