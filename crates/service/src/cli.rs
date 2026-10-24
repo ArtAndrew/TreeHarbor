@@ -193,6 +193,8 @@ enum Grant {
     HostQueue,
     #[value(name = "host.merge")]
     HostMerge,
+    #[value(name = "host.recover")]
+    HostRecover,
     Review,
     #[value(name = "policy.write")]
     PolicyWrite,
@@ -213,6 +215,7 @@ impl From<Grant> for Permission {
             Grant::HostRead => Self::HostRead,
             Grant::HostQueue => Self::HostQueue,
             Grant::HostMerge => Self::HostMerge,
+            Grant::HostRecover => Self::HostRecover,
             Grant::Review => Self::Review,
             Grant::PolicyWrite => Self::PolicyWrite,
             Grant::IntegrationControl => Self::IntegrationControl,

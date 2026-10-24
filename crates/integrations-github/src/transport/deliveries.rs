@@ -36,23 +36,14 @@ impl RecoveryTarget {
         {
             return Err(Error::Configuration);
         }
-        let url = Url::parse(&self.callback_url).map_err(|_| Error::Configuration)?;
-        if url.scheme() != "https"
-            || url.host_str().is_none()
-            || !url.username().is_empty()
-            || url.password().is_some()
-            || url.query().is_some()
-            || url.fragment().is_some()
-            || url.path() != "/github/events"
-            || url.as_str() != self.callback_url
-        {
-            return Err(Error::Configuration);
-        }
+        treeharbor_github_contract::deliveries::callback_url(&self.callback_url)
+            .map_err(|_| Error::Configuration)?;
         Ok(())
     }
 }
 
-pub use treeharbor_github_contract::deliveries::DeliveryAttempt;
+use treeharbor_github_contract::deliveries::payload_digest;
+pub use treeharbor_github_contract::deliveries::{DeliveryAttempt, DeliveryDetails};
 
 #[derive(Debug, Serialize)]
 pub struct DeliveryPage {
@@ -71,6 +62,7 @@ pub struct RedeliveryReceipt {
     pub version: u8,
     pub target: RecoveryTarget,
     pub attempt: DeliveryAttempt,
+    pub payload_sha256: String,
     pub accepted_at_unix_ms: i64,
     /// Always false. Only the independent signed inbox can confirm receipt.
     pub callback_confirmed: bool,
@@ -104,7 +96,7 @@ struct Attempt {
     throttled_at: Value,
 }
 // Flattening would buffer duplicate named fields. Explicitly list the consumed
-// fields for details too; request/response bodies are deliberately ignored.
+// fields for details too; only a digest of parsed request content is retained.
 #[derive(Deserialize)]
 struct Detail {
     id: u64,
@@ -118,6 +110,11 @@ struct Detail {
     repository_id: Value,
     throttled_at: Value,
     url: String,
+    request: ProviderRequest,
+}
+#[derive(Deserialize)]
+struct ProviderRequest {
+    payload: Value,
 }
 impl Detail {
     fn attempt(self) -> Attempt {
@@ -405,13 +402,80 @@ impl Connection {
         .await
         .map_err(|_| Error::Deadline)?
     }
+    async fn recovery_detail(
+        &self,
+        target: &RecoveryTarget,
+        expected: &DeliveryAttempt,
+        jwt: &crate::auth::Secret,
+    ) -> Result<DeliveryDetails> {
+        let detail: Detail = self
+            .json(
+                Stage::WebhookDeliveryDetail,
+                Method::GET,
+                &format!("app/hook/deliveries/{}", expected.id),
+                jwt.header()?,
+                None,
+                StatusCode::OK,
+            )
+            .await?;
+        let p = &detail.request.payload;
+        if detail.url != target.callback_url
+            || p["installation"]["id"] != target.binding.installation_id
+            || p["repository"]["id"] != target.binding.repository_id
+            || p["repository"]["owner"]["id"] != target.binding.owner_id
+            || p["action"] != expected.action
+        {
+            return Err(Error::WebhookRecovery);
+        }
+        let digest = payload_digest(p).map_err(|_| Error::WebhookRecovery)?;
+        let observed_at_unix_ms = milliseconds()?;
+        let attempt = detail
+            .attempt()
+            .scoped(target, observed_at_unix_ms)?
+            .ok_or(Error::WebhookRecovery)?;
+        if !attempt.same_attempt(expected) {
+            return Err(Error::WebhookRecovery);
+        }
+        Ok(DeliveryDetails {
+            version: 1,
+            attempt,
+            observed_at_unix_ms,
+            payload_sha256: digest,
+        })
+    }
+    /// Read-only provider content comparison; does not construct a signed event.
+    pub async fn inspect_webhook_delivery(
+        &self,
+        target: &RecoveryTarget,
+        expected: &DeliveryAttempt,
+    ) -> Result<DeliveryDetails> {
+        target.validate()?;
+        expected
+            .validate(
+                target.binding.installation_id,
+                target.binding.repository_id,
+                milliseconds()?,
+            )
+            .map_err(|_| Error::WebhookRecovery)?;
+        tokio::time::timeout(PROBE_TIMEOUT, async {
+            let _slot = self
+                .slots
+                .acquire()
+                .await
+                .map_err(|_| Error::Configuration)?;
+            let jwt = self.recovery_preflight(target).await?;
+            self.recovery_detail(target, expected, &jwt).await
+        })
+        .await
+        .map_err(|_| Error::Deadline)?
+    }
     /// Exactly one POST after fresh identity/detail checks and caller eligibility.
     /// The caller must first record durable intent. Cancellation/process death is
     /// unknown; a receipt means only HTTP202, never signed inbox persistence.
     pub async fn redeliver_webhook<F, Fut>(
         &self,
         target: &RecoveryTarget,
-        expected: &DeliveryAttempt,
+        expected: &DeliveryDetails,
         eligible: F,
     ) -> std::result::Result<RedeliveryReceipt, MutationFailure>
     where
@@ -423,13 +487,11 @@ impl Connection {
             target.validate()?;
             let observed = milliseconds()?;
             expected
-                .validate(
-                    target.binding.installation_id,
-                    target.binding.repository_id,
-                    observed,
-                )
+                .validate(target.binding.installation_id, target.binding.repository_id)
                 .map_err(|_| Error::WebhookRecovery)?;
-            if expected.delivered_at_unix_ms < observed.saturating_sub(RETENTION_MS) {
+            if expected.observed_at_unix_ms > observed.saturating_add(15000)
+                || expected.attempt.delivered_at_unix_ms < observed.saturating_sub(RETENTION_MS)
+            {
                 return Err(Error::WebhookRecovery);
             }
             let _slot = self
@@ -438,24 +500,10 @@ impl Connection {
                 .await
                 .map_err(|_| Error::Configuration)?;
             let jwt = self.recovery_preflight(target).await?;
-            let detail: Detail = self
-                .json(
-                    Stage::WebhookDeliveryDetail,
-                    Method::GET,
-                    &format!("app/hook/deliveries/{}", expected.id),
-                    jwt.header()?,
-                    None,
-                    StatusCode::OK,
-                )
+            let observed = self
+                .recovery_detail(target, &expected.attempt, &jwt)
                 .await?;
-            if detail.url != target.callback_url {
-                return Err(Error::WebhookRecovery);
-            }
-            let observed = detail
-                .attempt()
-                .scoped(target, milliseconds()?)?
-                .ok_or(Error::WebhookRecovery)?;
-            if !observed.same_attempt(expected) {
+            if observed.payload_sha256 != expected.payload_sha256 {
                 return Err(Error::WebhookRecovery);
             }
             let header = jwt.header()?;
@@ -464,7 +512,7 @@ impl Connection {
             self.request(
                 Stage::WebhookRedelivery,
                 Method::POST,
-                &format!("app/hook/deliveries/{}/attempts", expected.id),
+                &format!("app/hook/deliveries/{}/attempts", expected.attempt.id),
                 header,
                 None,
                 StatusCode::ACCEPTED,
@@ -473,7 +521,8 @@ impl Connection {
             Ok(RedeliveryReceipt {
                 version: 1,
                 target: target.clone(),
-                attempt: observed,
+                attempt: observed.attempt,
+                payload_sha256: observed.payload_sha256,
                 accepted_at_unix_ms: milliseconds()?,
                 callback_confirmed: false,
             })

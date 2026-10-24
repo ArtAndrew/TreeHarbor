@@ -4,6 +4,60 @@ use serde::Deserialize;
 #[derive(Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
 pub enum WireCommand {
+    RecoveryRequest {
+        key: String,
+        epoch: i64,
+        recovery: String,
+        specification: RecoverySpec,
+    },
+    RecoveryCancel {
+        key: String,
+        epoch: i64,
+        recovery: String,
+    },
+    RecoveryStatus {
+        epoch: i64,
+        recovery: String,
+        after: i64,
+    },
+    RecoveryContext {
+        epoch: i64,
+        recovery: String,
+        after: i64,
+    },
+    RecoveryPage {
+        key: String,
+        epoch: i64,
+        recovery: String,
+        report: Box<treeharbor_github_contract::deliveries::DeliveryPageReport>,
+    },
+    RecoveryDetails {
+        key: String,
+        epoch: i64,
+        recovery: String,
+        details: Box<treeharbor_github_contract::deliveries::DeliveryDetails>,
+    },
+    RedeliveryBegin {
+        key: String,
+        epoch: i64,
+        recovery: String,
+        provider_id: i64,
+        dispatch: String,
+    },
+    RedeliveryContext {
+        epoch: i64,
+        recovery: String,
+        provider_id: i64,
+        dispatch: String,
+    },
+    RedeliveryReport {
+        key: String,
+        epoch: i64,
+        recovery: String,
+        provider_id: i64,
+        dispatch: String,
+        report: RedeliveryReport,
+    },
     EventChannelCreate {
         key: String,
         epoch: i64,
@@ -293,6 +347,16 @@ pub(super) fn id(s: &str) -> Result<Uuid> {
 impl WireCommand {
     pub fn permission(&self) -> Permission {
         match self {
+            Self::RecoveryRequest { .. } | Self::RecoveryCancel { .. } => {
+                Permission::RepositoryWrite
+            }
+            Self::RecoveryStatus { .. } => Permission::Read,
+            Self::RecoveryContext { .. }
+            | Self::RecoveryPage { .. }
+            | Self::RecoveryDetails { .. }
+            | Self::RedeliveryBegin { .. }
+            | Self::RedeliveryContext { .. }
+            | Self::RedeliveryReport { .. } => Permission::HostRecover,
             Self::EventChannelCreate { .. } | Self::EventChannelRevoke { .. } => {
                 Permission::RepositoryWrite
             }
@@ -351,6 +415,121 @@ impl WireCommand {
         backend: Option<&str>,
     ) -> Result<Value> {
         match self {
+            Self::RecoveryRequest {
+                key,
+                epoch,
+                recovery,
+                specification,
+            } => {
+                db.request_github_recovery(
+                    auth,
+                    &Command { key, epoch },
+                    id(&recovery)?,
+                    &specification,
+                )
+                .await
+            }
+            Self::RecoveryCancel {
+                key,
+                epoch,
+                recovery,
+            } => {
+                db.cancel_github_recovery(auth, &Command { key, epoch }, id(&recovery)?)
+                    .await
+            }
+            Self::RecoveryStatus {
+                epoch,
+                recovery,
+                after,
+            } => {
+                db.github_recovery_context(auth, epoch, id(&recovery)?, after, false)
+                    .await
+            }
+            Self::RecoveryContext {
+                epoch,
+                recovery,
+                after,
+            } => {
+                db.github_recovery_context(auth, epoch, id(&recovery)?, after, true)
+                    .await
+            }
+            Self::RecoveryPage {
+                key,
+                epoch,
+                recovery,
+                report,
+            } => {
+                db.record_github_recovery_page(
+                    auth,
+                    &Command { key, epoch },
+                    id(&recovery)?,
+                    &report,
+                )
+                .await
+            }
+            Self::RecoveryDetails {
+                key,
+                epoch,
+                recovery,
+                details,
+            } => {
+                db.record_github_recovery_details(
+                    auth,
+                    &Command { key, epoch },
+                    id(&recovery)?,
+                    &details,
+                )
+                .await
+            }
+            Self::RedeliveryBegin {
+                key,
+                epoch,
+                recovery,
+                provider_id,
+                dispatch,
+            } => {
+                db.begin_github_redelivery(
+                    auth,
+                    &Command { key, epoch },
+                    id(&recovery)?,
+                    provider_id,
+                    id(&dispatch)?,
+                )
+                .await
+            }
+            Self::RedeliveryContext {
+                epoch,
+                recovery,
+                provider_id,
+                dispatch,
+            } => {
+                db.github_redelivery_context(
+                    auth,
+                    epoch,
+                    id(&recovery)?,
+                    provider_id,
+                    id(&dispatch)?,
+                )
+                .await
+            }
+            Self::RedeliveryReport {
+                key,
+                epoch,
+                recovery,
+                provider_id,
+                dispatch,
+                report,
+            } => {
+                db.report_github_redelivery(
+                    auth,
+                    &Command { key, epoch },
+                    id(&recovery)?,
+                    provider_id,
+                    id(&dispatch)?,
+                    &report,
+                )
+                .await
+            }
             Self::EventChannelCreate {
                 key,
                 epoch,

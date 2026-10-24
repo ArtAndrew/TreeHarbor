@@ -3,22 +3,29 @@
 Updated: 2026-10-24. This file describes implemented behavior and remaining release
 gates. A foundation milestone does not complete either mode.
 
-An experimental [event recovery transport](github-event-recovery.md) now adds
-bounded App-JWT delivery listing and one-shot redelivery with pinned identities,
-callback configuration, opaque cursor handling and a final eligibility callback.
-The shared delivery-attempt shape has a serialized fixture. Tests exercise actual
-local HTTP, scope/configuration substitution, duplicate fields, response loss,
-post-send cancellation, size bounds and absence of automatic mutation retries.
-This remains a library component: durable recovery intent/scan/dispatch records,
-recovery-specific permission, receiver correlation and CLI integration are pending.
-It does not treat parsed provider payloads as signed callback bytes or HTTP 202 as
-receipt. The documented dotted App client-ID format is also accepted without
-changing its JWT issuer or persisted binding value.
-Local verification passed 73 GitHub transport/contract tests, 27 real PostgreSQL
-GitHub tests, formatting and workspace-wide strict Clippy. These results include
-the existing queue transport regression tests; the empty redelivery HTTP 202 path
-does not change the queue API's JSON 202 handling. Installed-App validation and
-the complete recovery workflow remain open.
+Experimental [event recovery](github-event-recovery.md) now connects owner-bounded
+requests, explicit `host.recover` bridge permission, durable PostgreSQL scan/detail/
+dispatch records and the resumable `github recover-events` command. Schema 24
+preserves old events and permissions. One dispatch per GUID/recovery is authorized;
+replay or lost responses cannot grant another send. Accepted/unknown/not-sent
+reports remain separate from actual signed inbox receipt.
+
+Because the delivery GUID header is not HMAC-signed, correlation compares a
+versioned digest of App-authenticated parsed payload with independently verified
+inbox content. Raw signature/body provenance remains separate. Changed payloads
+fail closed. Coverage and merge verification stay false, including after a scan
+reaches its observed pagination end.
+
+Local targeted checks passed eight real PostgreSQL recovery tests, including
+populated schema-23 upgrade, cancellation, expiry during commit, concurrent
+same-GUID dispatch and spoofed GUID/content mismatch. The actual CLI/server kill
+test passed all four lost-commit boundaries (page, detail, send grant and report),
+then resumed without the App key and confirmed receipt through the real HMAC
+receiver. Transport/contract regression passed, including read-only content
+inspection and changed payload rejection. Provider observations are explicit
+fixtures; none establishes a real App installation. Full workspace/database/CI
+verification for this increment is in progress. Installed-App and full queue
+membership/check/final-tree acceptance remain open.
 
 The [webhook HTTPS recipe](webhook-https.md) now supplies a dedicated Caddy 2.11.7
 configuration for the existing Rust receiver. It proxies only POST /github/events

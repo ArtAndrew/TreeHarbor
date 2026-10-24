@@ -3,6 +3,8 @@ mod common;
 mod events;
 #[path = "github/imports.rs"]
 mod imports;
+#[path = "github/recovery.rs"]
+mod recovery;
 use common::{cleanup, connection, setup};
 use serde_json::json;
 use treeharbor_metadata::{

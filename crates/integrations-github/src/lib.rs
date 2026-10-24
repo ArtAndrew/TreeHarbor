@@ -11,7 +11,9 @@ pub use auth::AppCredentials;
 use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
 pub use transport::Connection;
-pub use transport::deliveries::{DeliveryAttempt, DeliveryPage, RecoveryTarget, RedeliveryReceipt};
+pub use transport::deliveries::{
+    DeliveryAttempt, DeliveryDetails, DeliveryPage, RecoveryTarget, RedeliveryReceipt,
+};
 pub use transport::publisher::{BranchObservation, BranchOutcome, BranchResult};
 pub use transport::pulls::{ExpectedPull, PullIdentity, PullObservation, PullSnapshot, PullTarget};
 

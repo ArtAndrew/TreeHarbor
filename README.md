@@ -75,6 +75,8 @@ in **Standalone** mode. Both share one Rust engine.
 > callbacks with explicit repository channels and recovery after process loss.
 > A [dedicated HTTPS ingress recipe](docs/webhook-https.md) connects that receiver
 > through Caddy while leaving the command socket private.
+> [Event recovery](docs/github-event-recovery.md) adds owner-bounded delivery scans,
+> durable one-shot redelivery and signed-content correlation after interruption.
 > Complete policy/group/final-tree verification and installed-App acceptance remain pending.
 > Neither end-to-end mode is released. No packaged installation is available yet.
 > See [implementation status](docs/implementation-status.md) for evidence and gaps.

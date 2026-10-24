@@ -21,6 +21,7 @@ pub enum Permission {
     HostRead,
     HostQueue,
     HostMerge,
+    HostRecover,
     Review,
     PolicyWrite,
     IntegrationControl,
@@ -39,6 +40,7 @@ impl Permission {
             Self::HostRead => "host.read",
             Self::HostQueue => "host.queue",
             Self::HostMerge => "host.merge",
+            Self::HostRecover => "host.recover",
             Self::Review => "review",
             Self::PolicyWrite => "policy.write",
             Self::IntegrationControl => "integration.control",
@@ -46,6 +48,11 @@ impl Permission {
     }
     pub(crate) fn for_command(kind: &str) -> Result<Self> {
         match kind {
+            "github.recovery.request.v1" | "github.recovery.cancel.v1" => Ok(Self::RepositoryWrite),
+            "github.recovery.page.v1"
+            | "github.recovery.detail.v1"
+            | "github.recovery.begin.v1"
+            | "github.recovery.report.v1" => Ok(Self::HostRecover),
             "github.events.create.v1" | "github.events.revoke.v1" => Ok(Self::RepositoryWrite),
             "github.dequeue.request.v1" => Ok(Self::HostQueue),
             "github.dequeue.begin.v1" | "github.dequeue.report.v1" => Ok(Self::HostMerge),
@@ -153,7 +160,9 @@ impl PrincipalKind {
             Permission::RuntimeControl => self == Self::Node,
             Permission::ValidationReport => self == Self::Validator,
             Permission::HostPublish => self == Self::Bridge,
-            Permission::HostRead | Permission::HostMerge => self == Self::Bridge,
+            Permission::HostRead | Permission::HostMerge | Permission::HostRecover => {
+                self == Self::Bridge
+            }
             Permission::HostQueue => self == Self::Human,
             Permission::Review | Permission::PolicyWrite => self == Self::Human,
             Permission::IntegrationControl => self == Self::Integrator,

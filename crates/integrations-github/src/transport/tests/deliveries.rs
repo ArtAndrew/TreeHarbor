@@ -54,10 +54,21 @@ fn expected(value: &Value) -> DeliveryAttempt {
         throttled_at_unix_ms: None,
     }
 }
+fn payload() -> Value {
+    json!({"action":"checks_requested","installation":{"id":9},"repository":{"id":11,"owner":{"id":13}},"untrusted":PRIVATE_MARKER})
+}
+fn prepared(a: &DeliveryAttempt) -> crate::DeliveryDetails {
+    crate::DeliveryDetails {
+        version: 1,
+        attempt: a.clone(),
+        observed_at_unix_ms: now().unwrap() as i64 * 1000,
+        payload_sha256: treeharbor_github_contract::deliveries::payload_digest(&payload()).unwrap(),
+    }
+}
 fn detail(value: &Value) -> Value {
     let mut d = value.clone();
     d["url"] = json!(CALLBACK);
-    d["request"] = json!({"headers":{"Authorization":PRIVATE_MARKER,"X-Hub-Signature-256":PRIVATE_MARKER},"payload":{"untrusted":PRIVATE_MARKER}});
+    d["request"] = json!({"headers":{"Authorization":PRIVATE_MARKER,"X-Hub-Signature-256":PRIVATE_MARKER},"payload":payload()});
     d["response"] = json!({"payload":PRIVATE_MARKER});
     d
 }
@@ -282,6 +293,59 @@ async fn consumed_duplicates_missing_fields_and_delivery_bounds_fail_closed() {
 }
 
 #[tokio::test]
+async fn read_only_detail_compares_payload_without_returning_private_content() {
+    let a = attempt();
+    let mut responses = preflight();
+    responses.push(response(200, detail(&a)));
+    let (connection, server) = host(responses).await;
+    let result = connection
+        .inspect_webhook_delivery(&target(), &expected(&a))
+        .await
+        .unwrap();
+    assert_eq!(result.attempt, expected(&a));
+    assert_eq!(
+        result.payload_sha256,
+        prepared(&expected(&a)).payload_sha256
+    );
+    assert!(
+        !serde_json::to_string(&result)
+            .unwrap()
+            .contains(PRIVATE_MARKER)
+    );
+    let requests = server.await.unwrap();
+    assert_eq!(requests.len(), 4);
+    assert_jwts(&requests);
+    assert!(requests.iter().all(|r| r.starts_with(b"GET ")));
+}
+
+#[tokio::test]
+async fn changed_payload_and_nested_scope_never_receive_redelivery_authorization() {
+    let a = attempt();
+    for (pointer, value) in [
+        ("/untrusted", json!("changed original content")),
+        ("/installation/id", json!(10)),
+        ("/repository/id", json!(12)),
+        ("/repository/owner/id", json!(14)),
+        ("/action", json!("destroyed")),
+    ] {
+        let mut d = detail(&a);
+        *d["request"]["payload"].pointer_mut(pointer).unwrap() = value;
+        let mut responses = preflight();
+        responses.push(response(200, d));
+        let (connection, server) = host(responses).await;
+        let failure = connection
+            .redeliver_webhook(&target(), &prepared(&expected(&a)), || async {
+                panic!("changed payload must fail before final grant")
+            })
+            .await
+            .unwrap_err();
+        assert_eq!(failure.error, Error::WebhookRecovery);
+        assert!(failure.mutation_not_sent);
+        assert_eq!(server.await.unwrap().len(), 4);
+    }
+}
+
+#[tokio::test]
 async fn redelivery_checks_original_attempt_then_posts_once_without_claiming_callback() {
     let a = attempt();
     let expected = expected(&a);
@@ -290,7 +354,7 @@ async fn redelivery_checks_original_attempt_then_posts_once_without_claiming_cal
     replies.push(raw(202, "", b""));
     let (connection, server) = host(replies).await;
     let receipt = connection
-        .redeliver_webhook(&target(), &expected, || async { Ok(()) })
+        .redeliver_webhook(&target(), &prepared(&expected), || async { Ok(()) })
         .await
         .unwrap();
     assert_eq!(receipt.attempt, expected);
@@ -327,7 +391,7 @@ async fn mismatched_detail_cannot_redeliver_another_repository_or_guid() {
         replies.push(response(200, d));
         let (connection, server) = host(replies).await;
         let error = connection
-            .redeliver_webhook(&target(), &expected, || async {
+            .redeliver_webhook(&target(), &prepared(&expected), || async {
                 panic!("must not authorize substituted attempt")
             })
             .await
@@ -346,7 +410,7 @@ async fn final_revocation_blocks_post_and_lost_response_never_retries_automatica
     replies.push(response(200, detail(&a)));
     let (connection, server) = host(replies).await;
     let error = connection
-        .redeliver_webhook(&target(), &expected, || async {
+        .redeliver_webhook(&target(), &prepared(&expected), || async {
             Err(Error::PublicationStopped)
         })
         .await
@@ -366,7 +430,7 @@ async fn final_revocation_blocks_post_and_lost_response_never_retries_automatica
         replies.push(reply);
         let (connection, server) = host(replies).await;
         let error = connection
-            .redeliver_webhook(&target(), &expected, || async { Ok(()) })
+            .redeliver_webhook(&target(), &prepared(&expected), || async { Ok(()) })
             .await
             .unwrap_err();
         assert!(!error.mutation_not_sent);
@@ -401,7 +465,9 @@ async fn local_invalid_targets_cursors_and_expired_attempts_make_no_requests() {
     let mut e = expected(&attempt());
     e.delivered_at_unix_ms -= 4 * 24 * 3600 * 1000;
     let error = connection
-        .redeliver_webhook(&target(), &e, || async { panic!("expired attempt") })
+        .redeliver_webhook(&target(), &prepared(&e), || async {
+            panic!("expired attempt")
+        })
         .await
         .unwrap_err();
     assert!(error.mutation_not_sent);
@@ -414,13 +480,16 @@ async fn detail_payload_is_bounded_and_never_becomes_callback_evidence() {
     let expected = expected(&a);
     // A legitimate large parsed payload can exceed the ordinary 128KiB API cap.
     let mut d = detail(&a);
-    d["request"]["payload"] = json!("x".repeat(256 * 1024));
+    d["request"]["payload"]["padding"] = json!("x".repeat(256 * 1024));
+    let mut large = prepared(&expected);
+    large.payload_sha256 =
+        treeharbor_github_contract::deliveries::payload_digest(&d["request"]["payload"]).unwrap();
     let mut replies = preflight();
     replies.push(response(200, d));
     replies.push(raw(202, "", b""));
     let (connection, server) = host(replies).await;
     let receipt = connection
-        .redeliver_webhook(&target(), &expected, || async { Ok(()) })
+        .redeliver_webhook(&target(), &large, || async { Ok(()) })
         .await
         .unwrap();
     assert!(!receipt.callback_confirmed);
@@ -431,7 +500,7 @@ async fn detail_payload_is_bounded_and_never_becomes_callback_evidence() {
     replies.push(raw(200, "Content-Type: application/json\r\n", &oversized));
     let (connection, server) = host(replies).await;
     let error = connection
-        .redeliver_webhook(&target(), &expected, || async {
+        .redeliver_webhook(&target(), &prepared(&expected), || async {
             panic!("oversized detail")
         })
         .await
@@ -492,7 +561,7 @@ async fn duplicate_security_fields_in_detail_and_config_cannot_enable_redelivery
         ));
         let (connection, server) = host(replies).await;
         let error = connection
-            .redeliver_webhook(&target(), &expected, || async {
+            .redeliver_webhook(&target(), &prepared(&expected), || async {
                 panic!("duplicate detail")
             })
             .await
@@ -582,7 +651,7 @@ async fn cancellation_after_actual_post_never_replays_and_releases_capacity() {
         let connection = connection.clone();
         async move {
             connection
-                .redeliver_webhook(&target(), &expected, || async { Ok(()) })
+                .redeliver_webhook(&target(), &prepared(&expected), || async { Ok(()) })
                 .await
         }
     });
