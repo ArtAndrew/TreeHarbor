@@ -1,7 +1,7 @@
 use super::*;
 use treeharbor_github_webhook::{VerifiedDelivery, WebhookKey};
 use treeharbor_metadata::github::{EventChannelSpec, Observation};
-async fn group_report(f: &QueueFixture) -> QueueObservation {
+pub(super) async fn group_report(f: &QueueFixture) -> QueueObservation {
     let mut v: Value = serde_json::from_str(include_str!(
         "../../../github-contract/tests/fixtures/queue-groups-v4.json"
     ))

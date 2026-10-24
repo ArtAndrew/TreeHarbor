@@ -94,6 +94,9 @@ layouts are retained without inventing a parent mapping.
 `merge_verified` and `host_policy_verified` remain **false**. Required group
 checks, trusted workflow definitions, policy coverage and final published
 commit/tree mapping still need complete verification.
+The separate [candidate-check collector](github-group-checks.md) retains complete
+bounded check identities for a selected membership report; it does not certify
+their attempt, definition or final publication.
 
 Provider fixtures exercise nonempty membership, drift, truncation and invalid
 identity. Real PostgreSQL tests cover reordered/late signed events, reconnection,

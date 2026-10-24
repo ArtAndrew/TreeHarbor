@@ -71,6 +71,11 @@ pub enum Action {
         /// Existing private directory; preserve it for recovery.
         #[arg(long)]
         state: PathBuf,
+        /// Read checks for this retained membership report; never enqueue.
+        #[arg(long,value_parser=clap::value_parser!(i64).range(1..=4096))]
+        group_report: Option<i64>,
+        #[arg(long,default_value="after",value_parser=["before","after"],requires="group_report")]
+        group_side: String,
     },
     /// Capture exact selected PR checks and active rulesets; does not authorize merge.
     Inspect {
@@ -290,6 +295,8 @@ pub async fn run(action: Action) -> Result<bool> {
             queue,
             epoch,
             state,
+            group_report,
+            group_side,
         } => {
             queue::run(queue::Request {
                 config,
@@ -298,6 +305,16 @@ pub async fn run(action: Action) -> Result<bool> {
                 id: queue,
                 epoch,
                 state,
+                check: group_report.map(|sequence| {
+                    (
+                        sequence,
+                        if group_side == "before" {
+                            treeharbor_github_contract::group_checks::Side::Before
+                        } else {
+                            treeharbor_github_contract::group_checks::Side::After
+                        },
+                    )
+                }),
             })
             .await
         }

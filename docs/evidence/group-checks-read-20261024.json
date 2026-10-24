@@ -1,0 +1,156 @@
+{
+  "version": 1,
+  "observed_date": "2026-10-24",
+  "kind": "actual_rust_installed_app_transport_diagnostic",
+  "repository": "https://github.com/TreeHarbor/TreeHarbor-acceptance",
+  "pull": 2,
+  "repository_id": 1431906532,
+  "subject_origin": "previous live acceptance operator evidence; not a product membership record",
+  "product_membership_link_verified": false,
+  "private_repository_entitlement_verified": false,
+  "attempt_verified": false,
+  "definition_verified": false,
+  "merge_verified": false,
+  "host_policy_verified": false,
+  "permissions": {
+    "contents": "read",
+    "metadata": "read",
+    "pull_requests": "read",
+    "checks": "read"
+  },
+  "started_at_unix_ms": 1792862397000,
+  "finished_at_unix_ms": 1792862401000,
+  "token_revoked": true,
+  "checks": {
+    "after": {
+      "suites": [
+        {
+          "app_id": 15368,
+          "head_revision": "git:sha1:eb85eaaef7dd34c7f7887ee5b8787a577ec79ec7",
+          "id": "CS_kwDOVVko5M8AAAAZTOXW8Q",
+          "repository_id": 1431906532,
+          "runs": [
+            {
+              "completed_at_unix_ms": 1792841275000,
+              "conclusion": "SUCCESS",
+              "id": "CR_kwDOVVko5M8AAAAcI9f7Uw",
+              "name": "Queue fixture",
+              "started_at_unix_ms": 1792841234000,
+              "status": "COMPLETED"
+            }
+          ],
+          "workflow": {
+            "event": "merge_group",
+            "file": {
+              "path": ".github/workflows/check.yml",
+              "repository_file_url": "https://github.com/TreeHarbor/TreeHarbor-acceptance/blob/eb85eaaef7dd34c7f7887ee5b8787a577ec79ec7/.github/workflows/check.yml",
+              "repository_name": "TreeHarbor/TreeHarbor-acceptance"
+            },
+            "id": "WFR_kwLOVVko5M8AAAAJVYw7xQ",
+            "observed_run_attempt": 1,
+            "workflow_id": "W_kwDOVVko5M4XiZmi"
+          }
+        },
+        {
+          "app_id": 15368,
+          "head_revision": "git:sha1:eb85eaaef7dd34c7f7887ee5b8787a577ec79ec7",
+          "id": "CS_kwDOVVko5M8AAAAZTOlGXA",
+          "repository_id": 1431906532,
+          "runs": [
+            {
+              "completed_at_unix_ms": 1792841323000,
+              "conclusion": "SUCCESS",
+              "id": "CR_kwDOVVko5M8AAAAcI9vEXw",
+              "name": "Queue fixture",
+              "started_at_unix_ms": 1792841312000,
+              "status": "COMPLETED"
+            }
+          ],
+          "workflow": {
+            "event": "push",
+            "file": {
+              "path": ".github/workflows/check.yml",
+              "repository_file_url": "https://github.com/TreeHarbor/TreeHarbor-acceptance/blob/eb85eaaef7dd34c7f7887ee5b8787a577ec79ec7/.github/workflows/check.yml",
+              "repository_name": "TreeHarbor/TreeHarbor-acceptance"
+            },
+            "id": "WFR_kwLOVVko5M8AAAAJVY2IGw",
+            "observed_run_attempt": 1,
+            "workflow_id": "W_kwDOVVko5M4XiZmi"
+          }
+        }
+      ]
+    },
+    "before": {
+      "suites": [
+        {
+          "app_id": 15368,
+          "head_revision": "git:sha1:eb85eaaef7dd34c7f7887ee5b8787a577ec79ec7",
+          "id": "CS_kwDOVVko5M8AAAAZTOXW8Q",
+          "repository_id": 1431906532,
+          "runs": [
+            {
+              "completed_at_unix_ms": 1792841275000,
+              "conclusion": "SUCCESS",
+              "id": "CR_kwDOVVko5M8AAAAcI9f7Uw",
+              "name": "Queue fixture",
+              "started_at_unix_ms": 1792841234000,
+              "status": "COMPLETED"
+            }
+          ],
+          "workflow": {
+            "event": "merge_group",
+            "file": {
+              "path": ".github/workflows/check.yml",
+              "repository_file_url": "https://github.com/TreeHarbor/TreeHarbor-acceptance/blob/eb85eaaef7dd34c7f7887ee5b8787a577ec79ec7/.github/workflows/check.yml",
+              "repository_name": "TreeHarbor/TreeHarbor-acceptance"
+            },
+            "id": "WFR_kwLOVVko5M8AAAAJVYw7xQ",
+            "observed_run_attempt": 1,
+            "workflow_id": "W_kwDOVVko5M4XiZmi"
+          }
+        },
+        {
+          "app_id": 15368,
+          "head_revision": "git:sha1:eb85eaaef7dd34c7f7887ee5b8787a577ec79ec7",
+          "id": "CS_kwDOVVko5M8AAAAZTOlGXA",
+          "repository_id": 1431906532,
+          "runs": [
+            {
+              "completed_at_unix_ms": 1792841323000,
+              "conclusion": "SUCCESS",
+              "id": "CR_kwDOVVko5M8AAAAcI9vEXw",
+              "name": "Queue fixture",
+              "started_at_unix_ms": 1792841312000,
+              "status": "COMPLETED"
+            }
+          ],
+          "workflow": {
+            "event": "push",
+            "file": {
+              "path": ".github/workflows/check.yml",
+              "repository_file_url": "https://github.com/TreeHarbor/TreeHarbor-acceptance/blob/eb85eaaef7dd34c7f7887ee5b8787a577ec79ec7/.github/workflows/check.yml",
+              "repository_name": "TreeHarbor/TreeHarbor-acceptance"
+            },
+            "id": "WFR_kwLOVVko5M8AAAAJVY2IGw",
+            "observed_run_attempt": 1,
+            "workflow_id": "W_kwDOVVko5M4XiZmi"
+          }
+        }
+      ]
+    },
+    "subject": {
+      "revision": "git:sha1:eb85eaaef7dd34c7f7887ee5b8787a577ec79ec7",
+      "tree": "git:sha1:77c9e0bb9246db3013504d9658e7633f2586ce56"
+    }
+  },
+  "limits": {
+    "max_suites_per_read": 20,
+    "max_total_runs_per_read": 100,
+    "max_encoded_report_bytes": 49152
+  },
+  "limitations": [
+    "Two observed reads are not an atomic snapshot.",
+    "Current workflow attempt is not per-check attempt proof.",
+    "No provider writes, membership acceptance, private-repository or full merge certification were performed."
+  ]
+}

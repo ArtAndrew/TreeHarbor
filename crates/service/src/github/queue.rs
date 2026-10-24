@@ -11,6 +11,7 @@ pub(super) struct Request {
     pub id: Uuid,
     pub epoch: i64,
     pub state: PathBuf,
+    pub check: Option<(i64, treeharbor_github_contract::group_checks::Side)>,
 }
 fn identity(c: &Value, r: &Request, credential: &Credential) -> Result<(Value, QueueTarget)> {
     if c["version"] != 1
@@ -156,6 +157,31 @@ pub(super) async fn collect(r: Request, allow_dispatch: bool) -> Result<Value> {
     if c["state"] == "cancelled" || (!allow_dispatch && c["attempt"].is_null()) {
         return Ok(c);
     }
+    let selected = if let Some((sequence, side)) = r.check {
+        if c["attempt"].is_null() {
+            return Err(Error::PublicationState);
+        }
+        let v = s
+            .command(
+                json!({"action":"queue_check_context","membership_sequence":sequence,"side":side}),
+            )
+            .await?;
+        for field in ["version", "queue", "binding", "epoch", "target"] {
+            if v[field] != c[field] {
+                return Err(Error::PublicationState);
+            }
+        }
+        let target: treeharbor_github_contract::group_checks::GroupCheckTarget =
+            serde_json::from_value(v["group_check_target"].clone())
+                .map_err(|_| Error::PublicationState)?;
+        target.validate().map_err(|_| Error::PublicationState)?;
+        if target.membership_sequence != sequence || target.side != side {
+            return Err(Error::PublicationState);
+        }
+        Some(target)
+    } else {
+        None
+    };
     let spec =
         serde_json::from_value(c["specification"].clone()).map_err(|_| Error::PublicationState)?;
     let (app, config) = load(&r.config)?;
@@ -180,7 +206,15 @@ pub(super) async fn collect(r: Request, allow_dispatch: bool) -> Result<Value> {
     } else {
         uuid(&c["attempt"])?
     };
-    let result = if dispatch {
+    let result = if let Some(target) = &selected {
+        connection
+            .observe_group_checks(&config.repository, &s.target, target)
+            .await
+            .map_err(|error| treeharbor_github::MutationFailure {
+                error,
+                mutation_not_sent: false,
+            })
+    } else if dispatch {
         connection
             .enqueue_pull_graphql_attempt(&config.repository, &s.target, attempt, || async {
                 s.eligible(attempt)
@@ -223,6 +257,7 @@ pub(super) async fn collect(r: Request, allow_dispatch: bool) -> Result<Value> {
                     receipt: None,
                     enqueue_receipt: None,
                     group_capture: None,
+                    group_checks: None,
                     async_result: None,
                     mutation_not_sent: e.mutation_not_sent,
                     token_revoked: false,

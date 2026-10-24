@@ -75,6 +75,9 @@ The read phase also retains [group membership and candidate parents](github-queu
 in version4 reports. Its two bounded reads preserve drift and the actual branch
 tip separately from the PR's reported base. Use `queue_groups` to page these
 historical observations and matching signed facts after membership disappears.
+Use [`--group-report` and `--group-side`](github-group-checks.md) to collect checks
+for an exact retained candidate, including after that entry leaves the queue.
+This check-only operation never obtains an enqueue grant.
 
 App tokens are narrowed to the pinned numeric repository:
 
