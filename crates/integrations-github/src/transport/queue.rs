@@ -4,6 +4,7 @@ use serde::Deserialize;
 use std::sync::atomic::{AtomicBool, Ordering};
 use treeharbor_github_contract::{PullState, queue::*};
 mod dequeue;
+mod enqueue;
 mod result;
 pub use dequeue::ObservedDequeue;
 
@@ -19,12 +20,12 @@ pub struct MutationFailure {
     pub error: Error,
     pub mutation_not_sent: bool,
 }
-const QUERY: &str = r"query TreeHarborQueue($owner:String!,$name:String!,$number:Int!){
+const QUERY: &str = r"query TreeHarborQueue($owner:String!,$name:String!,$number:Int!,$configuration:Boolean!){
  repository(owner:$owner,name:$name){databaseId pullRequest(number:$number){
  id number headRefName headRefOid baseRefName baseRefOid state isDraft merged
  headRepository{databaseId} baseRepository{databaseId} isMergeQueueEnabled isInMergeQueue
  mergeCommit{oid tree{oid}}
- mergeQueue{id repository{databaseId} configuration{mergeMethod mergingStrategy maximumEntriesToBuild maximumEntriesToMerge minimumEntriesToMerge minimumEntriesToMergeWaitTime checkResponseTimeout}}
+ mergeQueue{id repository{databaseId} configuration @include(if:$configuration){mergeMethod mergingStrategy maximumEntriesToBuild maximumEntriesToMerge minimumEntriesToMerge minimumEntriesToMergeWaitTime checkResponseTimeout}}
  mergeQueueEntry{id state baseCommit{oid tree{oid}} headCommit{oid tree{oid}} mergeQueue{id} pullRequest{id number headRefOid}}
  }}}
 ";
@@ -65,7 +66,7 @@ struct Configuration {
 struct Queue {
     id: String,
     repository: DatabaseId,
-    configuration: Configuration,
+    configuration: Option<Configuration>,
 }
 #[derive(Deserialize)]
 struct QueueId {
@@ -130,9 +131,10 @@ impl Connection {
         b: &RepositoryBinding,
         t: &QueueTarget,
         token: &wire::Token,
+        include_configuration: bool,
     ) -> Result<QueueSnapshot> {
         let graph:Graph=self.json(Stage::Queue,Method::POST,"graphql",token.token.header()?,
-            Some(json!({"query":QUERY,"variables":{"owner":b.owner,"name":b.name,"number":t.pull.pull_number}})),StatusCode::OK).await?;
+            Some(json!({"query":QUERY,"variables":{"owner":b.owner,"name":b.name,"number":t.pull.pull_number,"configuration":include_configuration}})),StatusCode::OK).await?;
         if graph
             .errors
             .is_some_and(|e| e.as_array().is_none_or(|a| !a.is_empty()))
@@ -148,35 +150,40 @@ impl Connection {
         {
             return Err(Error::Queue);
         }
+        let queue_id = p.merge_queue.as_ref().map(|q| q.id.clone());
         let configuration = p
             .merge_queue
             .map(|q| {
                 if q.repository.id != b.repository_id {
                     return Err(Error::Queue);
                 }
-                Ok(QueueConfiguration {
+                let Some(c) = q.configuration else {
+                    return if include_configuration {
+                        Err(Error::Queue)
+                    } else {
+                        Ok(None)
+                    };
+                };
+                Ok(Some(QueueConfiguration {
                     id: q.id,
-                    merge_method: q.configuration.merge_method,
-                    merging_strategy: q.configuration.merging_strategy,
-                    maximum_entries_to_build: q.configuration.maximum_entries_to_build,
-                    maximum_entries_to_merge: q.configuration.maximum_entries_to_merge,
-                    minimum_entries_to_merge: q.configuration.minimum_entries_to_merge,
-                    minimum_entries_wait_minutes: q
-                        .configuration
-                        .minimum_entries_to_merge_wait_time,
-                    check_timeout_minutes: q.configuration.check_response_timeout,
-                })
+                    merge_method: c.merge_method,
+                    merging_strategy: c.merging_strategy,
+                    maximum_entries_to_build: c.maximum_entries_to_build,
+                    maximum_entries_to_merge: c.maximum_entries_to_merge,
+                    minimum_entries_to_merge: c.minimum_entries_to_merge,
+                    minimum_entries_wait_minutes: c.minimum_entries_to_merge_wait_time,
+                    check_timeout_minutes: c.check_response_timeout,
+                }))
             })
-            .transpose()?;
+            .transpose()?
+            .flatten();
         let entry = p
             .merge_queue_entry
             .map(|e| {
                 if e.pull_request.id != p.id
                     || e.pull_request.number != p.number
                     || e.pull_request.head_ref_oid != p.head_ref_oid
-                    || configuration
-                        .as_ref()
-                        .is_none_or(|q| q.id != e.merge_queue.id)
+                    || queue_id.as_ref().is_none_or(|id| *id != e.merge_queue.id)
                 {
                     return Err(Error::Queue);
                 }
@@ -211,6 +218,11 @@ impl Connection {
             },
             queue_enabled: p.is_merge_queue_enabled,
             configuration,
+            queue_id: if include_configuration {
+                None
+            } else {
+                queue_id
+            },
             entry,
             final_commit: p.merge_commit.map(Commit::observation),
         };
@@ -223,8 +235,15 @@ impl Connection {
         b: &RepositoryBinding,
         t: &QueueTarget,
     ) -> Result<ObservedQueue> {
-        self.queue_operation(b, t, false, || async { Ok(()) }, &AtomicBool::new(false))
-            .await
+        self.queue_operation(
+            b,
+            t,
+            false,
+            None,
+            || async { Ok(()) },
+            &AtomicBool::new(false),
+        )
+        .await
     }
     /// Requires one fresh durable dispatch from the caller. Checks are recollected;
     /// an ambiguous result never causes a second PUT or a direct-merge fallback.
@@ -254,7 +273,7 @@ impl Connection {
         F: std::future::Future<Output = Result<()>>,
     {
         let sent = AtomicBool::new(false);
-        self.queue_operation(b, t, true, eligible, &sent)
+        self.queue_operation(b, t, true, None, eligible, &sent)
             .await
             .map_err(|error| MutationFailure {
                 error,
@@ -266,6 +285,7 @@ impl Connection {
         b: &RepositoryBinding,
         t: &QueueTarget,
         write: bool,
+        graphql: Option<uuid::Uuid>,
         mut eligible: G,
         sent: &AtomicBool,
     ) -> Result<ObservedQueue>
@@ -275,7 +295,10 @@ impl Connection {
     {
         b.validate()?;
         t.validate().map_err(|_| Error::Queue)?;
-        if b.repository_id != t.pull.repository_id || t.pull.pull_number > i32::MAX as u64 {
+        if b.repository_id != t.pull.repository_id
+            || t.pull.pull_number > i32::MAX as u64
+            || graphql.is_some_and(|id| id.is_nil() || !write)
+        {
             return Err(Error::Queue);
         }
         // Do not hold a slot while acquiring another slot for read-only inspection.
@@ -294,7 +317,9 @@ impl Connection {
             .map_err(|_| Error::Deadline)?
             .map_err(|_| Error::Configuration)?;
         let started = now()? as i64 * 1000;
-        let capability = if write {
+        let capability = if graphql.is_some() {
+            wire::Capability::QueueGraphql
+        } else if write {
             wire::Capability::QueueWrite
         } else {
             wire::Capability::QueueRead
@@ -310,15 +335,26 @@ impl Connection {
         let result=tokio::time::timeout(PROBE_TIMEOUT,async{
             let repository=self.observe_for(b,&installation,&token,capability).await?;
             if write && (repository.owner_type!=OwnerType::Organization || repository.archived || repository.disabled) {return Err(Error::Queue);}
-            let before=self.queue_snapshot(b,t,&token).await?;
-            if !write || before.entry.is_some() || before.pull.merged { return Ok((Some(before),None)); }
+            let before=self.queue_snapshot(b,t,&token,write).await?;
+            if !write || before.entry.is_some() || before.pull.merged { return Ok((Some(before),None,None)); }
             if !before.can_request(t) {return Err(Error::Queue);}
             let rules=self.evidence_rules(b,&t.pull,&token).await?;
-            let after=self.queue_snapshot(b,t,&token).await?;
+            let after=self.queue_snapshot(b,t,&token,true).await?;
             if before!=after || rules!=t.expected_rules
                 || capture.as_ref().is_none_or(|r|started-r.finished_at_unix_ms>45_000) {return Err(Error::Queue);}
             eligible().await?;
             if now()?.saturating_add(30)>=token.check_for(b.repository_id,now()?,capability)? {return Err(Error::TokenLifetime);}
+            if let Some(attempt) = graphql {
+                let queue = &after.configuration.as_ref().ok_or(Error::Queue)?.id;
+                let header = token.token.header()?;
+                let body = json!({"query":enqueue::MUTATION,"variables":{
+                    "id":t.pull.pull_node,"head":t.pull.head_revision.strip_prefix("git:sha1:").ok_or(Error::Queue)?,
+                    "request":attempt.to_string()}});
+                sent.store(true,Ordering::SeqCst);
+                let graph: Result<enqueue::Graph> = self.json(Stage::Queue,Method::POST,"graphql",header,Some(body),StatusCode::OK).await;
+                let receipt = graph.ok().and_then(|g|enqueue::receipt(g,t,attempt,queue).ok());
+                return Ok((None,None,receipt));
+            }
             let path=format!("repos/{}/{}/pulls/{}/merge-async",b.owner,b.name,t.pull.pull_number);
             let body=json!({"sha":t.pull.head_revision.strip_prefix("git:sha1:").ok_or(Error::Queue)?,"merge_action":"merge_queue","bypass_rules":false});
             // The request helper has redirects and retries disabled.
@@ -328,17 +364,24 @@ impl Connection {
             let receipt=response.ok().and_then(|(status,bytes)|decode_receipt(status.as_u16(),&bytes,t).ok());
             // Return the receipt before another provider read so the caller can
             // fsync it. Follow-up observation uses a separate read-only call.
-            Ok((None,receipt))
+            Ok((None,receipt,None))
         }).await.map_err(|_|Error::Deadline).and_then(|v|v);
         let revoked = self.revoke(&token).await.is_ok();
-        let (snapshot, receipt) = result?;
+        let (snapshot, receipt, enqueue_receipt) = result?;
         let mutation_not_sent = write && !sent.load(Ordering::SeqCst);
         let observation = QueueObservation {
-            version: if mutation_not_sent { 2 } else { 1 },
+            version: if graphql.is_some() || !write {
+                3
+            } else if mutation_not_sent {
+                2
+            } else {
+                1
+            },
             started_at_unix_ms: started,
             finished_at_unix_ms: now()? as i64 * 1000,
             snapshot,
             receipt,
+            enqueue_receipt,
             async_result: None,
             mutation_not_sent,
             token_revoked: revoked,

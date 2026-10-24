@@ -1,0 +1,233 @@
+{
+  "version": 1,
+  "observed_on": "2026-10-24",
+  "repository": "https://github.com/TreeHarbor/TreeHarbor-acceptance",
+  "workload": "Two scripted gVisor tasks edit separate values in the same Rust file. Individually valid changes exceed a shared memory budget when combined. Not an LLM or benchmark result.",
+  "dispatch": {
+    "implementation": "Rust CLI and installed GitHub App",
+    "protocol": "GraphQL enqueuePullRequest",
+    "exact_head": true,
+    "jump": false,
+    "direct_merge_or_bypass": false,
+    "legacy_rest_attempts": "Both earlier asynchronous requests returned 202 then failed authorization; retained failures were not replayed as mutations. Fresh owner intents used GraphQL."
+  },
+  "queue_checks": {
+    "b": {
+      "id": 120860441427,
+      "name": "Queue fixture",
+      "head_sha": "eb85eaaef7dd34c7f7887ee5b8787a577ec79ec7",
+      "status": "completed",
+      "conclusion": "success",
+      "html_url": "https://github.com/TreeHarbor/TreeHarbor-acceptance/actions/runs/40089959365/job/120860441427",
+      "started_at": "2026-10-24T11:27:14Z",
+      "completed_at": "2026-10-24T11:27:55Z",
+      "app_id": 15368
+    },
+    "ab": {
+      "id": 120860443760,
+      "name": "Queue fixture",
+      "head_sha": "e816336b8f9946471db8b5ccbfd2c2d97224635c",
+      "status": "completed",
+      "conclusion": "failure",
+      "html_url": "https://github.com/TreeHarbor/TreeHarbor-acceptance/actions/runs/40089960157/job/120860443760",
+      "started_at": "2026-10-24T11:27:15Z",
+      "completed_at": "2026-10-24T11:27:56Z",
+      "app_id": 15368
+    }
+  },
+  "check_selection": "Exact merge_group check IDs captured while queued; a later push check with the same name and SHA is not substituted.",
+  "group_runs": {
+    "b": "https://github.com/TreeHarbor/TreeHarbor-acceptance/actions/runs/40089959365",
+    "ab": "https://github.com/TreeHarbor/TreeHarbor-acceptance/actions/runs/40089960157"
+  },
+  "combined_failure": "combined configuration exceeds budget: 2048 > 1024",
+  "pull_results": [
+    {
+      "headRefOid": "f08ad43ba4bc274fb4ea26cf8000107e475c2d5a",
+      "mergeCommit": null,
+      "mergedAt": null,
+      "number": 1,
+      "state": "OPEN",
+      "url": "https://github.com/TreeHarbor/TreeHarbor-acceptance/pull/1"
+    },
+    {
+      "headRefOid": "48e2f9f30fdd92040a2b0de48d702deab0de47f3",
+      "mergeCommit": {
+        "oid": "eb85eaaef7dd34c7f7887ee5b8787a577ec79ec7"
+      },
+      "mergedAt": "2026-10-24T11:28:28Z",
+      "number": 2,
+      "state": "MERGED",
+      "url": "https://github.com/TreeHarbor/TreeHarbor-acceptance/pull/2"
+    }
+  ],
+  "observations": [
+    {
+      "agent": "agent-a",
+      "pull_number": 1,
+      "head_revision": "git:sha1:f08ad43ba4bc274fb4ea26cf8000107e475c2d5a",
+      "enqueue_receipt_retained": true,
+      "last_snapshot": {
+        "configuration": null,
+        "entry": null,
+        "final_commit": null,
+        "pull": {
+          "base_ref": "main",
+          "base_revision": "git:sha1:b2b0a2846f6aee26d9d2f62a868c5b52cc28f48a",
+          "draft": false,
+          "head_ref": "treeharbor/5bf33436f126875ebba47a8a43b20573",
+          "head_revision": "git:sha1:f08ad43ba4bc274fb4ea26cf8000107e475c2d5a",
+          "merged": false,
+          "node_id": "PR_kwDOVVko5M8AAAABKbZ8tA",
+          "number": 1,
+          "repository_id": 1431906532,
+          "state": "open"
+        },
+        "queue_enabled": true,
+        "queue_id": "MQ_kwDOVVko5M4ABOsT"
+      },
+      "treeharbor_state": "uncertain",
+      "merge_verified": false
+    },
+    {
+      "agent": "agent-b",
+      "pull_number": 2,
+      "head_revision": "git:sha1:48e2f9f30fdd92040a2b0de48d702deab0de47f3",
+      "enqueue_receipt_retained": true,
+      "last_snapshot": {
+        "configuration": null,
+        "entry": null,
+        "final_commit": {
+          "revision": "git:sha1:eb85eaaef7dd34c7f7887ee5b8787a577ec79ec7",
+          "tree": "git:sha1:77c9e0bb9246db3013504d9658e7633f2586ce56"
+        },
+        "pull": {
+          "base_ref": "main",
+          "base_revision": "git:sha1:b2b0a2846f6aee26d9d2f62a868c5b52cc28f48a",
+          "draft": false,
+          "head_ref": "treeharbor/c1d55627340587709d9922e60e2a1e8c",
+          "head_revision": "git:sha1:48e2f9f30fdd92040a2b0de48d702deab0de47f3",
+          "merged": true,
+          "node_id": "PR_kwDOVVko5M8AAAABKbaB3w",
+          "number": 2,
+          "repository_id": 1431906532,
+          "state": "closed"
+        },
+        "queue_enabled": true,
+        "queue_id": "MQ_kwDOVVko5M4ABOsT"
+      },
+      "treeharbor_state": "host_merged_unverified",
+      "merge_verified": false
+    }
+  ],
+  "signed_events": [
+    {
+      "sequence": 1,
+      "body_sha256": "77f06c626db0c19c0dc164d9058027edb29ff1c77e79e7a8fa113b04f982d026",
+      "fact": {
+        "action": "checks_requested",
+        "base_ref": "refs/heads/main",
+        "base_revision": "git:sha1:b2b0a2846f6aee26d9d2f62a868c5b52cc28f48a",
+        "head_ref": "refs/heads/gh-readonly-queue/main/pr-2-b2b0a2846f6aee26d9d2f62a868c5b52cc28f48a",
+        "head_revision": "git:sha1:eb85eaaef7dd34c7f7887ee5b8787a577ec79ec7",
+        "head_tree": "git:sha1:77c9e0bb9246db3013504d9658e7633f2586ce56",
+        "installation_id": 174769968,
+        "owner_id": 347269067,
+        "reason": null,
+        "repository_id": 1431906532,
+        "version": 1
+      }
+    },
+    {
+      "sequence": 2,
+      "body_sha256": "9f327f1b1c1d768fc5f4477fa739537b54a3230be5944da363628d867054d2a1",
+      "fact": {
+        "action": "checks_requested",
+        "base_ref": "refs/heads/main",
+        "base_revision": "git:sha1:eb85eaaef7dd34c7f7887ee5b8787a577ec79ec7",
+        "head_ref": "refs/heads/gh-readonly-queue/main/pr-1-eb85eaaef7dd34c7f7887ee5b8787a577ec79ec7",
+        "head_revision": "git:sha1:e816336b8f9946471db8b5ccbfd2c2d97224635c",
+        "head_tree": "git:sha1:450532e3eb170bc0149a3900d4596a1fad79806c",
+        "installation_id": 174769968,
+        "owner_id": 347269067,
+        "reason": null,
+        "repository_id": 1431906532,
+        "version": 1
+      }
+    },
+    {
+      "sequence": 3,
+      "body_sha256": "e380c57e318e71a2f82097d1639c3f8268190905781a7f5c80dd6e057298b9ad",
+      "fact": {
+        "action": "destroyed",
+        "base_ref": "refs/heads/main",
+        "base_revision": "git:sha1:b2b0a2846f6aee26d9d2f62a868c5b52cc28f48a",
+        "head_ref": "refs/heads/gh-readonly-queue/main/pr-2-b2b0a2846f6aee26d9d2f62a868c5b52cc28f48a",
+        "head_revision": "git:sha1:eb85eaaef7dd34c7f7887ee5b8787a577ec79ec7",
+        "head_tree": "git:sha1:77c9e0bb9246db3013504d9658e7633f2586ce56",
+        "installation_id": 174769968,
+        "owner_id": 347269067,
+        "reason": "merged",
+        "repository_id": 1431906532,
+        "version": 1
+      }
+    },
+    {
+      "sequence": 4,
+      "body_sha256": "8d90215011bc31320ac1ad39cf3a3f93c10a0245402ee71621aa7325c45efaa3",
+      "fact": {
+        "action": "destroyed",
+        "base_ref": "refs/heads/main",
+        "base_revision": "git:sha1:eb85eaaef7dd34c7f7887ee5b8787a577ec79ec7",
+        "head_ref": "refs/heads/gh-readonly-queue/main/pr-1-eb85eaaef7dd34c7f7887ee5b8787a577ec79ec7",
+        "head_revision": "git:sha1:e816336b8f9946471db8b5ccbfd2c2d97224635c",
+        "head_tree": "git:sha1:450532e3eb170bc0149a3900d4596a1fad79806c",
+        "installation_id": 174769968,
+        "owner_id": 347269067,
+        "reason": "dequeued",
+        "repository_id": 1431906532,
+        "version": 1
+      }
+    }
+  ],
+  "recovery": {
+    "fault": "SIGKILL/restart of actual service, with the last local acknowledgement deliberately hidden; preceding journal history and real provider reports retained.",
+    "without_app_key_or_git": true,
+    "exact_event_records_unchanged": true,
+    "results": [
+      {
+        "scenario": "agent-a",
+        "queue": "41283b64-decb-4532-b781-940d07de17f5",
+        "attempt": "6e394197-d327-40d8-8a47-a578b80fe712",
+        "report_sequence": 4,
+        "exact_ack_recovered": true,
+        "state": "uncertain",
+        "merge_verified": false
+      },
+      {
+        "scenario": "agent-b",
+        "queue": "085d738b-c8bb-4977-a397-23b36fab005a",
+        "attempt": "405080ce-903f-479e-a79f-c7816bf6347c",
+        "report_sequence": 4,
+        "exact_ack_recovered": true,
+        "state": "host_merged_unverified",
+        "merge_verified": false
+      }
+    ]
+  },
+  "cleanup": {
+    "version": 1,
+    "one_hour_credentials_revoked_and_rejected": true,
+    "original_local_permissions_restored": true,
+    "guest_app_key_removed": true,
+    "temporary_ingress_stopped": true,
+    "webhook_disabled_verified_in_github_ui": true
+  },
+  "limits": [
+    "Host queue enforced the workload test; no general semantic-conflict detector is claimed.",
+    "TreeHarbor retains actual host facts but merge_verified remains false: complete membership, required-check policy and final-tree certification are unfinished.",
+    "Queue read API reports an open PR without an entry as uncertain; it does not yet derive a certified rejection from group events.",
+    "Temporary TLS ingress was removed after this test; automatic production ingress/onboarding remains unfinished.",
+    "No performance measurement or production-readiness claim."
+  ]
+}

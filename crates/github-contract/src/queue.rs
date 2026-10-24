@@ -104,6 +104,9 @@ pub struct QueueSnapshot {
     pub pull: PullState,
     pub queue_enabled: bool,
     pub configuration: Option<QueueConfiguration>,
+    /// Queue identity observed without requesting its write-protected settings.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub queue_id: Option<String>,
     pub entry: Option<QueueEntryObservation>,
     pub final_commit: Option<GitCommitObservation>,
 }
@@ -114,10 +117,16 @@ impl QueueSnapshot {
         if let Some(c) = &self.configuration {
             c.validate()?;
         }
+        if let Some(id) = &self.queue_id {
+            node(id)?;
+            if self.configuration.as_ref().is_some_and(|c| c.id != *id) {
+                return Err(InvalidEvidence);
+            }
+        }
         if let Some(e) = &self.entry {
             e.validate()?;
             if !self.queue_enabled
-                || self.configuration.is_none()
+                || (self.configuration.is_none() && self.queue_id.is_none())
                 || self.pull.merged
                 || self.pull.state != "open"
                 || self.pull.draft
@@ -279,6 +288,34 @@ impl QueueAsyncResult {
 }
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
+pub struct EnqueueReceipt {
+    pub request_id: String,
+    pub repository_id: u64,
+    pub pull_node: String,
+    pub pull_number: u64,
+    pub queue_id: String,
+    pub entry_id: String,
+    pub head_revision: String,
+}
+impl EnqueueReceipt {
+    pub fn validate(&self, target: &QueueTarget, attempt: uuid::Uuid) -> Result<()> {
+        target.validate()?;
+        if attempt.is_nil()
+            || self.request_id != attempt.to_string()
+            || self.repository_id != target.pull.repository_id
+            || self.pull_node != target.pull.pull_node
+            || self.pull_number != target.pull.pull_number
+            || self.head_revision != target.pull.head_revision
+        {
+            return Err(InvalidEvidence);
+        }
+        node(&self.queue_id)?;
+        node(&self.entry_id)
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct QueueObservation {
     pub version: u8,
     pub started_at_unix_ms: i64,
@@ -286,6 +323,10 @@ pub struct QueueObservation {
     pub snapshot: Option<QueueSnapshot>,
     pub receipt: Option<QueueReceipt>,
     pub async_result: Option<QueueAsyncResult>,
+    /// Version 3 acknowledgment of an exact-head GraphQL enqueue. It does not
+    /// establish continued queue membership or final merge verification.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enqueue_receipt: Option<EnqueueReceipt>,
     /// Version 2 positive completion evidence from the sole enqueue invocation.
     /// Version 1 reports remain readable and cannot assert this fact.
     #[serde(default, skip_serializing_if = "is_false")]
@@ -298,16 +339,32 @@ fn is_false(value: &bool) -> bool {
 impl QueueObservation {
     pub fn validate(&self, t: &QueueTarget) -> Result<()> {
         t.validate()?;
-        if !matches!(self.version, 1 | 2)
+        if !matches!(self.version, 1..=3)
             || (self.mutation_not_sent
-                && (self.version != 2 || self.receipt.is_some() || self.async_result.is_some()))
+                && (self.version < 2
+                    || self.receipt.is_some()
+                    || self.async_result.is_some()
+                    || self.enqueue_receipt.is_some()))
             || self.started_at_unix_ms <= 0
             || self.finished_at_unix_ms < self.started_at_unix_ms
             || self.finished_at_unix_ms - self.started_at_unix_ms > 180_000
         {
             return Err(InvalidEvidence);
         }
+        if let Some(r) = &self.enqueue_receipt {
+            if self.version != 3
+                || self.receipt.is_some()
+                || self.async_result.is_some()
+                || self.snapshot.is_some()
+            {
+                return Err(InvalidEvidence);
+            }
+            r.validate(t, r.request_id.parse().map_err(|_| InvalidEvidence)?)?;
+        }
         if let Some(s) = &self.snapshot {
+            if self.version < 3 && s.queue_id.is_some() {
+                return Err(InvalidEvidence);
+            }
             s.validate(t)?;
         }
         if let Some(r) = &self.receipt {
@@ -349,6 +406,9 @@ impl QueueObservation {
         }
         if self.mutation_not_sent {
             return "not_sent";
+        }
+        if self.enqueue_receipt.is_some() {
+            return "host_enqueued";
         }
         // A receipt does not establish continued membership of a mutable queue.
         match self.receipt.as_ref().map(|r| r.status.as_str()) {

@@ -1,0 +1,32 @@
+{
+  "version": 3,
+  "started_at_unix_ms": 1,
+  "finished_at_unix_ms": 2,
+  "snapshot": {
+    "pull": {
+      "repository_id": 11,
+      "number": 17,
+      "node_id": "PR_test_17",
+      "head_ref": "treeharbor/04040404040404040404040404040404",
+      "base_ref": "main",
+      "head_revision": "git:sha1:1111111111111111111111111111111111111111",
+      "base_revision": "git:sha1:2222222222222222222222222222222222222222",
+      "state": "open",
+      "draft": false,
+      "merged": false
+    },
+    "queue_enabled": true,
+    "configuration": null,
+    "queue_id": "MQ_one",
+    "entry": {
+      "id": "MQE_one",
+      "state": "QUEUED",
+      "base": null,
+      "head": null
+    },
+    "final_commit": null
+  },
+  "receipt": null,
+  "async_result": null,
+  "token_revoked": true
+}

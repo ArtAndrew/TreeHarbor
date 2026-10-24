@@ -150,7 +150,7 @@ impl Connection {
         let result = tokio::time::timeout(PROBE_TIMEOUT, async {
             let repository = self.observe_for(b, &installation, &token, capability).await?;
             if repository.owner_type != OwnerType::Organization || repository.archived || repository.disabled { return Err(Error::Queue); }
-            let before = self.queue_snapshot(b, target, &token).await?;
+            let before = self.queue_snapshot(b, target, &token, true).await?;
             if before.pull.merged || before.entry.is_none() { return Ok((None, None, Some(before))); }
             eligible().await?;
             if now()?.saturating_add(30) >= token.check_for(b.repository_id, now()?, capability)? { return Err(Error::TokenLifetime); }
@@ -197,7 +197,7 @@ impl Connection {
         let r = self.observe_queue(b, target).await?;
         let o = r.observation;
         let observation = DequeueObservation {
-            version: 1,
+            version: 2,
             started_at_unix_ms: o.started_at_unix_ms,
             finished_at_unix_ms: o.finished_at_unix_ms,
             before: None,

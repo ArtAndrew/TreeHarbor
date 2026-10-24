@@ -3,6 +3,8 @@ use treeharbor_github_contract::queue::*;
 use treeharbor_metadata::github::QueueSpec;
 #[path = "github_dequeue.rs"]
 mod dequeues;
+#[path = "github_enqueue.rs"]
+mod enqueue;
 struct QueueFixture {
     p: Projection,
     owner: Authorization,
@@ -87,6 +89,7 @@ impl QueueFixture {
             finished_at_unix_ms: now,
             snapshot: None,
             receipt: None,
+            enqueue_receipt: None,
             async_result: None,
             mutation_not_sent: false,
             token_revoked: false,
@@ -343,6 +346,7 @@ async fn queue_rejects_wrong_attempt_and_time_without_losing_known_host_merge() 
     pull.merged = true;
     r = f.report().await;
     r.snapshot = Some(QueueSnapshot {
+        queue_id: None,
         pull,
         queue_enabled: true,
         configuration: None,

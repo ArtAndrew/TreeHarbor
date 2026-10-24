@@ -60,6 +60,7 @@ impl Connection {
             finished_at_unix_ms: now()? as i64 * 1000,
             snapshot: None,
             receipt: None,
+            enqueue_receipt: None,
             async_result: Some(result?),
             mutation_not_sent: false,
             token_revoked: revoked,

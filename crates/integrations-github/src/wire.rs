@@ -12,6 +12,7 @@ pub(crate) enum Capability {
     Evidence,
     QueueRead,
     QueueWrite,
+    QueueGraphql,
     QueueResult,
     QueueRemove,
 }
@@ -26,9 +27,11 @@ impl Capability {
                     | Self::PullWrite
                     | Self::Evidence
                     | Self::QueueRead => "read",
-                    Self::Branch | Self::QueueWrite | Self::QueueResult | Self::QueueRemove => {
-                        "write"
-                    }
+                    Self::Branch
+                    | Self::QueueWrite
+                    | Self::QueueGraphql
+                    | Self::QueueResult
+                    | Self::QueueRemove => "write",
                 }
                 .into(),
             ),
@@ -41,6 +44,7 @@ impl Capability {
                 | Self::Evidence
                 | Self::QueueRead
                 | Self::QueueWrite
+                | Self::QueueGraphql
                 | Self::QueueRemove
         ) {
             permissions.insert(
@@ -53,13 +57,19 @@ impl Capability {
                 .into(),
             );
         }
-        if matches!(self, Self::Evidence | Self::QueueRead | Self::QueueWrite) {
+        if matches!(
+            self,
+            Self::Evidence | Self::QueueRead | Self::QueueWrite | Self::QueueGraphql
+        ) {
             permissions.insert("checks".into(), "read".into());
         }
-        if matches!(self, Self::QueueRead | Self::QueueWrite | Self::QueueRemove) {
+        if matches!(
+            self,
+            Self::QueueRead | Self::QueueWrite | Self::QueueRemove | Self::QueueGraphql
+        ) {
             permissions.insert(
                 "merge_queues".into(),
-                if matches!(self, Self::QueueRemove) {
+                if matches!(self, Self::QueueRemove | Self::QueueGraphql) {
                     "write"
                 } else {
                     "read"

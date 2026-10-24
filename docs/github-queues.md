@@ -1,11 +1,10 @@
 # GitHub queue delivery (development)
 
 This development command requests the native GitHub merge queue, retains the
-provider's asynchronous request identity and recovers observations after process
+provider's enqueue receipt and recovers observations after process
 loss. It does **not** yet verify final integration. An explicit
-[removal command](github-dequeue.md) adds remote dequeue; durable
-merge-group events, exact group/final-tree proof and actual installed-App acceptance
-remain unfinished. Do not use this increment as a production merge controller.
+[removal command](github-dequeue.md) adds remote dequeue;
+exact group/final-tree proof remains unfinished. Do not use this increment as a production merge controller.
 
 ## Authorize a request
 
@@ -63,11 +62,15 @@ using the same directory concurrently. The command needs no Git executable.
 Before delivery, the bridge recollects the selected head checks and compares the
 PR/base/rules and queue configuration. It checks current local permission again
 immediately before the host write. Exactly one durable dispatch grant permits one
-async PUT with the exact head SHA, `merge_action: merge_queue` and
-`bypass_rules: false`. There is no direct-merge/default fallback. Two workers or
+GraphQL `enqueuePullRequest` with `expectedHeadOid` and `jump: false`.
+Its `clientMutationId` is the durable attempt UUID: correlation, **not** a host
+idempotency guarantee. There is no direct-merge or admin-bypass fallback. Two workers or
 replayed/lost grant replies cannot obtain another dispatch for the same intent.
 These cross-service reads are not atomic with GitHub changes; GitHub enforces its
-own current admission rules. Selected head checks are not merge-group checks.
+own current admission rules. Selected head checks are not merge-group checks. Read-only recovery omits the
+write-protected `mergeQueue.configuration` field. It retains the queue ID and
+checks entry/PR/repository identity without inventing admission settings. New
+write preflight still requires a complete, consistent configuration.
 
 App tokens are narrowed to the pinned numeric repository:
 
@@ -75,8 +78,8 @@ App tokens are narrowed to the pinned numeric repository:
 |---|---|
 | Head inspection | Contents, Metadata, Pull requests, Checks: read |
 | Queue/PR observation | Above plus Merge queues: read |
-| Queue dispatch | Contents: write; Metadata, Pull requests, Checks, Merge queues: read |
-| Async result GET | Contents: write; Metadata: read |
+| Queue dispatch | Contents, Merge queues: write; Metadata, Pull requests, Checks: read |
+| Legacy async result GET | Contents: write; Metadata: read |
 
 Although it performs a GET, GitHub's async-result endpoint requires Contents-write.
 That token is separate from the read-scoped observation token and is not used to
@@ -86,19 +89,30 @@ attempts or the preceding inspection. Keys and token values are not journaled.
 
 ## Interpret recovery and status
 
-The provider response is journaled before database reporting. A retained UUID is
+The provider response is journaled before database reporting. A GraphQL receipt
+must match the attempt UUID, numeric repository, PR node/number, exact source head
+and the queue seen before dispatch. It records the returned entry ID. Lost,
+malformed or partial-error responses remain uncertain: subsequent calls only
+observe the PR, never resend the mutation. A receipt is historical evidence of
+enqueue, not proof of current membership or successful integration.
+
+Earlier releases used REST `merge-async`. Existing attempts retain that recovery
+path; upgrading never converts them into new writes. A retained provider UUID is
 bound to its original PR, exact head and queue action. Result reads use that UUID;
 unknown or mismatched pending responses remain uncertain. Once a terminal
 `enqueued` result is saved, the command observes the PR/queue instead of polling
 that result for final merge. Pending/unavailable result reads alternate with PR
 observations. A 404 can mean expiry or unavailable data; it does not prove that
-the request failed and does not permit a new PUT.
+the request failed and does not permit another mutation.
 
 Late journal reports remain in history even when a newer observation already
 exists. This preserves the only returned UUID without replacing the newer live
 view. Terminal async outcomes and observed final commit/tree facts are retained;
 a later network error or expired provider record cannot erase them. Contradictory
-terminal outcomes for the same UUID are rejected.
+terminal outcomes for the same UUID are rejected. `retained_enqueue` preserves
+the GraphQL receipt even when a later observation is uncertain. Receipts from the
+two transports cannot be mixed within one attempt, nor contradict positive
+no-send evidence. The receipt permits a separately authorized dequeue request.
 
 | State | Meaning |
 |---|---|
@@ -147,5 +161,21 @@ identities. [Async-result vectors](../crates/github-contract/tests/fixtures/queu
 cover pending, enqueue, failure, merge and unavailable outcomes. Version2 queue
 reports add positive no-send evidence while preserving version1 reads. Schema22
 adds explicit removal records without converting old cancellations into host writes.
+Version3 adds the optional `enqueue_receipt` and snapshot `queue_id` fields; its
+[golden vector](../crates/github-contract/tests/fixtures/queue-enqueue-v3.json)
+and [read-only snapshot](../crates/github-contract/tests/fixtures/queue-read-v3.json)
+are checked alongside unchanged version1/2 serialization. Dequeue observation
+version2 carries the same read-only snapshot identity. Upgrade server and CLI
+together; an older server rejects the new report version. Metadata storage needs
+no schema migration for this additive, validated JSON report.
 Provider transport/database/CLI tests use labelled fixtures and local process-loss
 injection; they do not prove installed-App or real merge-group behavior.
+
+A separate [installed-App acceptance](evidence/connected-queue-live-20261024.json)
+enqueued two real synthetic PRs. GitHub merged the passing candidate and rejected
+the incompatible combined candidate. Signed group events and real read-only final
+commit/tree observations were retained. Product-level group/policy/final-tree
+certification is still unfinished; `merge_verified` stays false. An open PR with
+no current entry remains `uncertain` in this API, even when external group checks
+explain its rejection. A PR's reported base is not an atomic observation of the
+live branch tip.

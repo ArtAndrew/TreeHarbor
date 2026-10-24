@@ -133,3 +133,9 @@ provider mutation receipt/result for the same attempt. See the
 Database, provider and actual CLI process-loss tests use labelled host fixtures.
 They do not prove installed-App permissions, live queue behavior or final merge
 verification. Workspace and runtime isolation remain separate concerns.
+
+Read-only recovery uses observation version2 with a separate snapshot `queue_id`,
+without requesting write-protected queue settings. Version1 reports remain
+readable unchanged; upgrade server and CLI together. The
+[version2 vector](../crates/github-contract/tests/fixtures/dequeue-read-v2.json)
+records queued membership without inventing settings or claiming removal.

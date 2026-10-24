@@ -182,7 +182,7 @@ pub(super) async fn collect(r: Request, allow_dispatch: bool) -> Result<Value> {
     };
     let result = if dispatch {
         connection
-            .enqueue_pull_attempt(&config.repository, &s.target, || async {
+            .enqueue_pull_graphql_attempt(&config.repository, &s.target, attempt, || async {
                 s.eligible(attempt)
                     .await
                     .map_err(|_| treeharbor_github::Error::PublicationStopped)
@@ -221,6 +221,7 @@ pub(super) async fn collect(r: Request, allow_dispatch: bool) -> Result<Value> {
                     finished_at_unix_ms: now()?,
                     snapshot: None,
                     receipt: None,
+                    enqueue_receipt: None,
                     async_result: None,
                     mutation_not_sent: e.mutation_not_sent,
                     token_revoked: false,

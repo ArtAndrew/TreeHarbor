@@ -3,6 +3,33 @@
 Updated: 2026-10-24. This file describes implemented behavior and remaining release
 gates. A foundation milestone does not complete either mode.
 
+A real installed-App queue test passed on the synthetic repository: both exact
+PR heads were enqueued through the Rust CLI. Agent B's group passed three tests
+and became main; the combined A+B candidate failed the budget test (`2048 > 1024`),
+leaving PR1 open outside the queue. Four signed group events were durably retained.
+After service SIGKILL, the actual last local acknowledgements replayed identically
+without an App key or Git; attempt IDs, report counts and event digests were
+unchanged. Temporary ingress was stopped, the webhook disabled and both one-hour
+local credentials revoked and verified rejected. See
+[queue evidence](evidence/connected-queue-live-20261024.json).
+This is host-enforced validation, not general semantic conflict detection.
+TreeHarbor still reports `merge_verified: false`: complete group membership,
+required-check policy and final-tree certification remain release gates.
+
+Ordinary PR queue dispatch now uses GraphQL `enqueuePullRequest` with the exact
+head, `jump: false` and durable attempt correlation. An actual installed-App
+REST async request had returned202 and then failed authorization; old requests
+retain their original UUID recovery path and are never silently resent. Version3
+queue reports retain separately typed enqueue receipts; contradictory transport
+histories, attempts and positive no-send claims are rejected. Read-only observation
+omits write-protected queue configuration while retaining and checking queue
+identity. Dequeue version2 supports that snapshot without widening token scopes.
+Upgrade service and CLI together. See [queue operations](github-queues.md).
+Local verification passed 83 transport/contract tests, 21 PostgreSQL queue-related
+cases and the actual CLI/server restart regression. Formatting and strict
+all-target Clippy also passed. These targeted checks are distinct from the live
+installed-App evidence and the full required CI suite.
+
 A live Connected path now passed from the real App-imported synthetic revision
 through two simultaneous isolated gVisor tasks, separate immutable ChangeSets,
 actual App branch/PR publication and exact selected-check capture. The tasks edit
@@ -480,7 +507,7 @@ resource outcomes and worker-loss recovery. No complete authority mode is implie
 
 | Component | Evidence | Remaining |
 |---|---|---|
-| GitHub App connection/import/projection | Live scoped import and two isolated agent proposals published as real App branches/PRs, exact head-check capture and restart recovery; queue/event APIs have protocol-fixture coverage | Signed live callbacks, combined queue candidates, complete group/final-tree verification, incremental reuse and unattended operation |
+| GitHub App connection/import/projection | Live scoped import and two isolated agent proposals published as real App branches/PRs, exact head-check capture and restart recovery; actual enqueue, signed group callbacks, passing main and incompatible combined-candidate rejection | Complete group/policy/final-tree verification, repair workflow, incremental reuse and unattended operation |
 | Canonical SHA-256 object format | Versioned framing, independent golden vectors, strict decoder | Compatibility policy for later formats |
 | Immutable directory trees and operations | Exact expected-before checks, canonical subtree operations v2, bounded structural diff, structural sharing, explicit deletes; native merge and Git reference matrix | General history rebase, broader rename/base support, live-server Git interop |
 | Local object store | Atomic no-clobber writes, digest verification, file/directory fsync, tenant directories, physical generations and upload receipts | S3, backup/restore, kill fault campaign |

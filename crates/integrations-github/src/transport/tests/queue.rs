@@ -1,6 +1,8 @@
 use super::*;
 #[path = "dequeue.rs"]
 mod dequeue_tests;
+#[path = "enqueue.rs"]
+mod enqueue_tests;
 use treeharbor_github_contract::queue::QueueTarget;
 fn fixture() -> Value {
     serde_json::from_str(include_str!(concat!(

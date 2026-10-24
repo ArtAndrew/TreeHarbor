@@ -20,6 +20,7 @@ fn target() -> QueueTarget {
 }
 fn snapshot() -> QueueSnapshot {
     QueueSnapshot {
+        queue_id: None,
         pull: serde_json::from_value(fixture()["report"]["before"].clone()).unwrap(),
         queue_enabled: true,
         configuration: Some(QueueConfiguration {
@@ -54,6 +55,16 @@ fn observation() -> DequeueObservation {
         mutation_not_sent: false,
         token_revoked: true,
     }
+}
+#[test]
+fn read_dequeue_v2_preserves_identity_without_inventing_settings_or_removal() {
+    let v: Value = serde_json::from_str(include_str!("fixtures/dequeue-read-v2.json")).unwrap();
+    let mut r: DequeueObservation = serde_json::from_value(v.clone()).unwrap();
+    r.validate(&target(), request()).unwrap();
+    assert_eq!(json!(r), v);
+    assert_eq!(r.state(&target(), request(), true), "host_queued");
+    r.version = 1;
+    assert!(r.validate(&target(), request()).is_err());
 }
 #[test]
 fn dequeue_requires_settled_enqueue_and_never_turns_ack_into_removal_or_merge() {
