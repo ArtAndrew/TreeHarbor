@@ -5,7 +5,7 @@ mod seals;
 use super::*;
 use treeharbor_core::{ObjectId, ObjectStore};
 
-fn ok(output: Output) -> Value {
+pub(super) fn ok(output: Output) -> Value {
     assert!(
         output.status.success(),
         "{} {}",
@@ -14,7 +14,12 @@ fn ok(output: Output) -> Value {
     );
     serde_json::from_slice::<Value>(&output.stdout).unwrap()["result"].clone()
 }
-fn role(f: &mut Fixture, name: &str, kind: Option<&str>, permissions: &[&str]) -> PathBuf {
+pub(super) fn role(
+    f: &mut Fixture,
+    name: &str,
+    kind: Option<&str>,
+    permissions: &[&str],
+) -> PathBuf {
     if let Some(kind) = kind {
         f.admin_ok(&[
             "principal-create",
@@ -46,7 +51,7 @@ fn role(f: &mut Fixture, name: &str, kind: Option<&str>, permissions: &[&str]) -
     f.admin_ok(&args);
     path
 }
-fn native(f: &Fixture, request: Value) -> Output {
+pub(super) fn native(f: &Fixture, request: Value) -> Output {
     let path = f
         .dir
         .path()

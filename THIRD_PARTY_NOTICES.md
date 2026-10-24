@@ -51,3 +51,9 @@ or relicensed here. Preserve its archive's upstream Apache-2.0 LICENSE and the
 notices for components in any future distribution that bundles it. The recipe
 and test are original TreeHarbor code under ELv2; their license does not replace
 [Caddy's upstream license](https://github.com/caddyserver/caddy/blob/v2.11.7/LICENSE).
+
+The MCP adapter pins the official rmcp 3.7.0 SDK. Its unmodified Apache-2.0 license
+and license/notice texts for newly resolved dependencies (including test-client
+and platform-specific packages) are preserved in the
+[MCP dependency inventory](third-party/mcp/README.md). TreeHarbor original code
+remains under standard ELv2; there is no Apache carveout for original components.

@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "initialize": {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "initialize",
+    "params": {
+      "protocolVersion": "2025-11-25",
+      "capabilities": {},
+      "clientInfo": {
+        "name": "independent-wire-test",
+        "version": "1"
+      }
+    }
+  },
+  "list": {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "tools/list",
+    "params": {}
+  },
+  "tool_names": [
+    "repository_info",
+    "source_profile_put",
+    "workspace_create",
+    "workspace_status",
+    "workspace_delete",
+    "run_status",
+    "operation_status",
+    "change_begin",
+    "changeset_status",
+    "change_abort",
+    "change_put",
+    "changeset_submit",
+    "workspace_read_files",
+    "history",
+    "review_diff",
+    "queue_request",
+    "queue_status",
+    "queue_cancel",
+    "candidate_status",
+    "validation_status"
+  ]
+}

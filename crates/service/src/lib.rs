@@ -10,6 +10,7 @@ pub mod files;
 mod github;
 mod history;
 pub mod import;
+mod mcp;
 mod native;
 mod node_cli;
 pub mod pack;
@@ -25,6 +26,10 @@ mod webhooks;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    #[error(
+        "MCP connection failed; submitted mutations may have committed; inspect their original operation keys"
+    )]
+    Mcp,
     #[error(
         "GitHub operation state does not match the retained request; preserve the state directory and inspect that operation's status"
     )]
