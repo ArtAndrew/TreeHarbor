@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 use treeharbor_github::{AppCredentials, Connection, RepositoryBinding};
 use uuid::Uuid;
+mod dequeue;
 mod import;
 mod inspections;
 pub(crate) mod projection;
@@ -19,6 +20,25 @@ mod queue;
 
 #[derive(Subcommand)]
 pub enum Action {
+    /// Remove an explicitly authorized PR from the host queue, or recover its attempt.
+    Dequeue {
+        #[arg(long)]
+        config: PathBuf,
+        #[arg(long)]
+        socket: PathBuf,
+        #[arg(long)]
+        credential_file: PathBuf,
+        #[arg(long)]
+        dequeue: Uuid,
+        #[arg(long,value_parser=clap::value_parser!(i64).range(1..))]
+        epoch: i64,
+        /// Existing private directory, separate from the original queue journal.
+        #[arg(long)]
+        state: PathBuf,
+        /// Original queue journal for recovering a still-unresolved enqueue.
+        #[arg(long)]
+        queue_state: Option<PathBuf>,
+    },
     /// Deliver one owner-authorized queue request, or observe its existing attempt.
     Queue {
         #[arg(long)]
@@ -208,6 +228,26 @@ fn matches_config(config: &Config, spec: &treeharbor_metadata::github::BindingSp
 }
 pub async fn run(action: Action) -> Result<bool> {
     match action {
+        Action::Dequeue {
+            config,
+            socket,
+            credential_file,
+            dequeue,
+            epoch,
+            state,
+            queue_state,
+        } => {
+            dequeue::run(dequeue::Request {
+                config,
+                socket,
+                credential_file,
+                id: dequeue,
+                epoch,
+                state,
+                queue_state,
+            })
+            .await
+        }
         Action::Queue {
             config,
             socket,

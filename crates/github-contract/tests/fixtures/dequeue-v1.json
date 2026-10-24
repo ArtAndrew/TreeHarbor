@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "request_id": "a15d30c6-3af7-4191-9a68-600000000003",
+  "observation": {"version":1,"started_at_unix_ms":1000,"finished_at_unix_ms":1001,"before":null,"receipt":null,"after":null,"mutation_not_sent":true,"token_revoked":false},
+  "provider_response": {
+    "data": {
+      "dequeuePullRequest": {
+        "clientMutationId": "a15d30c6-3af7-4191-9a68-600000000003",
+        "mergeQueueEntry": {
+          "id": "MQE_one",
+          "mergeQueue": {"id":"MQ_one","repository":{"databaseId":11}},
+          "pullRequest": {"id":"PR_test_17","number":17,"headRefOid":"1111111111111111111111111111111111111111","baseRepository":{"databaseId":11},"headRepository":{"databaseId":11}}
+        }
+      }
+    }
+  },
+  "receipt": {
+    "request_id":"a15d30c6-3af7-4191-9a68-600000000003",
+    "repository_id":11,
+    "pull_node":"PR_test_17",
+    "pull_number":17,
+    "queue_id":"MQ_one",
+    "entry_id":"MQE_one",
+    "head_revision":"git:sha1:1111111111111111111111111111111111111111"
+  }
+}

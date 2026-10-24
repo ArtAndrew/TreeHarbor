@@ -4,6 +4,38 @@ use serde::Deserialize;
 #[derive(Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
 pub enum WireCommand {
+    DequeueRequest {
+        key: String,
+        epoch: i64,
+        dequeue: String,
+        specification: DequeueSpec,
+    },
+    DequeueBegin {
+        key: String,
+        epoch: i64,
+        dequeue: String,
+        attempt: String,
+    },
+    DequeueReport {
+        key: String,
+        epoch: i64,
+        dequeue: String,
+        attempt: String,
+        report: Box<treeharbor_github_contract::dequeue::DequeueObservation>,
+    },
+    DequeueStatus {
+        epoch: i64,
+        dequeue: String,
+    },
+    DequeueContext {
+        epoch: i64,
+        dequeue: String,
+    },
+    DequeueDispatchContext {
+        epoch: i64,
+        dequeue: String,
+        attempt: String,
+    },
     QueueRequest {
         key: String,
         epoch: i64,
@@ -245,6 +277,12 @@ fn id(s: &str) -> Result<Uuid> {
 impl WireCommand {
     pub fn permission(&self) -> Permission {
         match self {
+            Self::DequeueRequest { .. } => Permission::HostQueue,
+            Self::DequeueStatus { .. } => Permission::Read,
+            Self::DequeueBegin { .. }
+            | Self::DequeueReport { .. }
+            | Self::DequeueContext { .. }
+            | Self::DequeueDispatchContext { .. } => Permission::HostMerge,
             Self::QueueRequest { .. } | Self::QueueCancel { .. } => Permission::HostQueue,
             Self::QueueBegin { .. }
             | Self::QueueReport { .. }
@@ -293,6 +331,61 @@ impl WireCommand {
         backend: Option<&str>,
     ) -> Result<Value> {
         match self {
+            Self::DequeueRequest {
+                key,
+                epoch,
+                dequeue,
+                specification,
+            } => {
+                db.request_github_dequeue(
+                    auth,
+                    &Command { key, epoch },
+                    id(&dequeue)?,
+                    &specification,
+                )
+                .await
+            }
+            Self::DequeueBegin {
+                key,
+                epoch,
+                dequeue,
+                attempt,
+            } => {
+                db.begin_github_dequeue(auth, &Command { key, epoch }, id(&dequeue)?, id(&attempt)?)
+                    .await
+            }
+            Self::DequeueReport {
+                key,
+                epoch,
+                dequeue,
+                attempt,
+                report,
+            } => {
+                db.report_github_dequeue(
+                    auth,
+                    &Command { key, epoch },
+                    id(&dequeue)?,
+                    id(&attempt)?,
+                    &report,
+                )
+                .await
+            }
+            Self::DequeueStatus { epoch, dequeue } => {
+                db.github_dequeue_context(auth, epoch, id(&dequeue)?, false, None)
+                    .await
+            }
+            Self::DequeueContext { epoch, dequeue } => {
+                db.github_dequeue_context(auth, epoch, id(&dequeue)?, true, None)
+                    .await
+            }
+            Self::DequeueDispatchContext {
+                epoch,
+                dequeue,
+                attempt,
+            } => {
+                db.github_dequeue_context(auth, epoch, id(&dequeue)?, true, Some(id(&attempt)?))
+                    .await
+            }
             Self::QueueRequest {
                 key,
                 epoch,

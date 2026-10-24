@@ -478,6 +478,12 @@ async fn schema20_import_upgrade() {
     upgrade(20).await;
 }
 
+#[tokio::test]
+#[ignore = "requires PostgreSQL; schema21 imports and credentials survive dequeue migration"]
+async fn schema21_import_upgrade() {
+    upgrade(21).await;
+}
+
 async fn upgrade(version: i32) {
     use sha2::{Digest, Sha256};
     use treeharbor_metadata::uploads::UploadLimits;
@@ -510,6 +516,7 @@ async fn upgrade(version: i32) {
         include_str!("../../migrations/018_github_publications.sql"),
         include_str!("../../migrations/019_github_pulls.sql"),
         include_str!("../../migrations/020_github_inspections.sql"),
+        include_str!("../../migrations/021_github_queue.sql"),
     ];
     for sql in migrations.into_iter().take(version as usize) {
         raw.batch_execute(sql).await.unwrap();

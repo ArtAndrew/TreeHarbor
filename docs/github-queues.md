@@ -2,7 +2,8 @@
 
 This development command requests the native GitHub merge queue, retains the
 provider's asynchronous request identity and recovers observations after process
-loss. It does **not** yet verify final integration. Remote dequeue, durable
+loss. It does **not** yet verify final integration. An explicit
+[removal command](github-dequeue.md) adds remote dequeue; durable
 merge-group events, exact group/final-tree proof and actual installed-App acceptance
 remain unfinished. Do not use this increment as a production merge controller.
 
@@ -108,6 +109,7 @@ terminal outcomes for the same UUID are rejected.
 | `validating` | A queue entry has base/head commit observations; checks are not yet certified |
 | `result_unavailable` | The async result could not be found; not proof of failure |
 | `request_failed` | An immediate rejection or exact-UUID failure was retained |
+| `not_sent` | The sole invocation positively established that it sent no mutation |
 | `stale` / `closed` | A capture found a changed head or an unmerged closed PR |
 | `host_merged_unverified` | A host merge fact exists; required group/final-tree proof is incomplete |
 | `cancelled` | Cancellation happened before dispatch |
@@ -133,15 +135,17 @@ Use `client ... github --request FILE` for status and cancellation:
 
 Status requires `read`; cancellation requires `host.queue`. After dispatch,
 cancellation records `cancel_requested` and stops future enqueue effects, but
-**does not yet remove the PR from GitHub's queue**. A concurrent host merge remains
+**does not remove the PR from GitHub's queue**. Use a separate explicit
+[dequeue request](github-dequeue.md) for host removal. A concurrent host merge remains
 recorded. An unknown, expired or merely locally cancelled dispatch blocks a new
-intent for that PR. A confirmed request failure permits a new explicit owner
+intent for that PR. A confirmed request failure or positive no-send report permits a new explicit owner
 request with a new UUID/key and fresh checks; replaying the original intent never
 resends it. Source pins are preserved across these transitions.
 
-The version-1 shared Rust contract rejects extra/unknown fields and malformed
+The shared Rust contract rejects extra/unknown fields and malformed
 identities. [Async-result vectors](../crates/github-contract/tests/fixtures/queue-result-v1.json)
-cover pending, enqueue, failure, merge and unavailable outcomes. Schema21 adds
-explicit grants and durable queue history without expanding existing grants.
+cover pending, enqueue, failure, merge and unavailable outcomes. Version2 queue
+reports add positive no-send evidence while preserving version1 reads. Schema22
+adds explicit removal records without converting old cancellations into host writes.
 Provider transport/database/CLI tests use labelled fixtures and local process-loss
 injection; they do not prove installed-App or real merge-group behavior.

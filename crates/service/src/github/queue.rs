@@ -127,6 +127,10 @@ fn print(c: &Value) -> Result<bool> {
     Ok(c["report_sequence"].as_i64().is_some_and(|n| n > 0))
 }
 pub(super) async fn run(r: Request) -> Result<bool> {
+    print(&collect(r, true).await?)
+}
+/// Recovery for the dequeue driver must never acquire another enqueue grant.
+pub(super) async fn collect(r: Request, allow_dispatch: bool) -> Result<Value> {
     let credential = Credential::load(&r.credential_file)?;
     let mut c = command(
         &r.socket,
@@ -142,15 +146,15 @@ pub(super) async fn run(r: Request) -> Result<bool> {
         target,
     };
     if c["state"] == "cancelled" {
-        return print(&c);
+        return Ok(c);
     }
     let j = Journal::open(&r.state, &s.intent)?;
     if s.pending(&j, &c).await? {
-        return print(&s.context().await?);
+        return s.context().await;
     }
     c = s.context().await?;
-    if c["state"] == "cancelled" {
-        return print(&c);
+    if c["state"] == "cancelled" || (!allow_dispatch && c["attempt"].is_null()) {
+        return Ok(c);
     }
     let spec =
         serde_json::from_value(c["specification"].clone()).map_err(|_| Error::PublicationState)?;
@@ -178,7 +182,7 @@ pub(super) async fn run(r: Request) -> Result<bool> {
     };
     let result = if dispatch {
         connection
-            .enqueue_pull(&config.repository, &s.target, || async {
+            .enqueue_pull_attempt(&config.repository, &s.target, || async {
                 s.eligible(attempt)
                     .await
                     .map_err(|_| treeharbor_github::Error::PublicationStopped)
@@ -188,10 +192,18 @@ pub(super) async fn run(r: Request) -> Result<bool> {
         connection
             .queue_result(&config.repository, &s.target, &provider)
             .await
+            .map_err(|error| treeharbor_github::MutationFailure {
+                error,
+                mutation_not_sent: false,
+            })
     } else {
         connection
             .observe_queue(&config.repository, &s.target)
             .await
+            .map_err(|error| treeharbor_github::MutationFailure {
+                error,
+                mutation_not_sent: false,
+            })
     };
     let (report, expiry) = match result {
         Ok(v) => {
@@ -201,15 +213,16 @@ pub(super) async fn run(r: Request) -> Result<bool> {
             (v.observation, Some(v.token_expires_at))
         }
         Err(e) => {
-            eprintln!("{e}");
+            eprintln!("{}", e.error);
             (
                 QueueObservation {
-                    version: 1,
+                    version: if e.mutation_not_sent { 2 } else { 1 },
                     started_at_unix_ms: now()?,
                     finished_at_unix_ms: now()?,
                     snapshot: None,
                     receipt: None,
                     async_result: None,
+                    mutation_not_sent: e.mutation_not_sent,
                     token_revoked: false,
                 },
                 None,
@@ -222,7 +235,7 @@ pub(super) async fn run(r: Request) -> Result<bool> {
     j.append(&Record::new(report, expiry))?;
     c = s.context().await?;
     s.pending(&j, &c).await?;
-    print(&s.context().await?)
+    s.context().await
 }
 
 fn result_to_recover(c: &Value, target: &QueueTarget) -> Result<Option<String>> {

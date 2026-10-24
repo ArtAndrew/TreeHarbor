@@ -1,13 +1,23 @@
 //! Native GitHub queue only. A host merge remains unverified until separate proof.
 use super::*;
 use serde::Deserialize;
+use std::sync::atomic::{AtomicBool, Ordering};
 use treeharbor_github_contract::{PullState, queue::*};
+mod dequeue;
 mod result;
+pub use dequeue::ObservedDequeue;
 
 pub struct ObservedQueue {
     pub binding: RepositoryBinding,
     pub observation: QueueObservation,
     pub token_expires_at: String,
+}
+/// A completed local invocation can prove no mutation was sent. A killed worker
+/// produces no such evidence; marking before the HTTP call is conservative.
+#[derive(Debug)]
+pub struct MutationFailure {
+    pub error: Error,
+    pub mutation_not_sent: bool,
 }
 const QUERY: &str = r"query TreeHarborQueue($owner:String!,$name:String!,$number:Int!){
  repository(owner:$owner,name:$name){databaseId pullRequest(number:$number){
@@ -213,7 +223,8 @@ impl Connection {
         b: &RepositoryBinding,
         t: &QueueTarget,
     ) -> Result<ObservedQueue> {
-        self.queue_operation(b, t, false, || async { Ok(()) }).await
+        self.queue_operation(b, t, false, || async { Ok(()) }, &AtomicBool::new(false))
+            .await
     }
     /// Requires one fresh durable dispatch from the caller. Checks are recollected;
     /// an ambiguous result never causes a second PUT or a direct-merge fallback.
@@ -227,7 +238,28 @@ impl Connection {
         G: FnMut() -> F,
         F: std::future::Future<Output = Result<()>>,
     {
-        self.queue_operation(b, t, true, eligible).await
+        self.enqueue_pull_attempt(b, t, eligible)
+            .await
+            .map_err(|e| e.error)
+    }
+    /// Retains positive no-send evidence on preflight/authorization failure.
+    pub async fn enqueue_pull_attempt<G, F>(
+        &self,
+        b: &RepositoryBinding,
+        t: &QueueTarget,
+        eligible: G,
+    ) -> std::result::Result<ObservedQueue, MutationFailure>
+    where
+        G: FnMut() -> F,
+        F: std::future::Future<Output = Result<()>>,
+    {
+        let sent = AtomicBool::new(false);
+        self.queue_operation(b, t, true, eligible, &sent)
+            .await
+            .map_err(|error| MutationFailure {
+                error,
+                mutation_not_sent: !sent.load(Ordering::SeqCst),
+            })
     }
     async fn queue_operation<G, F>(
         &self,
@@ -235,6 +267,7 @@ impl Connection {
         t: &QueueTarget,
         write: bool,
         mut eligible: G,
+        sent: &AtomicBool,
     ) -> Result<ObservedQueue>
     where
         G: FnMut() -> F,
@@ -289,21 +322,25 @@ impl Connection {
             let path=format!("repos/{}/{}/pulls/{}/merge-async",b.owner,b.name,t.pull.pull_number);
             let body=json!({"sha":t.pull.head_revision.strip_prefix("git:sha1:").ok_or(Error::Queue)?,"merge_action":"merge_queue","bypass_rules":false});
             // The request helper has redirects and retries disabled.
-            let sent=self.request_status(Stage::Queue,Method::PUT,&path,token.token.header()?,Some(body),&[StatusCode::OK,StatusCode::ACCEPTED,StatusCode::CONFLICT,StatusCode::BAD_REQUEST]).await;
-            let receipt=sent.ok().and_then(|(status,bytes)|decode_receipt(status.as_u16(),&bytes,t).ok());
+            let header=token.token.header()?;
+            sent.store(true,Ordering::SeqCst);
+            let response=self.request_status(Stage::Queue,Method::PUT,&path,header,Some(body),&[StatusCode::OK,StatusCode::ACCEPTED,StatusCode::CONFLICT,StatusCode::BAD_REQUEST]).await;
+            let receipt=response.ok().and_then(|(status,bytes)|decode_receipt(status.as_u16(),&bytes,t).ok());
             // Return the receipt before another provider read so the caller can
             // fsync it. Follow-up observation uses a separate read-only call.
             Ok((None,receipt))
         }).await.map_err(|_|Error::Deadline).and_then(|v|v);
         let revoked = self.revoke(&token).await.is_ok();
         let (snapshot, receipt) = result?;
+        let mutation_not_sent = write && !sent.load(Ordering::SeqCst);
         let observation = QueueObservation {
-            version: 1,
+            version: if mutation_not_sent { 2 } else { 1 },
             started_at_unix_ms: started,
             finished_at_unix_ms: now()? as i64 * 1000,
             snapshot,
             receipt,
             async_result: None,
+            mutation_not_sent,
             token_revoked: revoked,
         };
         observation.validate(t).map_err(|_| Error::Queue)?;

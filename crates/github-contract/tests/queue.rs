@@ -1,4 +1,24 @@
 use serde_json::{Value, json};
+
+#[test]
+fn no_send_v2_is_positive_evidence_and_old_reports_remain_unknown() {
+    let v: Value = serde_json::from_str(include_str!("fixtures/queue-no-send-v2.json")).unwrap();
+    let mut r: QueueObservation = serde_json::from_value(v.clone()).unwrap();
+    r.validate(&target()).unwrap();
+    assert_eq!(json!(r), v);
+    assert_eq!(r.state(&target()), "not_sent");
+    r.receipt = Some(pending());
+    assert!(r.validate(&target()).is_err());
+    r.receipt = None;
+    r.version = 1;
+    assert!(r.validate(&target()).is_err());
+    r.mutation_not_sent = false;
+    let old = json!(r);
+    assert!(old.get("mutation_not_sent").is_none());
+    let old: QueueObservation = serde_json::from_value(old).unwrap();
+    old.validate(&target()).unwrap();
+    assert_eq!(old.state(&target()), "uncertain");
+}
 use treeharbor_github_contract::{InspectionReport, queue::*};
 fn fixture() -> Value {
     serde_json::from_str(include_str!("fixtures/inspection-v1.json")).unwrap()
@@ -123,6 +143,7 @@ fn queue_and_final_host_facts_never_become_verified_merge() {
         snapshot: None,
         receipt: Some(pending()),
         async_result: None,
+        mutation_not_sent: false,
         token_revoked: true,
     };
     assert_eq!(r.state(&t), "host_pending");

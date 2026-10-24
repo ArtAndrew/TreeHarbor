@@ -61,6 +61,7 @@ impl Connection {
             snapshot: None,
             receipt: None,
             async_result: Some(result?),
+            mutation_not_sent: false,
             token_revoked: revoked,
         };
         observation.validate(t).map_err(|_| Error::Queue)?;

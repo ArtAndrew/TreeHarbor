@@ -4,7 +4,7 @@
 mod auth;
 mod transport;
 pub use transport::evidence::ObservedInspection;
-pub use transport::queue::ObservedQueue;
+pub use transport::queue::{MutationFailure, ObservedDequeue, ObservedQueue};
 mod wire;
 
 pub use auth::AppCredentials;

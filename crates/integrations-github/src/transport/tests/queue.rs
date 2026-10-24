@@ -1,4 +1,6 @@
 use super::*;
+#[path = "dequeue.rs"]
+mod dequeue_tests;
 use treeharbor_github_contract::queue::QueueTarget;
 fn fixture() -> Value {
     serde_json::from_str(include_str!(concat!(
@@ -185,11 +187,13 @@ async fn queue_rejects_changed_base_disabled_queue_and_graphql_errors_before_put
             revoked(),
         ]);
         let (c, h) = host(v).await;
-        assert!(matches!(
-            c.enqueue_pull(&binding(), &target(), || async { Ok(()) })
-                .await,
-            Err(Error::Queue)
-        ));
+        let failure = c
+            .enqueue_pull_attempt(&binding(), &target(), || async { Ok(()) })
+            .await
+            .err()
+            .unwrap();
+        assert!(matches!(failure.error, Error::Queue));
+        assert!(failure.mutation_not_sent);
         assert!(
             !h.await
                 .unwrap()

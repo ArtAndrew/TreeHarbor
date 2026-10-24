@@ -912,7 +912,7 @@ async fn published_v3_upgrade_retains_workspace_pins_and_receipts_without_granti
             .await
             .unwrap()
             .get::<_, i32>(0),
-        21
+        22
     );
     assert_eq!(
         raw.query_one("SELECT count(*) FROM th_access_tokens", &[])

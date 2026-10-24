@@ -1,4 +1,6 @@
 use super::*;
+#[path = "dequeue.rs"]
+mod dequeue;
 fn cli(f: &Fixture, id: Uuid, state: &Path, app: &Path) -> Command {
     let mut c = Command::new(env!("CARGO_BIN_EXE_treeharbor"));
     c.env("PATH", "/no-executables")
@@ -196,6 +198,7 @@ pub(super) async fn exercise(
     assert_eq!(c["state"], "uncertain");
     let begin = json!({"action":"queue_begin","key":format!("github-queue-begin-{id}"),"epoch":1,"queue":id.to_string(),"attempt":attempt["attempt"]});
     assert_eq!(result(request(f, &begin))["dispatch_granted"], false);
+    let dequeue_id = dequeue::request_while_unresolved(f, &queue_owner, id, &app).await;
     let now: i64 = f
         .sql
         .query_one(
@@ -326,5 +329,7 @@ pub(super) async fn exercise(
     assert_eq!(cancelled["cancel_requested"], true);
     assert_eq!(cancelled["state"], "host_merged_unverified");
     assert_eq!(cancelled["merge_verified"], false);
+    f.credential_path = f.dir.path().join("queue-bridge.json");
+    dequeue::exercise(f, server, dequeue_id, &app).await;
     f.credential_path = owner.to_owned();
 }

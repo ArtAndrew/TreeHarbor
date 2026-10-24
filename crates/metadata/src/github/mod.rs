@@ -3,7 +3,9 @@
 pub(crate) mod imports;
 pub(crate) mod projections;
 pub use projections::ProjectionSpec;
+mod dequeues;
 mod inspections;
+pub use dequeues::DequeueSpec;
 mod queue;
 pub use queue::QueueSpec;
 mod publications;

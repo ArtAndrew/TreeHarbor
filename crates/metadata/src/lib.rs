@@ -48,6 +48,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/019_github_pulls.sql"),
     include_str!("../migrations/020_github_inspections.sql"),
     include_str!("../migrations/021_github_queue.sql"),
+    include_str!("../migrations/022_github_dequeue.sql"),
 ];
 const MAX_JSON: usize = 1024 * 1024;
 

@@ -46,6 +46,8 @@ impl Permission {
     }
     pub(crate) fn for_command(kind: &str) -> Result<Self> {
         match kind {
+            "github.dequeue.request.v1" => Ok(Self::HostQueue),
+            "github.dequeue.begin.v1" | "github.dequeue.report.v1" => Ok(Self::HostMerge),
             "github.queue.request.v1" | "github.queue.cancel.v1" => Ok(Self::HostQueue),
             "github.queue.begin.v1" | "github.queue.report.v1" => Ok(Self::HostMerge),
             "github.inspection.request.v1" | "github.inspection.cancel.v1" => {

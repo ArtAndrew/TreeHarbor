@@ -13,6 +13,7 @@ pub(crate) enum Capability {
     QueueRead,
     QueueWrite,
     QueueResult,
+    QueueRemove,
 }
 impl Capability {
     pub fn permissions(self) -> BTreeMap<String, String> {
@@ -25,7 +26,9 @@ impl Capability {
                     | Self::PullWrite
                     | Self::Evidence
                     | Self::QueueRead => "read",
-                    Self::Branch | Self::QueueWrite | Self::QueueResult => "write",
+                    Self::Branch | Self::QueueWrite | Self::QueueResult | Self::QueueRemove => {
+                        "write"
+                    }
                 }
                 .into(),
             ),
@@ -33,7 +36,12 @@ impl Capability {
         ]);
         if matches!(
             self,
-            Self::PullRead | Self::PullWrite | Self::Evidence | Self::QueueRead | Self::QueueWrite
+            Self::PullRead
+                | Self::PullWrite
+                | Self::Evidence
+                | Self::QueueRead
+                | Self::QueueWrite
+                | Self::QueueRemove
         ) {
             permissions.insert(
                 "pull_requests".into(),
@@ -48,8 +56,16 @@ impl Capability {
         if matches!(self, Self::Evidence | Self::QueueRead | Self::QueueWrite) {
             permissions.insert("checks".into(), "read".into());
         }
-        if matches!(self, Self::QueueRead | Self::QueueWrite) {
-            permissions.insert("merge_queues".into(), "read".into());
+        if matches!(self, Self::QueueRead | Self::QueueWrite | Self::QueueRemove) {
+            permissions.insert(
+                "merge_queues".into(),
+                if matches!(self, Self::QueueRemove) {
+                    "write"
+                } else {
+                    "read"
+                }
+                .into(),
+            );
         }
         permissions
     }
