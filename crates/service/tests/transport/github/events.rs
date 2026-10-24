@@ -1,11 +1,11 @@
 use super::*;
-fn vectors() -> Value {
+pub(super) fn vectors() -> Value {
     serde_json::from_str(include_str!(
         "../../../../github-webhook/tests/fixtures/vectors-v1.json"
     ))
     .unwrap()
 }
-fn event(name: &str) -> Value {
+pub(super) fn event(name: &str) -> Value {
     vectors()["vectors"]
         .as_array()
         .unwrap()
@@ -14,11 +14,11 @@ fn event(name: &str) -> Value {
         .unwrap()
         .clone()
 }
-fn bytes(v: &Value, id: Uuid, extra: &str) -> Vec<u8> {
+pub(super) fn bytes(v: &Value, id: Uuid, extra: &str) -> Vec<u8> {
     let body = v["body"].as_str().unwrap();
     format!("POST /github/events HTTP/1.1\r\nHost: callback.local\r\nContent-Type: application/json\r\nX-GitHub-Event: {}\r\nX-GitHub-Delivery: {id}\r\nX-Hub-Signature-256: {}\r\nContent-Length: {}\r\nConnection: close\r\n{extra}\r\n{body}",v["event_header"].as_str().unwrap(),v["signature"].as_str().unwrap(),body.len()).into_bytes()
 }
-async fn raw(socket: &std::path::Path, bytes: &[u8]) -> Vec<u8> {
+pub(super) async fn raw(socket: &std::path::Path, bytes: &[u8]) -> Vec<u8> {
     let mut stream = UnixStream::connect(socket).await.unwrap();
     stream.write_all(bytes).await.unwrap();
     let mut out = Vec::new();
@@ -28,7 +28,7 @@ async fn raw(socket: &std::path::Path, bytes: &[u8]) -> Vec<u8> {
         .unwrap();
     out
 }
-async fn receiver(f: &Fixture, config: &std::path::Path) -> Process {
+pub(super) async fn receiver(f: &Fixture, config: &std::path::Path) -> Process {
     let log = f.dir.path().join("webhook.log");
     let file = fs::File::create(&log).unwrap();
     let mut process = Process(

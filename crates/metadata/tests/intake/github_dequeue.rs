@@ -227,6 +227,22 @@ fn receipt(f: &QueueFixture, id: Uuid) -> DequeueReceipt {
     }
 }
 pub(super) async fn drop_unpopulated_v22(raw: &tokio_postgres::Client) {
+    // Historical fixtures predate event recovery. Remove only their empty
+    // additive tables before reconstructing the older schema under test.
+    assert_eq!(
+        raw.query_one("SELECT count(*) FROM th_github_event_recoveries", &[])
+            .await
+            .unwrap()
+            .get::<_, i64>(0),
+        0
+    );
+    raw.batch_execute("DROP TABLE th_github_event_recovery_pages,th_github_event_recovery_attempts,th_github_event_recoveries; DROP FUNCTION th_github_recovery_immutable(); DROP FUNCTION th_github_recovery_attempt_immutable();").await.unwrap();
+    let constraints = include_str!("../../migrations/021_github_queue.sql")
+        .lines()
+        .take(4)
+        .collect::<Vec<_>>()
+        .join("\n");
+    raw.batch_execute(&constraints).await.unwrap();
     assert_eq!(raw.query_one("SELECT (SELECT count(*) FROM th_github_dequeues)+(SELECT count(*) FROM th_github_dequeue_reports)",&[]).await.unwrap().get::<_,i64>(0),0);
     assert_eq!(raw.query_one("SELECT (SELECT count(*) FROM th_github_events)+(SELECT count(*) FROM th_github_event_channels)",&[]).await.unwrap().get::<_,i64>(0),0);
     raw.batch_execute("DROP TABLE th_github_event_deliveries; DROP TABLE th_github_events; DROP TABLE th_github_event_channels; DROP FUNCTION th_github_event_channel_immutable()").await.unwrap();

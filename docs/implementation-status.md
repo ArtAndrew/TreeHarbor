@@ -3,6 +3,30 @@
 Updated: 2026-10-24. This file describes implemented behavior and remaining release
 gates. A foundation milestone does not complete either mode.
 
+Experimental [event recovery](github-event-recovery.md) now connects owner-bounded
+requests, explicit `host.recover` bridge permission, durable PostgreSQL scan/detail/
+dispatch records and the resumable `github recover-events` command. Schema 24
+preserves old events and permissions. One dispatch per GUID/recovery is authorized;
+replay or lost responses cannot grant another send. Accepted/unknown/not-sent
+reports remain separate from actual signed inbox receipt.
+
+Because the delivery GUID header is not HMAC-signed, correlation compares a
+versioned digest of App-authenticated parsed payload with independently verified
+inbox content. Raw signature/body provenance remains separate. Changed payloads
+fail closed. Coverage and merge verification stay false, including after a scan
+reaches its observed pagination end.
+
+Local targeted checks passed eight real PostgreSQL recovery tests, including
+populated schema-23 upgrade, cancellation, expiry during commit, concurrent
+same-GUID dispatch and spoofed GUID/content mismatch. The actual CLI/server kill
+test passed all four lost-commit boundaries (page, detail, send grant and report),
+then resumed without the App key and confirmed receipt through the real HMAC
+receiver. Transport/contract regression passed, including read-only content
+inspection and changed payload rejection. Provider observations are explicit
+fixtures; none establishes a real App installation. Full workspace/database/CI
+verification for this increment is in progress. Installed-App and full queue
+membership/check/final-tree acceptance remain open.
+
 The [webhook HTTPS recipe](webhook-https.md) now supplies a dedicated Caddy 2.11.7
 configuration for the existing Rust receiver. It proxies only POST /github/events
 to the private Unix socket, preserves signed bytes, bounds requests/deadlines and
@@ -17,8 +41,9 @@ headers, retained raw group bytes, restart/replay, revocation, proxy SIGKILL bef
 and after commit, DB lock timeout and log filtering. An initial test incorrectly
 expected HTTP 504 for a DB lock; the existing 5s database lock timeout returns 503
 before the receiver deadline. The expectation was corrected without changing
-production timeouts. Linux execution is added to the required PostgreSQL CI job;
-all required exact-head checks still need to pass before merge. The App/probe data
+production timeouts. Linux execution passed in the required PostgreSQL CI job;
+all five required checks passed for [PR49](https://github.com/ArtAndrew/TreeHarbor/pull/49)
+before merge. The App/probe data
 in this test is an explicit fixture, not live GitHub evidence.
 
 The [GitHub queue acceptance kit](../examples/github-queue/README.md) now provides a

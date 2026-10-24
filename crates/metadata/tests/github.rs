@@ -3,6 +3,8 @@ mod common;
 mod events;
 #[path = "github/imports.rs"]
 mod imports;
+#[path = "github/recovery.rs"]
+mod recovery;
 use common::{cleanup, connection, setup};
 use serde_json::json;
 use treeharbor_metadata::{
@@ -238,6 +240,9 @@ impl Fixture {
 #[ignore = "requires disposable PostgreSQL; real durable Connected contracts"]
 async fn binding_and_observation_survive_lost_responses_without_granting_publication() {
     let mut f = Fixture::new().await;
+    // The provider's documented legacy client IDs contain a dot. Retain the
+    // exact operator-pinned value through database restart and idempotent replay.
+    f.spec.client_id = "Iv1.ab1112223334445c".into();
     f.bind().await;
     let id = Uuid::new_v4();
     let auth = f.begin(id).await;
@@ -259,6 +264,7 @@ async fn binding_and_observation_survive_lost_responses_without_granting_publica
             .await
             .unwrap();
     assert_eq!(context["observation"], json!(observation()));
+    assert_eq!(context["specification"]["client_id"], f.spec.client_id);
     assert_eq!(context["publication_ready"], false);
     let mut other = observation();
     other.archived = true;

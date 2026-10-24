@@ -2,7 +2,7 @@ use super::*;
 use serde_json::Value;
 use treeharbor_github_webhook::{VerifiedDelivery, WebhookKey};
 use treeharbor_metadata::github::EventChannelSpec;
-fn verified(name: &str, app: u64) -> VerifiedDelivery {
+pub(super) fn verified(name: &str, app: u64) -> VerifiedDelivery {
     let data: Value = serde_json::from_str(include_str!(
         "../../../github-webhook/tests/fixtures/vectors-v1.json"
     ))
@@ -26,7 +26,7 @@ fn verified(name: &str, app: u64) -> VerifiedDelivery {
     )
     .unwrap()
 }
-async fn ready(f: &mut Fixture) -> Uuid {
+pub(super) async fn ready(f: &mut Fixture) -> Uuid {
     f.bind().await;
     let probe = Uuid::new_v4();
     let a = f.begin(probe).await;
@@ -276,6 +276,7 @@ async fn populated_schema22_upgrade_preserves_bindings_and_requires_explicit_cha
         .await
         .unwrap();
     let raw = connection(&f.schema).await;
+    recovery::remove_recovery_schema(&raw).await;
     raw.batch_execute("DROP TABLE th_github_event_deliveries; DROP TABLE th_github_events; DROP TABLE th_github_event_channels; DROP FUNCTION th_github_event_channel_immutable()").await.unwrap();
     let mut files: Vec<_> = std::fs::read_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/migrations"))
         .unwrap()

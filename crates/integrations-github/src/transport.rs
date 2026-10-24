@@ -8,6 +8,7 @@ use serde_json::{Value, json};
 use std::{sync::Arc, time::Duration};
 use tokio::sync::Semaphore;
 use zeroize::Zeroizing;
+pub(crate) mod deliveries;
 pub(crate) mod evidence;
 pub(crate) mod publisher;
 pub(crate) mod pulls;
@@ -291,6 +292,19 @@ impl Connection {
         body: Option<Value>,
         accepted: &[StatusCode],
     ) -> Result<(StatusCode, Zeroizing<Vec<u8>>)> {
+        self.request_headers(stage, method, path, authorization, body, accepted)
+            .await
+            .map(|(status, _, bytes)| (status, bytes))
+    }
+    async fn request_headers(
+        &self,
+        stage: Stage,
+        method: Method,
+        path: &str,
+        authorization: header::HeaderValue,
+        body: Option<Value>,
+        accepted: &[StatusCode],
+    ) -> Result<(StatusCode, header::HeaderMap, Zeroizing<Vec<u8>>)> {
         let url = self.base.join(path).map_err(|_| Error::Configuration)?;
         // Defense in depth if later routes become dynamic. Never trust URLs
         // returned by GitHub, including pagination and API error links.
@@ -327,13 +341,20 @@ impl Connection {
                 retry_after_seconds,
             });
         }
+        let max_response = if stage == Stage::WebhookDeliveryDetail {
+            8 * 1024 * 1024
+        } else {
+            MAX_RESPONSE
+        };
         if response
             .content_length()
-            .is_some_and(|n| n > MAX_RESPONSE as u64)
+            .is_some_and(|n| n > max_response as u64)
         {
             return Err(Error::Size { stage });
         }
-        if status != StatusCode::NO_CONTENT {
+        let headers = response.headers().clone();
+        let empty_receipt = status == StatusCode::ACCEPTED && stage == Stage::WebhookRedelivery;
+        if status != StatusCode::NO_CONTENT && !empty_receipt {
             let content_type = response
                 .headers()
                 .get(header::CONTENT_TYPE)
@@ -357,7 +378,7 @@ impl Connection {
             .await
             .map_err(|_| Error::Transport { stage })?
         {
-            if chunk.len() > MAX_RESPONSE - bytes.len() {
+            if chunk.len() > max_response - bytes.len() {
                 return Err(Error::Size { stage });
             }
             bytes.extend_from_slice(&chunk);
@@ -365,7 +386,12 @@ impl Connection {
         if status == StatusCode::NO_CONTENT && !bytes.is_empty() {
             return Err(Error::Response { stage });
         }
-        Ok((status, bytes))
+        // The redelivery endpoint documents an empty 202. Never interpret an
+        // unexpected body as an authenticated callback or recovery receipt.
+        if empty_receipt && (!bytes.is_empty() || headers.contains_key(header::CONTENT_ENCODING)) {
+            return Err(Error::Response { stage });
+        }
+        Ok((status, headers, bytes))
     }
 }
 

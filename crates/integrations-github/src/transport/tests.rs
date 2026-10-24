@@ -585,3 +585,6 @@ async fn live_public_github_https_api() {
 
 #[path = "tests/queue.rs"]
 mod queue_tests;
+
+#[path = "tests/deliveries.rs"]
+mod delivery_tests;

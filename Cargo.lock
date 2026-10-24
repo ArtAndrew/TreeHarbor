@@ -2025,8 +2025,10 @@ version = "0.1.0-dev"
 dependencies = [
  "serde",
  "serde_json",
+ "sha2",
  "thiserror",
  "treeharbor-core",
+ "url",
  "uuid",
 ]
 

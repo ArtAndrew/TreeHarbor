@@ -11,6 +11,9 @@ pub use auth::AppCredentials;
 use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
 pub use transport::Connection;
+pub use transport::deliveries::{
+    DeliveryAttempt, DeliveryDetails, DeliveryPage, RecoveryTarget, RedeliveryReceipt,
+};
 pub use transport::publisher::{BranchObservation, BranchOutcome, BranchResult};
 pub use transport::pulls::{ExpectedPull, PullIdentity, PullObservation, PullSnapshot, PullTarget};
 
@@ -100,10 +103,19 @@ pub enum Stage {
     PullRequest,
     CheckEvidence,
     Queue,
+    AppIdentity,
+    WebhookConfiguration,
+    WebhookDeliveries,
+    WebhookDeliveryDetail,
+    WebhookRedelivery,
 }
 /// Never retains response bodies, URLs, private keys, tokens or upstream errors.
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum Error {
+    #[error("GitHub webhook recovery identity, configuration or delivery does not match")]
+    WebhookRecovery,
+    #[error("GitHub webhook pagination is invalid or exceeds its bound")]
+    WebhookPagination,
     #[error(
         "GitHub queue configuration, identity or preflight evidence is missing or inconsistent"
     )]

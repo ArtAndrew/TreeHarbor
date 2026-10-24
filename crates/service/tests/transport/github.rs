@@ -3,6 +3,8 @@ use super::*;
 mod events;
 #[path = "github/projections.rs"]
 mod projections;
+#[path = "github/recovery.rs"]
+mod recovery;
 
 fn provision_bridge(f: &Fixture) -> PathBuf {
     let bridge = f.dir.path().join("bridge-import.json");
@@ -416,4 +418,29 @@ async fn github_cli_replays_observation_after_restart_without_app_key_and_fences
     assert!(!log.contains("thv1_"));
     drop(server);
     f.cleanup().await;
+}
+
+async fn message(stream: &mut UnixStream) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    loop {
+        let mut chunk = [0; 8192];
+        let n = stream.read(&mut chunk).await.unwrap();
+        assert_ne!(n, 0);
+        bytes.extend_from_slice(&chunk[..n]);
+        assert!(bytes.len() < 1024 * 1024);
+        if let Some(end) = bytes.windows(4).position(|w| w == b"\r\n\r\n") {
+            let headers = String::from_utf8_lossy(&bytes[..end]).to_ascii_lowercase();
+            assert!(!headers.contains("transfer-encoding:"));
+            let length: usize = headers
+                .lines()
+                .find_map(|l| l.strip_prefix("content-length:"))
+                .unwrap_or("0")
+                .trim()
+                .parse()
+                .unwrap();
+            if bytes.len() >= end + 4 + length {
+                return bytes;
+            }
+        }
+    }
 }

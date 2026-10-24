@@ -17,9 +17,26 @@ pub(crate) mod projection;
 mod publish;
 mod pulls;
 mod queue;
+mod recovery;
 
 #[derive(Subcommand)]
 pub enum Action {
+    /// Resume an owner-authorized bounded delivery scan and signed-inbox recovery.
+    RecoverEvents {
+        #[arg(long)]
+        config: PathBuf,
+        #[arg(long)]
+        socket: PathBuf,
+        #[arg(long)]
+        credential_file: PathBuf,
+        #[arg(long)]
+        recovery: Uuid,
+        #[arg(long,value_parser=clap::value_parser!(i64).range(1..))]
+        epoch: i64,
+        /// Existing private directory; keep it across interruption and retry.
+        #[arg(long)]
+        state: PathBuf,
+    },
     /// Remove an explicitly authorized PR from the host queue, or recover its attempt.
     Dequeue {
         #[arg(long)]
@@ -228,6 +245,24 @@ fn matches_config(config: &Config, spec: &treeharbor_metadata::github::BindingSp
 }
 pub async fn run(action: Action) -> Result<bool> {
     match action {
+        Action::RecoverEvents {
+            config,
+            socket,
+            credential_file,
+            recovery,
+            epoch,
+            state,
+        } => {
+            recovery::run(recovery::Request {
+                config,
+                socket,
+                credential_file,
+                id: recovery,
+                epoch,
+                state,
+            })
+            .await
+        }
         Action::Dequeue {
             config,
             socket,
