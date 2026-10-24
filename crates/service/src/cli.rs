@@ -28,6 +28,11 @@ pub struct Cli {
 }
 #[derive(Subcommand)]
 enum Command {
+    /// Receive signed GitHub callbacks on a separate private Unix socket.
+    WebhookServe {
+        #[arg(long)]
+        config: PathBuf,
+    },
     #[command(hide = true)]
     InternalGitWorker,
     /// Trusted GitHub App connection; never run inside an agent workspace/runtime.
@@ -1069,6 +1074,10 @@ pub async fn run(cli: Cli) -> Result<bool> {
                 "{}",
                 json!({"pack":result.directory.to_str(),"pack_path_hex":crate::pack::hex(result.directory.as_os_str().as_bytes()),"commit":result.commit().to_string(),"snapshot":result.snapshot().to_string(),"objects":result.object_count(),"encoded_bytes":result.encoded_bytes(),"filesystem_entries":result.filesystem_entries()})
             );
+            Ok(true)
+        }
+        Command::WebhookServe { config } => {
+            crate::webhooks::serve(&config).await?;
             Ok(true)
         }
         Command::Serve { config } => {

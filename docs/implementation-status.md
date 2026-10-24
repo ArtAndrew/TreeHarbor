@@ -785,3 +785,31 @@ process, restarts the server and checks that a saved observation recovers withou
 another dispatch. Its host observation is explicitly a fixture. Full installed-App
 publication, PR/check/queue, automatic reconciliation, cleanup and cutover remain
 required. See [publication requests](github-publications.md).
+
+
+## Signed GitHub event inbox
+
+The separate `webhook-serve` command verifies HMAC-SHA256 over original raw bytes
+before exposing typed identities. Owner-created event channels route a pinned
+App/installation/repository to one tenant, binding and epoch. PostgreSQL retains
+immutable raw content, normalized v1 facts, bounded delivery aliases and an outbox
+record atomically. Duplicate delivery/content does not produce another logical
+fact. Conflicting UUID reuse, missing/revoked bindings and exhausted retention
+budgets fail explicitly. No event creates a check, approval or verified merge.
+
+Additive schema23 preserves existing configuration without creating subscriptions.
+The public command API creates/revokes channels and pages normalized facts; there
+is no agent command for asserting that a webhook was verified. The receiver uses
+one or two operator-configured secret files and a separate private Unix socket.
+Its App signing key and repository write credentials are not required.
+
+Local verification (macOS arm64, Rust1.99.1): 244 ordinary workspace tests,
+247 explicit PostgreSQL/materializer/node/service tests, formatting and strict
+all-target Clippy passed. This includes seven inbox tests and an actual receiver/CLI
+process test that kills before/after commit and retries the original delivery.
+All five required exact-head CI checks must pass before merge. No external dependency versions were added. See
+[signed events](github-events.md) for configuration, wire examples and limits.
+
+Automatic delivery reconciliation, retention/archiving, TLS installation,
+installed-App callbacks and complete group/membership/check/final-tree proof remain
+unfinished. Both complete product modes and all release gates remain required.

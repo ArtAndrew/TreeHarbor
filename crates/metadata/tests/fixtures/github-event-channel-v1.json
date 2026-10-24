@@ -1,0 +1,12 @@
+{
+  "action": "event_channel_create",
+  "key": "github-events-example",
+  "epoch": 1,
+  "channel": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+  "specification": {
+    "binding": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    "max_events": 10000,
+    "max_bytes": 1073741824,
+    "max_aliases": 4
+  }
+}
