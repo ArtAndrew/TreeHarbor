@@ -24,6 +24,9 @@ struct Claims<'a> {
     iss: &'a str,
 }
 impl AppCredentials {
+    pub(crate) fn client_id(&self) -> &str {
+        &self.client_id
+    }
     /// Takes ownership so the caller's original PEM buffer is wiped on drop.
     /// TLS/cryptographic libraries may maintain their own transient copies.
     pub fn from_pem(app_id: u64, client_id: String, pem: Vec<u8>) -> Result<Self> {
@@ -33,7 +36,7 @@ impl AppCredentials {
             || client_id.len() > 128
             || !client_id
                 .bytes()
-                .all(|b| b.is_ascii_alphanumeric() || b == b'_')
+                .all(|b| b.is_ascii_alphanumeric() || b"_.".contains(&b))
             || pem.len() > 16 * 1024
         {
             return Err(Error::Configuration);

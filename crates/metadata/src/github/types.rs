@@ -52,7 +52,7 @@ impl BindingSpec {
             || !self
                 .client_id
                 .bytes()
-                .all(|b| b.is_ascii_alphanumeric() || b == b'_')
+                .all(|b| b.is_ascii_alphanumeric() || b"_.".contains(&b))
         {
             return Err(Error::Invalid("GitHub App identity"));
         }
