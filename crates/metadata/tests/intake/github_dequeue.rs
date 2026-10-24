@@ -189,6 +189,7 @@ async fn snapshot(f: &QueueFixture) -> QueueSnapshot {
         .unwrap()
         .get(0);
     QueueSnapshot {
+        queue_id: None,
         pull: serde_json::from_value(capture["before"].clone()).unwrap(),
         queue_enabled: true,
         configuration: None,

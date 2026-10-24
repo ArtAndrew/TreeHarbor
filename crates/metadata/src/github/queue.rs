@@ -40,6 +40,9 @@ pub(super) async fn retained_result(
     tx.query_opt("SELECT report->'async_result' AS result FROM th_github_queue_reports WHERE tenant=$1 AND repository=$2 AND queue=$3 AND report#>>'{async_result,request_uuid}' IS NOT NULL ORDER BY (report#>>'{async_result,outcome,status}' IN ('failed','enqueued','merged')) DESC,(report->>'finished_at_unix_ms')::bigint DESC,sequence DESC LIMIT 1", &[&s.tenant(),&s.repository(),&id]).await?
         .map(|r| serde_json::from_value(r.get("result")).map_err(|_| Error::SchemaMismatch)).transpose()
 }
+async fn retained_enqueue(tx: &Transaction<'_>, s: &Scope, id: Uuid) -> Result<Option<Value>> {
+    Ok(tx.query_opt("SELECT report->'enqueue_receipt' FROM th_github_queue_reports WHERE tenant=$1 AND repository=$2 AND queue=$3 AND report->'enqueue_receipt' IS NOT NULL AND report->'enqueue_receipt' <> 'null'::jsonb ORDER BY sequence LIMIT 1",&[&s.tenant(),&s.repository(),&id]).await?.map(|r|r.get(0)))
+}
 async fn describe(tx: &Transaction<'_>, s: &Scope, r: &Row, dynamic: bool) -> Result<Value> {
     let t = target(r)?;
     let observation: Option<QueueObservation> = r
@@ -51,6 +54,7 @@ async fn describe(tx: &Transaction<'_>, s: &Scope, r: &Row, dynamic: bool) -> Re
     let cancelled = r.get::<_, bool>("cancel_requested");
     let retained = retained_merge(tx, s, r.get("queue"), &t).await?;
     let provider_result = retained_result(tx, s, r.get("queue")).await?;
+    let enqueue_receipt = retained_enqueue(tx, s, r.get("queue")).await?;
     let failed = r.get::<_, bool>("dispatch_failed");
     let not_sent = r.get::<_, bool>("mutation_not_sent");
     let state = if retained.is_some()
@@ -87,6 +91,9 @@ async fn describe(tx: &Transaction<'_>, s: &Scope, r: &Row, dynamic: bool) -> Re
     if dynamic {
         v["is_current_version"] = json!(current(tx, s, r).await?);
         v["unexpired"] = json!(r.get::<_, bool>("unexpired"));
+    }
+    if let Some(receipt) = enqueue_receipt {
+        v["retained_enqueue"] = receipt;
     }
     Ok(v)
 }
@@ -338,8 +345,21 @@ impl Metadata {
             return Err(Error::HostQueueState);
         }
         let mut provider = r.get::<_, Option<Uuid>>("provider_request");
+        let previous_enqueue = retained_enqueue(&m.tx, s, id).await?;
+        if let Some(receipt) = &report.enqueue_receipt {
+            receipt
+                .validate(&t, attempt)
+                .map_err(|_| Error::HostQueueState)?;
+            if provider.is_some() || previous_enqueue.as_ref().is_some_and(|old|*old != json!(receipt))
+                || m.tx.query_one("SELECT EXISTS(SELECT 1 FROM th_github_queue_reports WHERE tenant=$1 AND repository=$2 AND queue=$3 AND (report->'receipt' <> 'null'::jsonb OR report->'async_result' <> 'null'::jsonb))",&[&s.tenant(),&s.repository(),&id]).await?.get::<_,bool>(0)
+            { return Err(Error::HostQueueState); }
+        }
+        if previous_enqueue.is_some() && (report.receipt.is_some() || report.async_result.is_some())
+        {
+            return Err(Error::HostQueueState);
+        }
         let not_sent = r.get::<_, bool>("mutation_not_sent") || report.mutation_not_sent;
-        if not_sent && (report.receipt.is_some() || report.async_result.is_some()
+        if not_sent && (report.receipt.is_some() || report.async_result.is_some() || report.enqueue_receipt.is_some() || previous_enqueue.is_some()
             || m.tx.query_one("SELECT EXISTS(SELECT 1 FROM th_github_queue_reports WHERE tenant=$1 AND repository=$2 AND queue=$3 AND (report->'receipt' <> 'null'::jsonb OR report->'async_result' <> 'null'::jsonb))",&[&s.tenant(),&s.repository(),&id]).await?.get::<_,bool>(0)) {
             return Err(Error::HostQueueState);
         }

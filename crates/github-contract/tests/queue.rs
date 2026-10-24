@@ -1,6 +1,49 @@
 use serde_json::{Value, json};
 
 #[test]
+fn graphql_receipt_v3_is_exact_and_cannot_be_mixed_with_other_effects() {
+    let wire: Value = serde_json::from_str(include_str!("fixtures/queue-enqueue-v3.json")).unwrap();
+    let r: QueueObservation = serde_json::from_value(wire.clone()).unwrap();
+    r.validate(&target()).unwrap();
+    assert_eq!(json!(r), wire);
+    assert_eq!(r.state(&target()), "host_enqueued");
+    for field in [
+        "version",
+        "head",
+        "repository",
+        "pull",
+        "number",
+        "request",
+        "entry",
+        "no-send",
+        "mixed",
+        "snapshot",
+    ] {
+        let mut v = r.clone();
+        let e = v.enqueue_receipt.as_mut().unwrap();
+        match field {
+            "version" => v.version = 2,
+            "head" => e.head_revision = "git:sha1:".to_owned() + &"22".repeat(20),
+            "repository" => e.repository_id += 1,
+            "pull" => e.pull_node.push('x'),
+            "number" => e.pull_number += 1,
+            "request" => e.request_id = uuid::Uuid::nil().to_string(),
+            "entry" => e.entry_id = "../foreign".into(),
+            "no-send" => v.mutation_not_sent = true,
+            "snapshot" => v.snapshot = Some(snapshot()),
+            _ => v.receipt = Some(pending()),
+        }
+        assert!(v.validate(&target()).is_err(), "{field}");
+    }
+    assert!(
+        r.enqueue_receipt
+            .unwrap()
+            .validate(&target(), uuid::Uuid::new_v4())
+            .is_err()
+    );
+}
+
+#[test]
 fn no_send_v2_is_positive_evidence_and_old_reports_remain_unknown() {
     let v: Value = serde_json::from_str(include_str!("fixtures/queue-no-send-v2.json")).unwrap();
     let mut r: QueueObservation = serde_json::from_value(v.clone()).unwrap();
@@ -59,6 +102,7 @@ fn configuration() -> QueueConfiguration {
 }
 fn snapshot() -> QueueSnapshot {
     QueueSnapshot {
+        queue_id: None,
         pull: capture().before,
         queue_enabled: true,
         configuration: Some(configuration()),
@@ -142,6 +186,7 @@ fn queue_and_final_host_facts_never_become_verified_merge() {
         finished_at_unix_ms: 2,
         snapshot: None,
         receipt: Some(pending()),
+        enqueue_receipt: None,
         async_result: None,
         mutation_not_sent: false,
         token_revoked: true,
@@ -252,4 +297,22 @@ fn retained_async_result_vectors_and_invalid_identity_never_authorize_merge() {
     let mut r = pending();
     r.http_status = 200;
     assert!(r.validate(&target()).is_err()); // only a result GET may be pending/200
+}
+
+#[test]
+fn read_snapshot_v3_retains_queue_identity_without_admission_configuration() {
+    let v: Value = serde_json::from_str(include_str!("fixtures/queue-read-v3.json")).unwrap();
+    let mut r: QueueObservation = serde_json::from_value(v.clone()).unwrap();
+    r.validate(&target()).unwrap();
+    assert_eq!(json!(r), v);
+    assert_eq!(r.state(&target()), "host_enqueued");
+    assert!(!r.snapshot.as_ref().unwrap().can_request(&target()));
+    r.version = 2;
+    assert!(r.validate(&target()).is_err());
+    r.version = 3;
+    r.snapshot.as_mut().unwrap().queue_id = None;
+    assert!(r.validate(&target()).is_err());
+    r.snapshot.as_mut().unwrap().queue_id = Some("MQ_foreign".into());
+    r.snapshot.as_mut().unwrap().configuration = Some(configuration());
+    assert!(r.validate(&target()).is_err());
 }

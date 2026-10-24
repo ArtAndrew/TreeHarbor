@@ -30,7 +30,7 @@ async fn settled(tx: &Transaction<'_>, s: &Scope, q: &Row) -> Result<bool> {
     {
         return Ok(true);
     }
-    Ok(tx.query_one("SELECT EXISTS(SELECT 1 FROM th_github_queue_reports WHERE tenant=$1 AND repository=$2 AND queue=$3 AND report#>>'{receipt,status}' IN ('failed','enqueued','merged'))",&[&s.tenant(),&s.repository(),&q.get::<_,Uuid>("queue")]).await?.get(0))
+    Ok(tx.query_one("SELECT EXISTS(SELECT 1 FROM th_github_queue_reports WHERE tenant=$1 AND repository=$2 AND queue=$3 AND (report#>>'{receipt,status}' IN ('failed','enqueued','merged') OR report#>>'{enqueue_receipt,request_id}' IS NOT NULL))",&[&s.tenant(),&s.repository(),&q.get::<_,Uuid>("queue")]).await?.get(0))
 }
 pub(super) async fn unsettled_for_pull(
     tx: &Transaction<'_>,

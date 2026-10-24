@@ -166,5 +166,9 @@ signature verification, raw Unicode bytes, malformed/duplicate fields and identi
 checks. PostgreSQL tests cover atomicity, concurrency, quotas, replay, revocation,
 tenant routing and populated schema upgrades. A process test kills the actual
 receiver before and after commit and repeats the original delivery.
-These use synthetic provider payloads. Installed-App callbacks, complete merge-group
-membership/check/final-tree proof and public TLS deployment remain unverified.
+Those automated tests use synthetic provider payloads. A separate
+[live installed-App test](evidence/connected-queue-live-20261024.json) retained
+four real signed group events through temporary public TLS ingress; exact records
+and digests survived a service restart. The temporary endpoint was then disabled
+and stopped. Complete group membership/check/final-tree certification and automatic
+production ingress deployment remain unfinished.

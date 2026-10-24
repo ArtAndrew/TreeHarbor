@@ -49,7 +49,7 @@ impl DequeueObservation {
     pub fn validate(&self, target: &QueueTarget, request: uuid::Uuid) -> Result<()> {
         target.validate()?;
         if request.is_nil()
-            || self.version != 1
+            || !matches!(self.version, 1 | 2)
             || self.started_at_unix_ms <= 0
             || self.finished_at_unix_ms < self.started_at_unix_ms
             || self.finished_at_unix_ms - self.started_at_unix_ms > 180_000
@@ -58,6 +58,9 @@ impl DequeueObservation {
             return Err(InvalidEvidence);
         }
         for snapshot in [&self.before, &self.after].into_iter().flatten() {
+            if self.version == 1 && snapshot.queue_id.is_some() {
+                return Err(InvalidEvidence);
+            }
             snapshot.validate(target)?;
         }
         if let Some(receipt) = &self.receipt {
@@ -88,7 +91,10 @@ impl DequeueObservation {
             .is_some_and(|(r, s)| {
                 s.pull.head_revision != r.head_revision
                     || s.entry.as_ref().is_none_or(|e| e.id != r.entry_id)
-                    || s.configuration.as_ref().is_none_or(|q| q.id != r.queue_id)
+                    || s.queue_id
+                        .as_ref()
+                        .or(s.configuration.as_ref().map(|q| &q.id))
+                        .is_none_or(|id| *id != r.queue_id)
             })
     }
     pub fn state(
