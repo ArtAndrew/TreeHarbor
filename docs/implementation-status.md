@@ -3,6 +3,17 @@
 Updated: 2026-10-24. This file describes implemented behavior and remaining release
 gates. A foundation milestone does not complete either mode.
 
+The experimental runtime adapter now selects native Linux x86-64 or ARM64 from
+the compiled controller target and requires matching Engine/image architecture.
+It retains the same immutable image, external gVisor isolation, bounded ext4
+volume, durable intent and uncertain-outcome rules. It has no emulation fallback
+or platform override. The CI runtime matrix exercises both architectures with
+the same supervisor/controller/managed-run/native-check suites and a real
+foreign-image rejection case. Local ARM64 supervisor and controller acceptance
+passed in an isolated Linux VM, including simultaneous tasks, actual resource
+exhaustion, autonomous teardown and lost-response recovery. This does not add a
+macOS sandbox, automatic VM installer or production security certification.
+
 A live [installed-App read connection](github-connection.md#verification-and-remaining-gates)
 passed on the public synthetic acceptance repository on 2026-10-24. The actual
 Rust client verified pinned identities and revoked its narrowed temporary token.

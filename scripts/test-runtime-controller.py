@@ -15,6 +15,7 @@ import tempfile
 import threading
 import time
 import uuid
+from runtime_target import runtime_target
 
 
 def command(*args, check=True, timeout=60):
@@ -126,12 +127,12 @@ def main():
         raise RuntimeError("requires an unprivileged disposable Linux runner")
     root = Path(tempfile.mkdtemp(prefix="treeharbor-controller-", dir=os.environ.get("RUNNER_TEMP")))
     mounts, names = [], []
-    image = process = None
-    driver = Path("target/x86_64-unknown-linux-musl/debug/examples/runtime_controller").absolute()
+    image = wrong_image = process = None
+    driver = (runtime_target() / "examples/runtime_controller").absolute()
     try:
         build = root / "image"
         build.mkdir()
-        target = Path("target/x86_64-unknown-linux-musl/debug")
+        target = runtime_target()
         shutil.copy2(target / "treeharbor-runtime-init", build / "init")
         shutil.copy2(target / "examples/runtime_probe", build / "probe")
         (build / "Dockerfile").write_text("FROM scratch\nCOPY init /init\nCOPY probe /probe\n")
@@ -291,6 +292,19 @@ def main():
         assert (b[2] / "same.txt").read_text() == "agent-b"
         call(disk, "remove")
         print("PASS Rust controller: real OOM, autonomous deadline/descendant stop and bounded persistent disk", flush=True)
+        # Real local image with a foreign architecture. Never execute it, even
+        # if the host happens to have binfmt emulation installed.
+        other = "arm64" if os.uname().machine == "x86_64" else "amd64"
+        wrong_image = docker("build", "--network=none", "--platform", f"linux/{other}",
+                             "--quiet", str(build)).stdout.strip()
+        assert json.loads(docker("image", "inspect", wrong_image).stdout)[0]["Architecture"] == other
+        mismatch = config("once", slot=1)
+        mismatch[1]["profile"]["image"] = wrong_image
+        mismatch[0].write_text(json.dumps(mismatch[1]))
+        assert call(mismatch, "create", check=False).returncode != 0
+        assert docker("inspect", names[-1], check=False).returncode != 0
+        assert not (mismatch[2] / "executions").exists()
+        print("PASS foreign image architecture rejected before container creation or execution", flush=True)
     finally:
         for name in names:
             if docker("inspect", name, check=False).returncode == 0:
@@ -304,6 +318,8 @@ def main():
             command("sudo", "umount", str(mount))
         if image:
             docker("image", "rm", image)
+        if wrong_image:
+            docker("image", "rm", wrong_image)
         # Root-owned fault-proxy artifacts are confined to this invocation root.
         command("sudo", "rm", "-rf", "--", str(root))
 
