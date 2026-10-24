@@ -1,0 +1,113 @@
+{
+  "version": 1,
+  "observed_date": "2026-10-24",
+  "product_commit": "24ea4a9495a57219a2946712fb401423cc66d838",
+  "workload": "scripted synthetic agents; not an LLM benchmark",
+  "repository": "https://github.com/TreeHarbor/TreeHarbor-acceptance",
+  "authority": "connected",
+  "base_git_revision": "git:sha1:b2b0a2846f6aee26d9d2f62a868c5b52cc28f48a",
+  "base_native_revision": "native:sha256:35ead037c6d36cfe1733efc8ad5540fc5d16bd13ef5c83a3334a5c640321a632",
+  "runtime": {
+    "os": "Linux",
+    "architecture": "aarch64",
+    "implementation": "gVisor release-20261012.0",
+    "simultaneous_running_observed": true,
+    "both_runtimes_removed_before_capture": true
+  },
+  "cases": [
+    {
+      "scenario": "agent-a",
+      "workspace": "0dc37e42-3d52-4cdc-b31e-ca4f98007092",
+      "agent_run": "e003c00d-e2ce-4758-b53b-943bbd152e6d",
+      "changeset": "99641260-ef8b-4ef7-8ba0-e36064c7c00e",
+      "version": 1,
+      "result_snapshot": "sha256:a273475ef46ef524e0b270595e06559577defe07d469e6f722d8ee2258b22e89",
+      "projected_native_revision": "native:sha256:54c060c6d8e6782aeeb72ae541a8fb3bdd5b74ebe0d0c2ffc7be72664f1540a9",
+      "published_git_revision": "git:sha1:f08ad43ba4bc274fb4ea26cf8000107e475c2d5a",
+      "pull_request": "https://github.com/TreeHarbor/TreeHarbor-acceptance/pull/1",
+      "changed_paths": [
+        "src/lib.rs"
+      ],
+      "ci_run": "https://github.com/TreeHarbor/TreeHarbor-acceptance/actions/runs/40087937443",
+      "fixture_tests_passed": 3,
+      "selected_checks": [
+        {
+          "required": {
+            "app_id": 15368,
+            "name": "Queue fixture"
+          },
+          "runs": [
+            {
+              "app_id": 15368,
+              "conclusion": "success",
+              "head_revision": "git:sha1:f08ad43ba4bc274fb4ea26cf8000107e475c2d5a",
+              "id": 120854575378,
+              "name": "Queue fixture",
+              "status": "completed"
+            }
+          ],
+          "total_count": 1
+        }
+      ],
+      "capture_consistent": true,
+      "selected_checks_passed_at_capture": true,
+      "capture_finished_at_unix_ms": 1792839526000,
+      "publication_token_revoked": true,
+      "pull_token_revoked": true,
+      "inspection_token_revoked": true,
+      "merge_authorized": false
+    },
+    {
+      "scenario": "agent-b",
+      "workspace": "ae166289-ce0c-4eac-ad6e-83c3b689c733",
+      "agent_run": "6af54553-61b3-46e0-9d30-4d7a02eccec1",
+      "changeset": "3f8a09c6-7085-4011-8861-9376127e5c1f",
+      "version": 1,
+      "result_snapshot": "sha256:c23239a467581c15deff87241f5285a831a004b517922c94e83f46f30fcf3cd9",
+      "projected_native_revision": "native:sha256:3daae77c0b859ce9b39b704f7ca6810f402d3f27711881b75d41d3f31e675f43",
+      "published_git_revision": "git:sha1:48e2f9f30fdd92040a2b0de48d702deab0de47f3",
+      "pull_request": "https://github.com/TreeHarbor/TreeHarbor-acceptance/pull/2",
+      "changed_paths": [
+        "src/lib.rs"
+      ],
+      "ci_run": "https://github.com/TreeHarbor/TreeHarbor-acceptance/actions/runs/40087947331",
+      "fixture_tests_passed": 3,
+      "selected_checks": [
+        {
+          "required": {
+            "app_id": 15368,
+            "name": "Queue fixture"
+          },
+          "runs": [
+            {
+              "app_id": 15368,
+              "conclusion": "success",
+              "head_revision": "git:sha1:48e2f9f30fdd92040a2b0de48d702deab0de47f3",
+              "id": 120854604883,
+              "name": "Queue fixture",
+              "status": "completed"
+            }
+          ],
+          "total_count": 1
+        }
+      ],
+      "capture_consistent": true,
+      "selected_checks_passed_at_capture": true,
+      "capture_finished_at_unix_ms": 1792839532000,
+      "publication_token_revoked": true,
+      "pull_token_revoked": true,
+      "inspection_token_revoked": true,
+      "merge_authorized": false
+    }
+  ],
+  "recovery": {
+    "service_sigkill_then_restart": true,
+    "exact_publication_pull_inspection_results_replayed": 6,
+    "app_configuration_absent": true,
+    "git_executable_absent": true
+  },
+  "queue_admission_attempted": false,
+  "signed_merge_group_received": false,
+  "merge_verified": false,
+  "performance_benchmark": false
+}

@@ -37,8 +37,9 @@ publication and the async queue-result endpoint; Pull requests write supports PR
 Checks read supports exact check observation; Merge queues write supports queue
 operations. Metadata read is implicit. TreeHarbor narrows installation tokens per
 operation. This template does not grant Administration, workflow-write, Checks
-write, organization permissions or user OAuth access. Actual minimal-permission
-acceptance remains to be verified. Configure repository rules using a separate
+write, organization permissions or user OAuth access. The [live synthetic evidence](../../docs/evidence/connected-live-20261024.json)
+verifies import, branch/PR publication and exact head-check capture with narrowed
+tokens. Queue and callback acceptance remain to be verified. Configure repository rules using a separate
 owner identity, not the App or an agent credential.
 
 Configure main to require PRs, the observed GitHub Actions App's `Queue fixture`

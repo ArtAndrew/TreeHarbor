@@ -4,8 +4,12 @@ Development coordinator API. An owner can retain a publication request for an
 exact [ready projection](github-projection.md); an assigned bridge can record its
 verified mapping, claim one attempt and report observations after a restart.
 The coordinator commands do not themselves contact GitHub. The trusted publisher
-command below drives the actual branch transport. PR/check/merge-queue workflow
-and installed-App acceptance are still pending.
+command below drives the actual branch transport. A [live synthetic acceptance](evidence/connected-live-20261024.json)
+passed two fresh branch publications, PR delivery and exact head-check capture
+through an installed App. Both publications recovered identically after service
+SIGKILL without the App configuration or Git. Complete merge-queue acceptance and
+final-tree verification remain pending; this small test does not cover every live
+update, cancellation or uncertain transport outcome.
 
 Upgrade the [local service](local-service.md) to schema 18 with its admin migration
 command. Existing sources, bindings, credentials and ready projections are preserved.

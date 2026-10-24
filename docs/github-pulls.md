@@ -3,8 +3,10 @@
 Development API and CLI. After an exact [branch publication](github-publications.md)
 is observed, a repository owner can request a PR or update the title and body of
 one previously delivered PR. This command does not approve checks or merge code.
-Installed-App acceptance and complete check/merge-queue integration are still
-release gates; local host fixtures do not establish that acceptance.
+Two [actual installed-App PR deliveries](evidence/connected-live-20261024.json)
+and their completed-result recovery passed on a public synthetic repository.
+Complete merge-queue integration remains a release gate; local host fixtures do
+not establish real provider failure behavior or final integration.
 
 ## Request and deliver
 
@@ -147,8 +149,8 @@ Schema 19 adds retained intents and full-graph pins without changing existing
 publication records or permissions. Tests cover populated upgrades, scope/epoch/
 revocation fences, concurrent claims, lost POST/PATCH responses, closed/ambiguous
 searches and actual CLI/server process loss. Automatic uncertain-outcome resolution,
-retention cleanup, real installed-App verification and the full merge workflow
-remain unfinished.
+retention cleanup, broader real provider failure testing and the full merge
+workflow remain unfinished.
 
 Use [exact check observations](github-inspections.md) after PR delivery to retain
 selected check evidence. A PR observation alone does not satisfy validation.
