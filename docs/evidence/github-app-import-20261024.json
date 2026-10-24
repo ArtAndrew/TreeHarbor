@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "date": "2026-10-24",
+  "repository": "https://github.com/TreeHarbor/TreeHarbor-acceptance",
+  "tested_source_commit": "4d7b640ab8bd25176b1e126a15b996f07ac84e36",
+  "bridge_platform": "Linux-6.8.0-142-generic-aarch64-with-glibc2.39",
+  "import_result": {
+    "git_revision": "git:sha1:b2b0a2846f6aee26d9d2f62a868c5b52cc28f48a",
+    "import": "6b80e8c7-e17e-468d-b4b5-476e931db3a2",
+    "outcome": "completed",
+    "publication_ready": false,
+    "revision": "native:sha256:35ead037c6d36cfe1733efc8ad5540fc5d16bd13ef5c83a3334a5c640321a632",
+    "snapshot": "sha256:765917113088590af16307faeb99c202b7b9341ff2451fad9222b941b26fdebb",
+    "version": 1
+  },
+  "git_roundtrip": {
+    "git_revision": "git:sha1:b2b0a2846f6aee26d9d2f62a868c5b52cc28f48a",
+    "tree": "a305c3f132e3ccd8f9e99efd20fa4aeb29e3202a",
+    "commits": 1,
+    "strict_fsck_passed": true,
+    "paths": [
+      ".github/workflows/check.yml",
+      ".gitignore",
+      "Cargo.lock",
+      "Cargo.toml",
+      "LICENSE",
+      "README.md",
+      "src/lib.rs"
+    ],
+    "native_export": {
+      "encoded_bytes": 9744,
+      "filesystem_entries": 10,
+      "objects": 15,
+      "revision": "native:sha256:35ead037c6d36cfe1733efc8ad5540fc5d16bd13ef5c83a3334a5c640321a632",
+      "snapshot": "sha256:765917113088590af16307faeb99c202b7b9341ff2451fad9222b941b26fdebb"
+    }
+  },
+  "limits": {
+    "history_commits": 1,
+    "agent_runtime_exercised": false,
+    "upstream_write_exercised": false,
+    "queue_merge_verified": false
+  },
+  "stable_completion_replay": {
+    "upgraded_cli_and_server": true,
+    "app_configuration_present": false,
+    "git_executable_present": false,
+    "original_local_state_required": false,
+    "result": {
+      "git_revision": "git:sha1:b2b0a2846f6aee26d9d2f62a868c5b52cc28f48a",
+      "import": "6b80e8c7-e17e-468d-b4b5-476e931db3a2",
+      "outcome": "completed",
+      "publication_ready": false,
+      "revision": "native:sha256:35ead037c6d36cfe1733efc8ad5540fc5d16bd13ef5c83a3334a5c640321a632",
+      "snapshot": "sha256:765917113088590af16307faeb99c202b7b9341ff2451fad9222b941b26fdebb",
+      "version": 1
+    }
+  }
+}

@@ -174,6 +174,11 @@ async fn github_source_http_preserves_exact_git_history_after_partial_upload_and
         "{}",
         String::from_utf8_lossy(&replay.stderr)
     );
+    assert_eq!(
+        serde_json::from_slice::<Value>(&replay.stdout).unwrap(),
+        completed
+    );
+    assert!(!f.dir.path().join("absent-state").exists());
     f.credential_path = owner;
     let restored = f.dir.path().join("restored");
     let export = f.cli(&[

@@ -92,6 +92,9 @@ async fn github_import_completion_retains_exact_source_and_replays_without_writi
     request(&mut f, id, &spec_import()).await;
     let graph = graph();
     let bridge = begin(&mut f, id, &graph).await;
+    assert!(
+        f.db.github_import_context(&bridge, 1, id).await.unwrap()["completed_result"].is_null()
+    );
     let (_dir, store) = store(&f);
     for object in &graph {
         put(&mut f, &bridge, id, &store, object).await;
@@ -100,6 +103,14 @@ async fn github_import_completion_retains_exact_source_and_replays_without_writi
         f.db.finish_github_import(&bridge, &cmd("finish-import"), id)
             .await
             .unwrap();
+    let mut expected: serde_json::Value =
+        serde_json::from_str(include_str!("../fixtures/github-import-completion-v1.json")).unwrap();
+    expected["import"] = json!(id.to_string());
+    expected["git_revision"] = json!(spec_import().git_revision);
+    expected["revision"] =
+        json!(RevisionRef::Native(graph.last().unwrap().id().unwrap()).to_string());
+    expected["snapshot"] = json!(graph[2].id().unwrap().to_string());
+    assert_eq!(result, expected);
     assert_eq!(result["git_revision"], spec_import().git_revision);
     assert_eq!(result["publication_ready"], false);
     f.db = Metadata::new(connection(&f.schema).await).await.unwrap();
@@ -110,10 +121,9 @@ async fn github_import_completion_retains_exact_source_and_replays_without_writi
             .unwrap(),
         result
     );
-    assert_eq!(
-        f.db.github_import_context(&bridge, 1, id).await.unwrap()["state"],
-        "completed"
-    );
+    let context = f.db.github_import_context(&bridge, 1, id).await.unwrap();
+    assert_eq!(context["state"], "completed");
+    assert_eq!(context["completed_result"], result);
     assert!(matches!(
         f.db.source_upload_status(&bridge, id).await,
         Err(Error::Forbidden)
@@ -132,6 +142,12 @@ async fn github_import_completion_retains_exact_source_and_replays_without_writi
         .is_err()
     );
     let raw = connection(&f.schema).await;
+    // Only the test clock is changed; completed source identity and authorization
+    // stay intact. Expiry must not turn a retained result into a new download.
+    raw.batch_execute("ALTER TABLE th_github_imports DISABLE TRIGGER th_github_import_update; UPDATE th_github_imports SET created_at=clock_timestamp()-interval '2 hours',expires_at=clock_timestamp()-interval '1 hour'; ALTER TABLE th_github_imports ENABLE TRIGGER th_github_import_update").await.unwrap();
+    let expired = f.db.github_import_context(&bridge, 1, id).await.unwrap();
+    assert_eq!(expired["unexpired"], false);
+    assert_eq!(expired["completed_result"], expected);
     for (sql, count) in [
         ("SELECT count(*) FROM th_native_refs", 0),
         ("SELECT count(*) FROM th_bases", 1),
