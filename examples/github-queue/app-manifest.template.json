@@ -1,0 +1,19 @@
+{
+  "name": "TreeHarbor Acceptance",
+  "url": "https://github.com/ArtAndrew/TreeHarbor",
+  "description": "Private operator-owned App for TreeHarbor Connected acceptance on a selected synthetic repository.",
+  "public": false,
+  "hook_attributes": {
+    "url": "https://REPLACE_WITH_CALLBACK_HOST/github/events",
+    "active": true
+  },
+  "default_permissions": {
+    "contents": "write",
+    "metadata": "read",
+    "pull_requests": "write",
+    "checks": "read",
+    "merge_queues": "write"
+  },
+  "default_events": ["merge_group"],
+  "request_oauth_on_install": false
+}

@@ -1,0 +1,90 @@
+query TreeHarborAcceptance($owner: String!, $name: String!, $number: Int!, $baseRef: String!) {
+  repository(owner: $owner, name: $name) {
+    databaseId
+    owner { id login }
+    ref(qualifiedName: $baseRef) {
+      name
+      target { ...CommitEvidence }
+    }
+    pullRequest(number: $number) {
+      id
+      number
+      state
+      merged
+      headRefName
+      headRefOid
+      baseRefName
+      baseRefOid
+      headRepository { databaseId }
+      baseRepository { databaseId }
+      mergeCommit { ...CommitEvidence }
+      isInMergeQueue
+      mergeQueueEntry { id position state }
+      mergeQueue {
+        id
+        repository { databaseId }
+        configuration {
+          mergeMethod
+          mergingStrategy
+          maximumEntriesToBuild
+          maximumEntriesToMerge
+          minimumEntriesToMerge
+          minimumEntriesToMergeWaitTime
+          checkResponseTimeout
+        }
+        entries(first: 20) {
+          totalCount
+          pageInfo { hasNextPage endCursor }
+          nodes {
+            id
+            position
+            state
+            enqueuedAt
+            mergeQueue { id }
+            pullRequest {
+              id
+              number
+              headRefOid
+              baseRefOid
+              headRepository { databaseId }
+              baseRepository { databaseId }
+            }
+            baseCommit { ...CommitEvidence }
+            headCommit {
+              ...CommitEvidence
+              statusCheckRollup {
+                contexts(first: 30) {
+                  totalCount
+                  pageInfo { hasNextPage endCursor }
+                  nodes {
+                    __typename
+                    ... on CheckRun {
+                      databaseId
+                      name
+                      status
+                      conclusion
+                      startedAt
+                      completedAt
+                      checkSuite { commit { oid } app { databaseId slug } }
+                    }
+                    ... on StatusContext { context state commit { oid } }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fragment CommitEvidence on Commit {
+  oid
+  tree { oid }
+  parents(first: 8) {
+    totalCount
+    pageInfo { hasNextPage endCursor }
+    nodes { oid tree { oid } }
+  }
+}

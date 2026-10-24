@@ -1,0 +1,34 @@
+name: Queue acceptance
+on:
+  push:
+    branches: [main]
+  pull_request:
+  merge_group:
+    types: [checks_requested]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: acceptance-${{ github.event_name }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: false
+jobs:
+  check:
+    name: Queue fixture
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Identify the checked commit and tree
+        run: |
+          git rev-parse --verify HEAD
+          git rev-parse --verify 'HEAD^{tree}'
+      - name: Allow the external acceptance observer to capture the queued entry
+        if: github.event_name == 'merge_group'
+        run: sleep 30
+      - name: Install pinned Rust
+        run: rustup toolchain install 1.99.1 --profile minimal
+      - name: Check the exact revision
+        run: cargo +1.99.1 test --locked --offline

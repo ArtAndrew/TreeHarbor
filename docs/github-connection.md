@@ -8,6 +8,12 @@ branch/PR, inspects branch rules or enqueues a change. Connected is not released
 
 ## Prepare an App
 
+For the complete Connected acceptance workflow, the
+[queue acceptance kit](../examples/github-queue/README.md) provides a synthetic
+repository, exact conflicting edits, a `merge_group` workflow and a reviewable
+App permission template. The following minimal read-only setup is for the probe
+only; it cannot publish branches/PRs or operate a queue.
+
 Register a GitHub App on GitHub.com, grant repository **Contents: read-only**
 (Metadata read is implicit), and install it on the selected repository. Webhooks
 are not consumed by this increment and may remain disabled for this probe. Do not

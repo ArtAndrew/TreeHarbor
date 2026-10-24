@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "file": "src/lib.rs",
+  "cases": {
+    "agent-a": {
+      "before": "pub fn memory_per_worker_mb() -> u64 {\n    256\n}",
+      "after": "pub fn memory_per_worker_mb() -> u64 {\n    512\n}"
+    },
+    "agent-b": {
+      "before": "pub fn worker_count() -> u64 {\n    2\n}",
+      "after": "pub fn worker_count() -> u64 {\n    4\n}"
+    },
+    "text-conflict": {
+      "before": "pub fn memory_per_worker_mb() -> u64 {\n    256\n}",
+      "after": "pub fn memory_per_worker_mb() -> u64 {\n    384\n}"
+    },
+    "repair": {
+      "before": "pub fn memory_budget_mb() -> u64 {\n    1024\n}",
+      "after": "pub fn memory_budget_mb() -> u64 {\n    2048\n}"
+    }
+  }
+}
