@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "observed_on": "2026-10-24",
+  "repository": "https://github.com/TreeHarbor/TreeHarbor-acceptance",
+  "implementation": "Actual Rust Connection::observe_queue_groups with the installed test App; read-only token per PR",
+  "scope": "Post-acceptance empty queue. This does not establish populated-group capture, group checks or final merge verification.",
+  "observations": [
+    {
+      "pull": 1,
+      "started_at_unix_ms": 1792861093000,
+      "finished_at_unix_ms": 1792861097000,
+      "report_version": 4,
+      "reads_agree": true,
+      "members_count": 0,
+      "main": {
+        "revision": "git:sha1:eb85eaaef7dd34c7f7887ee5b8787a577ec79ec7",
+        "tree": "git:sha1:77c9e0bb9246db3013504d9658e7633f2586ce56"
+      },
+      "pull_base_revision": "git:sha1:b2b0a2846f6aee26d9d2f62a868c5b52cc28f48a",
+      "final_commit": null,
+      "token_revoked": true
+    },
+    {
+      "pull": 2,
+      "started_at_unix_ms": 1792861097000,
+      "finished_at_unix_ms": 1792861099000,
+      "report_version": 4,
+      "reads_agree": true,
+      "members_count": 0,
+      "main": {
+        "revision": "git:sha1:eb85eaaef7dd34c7f7887ee5b8787a577ec79ec7",
+        "tree": "git:sha1:77c9e0bb9246db3013504d9658e7633f2586ce56"
+      },
+      "pull_base_revision": "git:sha1:b2b0a2846f6aee26d9d2f62a868c5b52cc28f48a",
+      "final_commit": {
+        "revision": "git:sha1:eb85eaaef7dd34c7f7887ee5b8787a577ec79ec7",
+        "tree": "git:sha1:77c9e0bb9246db3013504d9658e7633f2586ce56"
+      },
+      "token_revoked": true
+    }
+  ]
+}

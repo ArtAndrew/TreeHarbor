@@ -1,0 +1,188 @@
+{
+  "version": 4,
+  "started_at_unix_ms": 1,
+  "finished_at_unix_ms": 2,
+  "snapshot": {
+    "pull": {
+      "repository_id": 11,
+      "number": 17,
+      "node_id": "PR_test_17",
+      "head_ref": "treeharbor/04040404040404040404040404040404",
+      "base_ref": "main",
+      "head_revision": "git:sha1:1111111111111111111111111111111111111111",
+      "base_revision": "git:sha1:2222222222222222222222222222222222222222",
+      "state": "open",
+      "draft": false,
+      "merged": false
+    },
+    "queue_enabled": true,
+    "configuration": null,
+    "queue_id": "MQ_one",
+    "entry": {
+      "id": "MQE_one",
+      "state": "AWAITING_CHECKS",
+      "base": {
+        "revision": "git:sha1:2222222222222222222222222222222222222222",
+        "tree": "git:sha1:5555555555555555555555555555555555555555"
+      },
+      "head": {
+        "revision": "git:sha1:3333333333333333333333333333333333333333",
+        "tree": "git:sha1:6666666666666666666666666666666666666666"
+      }
+    },
+    "final_commit": null
+  },
+  "receipt": null,
+  "async_result": null,
+  "token_revoked": true,
+  "group_capture": {
+    "before": {
+      "target": {
+        "pull": {
+          "repository_id": 11,
+          "number": 17,
+          "node_id": "PR_test_17",
+          "head_ref": "treeharbor/04040404040404040404040404040404",
+          "base_ref": "main",
+          "head_revision": "git:sha1:1111111111111111111111111111111111111111",
+          "base_revision": "git:sha1:2222222222222222222222222222222222222222",
+          "state": "open",
+          "draft": false,
+          "merged": false
+        },
+        "queue_enabled": true,
+        "configuration": null,
+        "queue_id": "MQ_one",
+        "entry": {
+          "id": "MQE_one",
+          "state": "AWAITING_CHECKS",
+          "base": {
+            "revision": "git:sha1:2222222222222222222222222222222222222222",
+            "tree": "git:sha1:5555555555555555555555555555555555555555"
+          },
+          "head": {
+            "revision": "git:sha1:3333333333333333333333333333333333333333",
+            "tree": "git:sha1:6666666666666666666666666666666666666666"
+          }
+        },
+        "final_commit": null
+      },
+      "main": {
+        "revision": "git:sha1:8888888888888888888888888888888888888888",
+        "tree": "git:sha1:9999999999999999999999999999999999999999"
+      },
+      "members": [
+        {
+          "entry": {
+            "id": "MQE_one",
+            "state": "AWAITING_CHECKS",
+            "base": {
+              "revision": "git:sha1:2222222222222222222222222222222222222222",
+              "tree": "git:sha1:5555555555555555555555555555555555555555"
+            },
+            "head": {
+              "revision": "git:sha1:3333333333333333333333333333333333333333",
+              "tree": "git:sha1:6666666666666666666666666666666666666666"
+            }
+          },
+          "position": 1,
+          "pull_node": "PR_test_17",
+          "pull_number": 17,
+          "source_repository_id": 11,
+          "source_revision": "git:sha1:1111111111111111111111111111111111111111",
+          "base_ref": "main",
+          "candidate": {
+            "commit": {
+              "revision": "git:sha1:3333333333333333333333333333333333333333",
+              "tree": "git:sha1:6666666666666666666666666666666666666666"
+            },
+            "parents": [
+              {
+                "revision": "git:sha1:2222222222222222222222222222222222222222",
+                "tree": "git:sha1:5555555555555555555555555555555555555555"
+              },
+              {
+                "revision": "git:sha1:1111111111111111111111111111111111111111",
+                "tree": "git:sha1:7777777777777777777777777777777777777777"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "after": {
+      "target": {
+        "pull": {
+          "repository_id": 11,
+          "number": 17,
+          "node_id": "PR_test_17",
+          "head_ref": "treeharbor/04040404040404040404040404040404",
+          "base_ref": "main",
+          "head_revision": "git:sha1:1111111111111111111111111111111111111111",
+          "base_revision": "git:sha1:2222222222222222222222222222222222222222",
+          "state": "open",
+          "draft": false,
+          "merged": false
+        },
+        "queue_enabled": true,
+        "configuration": null,
+        "queue_id": "MQ_one",
+        "entry": {
+          "id": "MQE_one",
+          "state": "AWAITING_CHECKS",
+          "base": {
+            "revision": "git:sha1:2222222222222222222222222222222222222222",
+            "tree": "git:sha1:5555555555555555555555555555555555555555"
+          },
+          "head": {
+            "revision": "git:sha1:3333333333333333333333333333333333333333",
+            "tree": "git:sha1:6666666666666666666666666666666666666666"
+          }
+        },
+        "final_commit": null
+      },
+      "main": {
+        "revision": "git:sha1:8888888888888888888888888888888888888888",
+        "tree": "git:sha1:9999999999999999999999999999999999999999"
+      },
+      "members": [
+        {
+          "entry": {
+            "id": "MQE_one",
+            "state": "AWAITING_CHECKS",
+            "base": {
+              "revision": "git:sha1:2222222222222222222222222222222222222222",
+              "tree": "git:sha1:5555555555555555555555555555555555555555"
+            },
+            "head": {
+              "revision": "git:sha1:3333333333333333333333333333333333333333",
+              "tree": "git:sha1:6666666666666666666666666666666666666666"
+            }
+          },
+          "position": 1,
+          "pull_node": "PR_test_17",
+          "pull_number": 17,
+          "source_repository_id": 11,
+          "source_revision": "git:sha1:1111111111111111111111111111111111111111",
+          "base_ref": "main",
+          "candidate": {
+            "commit": {
+              "revision": "git:sha1:3333333333333333333333333333333333333333",
+              "tree": "git:sha1:6666666666666666666666666666666666666666"
+            },
+            "parents": [
+              {
+                "revision": "git:sha1:2222222222222222222222222222222222222222",
+                "tree": "git:sha1:5555555555555555555555555555555555555555"
+              },
+              {
+                "revision": "git:sha1:1111111111111111111111111111111111111111",
+                "tree": "git:sha1:7777777777777777777777777777777777777777"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

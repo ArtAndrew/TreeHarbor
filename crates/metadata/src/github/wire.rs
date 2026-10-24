@@ -134,6 +134,11 @@ pub enum WireCommand {
         epoch: i64,
         queue: String,
     },
+    QueueGroups {
+        epoch: i64,
+        queue: String,
+        after: i64,
+    },
     QueueContext {
         epoch: i64,
         queue: String,
@@ -372,7 +377,7 @@ impl WireCommand {
             | Self::QueueReport { .. }
             | Self::QueueContext { .. }
             | Self::QueueDispatchContext { .. } => Permission::HostMerge,
-            Self::QueueStatus { .. } => Permission::Read,
+            Self::QueueStatus { .. } | Self::QueueGroups { .. } => Permission::Read,
             Self::InspectionRequest { .. } | Self::InspectionCancel { .. } => {
                 Permission::RepositoryWrite
             }
@@ -655,6 +660,14 @@ impl WireCommand {
             }
             Self::QueueStatus { epoch, queue } => {
                 db.github_queue_context(auth, epoch, id(&queue)?, false, None)
+                    .await
+            }
+            Self::QueueGroups {
+                epoch,
+                queue,
+                after,
+            } => {
+                db.github_queue_groups(auth, epoch, id(&queue)?, after)
                     .await
             }
             Self::QueueContext { epoch, queue } => {

@@ -198,7 +198,7 @@ pub(super) async fn collect(r: Request, allow_dispatch: bool) -> Result<Value> {
             })
     } else {
         connection
-            .observe_queue(&config.repository, &s.target)
+            .observe_queue_groups(&config.repository, &s.target)
             .await
             .map_err(|error| treeharbor_github::MutationFailure {
                 error,
@@ -222,6 +222,7 @@ pub(super) async fn collect(r: Request, allow_dispatch: bool) -> Result<Value> {
                     snapshot: None,
                     receipt: None,
                     enqueue_receipt: None,
+                    group_capture: None,
                     async_result: None,
                     mutation_not_sent: e.mutation_not_sent,
                     token_revoked: false,
