@@ -3,6 +3,14 @@
 Updated: 2026-10-24. This file describes implemented behavior and remaining release
 gates. A foundation milestone does not complete either mode.
 
+A live [installed-App read connection](github-connection.md#verification-and-remaining-gates)
+passed on the public synthetic acceptance repository on 2026-10-24. The actual
+Rust client verified pinned identities and revoked its narrowed temporary token.
+The service retained a separate live observation in PostgreSQL; SIGKILL/restart
+and replay without an App configuration preserved the exact observation and IDs.
+This does not establish source import, publication, callbacks or complete queue
+acceptance. Those steps remain open.
+
 The experimental [MCP stdio adapter](mcp.md) exposes twenty named agent tools
 through the existing authenticated service. It fixes repository scope from a
 private credential and adds no validation, approval, runtime or publication
@@ -20,8 +28,12 @@ stale generation/foreign workspace refusal, immediate revocation and drain.
 Runtime facts in this test are explicitly fixtures. Local regression passed 263
 ordinary workspace tests and, separately, 257 PostgreSQL/materializer/node/service
 tests. The final extended MCP scenario and independent wire test also passed.
-Strict all-target Clippy and formatting checks passed. Full MCP host/runtime onboarding, complete two-mode
-queue-to-publication acceptance and packaged installation remain release gates.
+Strict all-target Clippy and formatting checks passed. Full MCP host/runtime
+onboarding, complete two-mode queue-to-publication acceptance and packaged
+installation remain release gates.
+All five required PR51 checks passed before merge: 263 ordinary tests on each OS,
+265 explicit PostgreSQL/Linux tests, real TLS/failure and gVisor lifecycle/native
+publication scenarios, formatting, strict Clippy and contribution rights.
 
 Experimental [event recovery](github-event-recovery.md) now connects owner-bounded
 requests, explicit `host.recover` bridge permission, durable PostgreSQL scan/detail/
@@ -427,19 +439,19 @@ resource outcomes and worker-loss recovery. No complete authority mode is implie
 
 | Component | Evidence | Remaining |
 |---|---|---|
-| GitHub App connection/import/projection | Scoped read token, durable bindings and exact owner requests, isolated download, resumable import, accepted-version projection/export, exact-branch transport, durable publication intents and trusted publication/recovery CLI | Installed-App evidence, incremental reuse, webhooks, PR/check/merge queue and real-host confirmation |
+| GitHub App connection/import/projection | Live scoped read probe and durable observation/replay; isolated download, resumable import, accepted-version projection/export, exact-branch transport and durable publication/PR/check/queue/event APIs and CLI with protocol fixtures | Installed-App import/publication/check/queue/callback evidence, complete group/final-tree verification, incremental reuse and unattended operation |
 | Canonical SHA-256 object format | Versioned framing, independent golden vectors, strict decoder | Compatibility policy for later formats |
 | Immutable directory trees and operations | Exact expected-before checks, canonical subtree operations v2, bounded structural diff, structural sharing, explicit deletes; native merge and Git reference matrix | General history rebase, broader rename/base support, live-server Git interop |
 | Local object store | Atomic no-clobber writes, digest verification, file/directory fsync, tenant directories, physical generations and upload receipts | S3, backup/restore, kill fault campaign |
 | Native DAG and admission | Scoped history/log/ancestry/merge-base HTTP/CLI, persisted refs/policies/queue/checks/reviews, verified candidate commits, final transactional admission and no-Git CLI/process-loss tests | General history stack rebase, automatic scheduling, full lifecycle and recovery |
 | Review diff | Read-only exact ChangeSet/candidate/revision HTTP/CLI, retained integration/policy/version/run identity, scoped GC holds, bounded byte paths and text, actual Git path oracle and restart/page/error tests | Review UI, persistent diff indexing and larger-repository profiling |
-| PostgreSQL metadata and outbox | Real database transaction/idempotency/lease tests; repository authority/epoch checks; additive schema 18 publication ledger; local service pool and crash/replay | Remote service integration and full server restore |
+| PostgreSQL metadata and outbox | Real database transaction/idempotency/lease tests; repository authority/epoch checks; additive schema 24 with publication, queue and event recovery ledgers; local service pool and crash/replay | Remote service integration and full server restore |
 | Native ChangeSet intake | HTTP/CLI immutable proposals and separate ready-seal acceptance, scoped blobs, computed versions, original run lineage, atomic pins/outbox and process-loss replay | GitHub base synchronization, remote transport and retention |
 | Protected incremental source reads | Pinned sessions, verified frontiers, bounded prefix batches and descriptors surviving local GC; authenticated workspace-root sessions | Per-tenant service quotas, bulk node delivery and S3 |
 | Native file materialization | Private copies from exact snapshots, full/sparse selection, staged expansion preserving edits/deletions, bounded IO and filesystem checks; guarded node publication and selected capture after runtime removal | Cache/reflink, wider capture fault matrix and Git-compatible format |
 | Object catalog and retention | Receipt-bound publication, typed edges, atomic persistent pins, read holds, generation-safe retirement/retry; independent reachability model | Automatic GC/reconciliation/dry-run, abandoned-upload cleanup, S3 and full restore |
 | Exact validation and native publication | Context binding, immutable scoped receipts, current check runs, reviewer policy, final target/policy/revocation checks and atomic ref/audit/queue/pin commit | CI artifacts/logs, automatic check scheduling, evidence retention policy, review UI |
-| Credentials and agent commands | Repository-scoped opaque tokens, transactional revocation, distinct actor classes, owner-bound reads and strict command dispatch | Remote transport, MCP, production identity/admission integration |
+| Credentials and agent commands | Repository-scoped opaque tokens, transactional revocation, distinct actor classes, owner-bound reads and strict command dispatch shared by CLI/HTTP/MCP | Remote transport and production identity/admission integration |
 | Local HTTP service and CLI | Actual Unix-socket server/client, trusted admin and file-preparation node CLI, private credentials, bounded HTTP/pool, strict startup schema, SIGKILL replay, cancellation/rollback, reconnect and graceful shutdown tests | TLS/remote access, packaged installation |
 | Workspace baseline API | Owner/generation/epoch-bound directory pages and verified blob download, repeated authorization, final revocation/drain rejection, bounded response ownership, actual CLI/HTTP tests | Bulk delivery to nodes, remote streaming, persistent cache and runtime binding |
 | Source graph uploads | Authenticated scoped sessions, child membership, fixed deadlines/budgets, backend identity, binary HTTP/CLI, concurrent retry, restart and schema-v5 upgrade tests | Incremental reuse, streaming/batching and automatic cleanup |
@@ -451,11 +463,11 @@ resource outcomes and worker-loss recovery. No complete authority mode is implie
 | Workspace preparation reservations | Operator-registered node storage, scoped job claims, immutable source/slot/attempt identity, renewal/reclaim, exact file-ready observation and drain retention; real PostgreSQL race/upgrade tests | Cleanup scheduling after runtime removal |
 | Workspace cleanup | Exact placement/run, current node claims, durable deletion journal, descriptor-relative physical removal, atomic source-pin/slot release, owner status, node CLI and collected-check release; local crash/reuse/expiry/GC tests | Broader runtime/fault matrix, automatic scheduling, journal retention and node replacement |
 | Local preparation node | Private physical root identity/OS lock, durable placement intent, exact no-replace publication, independent concurrent slots, current authorization and file-ready acknowledgment; actual process-kill recovery and import-to-files CLI tests | Scheduler/daemon, automated volume provisioning, remote workers, fenced volume migration and cleanup scheduling |
-| MCP adapter | Planned; not implemented | Shared-service adapter, scoped tools and real client interoperability tests |
+| MCP adapter | Experimental stdio adapter with twenty scoped tools, pinned official SDK, two real client protocol revisions, exact proposals/queue requests and restart/revocation tests | Full host/runtime onboarding, complete two-mode publication and packaged installation |
 | Git source export | Local native-pack CLI and bounded Rust full-DAG projection to self-contained Git SHA-1/SHA-256 bundle; isolated batch Git, exact mapping, verified original Git metadata/IDs, restored fsck and no-replace publication | Backup metadata, incremental projection, GitHub delivery |
 | Live source export | Scoped registered-base reads with GC holds and authority/credential fences; streaming archive v1 and atomically verified pack v3; actual CLI restart/merge/origin roundtrip | Other retained proposals, all-ref export, full metadata backup, incremental transfer, longer jobs and cleanup |
 | Git history import | Pinned self-contained SHA-1/SHA-256 bundle, all-parent native graph, replayed deltas, exact original metadata, atomic full-source pack v2 and resumable HTTP/CLI upload; separate scoped Linux/SHA-1 GitHub download | Real installed-App gate, incremental imports, multi-ref cutover, automated cleanup, larger-repository profiling |
-| Connected | Partial: binding, read-only App access, exact source import, retained native base and exact accepted-version projection/export | Real installed-App acceptance, GitHub PR/checks/merge queue and publication reconciliation |
+| Connected | Partial: live read-only App connection, durable bindings, exact source import/projection, publication/PR/check/queue/event operations with explicit fixture coverage | Complete installed-App source-to-main workflow, exact group/final-tree verification and operational acceptance |
 | Standalone S2 | Partial: durable native admission/publication, scoped history/candidate diff and single-ChangeSet rebase through CLI/API without Git, managed offline checks, registered-source export, plus explicitly separate transport fixtures | General history stack rewriting, full lifecycle, cutover, full server backup/restore |
 | Release and benchmarks | Not released or measured | Clean installation, artifacts, SBOM/provenance, comparison and operating cost |
 

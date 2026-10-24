@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "api_version": "2026-03-10",
+  "observed_at_unix": 1792836086,
+  "app_id": 5452239,
+  "binding": {
+    "installation_id": 174769968,
+    "repository_id": 1431906532,
+    "owner_id": 347269067,
+    "owner": "TreeHarbor",
+    "name": "TreeHarbor-acceptance"
+  },
+  "repository_node_id": "R_kgDOVVko5A",
+  "owner_type": "Organization",
+  "private": false,
+  "default_branch": "main",
+  "archived": false,
+  "disabled": false,
+  "read_connection_verified": true,
+  "probe_token_revoked": true,
+  "queue_eligibility": "public_organization_eligible",
+  "queue_configuration_verified": false,
+  "publication_ready": false
+}

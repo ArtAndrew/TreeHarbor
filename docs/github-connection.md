@@ -233,8 +233,23 @@ permission separation, concurrent reports, deadline expiry during commit,
 revocation, populated schema upgrades and real server restart. Their reported
 observations use trusted test fixtures, not an installed GitHub App.
 
-A real installed-App probe and PR/check/merge-queue scenario remain separate
-acceptance gates. A separate [exact source import](github-import.md) now uses the
-binding and fresh App access. Projection/outbox, webhook validation, PR/check
-reconciliation and merge confirmation remain open. No branch protection is changed
-or bypassed.
+On 2026-10-24 the actual Rust client passed a live installed-App read probe against
+the public synthetic [acceptance repository](https://github.com/TreeHarbor/TreeHarbor-acceptance).
+The [raw probe receipt](evidence/github-app-probe-20261024.json) records the exact
+identities, successful connection and revocation of its temporary token. The App
+is installed on that repository only. Its broader branch/PR/queue permissions are
+for later acceptance; the probe itself requests a narrowed read-only token.
+
+A separate live `github verify` saved its observation through the local service
+and PostgreSQL. After killing and restarting that service, repeating the same
+probe with an intentionally absent App configuration returned the identical
+observation and binding/probe/epoch identities. The replay envelope is current
+context (`state: observed`), not the original finish receipt (`outcome: observed`).
+It remains historical evidence, with `publication_ready: false`.
+
+This establishes read access and durable observation only. Installed-App source
+import, branch/PR publication, checks, signed callbacks and complete merge-queue
+membership/final-tree evidence remain separate acceptance gates. The
+[exact source import](github-import.md) and GitHub branch transport currently need
+a Linux bridge host; the read probe and local control service also run on macOS.
+No branch protection is changed or bypassed by verification.
