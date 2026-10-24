@@ -1,6 +1,8 @@
 use super::*;
 #[path = "dequeue.rs"]
 mod dequeue;
+#[path = "groups.rs"]
+mod groups;
 fn cli(f: &Fixture, id: Uuid, state: &Path, app: &Path) -> Command {
     let mut c = Command::new(env!("CARGO_BIN_EXE_treeharbor"));
     c.env("PATH", "/no-executables")
@@ -331,5 +333,6 @@ pub(super) async fn exercise(
     assert_eq!(cancelled["merge_verified"], false);
     f.credential_path = f.dir.path().join("queue-bridge.json");
     dequeue::exercise(f, server, dequeue_id, &app).await;
+    groups::exercise(f, server, id, &state, &app, owner).await;
     f.credential_path = owner.to_owned();
 }

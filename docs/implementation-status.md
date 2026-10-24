@@ -3,6 +3,21 @@
 Updated: 2026-10-24. This file describes implemented behavior and remaining release
 gates. A foundation milestone does not complete either mode.
 
+Experimental [retained group observations](github-queue-groups.md) capture actual
+main, bounded complete queue membership and immutable candidate parents twice
+using a narrowed read-only App token. Version4 reports survive lost responses,
+client/service restart and later missing membership. The scoped `queue_groups`
+read API pages original captures and correlates late/reordered signed facts by
+binding/epoch/provider identity and exact base/head/tree. Reconnecting an upstream
+does not mix new events into old evidence. Two agreeing reads and two-parent
+relationships remain separate from CI success and final-merge certification.
+The [actual Rust installed-App read](evidence/queue-group-read-20261024.json)
+passed for both acceptance PRs after the queue emptied, observing actual main
+separately from the older PR base and revoking both narrowed tokens. Populated
+membership and crash tests use labelled provider fixtures; live populated-group
+capture with this collector and full group/check/policy/final-tree proof remain
+unfinished. Upgrade CLI and service together; no database migration is required.
+
 A real installed-App queue test passed on the synthetic repository: both exact
 PR heads were enqueued through the Rust CLI. Agent B's group passed three tests
 and became main; the combined A+B candidate failed the budget test (`2048 > 1024`),
@@ -40,8 +55,9 @@ App configuration or Git executable. See the [reviewed evidence](evidence/connec
 [PR 1](https://github.com/TreeHarbor/TreeHarbor-acceptance/pull/1) and
 [PR 2](https://github.com/TreeHarbor/TreeHarbor-acceptance/pull/2).
 These are scripted acceptance workloads, not LLM or performance results. Neither
-PR was enqueued during this observation. Signed live group delivery, combined
-candidate failure/repair and final integration mapping remain unverified.
+PR was enqueued during this earlier observation. The later queue acceptance
+above established signed live delivery and combined-candidate rejection; repair
+and complete final integration mapping remain unverified.
 
 The experimental runtime adapter now selects native Linux x86-64 or ARM64 from
 the compiled controller target and requires matching Engine/image architecture.

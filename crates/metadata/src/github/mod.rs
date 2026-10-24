@@ -4,6 +4,7 @@ pub(crate) mod imports;
 pub(crate) mod projections;
 pub use projections::ProjectionSpec;
 mod events;
+mod groups;
 mod recovery;
 pub use events::{EventChannelSpec, EventReceipt};
 pub use recovery::{RecoverySpec, RedeliveryOutcome, RedeliveryReport};

@@ -5,6 +5,8 @@ use treeharbor_metadata::github::QueueSpec;
 mod dequeues;
 #[path = "github_enqueue.rs"]
 mod enqueue;
+#[path = "github_groups.rs"]
+mod groups;
 struct QueueFixture {
     p: Projection,
     owner: Authorization,
@@ -90,6 +92,7 @@ impl QueueFixture {
             snapshot: None,
             receipt: None,
             enqueue_receipt: None,
+            group_capture: None,
             async_result: None,
             mutation_not_sent: false,
             token_revoked: false,

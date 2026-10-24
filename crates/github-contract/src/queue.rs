@@ -84,7 +84,7 @@ pub struct QueueEntryObservation {
     pub head: Option<GitCommitObservation>,
 }
 impl QueueEntryObservation {
-    fn validate(&self) -> Result<()> {
+    pub(crate) fn validate(&self) -> Result<()> {
         node(&self.id)?;
         if !matches!(
             self.state.as_str(),
@@ -327,6 +327,8 @@ pub struct QueueObservation {
     /// establish continued queue membership or final merge verification.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub enqueue_receipt: Option<EnqueueReceipt>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group_capture: Option<crate::groups::GroupCapture>,
     /// Version 2 positive completion evidence from the sole enqueue invocation.
     /// Version 1 reports remain readable and cannot assert this fact.
     #[serde(default, skip_serializing_if = "is_false")]
@@ -339,7 +341,7 @@ fn is_false(value: &bool) -> bool {
 impl QueueObservation {
     pub fn validate(&self, t: &QueueTarget) -> Result<()> {
         t.validate()?;
-        if !matches!(self.version, 1..=3)
+        if !matches!(self.version, 1..=4)
             || (self.mutation_not_sent
                 && (self.version < 2
                     || self.receipt.is_some()
@@ -350,6 +352,18 @@ impl QueueObservation {
             || self.finished_at_unix_ms - self.started_at_unix_ms > 180_000
         {
             return Err(InvalidEvidence);
+        }
+        if let Some(g) = &self.group_capture {
+            if self.version != 4
+                || self.snapshot.as_ref() != Some(&g.after.target)
+                || self.receipt.is_some()
+                || self.enqueue_receipt.is_some()
+                || self.async_result.is_some()
+                || self.mutation_not_sent
+            {
+                return Err(InvalidEvidence);
+            }
+            g.validate(t)?;
         }
         if let Some(r) = &self.enqueue_receipt {
             if self.version != 3

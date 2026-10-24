@@ -1,6 +1,7 @@
 //! Immutable evidence shapes and conservative evaluation, without HTTP or credentials.
 pub mod deliveries;
 pub mod dequeue;
+pub mod groups;
 pub mod queue;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;

@@ -81,8 +81,12 @@ in **Standalone** mode. Both share one Rust engine.
 > through Caddy while leaving the command socket private.
 > [Event recovery](docs/github-event-recovery.md) adds owner-bounded delivery scans,
 > durable one-shot redelivery and signed-content correlation after interruption.
-> Signed live callbacks, combined queue candidates and complete policy/group/final-tree
-> verification remain pending. The live tasks are scripted fixtures, not an LLM benchmark.
+> A [live queue acceptance](docs/evidence/connected-queue-live-20261024.json) retained
+> signed callbacks, merged a passing group and rejected an incompatible combined
+> candidate. [Retained group observations](docs/github-queue-groups.md) now preserve
+> membership and exact parents across later reads and process loss. Complete
+> policy/group-check/final-tree verification remains pending. The live tasks are
+> scripted fixtures, not an LLM benchmark.
 > Neither end-to-end mode is released. No packaged installation is available yet.
 > See [implementation status](docs/implementation-status.md) for evidence and gaps.
 

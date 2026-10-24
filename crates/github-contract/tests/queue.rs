@@ -187,6 +187,7 @@ fn queue_and_final_host_facts_never_become_verified_merge() {
         snapshot: None,
         receipt: Some(pending()),
         enqueue_receipt: None,
+        group_capture: None,
         async_result: None,
         mutation_not_sent: false,
         token_revoked: true,

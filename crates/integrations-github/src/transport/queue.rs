@@ -5,6 +5,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use treeharbor_github_contract::{PullState, queue::*};
 mod dequeue;
 mod enqueue;
+mod groups;
 mod result;
 pub use dequeue::ObservedDequeue;
 
@@ -135,99 +136,7 @@ impl Connection {
     ) -> Result<QueueSnapshot> {
         let graph:Graph=self.json(Stage::Queue,Method::POST,"graphql",token.token.header()?,
             Some(json!({"query":QUERY,"variables":{"owner":b.owner,"name":b.name,"number":t.pull.pull_number,"configuration":include_configuration}})),StatusCode::OK).await?;
-        if graph
-            .errors
-            .is_some_and(|e| e.as_array().is_none_or(|a| !a.is_empty()))
-        {
-            return Err(Error::Queue);
-        }
-        let r = graph.data.ok_or(Error::Queue)?.repository;
-        let p = r.pull_request;
-        if r.database_id != b.repository_id
-            || p.head_repository.id != b.repository_id
-            || p.base_repository.id != b.repository_id
-            || p.is_in_merge_queue != p.merge_queue_entry.is_some()
-        {
-            return Err(Error::Queue);
-        }
-        let queue_id = p.merge_queue.as_ref().map(|q| q.id.clone());
-        let configuration = p
-            .merge_queue
-            .map(|q| {
-                if q.repository.id != b.repository_id {
-                    return Err(Error::Queue);
-                }
-                let Some(c) = q.configuration else {
-                    return if include_configuration {
-                        Err(Error::Queue)
-                    } else {
-                        Ok(None)
-                    };
-                };
-                Ok(Some(QueueConfiguration {
-                    id: q.id,
-                    merge_method: c.merge_method,
-                    merging_strategy: c.merging_strategy,
-                    maximum_entries_to_build: c.maximum_entries_to_build,
-                    maximum_entries_to_merge: c.maximum_entries_to_merge,
-                    minimum_entries_to_merge: c.minimum_entries_to_merge,
-                    minimum_entries_wait_minutes: c.minimum_entries_to_merge_wait_time,
-                    check_timeout_minutes: c.check_response_timeout,
-                }))
-            })
-            .transpose()?
-            .flatten();
-        let entry = p
-            .merge_queue_entry
-            .map(|e| {
-                if e.pull_request.id != p.id
-                    || e.pull_request.number != p.number
-                    || e.pull_request.head_ref_oid != p.head_ref_oid
-                    || queue_id.as_ref().is_none_or(|id| *id != e.merge_queue.id)
-                {
-                    return Err(Error::Queue);
-                }
-                Ok(QueueEntryObservation {
-                    id: e.id,
-                    state: e.state,
-                    base: e.base_commit.map(Commit::observation),
-                    head: e.head_commit.map(Commit::observation),
-                })
-            })
-            .transpose()?;
-        let state = match p.state.as_str() {
-            "OPEN" => "open",
-            "CLOSED" | "MERGED" => "closed",
-            _ => return Err(Error::Queue),
-        };
-        if (p.state == "MERGED") != p.merged {
-            return Err(Error::Queue);
-        }
-        let snapshot = QueueSnapshot {
-            pull: PullState {
-                repository_id: r.database_id,
-                number: p.number,
-                node_id: p.id,
-                head_ref: p.head_ref_name,
-                base_ref: p.base_ref_name,
-                head_revision: format!("git:sha1:{}", p.head_ref_oid),
-                base_revision: format!("git:sha1:{}", p.base_ref_oid),
-                state: state.into(),
-                draft: p.is_draft,
-                merged: p.merged,
-            },
-            queue_enabled: p.is_merge_queue_enabled,
-            configuration,
-            queue_id: if include_configuration {
-                None
-            } else {
-                queue_id
-            },
-            entry,
-            final_commit: p.merge_commit.map(Commit::observation),
-        };
-        snapshot.validate(t).map_err(|_| Error::Queue)?;
-        Ok(snapshot)
+        decode_snapshot(graph, b, t, include_configuration)
     }
     /// A read-scoped observation never retries an earlier mutation or proves merge.
     pub async fn observe_queue(
@@ -382,6 +291,7 @@ impl Connection {
             snapshot,
             receipt,
             enqueue_receipt,
+            group_capture: None,
             async_result: None,
             mutation_not_sent,
             token_revoked: revoked,
@@ -420,4 +330,105 @@ fn decode_receipt(status: u16, bytes: &[u8], t: &QueueTarget) -> Result<QueueRec
     };
     r.validate(t).map_err(|_| Error::Queue)?;
     Ok(r)
+}
+
+fn decode_snapshot(
+    graph: Graph,
+    b: &RepositoryBinding,
+    t: &QueueTarget,
+    include_configuration: bool,
+) -> Result<QueueSnapshot> {
+    if graph
+        .errors
+        .is_some_and(|e| e.as_array().is_none_or(|a| !a.is_empty()))
+    {
+        return Err(Error::Queue);
+    }
+    let r = graph.data.ok_or(Error::Queue)?.repository;
+    let p = r.pull_request;
+    if r.database_id != b.repository_id
+        || p.head_repository.id != b.repository_id
+        || p.base_repository.id != b.repository_id
+        || p.is_in_merge_queue != p.merge_queue_entry.is_some()
+    {
+        return Err(Error::Queue);
+    }
+    let queue_id = p.merge_queue.as_ref().map(|q| q.id.clone());
+    let configuration = p
+        .merge_queue
+        .map(|q| {
+            if q.repository.id != b.repository_id {
+                return Err(Error::Queue);
+            }
+            let Some(c) = q.configuration else {
+                return if include_configuration {
+                    Err(Error::Queue)
+                } else {
+                    Ok(None)
+                };
+            };
+            Ok(Some(QueueConfiguration {
+                id: q.id,
+                merge_method: c.merge_method,
+                merging_strategy: c.merging_strategy,
+                maximum_entries_to_build: c.maximum_entries_to_build,
+                maximum_entries_to_merge: c.maximum_entries_to_merge,
+                minimum_entries_to_merge: c.minimum_entries_to_merge,
+                minimum_entries_wait_minutes: c.minimum_entries_to_merge_wait_time,
+                check_timeout_minutes: c.check_response_timeout,
+            }))
+        })
+        .transpose()?
+        .flatten();
+    let entry = p
+        .merge_queue_entry
+        .map(|e| {
+            if e.pull_request.id != p.id
+                || e.pull_request.number != p.number
+                || e.pull_request.head_ref_oid != p.head_ref_oid
+                || queue_id.as_ref().is_none_or(|id| *id != e.merge_queue.id)
+            {
+                return Err(Error::Queue);
+            }
+            Ok(QueueEntryObservation {
+                id: e.id,
+                state: e.state,
+                base: e.base_commit.map(Commit::observation),
+                head: e.head_commit.map(Commit::observation),
+            })
+        })
+        .transpose()?;
+    let state = match p.state.as_str() {
+        "OPEN" => "open",
+        "CLOSED" | "MERGED" => "closed",
+        _ => return Err(Error::Queue),
+    };
+    if (p.state == "MERGED") != p.merged {
+        return Err(Error::Queue);
+    }
+    let snapshot = QueueSnapshot {
+        pull: PullState {
+            repository_id: r.database_id,
+            number: p.number,
+            node_id: p.id,
+            head_ref: p.head_ref_name,
+            base_ref: p.base_ref_name,
+            head_revision: format!("git:sha1:{}", p.head_ref_oid),
+            base_revision: format!("git:sha1:{}", p.base_ref_oid),
+            state: state.into(),
+            draft: p.is_draft,
+            merged: p.merged,
+        },
+        queue_enabled: p.is_merge_queue_enabled,
+        configuration,
+        queue_id: if include_configuration {
+            None
+        } else {
+            queue_id
+        },
+        entry,
+        final_commit: p.merge_commit.map(Commit::observation),
+    };
+    snapshot.validate(t).map_err(|_| Error::Queue)?;
+    Ok(snapshot)
 }

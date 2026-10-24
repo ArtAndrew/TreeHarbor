@@ -71,6 +71,10 @@ own current admission rules. Selected head checks are not merge-group checks. Re
 write-protected `mergeQueue.configuration` field. It retains the queue ID and
 checks entry/PR/repository identity without inventing admission settings. New
 write preflight still requires a complete, consistent configuration.
+The read phase also retains [group membership and candidate parents](github-queue-groups.md)
+in version4 reports. Its two bounded reads preserve drift and the actual branch
+tip separately from the PR's reported base. Use `queue_groups` to page these
+historical observations and matching signed facts after membership disappears.
 
 App tokens are narrowed to the pinned numeric repository:
 
