@@ -3,7 +3,8 @@
 This development transport works on Linux/macOS. It exposes the existing
 authenticated commands over HTTP/1.1 on an owner-private Unix socket. It does not
 bind a TCP port. Neither Connected nor Standalone is an end-to-end release yet.
-There is no packaged installer, remote TLS connector or MCP adapter. A separate
+There is no packaged installer or remote command TLS connector. The experimental
+[MCP stdio adapter](mcp.md) uses this same scoped local service. A separate
 experimental [managed-run worker](managed-runs.md) supports Linux/gVisor execution.
 
 ## Build and exercise repository access
