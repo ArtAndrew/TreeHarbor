@@ -329,6 +329,8 @@ pub struct QueueObservation {
     pub enqueue_receipt: Option<EnqueueReceipt>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub group_capture: Option<crate::groups::GroupCapture>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group_checks: Option<crate::group_checks::GroupCheckReport>,
     /// Version 2 positive completion evidence from the sole enqueue invocation.
     /// Version 1 reports remain readable and cannot assert this fact.
     #[serde(default, skip_serializing_if = "is_false")]
@@ -341,7 +343,7 @@ fn is_false(value: &bool) -> bool {
 impl QueueObservation {
     pub fn validate(&self, t: &QueueTarget) -> Result<()> {
         t.validate()?;
-        if !matches!(self.version, 1..=4)
+        if !matches!(self.version, 1..=5)
             || (self.mutation_not_sent
                 && (self.version < 2
                     || self.receipt.is_some()
@@ -364,6 +366,19 @@ impl QueueObservation {
                 return Err(InvalidEvidence);
             }
             g.validate(t)?;
+        }
+        if let Some(c) = &self.group_checks {
+            if self.version != 5
+                || self.group_capture.is_some()
+                || self.snapshot.is_some()
+                || self.receipt.is_some()
+                || self.enqueue_receipt.is_some()
+                || self.async_result.is_some()
+                || self.mutation_not_sent
+            {
+                return Err(InvalidEvidence);
+            }
+            c.validate(t, self.finished_at_unix_ms)?;
         }
         if let Some(r) = &self.enqueue_receipt {
             if self.version != 3

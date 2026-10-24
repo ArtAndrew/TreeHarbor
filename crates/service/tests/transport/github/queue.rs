@@ -1,6 +1,8 @@
 use super::*;
 #[path = "dequeue.rs"]
 mod dequeue;
+#[path = "group_checks.rs"]
+mod group_checks;
 #[path = "groups.rs"]
 mod groups;
 fn cli(f: &Fixture, id: Uuid, state: &Path, app: &Path) -> Command {
@@ -158,6 +160,18 @@ pub(super) async fn exercise(
     )
     .unwrap();
     files::write_private(&app,json!({"version":1,"app_id":context["specification"]["app_id"],"client_id":context["specification"]["client_id"],"private_key_file":pem,"repository":context["specification"]["upstream"]}).to_string().as_bytes()).unwrap();
+    // A check-only request cannot begin an enqueue attempt.
+    let out = cli(f, id, &state, &app)
+        .args(["--group-report", "1"])
+        .output()
+        .unwrap();
+    assert!(!out.status.success());
+    let unchanged = result(request(
+        f,
+        &json!({"action":"queue_context","epoch":1,"queue":id.to_string()}),
+    ));
+    assert!(unchanged["attempt"].is_null());
+    assert_eq!(unchanged["state"], "requested");
     // Actual CLI's committed dispatch reply is withheld, so no GitHub call can run.
     let (original, hold, received) = proxy(
         f,
@@ -334,5 +348,6 @@ pub(super) async fn exercise(
     f.credential_path = f.dir.path().join("queue-bridge.json");
     dequeue::exercise(f, server, dequeue_id, &app).await;
     groups::exercise(f, server, id, &state, &app, owner).await;
+    group_checks::exercise(f, server, id, &state, &app, owner).await;
     f.credential_path = owner.to_owned();
 }

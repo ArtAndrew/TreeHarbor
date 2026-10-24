@@ -3,6 +3,19 @@
 Updated: 2026-10-24. This file describes implemented behavior and remaining release
 gates. A foundation milestone does not complete either mode.
 
+Experimental [candidate-check captures](github-group-checks.md) now bind two exact
+commit/tree check reads to an earlier retained membership report. Version5 records
+preserve all bounded suite/run/workflow identities and distinguish `merge_group`
+from later same-SHA/name/App `push` checks. The read-only App collector, scoped
+`queue_checks` API and real CLI/server killed-process replay passed targeted tests.
+The [actual Rust public-repository diagnostic](evidence/group-checks-read-20261024.json)
+also passed and revoked its token; product membership linkage and private-repository
+entitlement were not part of that diagnostic. Current workflow attempt metadata
+does not certify historical check attempts. Trusted definitions, exact attempts,
+host policy and final published-history proof remain unfinished, with verification
+flags false. No permission expansion, database migration or native-validation
+promotion is included.
+
 Experimental [retained group observations](github-queue-groups.md) capture actual
 main, bounded complete queue membership and immutable candidate parents twice
 using a narrowed read-only App token. Version4 reports survive lost responses,

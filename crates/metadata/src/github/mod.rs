@@ -4,6 +4,7 @@ pub(crate) mod imports;
 pub(crate) mod projections;
 pub use projections::ProjectionSpec;
 mod events;
+mod group_checks;
 mod groups;
 mod recovery;
 pub use events::{EventChannelSpec, EventReceipt};

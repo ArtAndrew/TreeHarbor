@@ -328,6 +328,9 @@ impl Metadata {
         report
             .validate(&t)
             .map_err(|_| Error::Invalid("queue observation"))?;
+        if let Some(checks) = &report.group_checks {
+            group_checks::validate_report(&m.tx, s, &r, checks).await?;
+        }
         let last = r
             .get::<_, Option<Value>>("latest_observation")
             .and_then(|v| v["finished_at_unix_ms"].as_i64())
@@ -415,7 +418,7 @@ impl Metadata {
         m.tx.execute("INSERT INTO th_github_queue_reports(tenant,repository,queue,sequence,report) VALUES($1,$2,$3,$4,$5)",&[&s.tenant(),&s.repository(),&id,&seq,&json!(report)]).await?;
         // A late journal receipt can contain the only provider UUID. Retain it
         // without replacing a more recent live observation.
-        let latest = if report.finished_at_unix_ms >= last {
+        let latest = if report.group_checks.is_none() && report.finished_at_unix_ms >= last {
             json!(report)
         } else {
             r.get::<_, Option<Value>>("latest_observation")

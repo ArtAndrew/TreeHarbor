@@ -213,6 +213,7 @@ impl Connection {
             finished_at_unix_ms: now()? as i64 * 1000,
             snapshot: Some(capture.after.target.clone()),
             group_capture: Some(capture),
+            group_checks: None,
             receipt: None,
             enqueue_receipt: None,
             async_result: None,

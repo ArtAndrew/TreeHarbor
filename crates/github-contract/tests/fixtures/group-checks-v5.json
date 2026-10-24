@@ -1,0 +1,141 @@
+{
+  "version": 5,
+  "started_at_unix_ms": 1767225602000,
+  "finished_at_unix_ms": 1767225603000,
+  "snapshot": null,
+  "receipt": null,
+  "async_result": null,
+  "token_revoked": true,
+  "group_checks": {
+    "target": {
+      "membership_sequence": 1,
+      "side": "after",
+      "subject": {
+        "revision": "git:sha1:3333333333333333333333333333333333333333",
+        "tree": "git:sha1:6666666666666666666666666666666666666666"
+      }
+    },
+    "checks": {
+      "subject": {
+        "revision": "git:sha1:3333333333333333333333333333333333333333",
+        "tree": "git:sha1:6666666666666666666666666666666666666666"
+      },
+      "before": {
+        "suites": [
+          {
+            "id": "CS_merge_group",
+            "repository_id": 11,
+            "head_revision": "git:sha1:3333333333333333333333333333333333333333",
+            "app_id": 7,
+            "workflow": {
+              "id": "WFR_merge_group",
+              "workflow_id": "WF_checks",
+              "event": "merge_group",
+              "observed_run_attempt": 1,
+              "file": {
+                "path": ".github/workflows/check.yml",
+                "repository_name": "example-org/demo",
+                "repository_file_url": "https://github.com/example-org/demo/blob/3333333333333333333333333333333333333333/.github/workflows/check.yml"
+              }
+            },
+            "runs": [
+              {
+                "id": "CR_merge_group",
+                "name": "CI / build",
+                "status": "COMPLETED",
+                "conclusion": "SUCCESS",
+                "started_at_unix_ms": 1767225600000,
+                "completed_at_unix_ms": 1767225601000
+              }
+            ]
+          },
+          {
+            "id": "CS_push",
+            "repository_id": 11,
+            "head_revision": "git:sha1:3333333333333333333333333333333333333333",
+            "app_id": 7,
+            "workflow": {
+              "id": "WFR_push",
+              "workflow_id": "WF_checks",
+              "event": "push",
+              "observed_run_attempt": 1,
+              "file": {
+                "path": ".github/workflows/check.yml",
+                "repository_name": "example-org/demo",
+                "repository_file_url": "https://github.com/example-org/demo/blob/3333333333333333333333333333333333333333/.github/workflows/check.yml"
+              }
+            },
+            "runs": [
+              {
+                "id": "CR_push",
+                "name": "CI / build",
+                "status": "COMPLETED",
+                "conclusion": "SUCCESS",
+                "started_at_unix_ms": 1767225600000,
+                "completed_at_unix_ms": 1767225601000
+              }
+            ]
+          }
+        ]
+      },
+      "after": {
+        "suites": [
+          {
+            "id": "CS_merge_group",
+            "repository_id": 11,
+            "head_revision": "git:sha1:3333333333333333333333333333333333333333",
+            "app_id": 7,
+            "workflow": {
+              "id": "WFR_merge_group",
+              "workflow_id": "WF_checks",
+              "event": "merge_group",
+              "observed_run_attempt": 1,
+              "file": {
+                "path": ".github/workflows/check.yml",
+                "repository_name": "example-org/demo",
+                "repository_file_url": "https://github.com/example-org/demo/blob/3333333333333333333333333333333333333333/.github/workflows/check.yml"
+              }
+            },
+            "runs": [
+              {
+                "id": "CR_merge_group",
+                "name": "CI / build",
+                "status": "COMPLETED",
+                "conclusion": "SUCCESS",
+                "started_at_unix_ms": 1767225600000,
+                "completed_at_unix_ms": 1767225601000
+              }
+            ]
+          },
+          {
+            "id": "CS_push",
+            "repository_id": 11,
+            "head_revision": "git:sha1:3333333333333333333333333333333333333333",
+            "app_id": 7,
+            "workflow": {
+              "id": "WFR_push",
+              "workflow_id": "WF_checks",
+              "event": "push",
+              "observed_run_attempt": 1,
+              "file": {
+                "path": ".github/workflows/check.yml",
+                "repository_name": "example-org/demo",
+                "repository_file_url": "https://github.com/example-org/demo/blob/3333333333333333333333333333333333333333/.github/workflows/check.yml"
+              }
+            },
+            "runs": [
+              {
+                "id": "CR_push",
+                "name": "CI / build",
+                "status": "COMPLETED",
+                "conclusion": "SUCCESS",
+                "started_at_unix_ms": 1767225600000,
+                "completed_at_unix_ms": 1767225601000
+              }
+            ]
+          }
+        ]
+      }
+    }
+  }
+}

@@ -62,6 +62,7 @@ impl Connection {
             receipt: None,
             enqueue_receipt: None,
             group_capture: None,
+            group_checks: None,
             async_result: Some(result?),
             mutation_not_sent: false,
             token_revoked: revoked,

@@ -2,7 +2,7 @@
 use super::*;
 use treeharbor_github_contract::{groups::GroupSnapshot, queue::QueueObservation};
 
-async fn matched_events(
+pub(super) async fn matched_events(
     tx: &Transaction<'_>,
     s: &Scope,
     r: &Row,

@@ -156,6 +156,7 @@ pub(super) async fn run(r: Request) -> Result<bool> {
                     id: uuid(&c["queue"])?,
                     epoch: r.epoch,
                     state: queue_state.clone(),
+                    check: None,
                 },
                 false,
             )
