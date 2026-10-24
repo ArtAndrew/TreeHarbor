@@ -12,6 +12,7 @@ pub(super) struct Request {
     pub epoch: i64,
     pub state: PathBuf,
     pub check: Option<(i64, treeharbor_github_contract::group_checks::Side)>,
+    pub attempt_check: Option<treeharbor_github_contract::group_attempts::Selection>,
 }
 fn identity(c: &Value, r: &Request, credential: &Credential) -> Result<(Value, QueueTarget)> {
     if c["version"] != 1
@@ -132,6 +133,9 @@ pub(super) async fn run(r: Request) -> Result<bool> {
 }
 /// Recovery for the dequeue driver must never acquire another enqueue grant.
 pub(super) async fn collect(r: Request, allow_dispatch: bool) -> Result<Value> {
+    if r.check.is_some() && r.attempt_check.is_some() {
+        return Err(Error::PublicationState);
+    }
     let credential = Credential::load(&r.credential_file)?;
     let mut c = command(
         &r.socket,
@@ -184,6 +188,32 @@ pub(super) async fn collect(r: Request, allow_dispatch: bool) -> Result<Value> {
     };
     let spec =
         serde_json::from_value(c["specification"].clone()).map_err(|_| Error::PublicationState)?;
+    let selected_attempt = if let Some(selection) = &r.attempt_check {
+        if c["attempt"].is_null() {
+            return Err(Error::PublicationState);
+        }
+        selection.validate().map_err(|_| Error::PublicationState)?;
+        let v = s
+            .command(json!({"action":"queue_attempt_context","selection":selection}))
+            .await?;
+        for field in ["version", "queue", "binding", "epoch", "target"] {
+            if v[field] != c[field] {
+                return Err(Error::PublicationState);
+            }
+        }
+        let target: treeharbor_github_contract::group_attempts::Target =
+            serde_json::from_value(v["group_attempt_target"].clone())
+                .map_err(|_| Error::PublicationState)?;
+        target
+            .validate(&s.target)
+            .map_err(|_| Error::PublicationState)?;
+        if &target.selection() != selection {
+            return Err(Error::PublicationState);
+        }
+        Some(target)
+    } else {
+        None
+    };
     let (app, config) = load(&r.config)?;
     matches_config(&config, &spec)?;
     let connection = Connection::new(app)?;
@@ -206,7 +236,15 @@ pub(super) async fn collect(r: Request, allow_dispatch: bool) -> Result<Value> {
     } else {
         uuid(&c["attempt"])?
     };
-    let result = if let Some(target) = &selected {
+    let result = if let Some(target) = &selected_attempt {
+        connection
+            .observe_group_attempt(&config.repository, &s.target, target)
+            .await
+            .map_err(|error| treeharbor_github::MutationFailure {
+                error,
+                mutation_not_sent: false,
+            })
+    } else if let Some(target) = &selected {
         connection
             .observe_group_checks(&config.repository, &s.target, target)
             .await
@@ -258,6 +296,7 @@ pub(super) async fn collect(r: Request, allow_dispatch: bool) -> Result<Value> {
                     enqueue_receipt: None,
                     group_capture: None,
                     group_checks: None,
+                    group_attempt: None,
                     async_result: None,
                     mutation_not_sent: e.mutation_not_sent,
                     token_revoked: false,

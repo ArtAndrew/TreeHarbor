@@ -5,6 +5,8 @@ use treeharbor_metadata::github::QueueSpec;
 mod dequeues;
 #[path = "github_enqueue.rs"]
 mod enqueue;
+#[path = "github_group_attempts.rs"]
+mod group_attempts;
 #[path = "github_group_checks.rs"]
 mod group_checks;
 #[path = "github_groups.rs"]
@@ -96,6 +98,7 @@ impl QueueFixture {
             enqueue_receipt: None,
             group_capture: None,
             group_checks: None,
+            group_attempt: None,
             async_result: None,
             mutation_not_sent: false,
             token_revoked: false,

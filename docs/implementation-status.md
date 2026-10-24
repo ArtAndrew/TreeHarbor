@@ -3,6 +3,21 @@
 Updated: 2026-10-24. This file describes implemented behavior and remaining release
 gates. A foundation milestone does not complete either mode.
 
+Experimental [exact-attempt evidence](github-group-attempts.md) links a selected
+retained merge-group check to its workflow attempt and job through independently
+validated provider IDs. Version6 records distinguish historical linkage from a
+later current attempt, preserve original queue snapshots and recover after a lost
+commit reply. Contract/HTTP fixtures, a real PostgreSQL linkage/replay case and the
+actual killed CLI/server regression passed locally. The optional collector needs
+Actions-read in addition to the existing read token. An explicitly authorized
+permission update kept the test App installed only on the acceptance repository.
+The [actual Rust diagnostic](evidence/group-attempt-read-20261024.json) linked its
+original merge-group check to attempt 1 and revoked the temporary token. Its source
+was a prior provider diagnostic, not a persisted product membership report.
+Live product linkage, private entitlement, trusted definitions/policy and final
+publication remain unverified.
+No native validation or merge authorization is inferred from this evidence.
+
 Experimental [candidate-check captures](github-group-checks.md) now bind two exact
 commit/tree check reads to an earlier retained membership report. Version5 records
 preserve all bounded suite/run/workflow identities and distinguish `merge_group`

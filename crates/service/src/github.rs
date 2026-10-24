@@ -76,6 +76,15 @@ pub enum Action {
         group_report: Option<i64>,
         #[arg(long,default_value="after",value_parser=["before","after"],requires="group_report")]
         group_side: String,
+        /// Read an exact workflow attempt for a selected retained check; never enqueue.
+        #[arg(long,value_parser=clap::value_parser!(i64).range(1..=4096),conflicts_with="group_report",requires_all=["check_suite","check_run"])]
+        check_report: Option<i64>,
+        #[arg(long, requires = "check_report")]
+        check_suite: Option<String>,
+        #[arg(long, requires = "check_report")]
+        check_run: Option<String>,
+        #[arg(long,default_value="after",value_parser=["before","after"],requires="check_report")]
+        check_side: String,
     },
     /// Capture exact selected PR checks and active rulesets; does not authorize merge.
     Inspect {
@@ -297,6 +306,10 @@ pub async fn run(action: Action) -> Result<bool> {
             state,
             group_report,
             group_side,
+            check_report,
+            check_suite,
+            check_run,
+            check_side,
         } => {
             queue::run(queue::Request {
                 config,
@@ -315,6 +328,20 @@ pub async fn run(action: Action) -> Result<bool> {
                         },
                     )
                 }),
+                attempt_check: if let Some(check_sequence) = check_report {
+                    Some(treeharbor_github_contract::group_attempts::Selection {
+                        check_sequence,
+                        side: if check_side == "before" {
+                            treeharbor_github_contract::group_checks::Side::Before
+                        } else {
+                            treeharbor_github_contract::group_checks::Side::After
+                        },
+                        suite_id: check_suite.ok_or(Error::PublicationState)?,
+                        check_id: check_run.ok_or(Error::PublicationState)?,
+                    })
+                } else {
+                    None
+                },
             })
             .await
         }

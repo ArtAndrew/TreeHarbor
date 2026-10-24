@@ -3,6 +3,8 @@ use super::*;
 mod dequeue_tests;
 #[path = "enqueue.rs"]
 mod enqueue_tests;
+#[path = "group_attempts.rs"]
+mod group_attempt_tests;
 #[path = "group_checks.rs"]
 mod group_check_tests;
 #[path = "groups.rs"]
