@@ -79,6 +79,9 @@ does not establish a trusted workflow definition.
 `host_policy_verified` remain **false**. These observations do not create native
 validations or grant merge authorization. Exact job/attempt linkage, trusted
 workflow/policy and final published-history verification are still release gates.
+The separate [exact-attempt collector](github-group-attempts.md) adds retained
+job/check linkage and current-attempt comparison for a selected check; it keeps
+workflow trust and final-merge authorization separate.
 
 Contract/provider-fixture tests cover duplicates, reruns, incomplete pages and
 wrong identities. PostgreSQL and actual CLI/server process-death tests cover

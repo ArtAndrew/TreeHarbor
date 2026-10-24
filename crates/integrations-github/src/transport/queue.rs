@@ -3,6 +3,7 @@ use super::*;
 use serde::Deserialize;
 use std::sync::atomic::{AtomicBool, Ordering};
 use treeharbor_github_contract::{PullState, queue::*};
+mod attempts;
 mod checks;
 mod dequeue;
 mod enqueue;
@@ -294,6 +295,7 @@ impl Connection {
             enqueue_receipt,
             group_capture: None,
             group_checks: None,
+            group_attempt: None,
             async_result: None,
             mutation_not_sent,
             token_revoked: revoked,

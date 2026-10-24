@@ -1,6 +1,6 @@
 use super::*;
 use treeharbor_github_contract::group_checks::Side;
-async fn report(f: &QueueFixture, m: &QueueObservation) -> QueueObservation {
+pub(super) async fn report(f: &QueueFixture, m: &QueueObservation) -> QueueObservation {
     let mut v: QueueObservation = serde_json::from_str(include_str!(
         "../../../github-contract/tests/fixtures/group-checks-v5.json"
     ))

@@ -150,6 +150,16 @@ pub enum WireCommand {
         queue: String,
         after: i64,
     },
+    QueueAttemptContext {
+        epoch: i64,
+        queue: String,
+        selection: treeharbor_github_contract::group_attempts::Selection,
+    },
+    QueueAttempts {
+        epoch: i64,
+        queue: String,
+        after: i64,
+    },
     QueueContext {
         epoch: i64,
         queue: String,
@@ -388,10 +398,12 @@ impl WireCommand {
             | Self::QueueReport { .. }
             | Self::QueueContext { .. }
             | Self::QueueDispatchContext { .. }
-            | Self::QueueCheckContext { .. } => Permission::HostMerge,
-            Self::QueueStatus { .. } | Self::QueueGroups { .. } | Self::QueueChecks { .. } => {
-                Permission::Read
-            }
+            | Self::QueueCheckContext { .. }
+            | Self::QueueAttemptContext { .. } => Permission::HostMerge,
+            Self::QueueStatus { .. }
+            | Self::QueueGroups { .. }
+            | Self::QueueChecks { .. }
+            | Self::QueueAttempts { .. } => Permission::Read,
             Self::InspectionRequest { .. } | Self::InspectionCancel { .. } => {
                 Permission::RepositoryWrite
             }
@@ -699,6 +711,22 @@ impl WireCommand {
                 after,
             } => {
                 db.github_queue_checks(auth, epoch, id(&queue)?, after)
+                    .await
+            }
+            Self::QueueAttemptContext {
+                epoch,
+                queue,
+                selection,
+            } => {
+                db.github_queue_attempt_context(auth, epoch, id(&queue)?, &selection)
+                    .await
+            }
+            Self::QueueAttempts {
+                epoch,
+                queue,
+                after,
+            } => {
+                db.github_queue_attempts(auth, epoch, id(&queue)?, after)
                     .await
             }
             Self::QueueContext { epoch, queue } => {

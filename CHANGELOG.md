@@ -21,6 +21,7 @@
 - Experimental native GitHub queue delivery with explicit owner/bridge grants, exact-head GraphQL dispatch, retained legacy async-result recovery and separately authorized dequeue. Uncertain writes are not automatically retried.
 - Retained queue membership, actual main and candidate parents, with scoped reads and exact signed-event correlation after process loss. Complete group/check/policy/final-tree verification remains pending.
 - Exact candidate-check collection linked to retained membership, with separate push/merge-group suite identities, bounded read access and crash-safe replay. Attempt, workflow definition and final merge verification remain pending.
+- Explicit selected workflow-attempt/job/check collection, with immutable source linkage and separate current-attempt comparison. Trusted definitions and final merge authorization remain pending.
 - Contract tests and product documentation.
 
 There is no installable product release yet.

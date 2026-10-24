@@ -1,6 +1,8 @@
 use super::*;
 #[path = "dequeue.rs"]
 mod dequeue;
+#[path = "group_attempts.rs"]
+mod group_attempts;
 #[path = "group_checks.rs"]
 mod group_checks;
 #[path = "groups.rs"]
@@ -172,6 +174,25 @@ pub(super) async fn exercise(
     ));
     assert!(unchanged["attempt"].is_null());
     assert_eq!(unchanged["state"], "requested");
+    let out = cli(f, id, &state, &app)
+        .args([
+            "--check-report",
+            "2",
+            "--check-suite",
+            "CS_merge_group",
+            "--check-run",
+            "CR_merge_group",
+        ])
+        .output()
+        .unwrap();
+    assert!(!out.status.success());
+    assert_eq!(
+        unchanged,
+        result(request(
+            f,
+            &json!({"action":"queue_context","epoch":1,"queue":id.to_string()})
+        ))
+    );
     // Actual CLI's committed dispatch reply is withheld, so no GitHub call can run.
     let (original, hold, received) = proxy(
         f,
@@ -349,5 +370,6 @@ pub(super) async fn exercise(
     dequeue::exercise(f, server, dequeue_id, &app).await;
     groups::exercise(f, server, id, &state, &app, owner).await;
     group_checks::exercise(f, server, id, &state, &app, owner).await;
+    group_attempts::exercise(f, server, id, &state, &app, owner).await;
     f.credential_path = owner.to_owned();
 }

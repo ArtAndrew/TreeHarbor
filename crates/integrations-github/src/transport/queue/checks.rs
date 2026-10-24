@@ -100,7 +100,7 @@ struct Graph {
     data: Option<Data>,
     errors: Option<Value>,
 }
-fn timestamp(value: Option<String>) -> Result<Option<i64>> {
+pub(super) fn timestamp(value: Option<String>) -> Result<Option<i64>> {
     value
         .map(|s| {
             if s.len() > 64 {
@@ -221,6 +221,7 @@ impl Connection {
             finished_at_unix_ms: now()? as i64 * 1000,
             snapshot: None,
             group_capture: None,
+            group_attempt: None,
             group_checks: Some(gc::GroupCheckReport {
                 target: selected.clone(),
                 checks,

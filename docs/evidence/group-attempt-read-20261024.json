@@ -1,0 +1,53 @@
+{
+  "kind": "actual_rust_installed_app_attempt_diagnostic",
+  "observed_at": "2026-10-24T17:47:38+00:00",
+  "repository": "TreeHarbor/TreeHarbor-acceptance",
+  "repository_id": 1431906532,
+  "workflow_run_url": "https://github.com/TreeHarbor/TreeHarbor-acceptance/actions/runs/40089959365/attempts/1",
+  "subject": {
+    "revision": "git:sha1:eb85eaaef7dd34c7f7887ee5b8787a577ec79ec7",
+    "tree": "git:sha1:77c9e0bb9246db3013504d9658e7633f2586ce56"
+  },
+  "resolved": {
+    "check_id": 120860441427,
+    "run_id": 40089959365,
+    "suite_id": 108664313585,
+    "workflow_id": 394893730
+  },
+  "selected_attempt": 1,
+  "observed_current_attempt": 1,
+  "event": "merge_group",
+  "complete_job_count": 1,
+  "check": {
+    "app_id": 15368,
+    "database_id": 120860441427,
+    "head_revision": "git:sha1:eb85eaaef7dd34c7f7887ee5b8787a577ec79ec7",
+    "run": {
+      "completed_at_unix_ms": 1792841275000,
+      "conclusion": "SUCCESS",
+      "id": "CR_kwDOVVko5M8AAAAcI9f7Uw",
+      "name": "Queue fixture",
+      "started_at_unix_ms": 1792841234000,
+      "status": "COMPLETED"
+    },
+    "suite_id": 108664313585
+  },
+  "attempt_linked": true,
+  "current_attempt_matches": true,
+  "snapshots_equal": true,
+  "token_revoked": true,
+  "app_installation_scope": "Only TreeHarbor/TreeHarbor-acceptance; Actions read added with explicit owner approval",
+  "token_permissions": {
+    "actions": "read",
+    "checks": "read",
+    "contents": "read",
+    "metadata": "read",
+    "pull_requests": "read"
+  },
+  "product_membership_link_verified": false,
+  "private_repository_entitlement_verified": false,
+  "definition_verified": false,
+  "host_policy_verified": false,
+  "merge_verified": false,
+  "limits": "Public synthetic fixture; source check selected from a prior provider diagnostic. No workflow execution or queue mutation. Not full product linkage or performance evidence."
+}

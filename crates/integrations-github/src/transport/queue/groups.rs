@@ -214,6 +214,7 @@ impl Connection {
             snapshot: Some(capture.after.target.clone()),
             group_capture: Some(capture),
             group_checks: None,
+            group_attempt: None,
             receipt: None,
             enqueue_receipt: None,
             async_result: None,
