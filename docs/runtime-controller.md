@@ -3,14 +3,18 @@
 The `treeharbor-runtime` Rust library creates, inspects, starts and removes one
 external sandbox using Docker Engine API 1.47 over a local Unix socket. It selects
 `runsc` explicitly and uses the [trusted task supervisor](runtime-supervisor.md).
-This is an internal operator API. It is **not yet connected to service-managed
-AgentRuns**, authorization, node leases or workspace drain. No agent-facing launch
-endpoint or production node daemon is provided by this increment.
+This is an internal operator API. [Managed runs](managed-runs.md) connect it to
+authorized AgentRuns, prepared placements and workspace drain. Agents cannot
+invoke the Engine adapter directly. Automatic node scheduling remains pending.
 
 ## Supported boundary
 
-The controller requires Linux x86-64, a rootful Docker Engine with cgroup v2 and
-runsc, and an immutable local Linux/amd64 image ID containing trusted `/init`.
+The controller requires native Linux x86-64 or ARM64, a rootful Docker Engine
+with cgroup v2 and runsc, and an immutable local Linux image ID containing trusted
+`/init`. Controller, Engine and image architecture must match: x86_64/amd64 or
+aarch64/arm64. Foreign images are rejected before container creation, even if
+the host supports emulation. Other architectures and macOS runtime execution are
+unsupported. A Linux VM on an ARM Mac is a Linux runtime, not a macOS sandbox.
 It never pulls an image or accepts arbitrary Docker options. Image registration
 and provenance remain the operator's responsibility. The root-owned engine socket
 and its peer are checked; socket replacement is rejected. Engine and privileged
@@ -121,7 +125,7 @@ rejection, journal exclusion, reopen, conflicting intent and unsafe/corrupt file
 The separate real-runtime CI harness runs only on a disposable Linux runner:
 
 ```sh
-cargo build -p treeharbor-runtime --locked --target x86_64-unknown-linux-musl --bins --examples
+cargo build -p treeharbor-runtime --locked --target "$(uname -m)-unknown-linux-musl" --bins --examples
 python3 scripts/test-runtime-controller.py
 ```
 
@@ -133,3 +137,11 @@ cleanup and configuration drift, followed by actual OOM, deadline/descendant and
 persistent disk exhaustion through the Rust controller. The existing supervisor stress suite remains
 required. This is correctness testing, not a performance benchmark or security
 certification. The example driver is a test tool, not the product CLI.
+
+CI runs the same supervisor, controller, managed-run and native-check suites on
+`ubuntu-24.04` and `ubuntu-24.04-arm`, using architecture-specific, checksum-pinned
+gVisor archives. The controller suite also builds an actual foreign-architecture
+image and verifies rejection without creating or executing a container. A profile
+or journal is not a portable live task: moving it between nodes or architectures
+is unsupported. This remains experimental development acceptance, not a production
+security certification or packaged VM installation.

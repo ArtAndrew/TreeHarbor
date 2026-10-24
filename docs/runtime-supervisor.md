@@ -3,12 +3,14 @@
 `treeharbor-runtime-init` supervises one command **inside an existing Linux
 sandbox**. It does not create a sandbox, authorize a workspace, allocate a volume,
 or report trusted validation results. The experimental [local controller](runtime-controller.md)
-supplies durable execution intents and an Engine adapter; the service does not yet launch agents.
+supplies durable execution intents and an Engine adapter. [Managed runs](managed-runs.md)
+connect that adapter to authorized service requests.
 
-The supervisor is built as a static `x86_64-unknown-linux-musl` executable for the
-runtime tests. The trusted operator must keep this binary and its image immutable;
+The supervisor is built as a native static `x86_64-unknown-linux-musl` or
+`aarch64-unknown-linux-musl` executable for the runtime tests. The trusted
+operator must keep this binary and its image immutable;
 do not load it dynamically from an untrusted image or make it writable by a task.
-Only Linux x86-64 with the pinned gVisor profile below is currently exercised.
+The same pinned gVisor profile is exercised on Linux x86-64 and ARM64.
 macOS builds reject execution; they are not an alternative isolation backend.
 
 ## Invocation protocol 1
@@ -117,7 +119,7 @@ Reproduce **only on a disposable Linux host** with Docker, runsc, sudo, e2fsprog
 musl tools and the pinned Rust toolchain:
 
 ```sh
-cargo build -p treeharbor-runtime --locked --target x86_64-unknown-linux-musl --bins --examples
+cargo build -p treeharbor-runtime --locked --target "$(uname -m)-unknown-linux-musl" --bins --examples
 python3 scripts/test-runtime.py
 ```
 

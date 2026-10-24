@@ -7,7 +7,7 @@ uses the existing [bounded gVisor runtime](managed-runs.md); a protected collect
 records its terminal observation after confirmed runtime removal.
 
 This is a development interface, not automatic CI scheduling or a complete
-Standalone release. Linux x86-64, PostgreSQL schema 11, an operator-approved
+Standalone release. Native Linux x86-64 or ARM64, PostgreSQL schema 24, an operator-approved
 immutable runtime image and a separately provisioned bounded volume are required.
 There is no network installation of dependencies, host environment inheritance,
 CI secrets injection, shared build cache, artifact/log service or packaged install.

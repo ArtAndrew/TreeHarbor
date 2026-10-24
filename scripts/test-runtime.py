@@ -13,6 +13,7 @@ import subprocess
 import tempfile
 import time
 import uuid
+from runtime_target import runtime_target
 
 
 def command(*args, check=True, timeout=90):
@@ -35,7 +36,7 @@ def main():
     try:
         build = root / "image"
         build.mkdir()
-        target = Path("target/x86_64-unknown-linux-musl/debug")
+        target = runtime_target()
         shutil.copy2(target / "treeharbor-runtime-init", build / "init")
         shutil.copy2(target / "examples/runtime_probe", build / "probe")
         # No shell, package manager, remote base image or Git executable.

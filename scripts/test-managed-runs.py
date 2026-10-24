@@ -15,6 +15,7 @@ import sys
 import tempfile
 import time
 import uuid
+from runtime_target import runtime_target
 
 
 def command(*args, check=True, timeout=60, env=None):
@@ -133,7 +134,7 @@ class Harness:
                                           "--epoch", "1", "--full")["profile_digest"]
         build = self.root / "image"
         build.mkdir()
-        target = Path("target/x86_64-unknown-linux-musl/debug")
+        target = runtime_target()
         shutil.copy2(target / "treeharbor-runtime-init", build / "init")
         shutil.copy2(target / "examples/runtime_probe", build / "probe")
         (build / "Dockerfile").write_text("FROM scratch\nCOPY init /init\nCOPY probe /probe\n")

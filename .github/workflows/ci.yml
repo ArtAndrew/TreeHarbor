@@ -70,8 +70,20 @@ jobs:
           TH_SERVICE_TEST_DATABASE_URL: host=/var/run/treeharbor-test-pg user=treeharbor_test password=disposable-ci-only dbname=treeharbor_test
         run: python3 scripts/test-webhook-proxy.py
   runtime:
-    name: gVisor task supervision
-    runs-on: ubuntu-24.04
+    name: ${{ matrix.check }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            arch: x86_64
+            check: gVisor task supervision
+            sha256: 180dd277f657c1478f09490e8a9a595f7378257510b43d1d3694a769aef9ed02
+          - os: ubuntu-24.04-arm
+            arch: aarch64
+            check: gVisor task supervision (arm64)
+            sha256: fd174120b7048ad01c550d1a7cf7336895e8fc986bc1526f636dcaca4791c330
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     services:
       postgres:
@@ -91,21 +103,22 @@ jobs:
           persist-credentials: false
       - name: Install static Rust target
         run: |
-          rustup toolchain install 1.99.1 --profile minimal --target x86_64-unknown-linux-musl
+          rustup toolchain install 1.99.1 --profile minimal --target ${{ matrix.arch }}-unknown-linux-musl
           sudo apt-get update -qq
           sudo apt-get install -y musl-tools
       - name: Install pinned gVisor including sidecar binaries
         working-directory: ${{ runner.temp }}
         run: |
-          curl --fail --location --retry 3 --output gvisor.tar.bz2 https://github.com/google/gvisor/releases/download/release-20261012.0/gvisor-x86_64.tar.bz2
-          echo '9606445eed5aedfcf05310e7ccef61d994089914c6622fc82624c24d2b18db1b2210f40e40a7be27b8b7772859de7d95c501b4eba66423053c960bf671377c5e  gvisor.tar.bz2' | sha512sum --check --strict
+          test "$(uname -m)" = '${{ matrix.arch }}'
+          curl --fail --location --retry 3 --output gvisor.tar.bz2 https://github.com/google/gvisor/releases/download/release-20261012.0/gvisor-${{ matrix.arch }}.tar.bz2
+          echo '${{ matrix.sha256 }}  gvisor.tar.bz2' | sha256sum --check --strict
           sudo tar -xjf gvisor.tar.bz2 -C /usr/local/bin
           sudo /usr/local/bin/runsc install
           sudo systemctl restart docker
           /usr/local/bin/runsc --version
           docker info
       - name: Build trusted init and adversarial fixture
-        run: cargo build -p treeharbor-runtime --locked --target x86_64-unknown-linux-musl --bins --examples
+        run: cargo build -p treeharbor-runtime --locked --target ${{ matrix.arch }}-unknown-linux-musl --bins --examples
       - name: Exercise real runtime, resources and process teardown
         run: python3 scripts/test-runtime.py
       - name: Exercise Rust runtime control and lost Engine responses
