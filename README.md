@@ -73,6 +73,8 @@ in **Standalone** mode. Both share one Rust engine.
 > one-shot dequeue and recovery without automatically replaying mutations.
 > [Signed event intake](docs/github-events.md) now retains authenticated merge-group
 > callbacks with explicit repository channels and recovery after process loss.
+> A [dedicated HTTPS ingress recipe](docs/webhook-https.md) connects that receiver
+> through Caddy while leaving the command socket private.
 > Complete policy/group/final-tree verification and installed-App acceptance remain pending.
 > Neither end-to-end mode is released. No packaged installation is available yet.
 > See [implementation status](docs/implementation-status.md) for evidence and gaps.

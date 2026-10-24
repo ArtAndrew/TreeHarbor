@@ -97,7 +97,8 @@ treeharbor webhook-serve --config /private/treeharbor/webhook.json
 The socket and its parent are restricted to the current OS user. Run a trusted TLS
 reverse proxy with appropriate socket access. Proxy only `POST /github/events`;
 `GET /health` is process liveness, not evidence that deliveries can commit. Public
-TLS ingress provisioning and automatic App installation are not included in this
+TLS ingress can use the [Caddy deployment recipe](webhook-https.md). Public DNS,
+certificate provisioning and automatic App installation are not included in this
 command. The receiver must not share credentials or its socket directory with
 agent runtimes. Its database connection is trusted and currently has the same
 schema privileges as the local control service.
