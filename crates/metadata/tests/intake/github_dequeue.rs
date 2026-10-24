@@ -228,6 +228,8 @@ fn receipt(f: &QueueFixture, id: Uuid) -> DequeueReceipt {
 }
 pub(super) async fn drop_unpopulated_v22(raw: &tokio_postgres::Client) {
     assert_eq!(raw.query_one("SELECT (SELECT count(*) FROM th_github_dequeues)+(SELECT count(*) FROM th_github_dequeue_reports)",&[]).await.unwrap().get::<_,i64>(0),0);
+    assert_eq!(raw.query_one("SELECT (SELECT count(*) FROM th_github_events)+(SELECT count(*) FROM th_github_event_channels)",&[]).await.unwrap().get::<_,i64>(0),0);
+    raw.batch_execute("DROP TABLE th_github_event_deliveries; DROP TABLE th_github_events; DROP TABLE th_github_event_channels; DROP FUNCTION th_github_event_channel_immutable()").await.unwrap();
     raw.batch_execute("DROP TABLE th_github_dequeue_reports; DROP TABLE th_github_dequeues; DROP FUNCTION th_github_dequeue_immutable(); DROP TRIGGER th_github_queue_no_send_update ON th_github_queue; DROP FUNCTION th_github_queue_no_send_immutable(); ALTER TABLE th_github_queue DROP COLUMN mutation_not_sent;").await.unwrap();
 }
 

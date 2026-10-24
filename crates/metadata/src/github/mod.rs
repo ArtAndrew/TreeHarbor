@@ -3,6 +3,8 @@
 pub(crate) mod imports;
 pub(crate) mod projections;
 pub use projections::ProjectionSpec;
+mod events;
+pub use events::{EventChannelSpec, EventReceipt};
 mod dequeues;
 mod inspections;
 pub use dequeues::DequeueSpec;

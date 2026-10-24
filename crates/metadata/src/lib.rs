@@ -49,11 +49,16 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/020_github_inspections.sql"),
     include_str!("../migrations/021_github_queue.sql"),
     include_str!("../migrations/022_github_dequeue.sql"),
+    include_str!("../migrations/023_github_events.sql"),
 ];
 const MAX_JSON: usize = 1024 * 1024;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    #[error("GitHub event channel is not active for this delivery")]
+    HostEventState,
+    #[error("GitHub event retention budget exhausted")]
+    HostEventLimit,
     #[error("database operation failed: {0}")]
     Database(#[from] tokio_postgres::Error),
     #[error("invalid metadata input: {0}")]

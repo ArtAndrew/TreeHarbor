@@ -1,0 +1,202 @@
+{
+  "version": 1,
+  "secret": "treeharbor-public-fixture-secret-not-a-real-key-2026",
+  "vectors": [
+    {
+      "name": "checks",
+      "body": "{\"action\":\"checks_requested\",\"installation\":{\"id\":9},\"repository\":{\"id\":11,\"owner\":{\"id\":13}},\"merge_group\":{\"head_sha\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"head_ref\":\"refs/heads/gh-readonly-queue/main/pr-5-test\",\"base_sha\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"base_ref\":\"refs/heads/main\",\"head_commit\":{\"id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"tree_id\":\"cccccccccccccccccccccccccccccccccccccccc\",\"message\":\"Проверка 🦀\",\"timestamp\":\"2026-10-24T00:00:00Z\",\"author\":null,\"committer\":null}},\"extension\":{\"ignored\":true}}\n",
+      "signature": "sha256=c6bc28c042fc075f4af2dc66ff520e41dc74f74c36203e078ae3a965e1483c4f",
+      "event_header": "merge_group",
+      "error": null
+    },
+    {
+      "name": "foreign-installation",
+      "body": "{\"action\":\"checks_requested\",\"installation\":{\"id\":99},\"repository\":{\"id\":11,\"owner\":{\"id\":13}},\"merge_group\":{\"head_sha\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"head_ref\":\"refs/heads/gh-readonly-queue/main/pr-5-test\",\"base_sha\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"base_ref\":\"refs/heads/main\",\"head_commit\":{\"id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"tree_id\":\"cccccccccccccccccccccccccccccccccccccccc\",\"message\":\"Проверка 🦀\",\"timestamp\":\"2026-10-24T00:00:00Z\",\"author\":null,\"committer\":null}},\"extension\":{\"ignored\":true}}\n",
+      "signature": "sha256=21f00110b94b76ecdd750cf835b15c0c855542855e3681238e00cf703f51cf0d",
+      "event_header": "merge_group",
+      "error": null
+    },
+    {
+      "name": "foreign-repository",
+      "body": "{\"action\":\"checks_requested\",\"installation\":{\"id\":9},\"repository\":{\"id\":99,\"owner\":{\"id\":13}},\"merge_group\":{\"head_sha\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"head_ref\":\"refs/heads/gh-readonly-queue/main/pr-5-test\",\"base_sha\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"base_ref\":\"refs/heads/main\",\"head_commit\":{\"id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"tree_id\":\"cccccccccccccccccccccccccccccccccccccccc\",\"message\":\"Проверка 🦀\",\"timestamp\":\"2026-10-24T00:00:00Z\",\"author\":null,\"committer\":null}},\"extension\":{\"ignored\":true}}\n",
+      "signature": "sha256=34692df3ebf33b4fa0d657ca1051c835294a68d03df315c04facf38acfef144f",
+      "event_header": "merge_group",
+      "error": null
+    },
+    {
+      "name": "foreign-owner",
+      "body": "{\"action\":\"checks_requested\",\"installation\":{\"id\":9},\"repository\":{\"id\":11,\"owner\":{\"id\":99}},\"merge_group\":{\"head_sha\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"head_ref\":\"refs/heads/gh-readonly-queue/main/pr-5-test\",\"base_sha\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"base_ref\":\"refs/heads/main\",\"head_commit\":{\"id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"tree_id\":\"cccccccccccccccccccccccccccccccccccccccc\",\"message\":\"Проверка 🦀\",\"timestamp\":\"2026-10-24T00:00:00Z\",\"author\":null,\"committer\":null}},\"extension\":{\"ignored\":true}}\n",
+      "signature": "sha256=7ab378376e2f85d52dd71a417221f6a3978fb937b778a4fc0e2fe38bf008125f",
+      "event_header": "merge_group",
+      "error": null
+    },
+    {
+      "name": "destroyed-merged",
+      "body": "{\"action\":\"destroyed\",\"installation\":{\"id\":9},\"repository\":{\"id\":11,\"owner\":{\"id\":13}},\"merge_group\":{\"head_sha\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"head_ref\":\"refs/heads/gh-readonly-queue/main/pr-5-test\",\"base_sha\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"base_ref\":\"refs/heads/main\",\"head_commit\":{\"id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"tree_id\":\"cccccccccccccccccccccccccccccccccccccccc\",\"message\":\"Проверка 🦀\",\"timestamp\":\"2026-10-24T00:00:00Z\",\"author\":null,\"committer\":null}},\"extension\":{\"ignored\":true},\"reason\":\"merged\"}\n",
+      "signature": "sha256=71d44b2a2fd226be5a8db13d014a758398d1b6cbe86d569cf7c6307067044d2c",
+      "event_header": "merge_group",
+      "error": null
+    },
+    {
+      "name": "destroyed-invalidated",
+      "body": "{\"action\":\"destroyed\",\"installation\":{\"id\":9},\"repository\":{\"id\":11,\"owner\":{\"id\":13}},\"merge_group\":{\"head_sha\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"head_ref\":\"refs/heads/gh-readonly-queue/main/pr-5-test\",\"base_sha\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"base_ref\":\"refs/heads/main\",\"head_commit\":{\"id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"tree_id\":\"cccccccccccccccccccccccccccccccccccccccc\",\"message\":\"Проверка 🦀\",\"timestamp\":\"2026-10-24T00:00:00Z\",\"author\":null,\"committer\":null}},\"extension\":{\"ignored\":true},\"reason\":\"invalidated\"}\n",
+      "signature": "sha256=8cbe67801dea73676109ad3787c80144a39455b4bab578a67bfb7469035b9809",
+      "event_header": "merge_group",
+      "error": null
+    },
+    {
+      "name": "destroyed-dequeued",
+      "body": "{\"action\":\"destroyed\",\"installation\":{\"id\":9},\"repository\":{\"id\":11,\"owner\":{\"id\":13}},\"merge_group\":{\"head_sha\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"head_ref\":\"refs/heads/gh-readonly-queue/main/pr-5-test\",\"base_sha\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"base_ref\":\"refs/heads/main\",\"head_commit\":{\"id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"tree_id\":\"cccccccccccccccccccccccccccccccccccccccc\",\"message\":\"Проверка 🦀\",\"timestamp\":\"2026-10-24T00:00:00Z\",\"author\":null,\"committer\":null}},\"extension\":{\"ignored\":true},\"reason\":\"dequeued\"}\n",
+      "signature": "sha256=c9031de3a8514b51c04d291bff7f7681fe638ca3d68c4750c972d805d5816d3a",
+      "event_header": "merge_group",
+      "error": null
+    },
+    {
+      "name": "destroyed-None",
+      "body": "{\"action\":\"destroyed\",\"installation\":{\"id\":9},\"repository\":{\"id\":11,\"owner\":{\"id\":13}},\"merge_group\":{\"head_sha\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"head_ref\":\"refs/heads/gh-readonly-queue/main/pr-5-test\",\"base_sha\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"base_ref\":\"refs/heads/main\",\"head_commit\":{\"id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"tree_id\":\"cccccccccccccccccccccccccccccccccccccccc\",\"message\":\"Проверка 🦀\",\"timestamp\":\"2026-10-24T00:00:00Z\",\"author\":null,\"committer\":null}},\"extension\":{\"ignored\":true}}\n",
+      "signature": "sha256=058201baebf46ed0ea2c5505c4a402b1182266e20472e1454c23740720b30a5c",
+      "event_header": "merge_group",
+      "error": null
+    },
+    {
+      "name": "future-action",
+      "body": "{\"action\":\"future\",\"installation\":{\"id\":9},\"repository\":{\"id\":11,\"owner\":{\"id\":13}},\"merge_group\":{\"head_sha\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"head_ref\":\"refs/heads/gh-readonly-queue/main/pr-5-test\",\"base_sha\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"base_ref\":\"refs/heads/main\",\"head_commit\":{\"id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"tree_id\":\"cccccccccccccccccccccccccccccccccccccccc\",\"message\":\"Проверка 🦀\",\"timestamp\":\"2026-10-24T00:00:00Z\",\"author\":null,\"committer\":null}},\"extension\":{\"ignored\":true}}\n",
+      "signature": "sha256=7a3bbb50c5bd291784658095224f4f45ec1b4d982dfca68e775d14187e1a8acd",
+      "event_header": "merge_group",
+      "error": "Unsupported"
+    },
+    {
+      "name": "future-reason",
+      "body": "{\"action\":\"destroyed\",\"installation\":{\"id\":9},\"repository\":{\"id\":11,\"owner\":{\"id\":13}},\"merge_group\":{\"head_sha\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"head_ref\":\"refs/heads/gh-readonly-queue/main/pr-5-test\",\"base_sha\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"base_ref\":\"refs/heads/main\",\"head_commit\":{\"id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"tree_id\":\"cccccccccccccccccccccccccccccccccccccccc\",\"message\":\"Проверка 🦀\",\"timestamp\":\"2026-10-24T00:00:00Z\",\"author\":null,\"committer\":null}},\"extension\":{\"ignored\":true},\"reason\":\"future\"}\n",
+      "signature": "sha256=e34c078ae16468cae5e08dcca49257f3d4f7a557fe2e890e61e61d83307ca2a5",
+      "event_header": "merge_group",
+      "error": "Unsupported"
+    },
+    {
+      "name": "checks-with-reason",
+      "body": "{\"action\":\"checks_requested\",\"installation\":{\"id\":9},\"repository\":{\"id\":11,\"owner\":{\"id\":13}},\"merge_group\":{\"head_sha\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"head_ref\":\"refs/heads/gh-readonly-queue/main/pr-5-test\",\"base_sha\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"base_ref\":\"refs/heads/main\",\"head_commit\":{\"id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"tree_id\":\"cccccccccccccccccccccccccccccccccccccccc\",\"message\":\"Проверка 🦀\",\"timestamp\":\"2026-10-24T00:00:00Z\",\"author\":null,\"committer\":null}},\"extension\":{\"ignored\":true},\"reason\":\"merged\"}\n",
+      "signature": "sha256=130d93d26d4259b5c425432c92aeb0b380927f3aa3d02e1cdc60100351ab4d44",
+      "event_header": "merge_group",
+      "error": "Payload"
+    },
+    {
+      "name": "duplicate-action",
+      "body": "{\"action\":\"destroyed\",\"action\":\"checks_requested\",\"installation\":{\"id\":9},\"repository\":{\"id\":11,\"owner\":{\"id\":13}},\"merge_group\":{\"head_sha\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"head_ref\":\"refs/heads/gh-readonly-queue/main/pr-5-test\",\"base_sha\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"base_ref\":\"refs/heads/main\",\"head_commit\":{\"id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"tree_id\":\"cccccccccccccccccccccccccccccccccccccccc\",\"message\":\"Проверка 🦀\",\"timestamp\":\"2026-10-24T00:00:00Z\",\"author\":null,\"committer\":null}},\"extension\":{\"ignored\":true}}\n",
+      "signature": "sha256=524d0c5deceee00c5726093414938ba3c2a26fb467eab41786f148d66bc1a287",
+      "event_header": "merge_group",
+      "error": "Payload"
+    },
+    {
+      "name": "duplicate-repo",
+      "body": "{\"action\":\"checks_requested\",\"installation\":{\"id\":9},\"repository\":null,\"repository\":{\"id\":11,\"owner\":{\"id\":13}},\"merge_group\":{\"head_sha\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"head_ref\":\"refs/heads/gh-readonly-queue/main/pr-5-test\",\"base_sha\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"base_ref\":\"refs/heads/main\",\"head_commit\":{\"id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"tree_id\":\"cccccccccccccccccccccccccccccccccccccccc\",\"message\":\"Проверка 🦀\",\"timestamp\":\"2026-10-24T00:00:00Z\",\"author\":null,\"committer\":null}},\"extension\":{\"ignored\":true}}\n",
+      "signature": "sha256=f498653565bb1fa96cc295233ce6c86c7c1c3bf86353ab21661559161a9281a6",
+      "event_header": "merge_group",
+      "error": "Payload"
+    },
+    {
+      "name": "duplicate-id",
+      "body": "{\"action\":\"checks_requested\",\"installation\":{\"id\":9},\"repository\":{\"id\":999,\"id\":11,\"owner\":{\"id\":13}},\"merge_group\":{\"head_sha\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"head_ref\":\"refs/heads/gh-readonly-queue/main/pr-5-test\",\"base_sha\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"base_ref\":\"refs/heads/main\",\"head_commit\":{\"id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"tree_id\":\"cccccccccccccccccccccccccccccccccccccccc\",\"message\":\"Проверка 🦀\",\"timestamp\":\"2026-10-24T00:00:00Z\",\"author\":null,\"committer\":null}},\"extension\":{\"ignored\":true}}\n",
+      "signature": "sha256=da29a9dea0de1dc4dde2c14223e540d804c33249c8522167b4d7b6bf965e5feb",
+      "event_header": "merge_group",
+      "error": "Payload"
+    },
+    {
+      "name": "zero-installation",
+      "body": "{\"action\":\"checks_requested\",\"installation\":{\"id\":0},\"repository\":{\"id\":11,\"owner\":{\"id\":13}},\"merge_group\":{\"head_sha\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"head_ref\":\"refs/heads/gh-readonly-queue/main/pr-5-test\",\"base_sha\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"base_ref\":\"refs/heads/main\",\"head_commit\":{\"id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"tree_id\":\"cccccccccccccccccccccccccccccccccccccccc\",\"message\":\"Проверка 🦀\",\"timestamp\":\"2026-10-24T00:00:00Z\",\"author\":null,\"committer\":null}},\"extension\":{\"ignored\":true}}\n",
+      "signature": "sha256=15843adc77a474b7e7477bc996d50658ff79b634659da8421950e343db174d72",
+      "event_header": "merge_group",
+      "error": "Payload"
+    },
+    {
+      "name": "too-big-id",
+      "body": "{\"action\":\"checks_requested\",\"installation\":{\"id\":9223372036854775808},\"repository\":{\"id\":11,\"owner\":{\"id\":13}},\"merge_group\":{\"head_sha\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"head_ref\":\"refs/heads/gh-readonly-queue/main/pr-5-test\",\"base_sha\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"base_ref\":\"refs/heads/main\",\"head_commit\":{\"id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"tree_id\":\"cccccccccccccccccccccccccccccccccccccccc\",\"message\":\"Проверка 🦀\",\"timestamp\":\"2026-10-24T00:00:00Z\",\"author\":null,\"committer\":null}},\"extension\":{\"ignored\":true}}\n",
+      "signature": "sha256=bd87066db67021e9c74ab399957ffb9acd4bc622bba65cac05474bbf07a21073",
+      "event_header": "merge_group",
+      "error": "Payload"
+    },
+    {
+      "name": "float-id",
+      "body": "{\"action\":\"checks_requested\",\"installation\":{\"id\":9.0},\"repository\":{\"id\":11,\"owner\":{\"id\":13}},\"merge_group\":{\"head_sha\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"head_ref\":\"refs/heads/gh-readonly-queue/main/pr-5-test\",\"base_sha\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"base_ref\":\"refs/heads/main\",\"head_commit\":{\"id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"tree_id\":\"cccccccccccccccccccccccccccccccccccccccc\",\"message\":\"Проверка 🦀\",\"timestamp\":\"2026-10-24T00:00:00Z\",\"author\":null,\"committer\":null}},\"extension\":{\"ignored\":true}}\n",
+      "signature": "sha256=5438ed04d114da4f883559ea23ff76ee4d4c5e1cced83572a7e6c1743c719ec6",
+      "event_header": "merge_group",
+      "error": "Payload"
+    },
+    {
+      "name": "head-mismatch",
+      "body": "{\"action\":\"checks_requested\",\"installation\":{\"id\":9},\"repository\":{\"id\":11,\"owner\":{\"id\":13}},\"merge_group\":{\"head_sha\":\"dddddddddddddddddddddddddddddddddddddddd\",\"head_ref\":\"refs/heads/gh-readonly-queue/main/pr-5-test\",\"base_sha\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"base_ref\":\"refs/heads/main\",\"head_commit\":{\"id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"tree_id\":\"cccccccccccccccccccccccccccccccccccccccc\",\"message\":\"Проверка 🦀\",\"timestamp\":\"2026-10-24T00:00:00Z\",\"author\":null,\"committer\":null}},\"extension\":{\"ignored\":true}}\n",
+      "signature": "sha256=cba003882b107d0c299edbc6ae0b8a1b8f0834a4af24796f075bff08d1d98e71",
+      "event_header": "merge_group",
+      "error": "Payload"
+    },
+    {
+      "name": "zero-sha",
+      "body": "{\"action\":\"checks_requested\",\"installation\":{\"id\":9},\"repository\":{\"id\":11,\"owner\":{\"id\":13}},\"merge_group\":{\"head_sha\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"head_ref\":\"refs/heads/gh-readonly-queue/main/pr-5-test\",\"base_sha\":\"0000000000000000000000000000000000000000\",\"base_ref\":\"refs/heads/main\",\"head_commit\":{\"id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"tree_id\":\"cccccccccccccccccccccccccccccccccccccccc\",\"message\":\"Проверка 🦀\",\"timestamp\":\"2026-10-24T00:00:00Z\",\"author\":null,\"committer\":null}},\"extension\":{\"ignored\":true}}\n",
+      "signature": "sha256=b73bf0e5c5dbd75054ac7aff4f6303cb4d489b4f93cf5fbe5ca8d66defcb57b7",
+      "event_header": "merge_group",
+      "error": "Payload"
+    },
+    {
+      "name": "sha-uppercase",
+      "body": "{\"action\":\"checks_requested\",\"installation\":{\"id\":9},\"repository\":{\"id\":11,\"owner\":{\"id\":13}},\"merge_group\":{\"head_sha\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"head_ref\":\"refs/heads/gh-readonly-queue/main/pr-5-test\",\"base_sha\":\"BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB\",\"base_ref\":\"refs/heads/main\",\"head_commit\":{\"id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"tree_id\":\"cccccccccccccccccccccccccccccccccccccccc\",\"message\":\"Проверка 🦀\",\"timestamp\":\"2026-10-24T00:00:00Z\",\"author\":null,\"committer\":null}},\"extension\":{\"ignored\":true}}\n",
+      "signature": "sha256=2ecc9659419105befe6c4fbad187550b3d588008060ea6d8c28e6feae077f067",
+      "event_header": "merge_group",
+      "error": "Payload"
+    },
+    {
+      "name": "bad-ref",
+      "body": "{\"action\":\"checks_requested\",\"installation\":{\"id\":9},\"repository\":{\"id\":11,\"owner\":{\"id\":13}},\"merge_group\":{\"head_sha\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"head_ref\":\"refs/heads/gh-readonly-queue/main/pr-5-test\",\"base_sha\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"base_ref\":\"refs/heads/../main\",\"head_commit\":{\"id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"tree_id\":\"cccccccccccccccccccccccccccccccccccccccc\",\"message\":\"Проверка 🦀\",\"timestamp\":\"2026-10-24T00:00:00Z\",\"author\":null,\"committer\":null}},\"extension\":{\"ignored\":true}}\n",
+      "signature": "sha256=dc8ff3d12ab3838278b02fc2b3663614d0f213fd56bc92d083cbe19f82218a7f",
+      "event_header": "merge_group",
+      "error": "Payload"
+    },
+    {
+      "name": "same-ref",
+      "body": "{\"action\":\"checks_requested\",\"installation\":{\"id\":9},\"repository\":{\"id\":11,\"owner\":{\"id\":13}},\"merge_group\":{\"head_sha\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"head_ref\":\"refs/heads/main\",\"base_sha\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"base_ref\":\"refs/heads/main\",\"head_commit\":{\"id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"tree_id\":\"cccccccccccccccccccccccccccccccccccccccc\",\"message\":\"Проверка 🦀\",\"timestamp\":\"2026-10-24T00:00:00Z\",\"author\":null,\"committer\":null}},\"extension\":{\"ignored\":true}}\n",
+      "signature": "sha256=4c3cc26ee7deca44d9bac4f1600c45be785a5696c6b01cf61ba33d002fff60f6",
+      "event_header": "merge_group",
+      "error": "Payload"
+    },
+    {
+      "name": "unicode-ref",
+      "body": "{\"action\":\"checks_requested\",\"installation\":{\"id\":9},\"repository\":{\"id\":11,\"owner\":{\"id\":13}},\"merge_group\":{\"head_sha\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"head_ref\":\"refs/heads/gh-readonly-queue/main/pr-5-test\",\"base_sha\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"base_ref\":\"refs/heads/основная\",\"head_commit\":{\"id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"tree_id\":\"cccccccccccccccccccccccccccccccccccccccc\",\"message\":\"Проверка 🦀\",\"timestamp\":\"2026-10-24T00:00:00Z\",\"author\":null,\"committer\":null}},\"extension\":{\"ignored\":true}}\n",
+      "signature": "sha256=0bdf068651802d0c3f49a4ed1a3519bdb61815071d8cb20b61aff3891cc35d0b",
+      "event_header": "merge_group",
+      "error": null
+    },
+    {
+      "name": "header-substitution",
+      "body": "{\"action\":\"checks_requested\",\"installation\":{\"id\":9},\"repository\":{\"id\":11,\"owner\":{\"id\":13}},\"merge_group\":{\"head_sha\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"head_ref\":\"refs/heads/gh-readonly-queue/main/pr-5-test\",\"base_sha\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"base_ref\":\"refs/heads/main\",\"head_commit\":{\"id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"tree_id\":\"cccccccccccccccccccccccccccccccccccccccc\",\"message\":\"Проверка 🦀\",\"timestamp\":\"2026-10-24T00:00:00Z\",\"author\":null,\"committer\":null}},\"extension\":{\"ignored\":true}}\n",
+      "signature": "sha256=c6bc28c042fc075f4af2dc66ff520e41dc74f74c36203e078ae3a965e1483c4f",
+      "event_header": "ping",
+      "error": "Payload"
+    },
+    {
+      "name": "unsupported-header",
+      "body": "{\"action\":\"checks_requested\",\"installation\":{\"id\":9},\"repository\":{\"id\":11,\"owner\":{\"id\":13}},\"merge_group\":{\"head_sha\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"head_ref\":\"refs/heads/gh-readonly-queue/main/pr-5-test\",\"base_sha\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"base_ref\":\"refs/heads/main\",\"head_commit\":{\"id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"tree_id\":\"cccccccccccccccccccccccccccccccccccccccc\",\"message\":\"Проверка 🦀\",\"timestamp\":\"2026-10-24T00:00:00Z\",\"author\":null,\"committer\":null}},\"extension\":{\"ignored\":true}}\n",
+      "signature": "sha256=c6bc28c042fc075f4af2dc66ff520e41dc74f74c36203e078ae3a965e1483c4f",
+      "event_header": "push",
+      "error": "Unsupported"
+    },
+    {
+      "name": "ping",
+      "body": "{\"hook_id\":8,\"hook\":{\"id\":8,\"app_id\":7,\"type\":\"App\",\"config\":{\"url\":\"https://fixture.invalid/\"}}}\n",
+      "signature": "sha256=95ab43a93063894091c283b02037d971f86dc20e30104e6c38a222e58ed6a396",
+      "event_header": "ping",
+      "error": null
+    },
+    {
+      "name": "foreign-app-ping",
+      "body": "{\"hook_id\":8,\"hook\":{\"id\":8,\"app_id\":99}}\n",
+      "signature": "sha256=b1009b047a8bbae497904f0151f511b7fe69fe5794efdef80d0dd212389f228f",
+      "event_header": "ping",
+      "error": "Payload"
+    },
+    {
+      "name": "foreign-hook",
+      "body": "{\"hook_id\":8,\"hook\":{\"id\":9,\"app_id\":7}}\n",
+      "signature": "sha256=60966df6cf5e73c2744f2dc1d2598aa9cb8ea035fe2a0dd5e2e38a9abf3b7aeb",
+      "event_header": "ping",
+      "error": "Payload"
+    }
+  ]
+}

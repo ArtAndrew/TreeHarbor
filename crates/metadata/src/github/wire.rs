@@ -4,6 +4,22 @@ use serde::Deserialize;
 #[derive(Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
 pub enum WireCommand {
+    EventChannelCreate {
+        key: String,
+        epoch: i64,
+        channel: String,
+        specification: EventChannelSpec,
+    },
+    EventChannelRevoke {
+        key: String,
+        epoch: i64,
+        channel: String,
+    },
+    EventPage {
+        epoch: i64,
+        channel: String,
+        after: i64,
+    },
     DequeueRequest {
         key: String,
         epoch: i64,
@@ -265,7 +281,7 @@ pub enum WireCommand {
         observation: Observation,
     },
 }
-fn id(s: &str) -> Result<Uuid> {
+pub(super) fn id(s: &str) -> Result<Uuid> {
     let id: Uuid = s
         .parse()
         .map_err(|_| Error::Invalid("GitHub operation id"))?;
@@ -277,6 +293,10 @@ fn id(s: &str) -> Result<Uuid> {
 impl WireCommand {
     pub fn permission(&self) -> Permission {
         match self {
+            Self::EventChannelCreate { .. } | Self::EventChannelRevoke { .. } => {
+                Permission::RepositoryWrite
+            }
+            Self::EventPage { .. } => Permission::Read,
             Self::DequeueRequest { .. } => Permission::HostQueue,
             Self::DequeueStatus { .. } => Permission::Read,
             Self::DequeueBegin { .. }
@@ -331,6 +351,36 @@ impl WireCommand {
         backend: Option<&str>,
     ) -> Result<Value> {
         match self {
+            Self::EventChannelCreate {
+                key,
+                epoch,
+                channel,
+                specification,
+            } => {
+                db.create_github_event_channel(
+                    auth,
+                    &Command { key, epoch },
+                    id(&channel)?,
+                    &specification,
+                )
+                .await
+            }
+            Self::EventChannelRevoke {
+                key,
+                epoch,
+                channel,
+            } => {
+                db.revoke_github_event_channel(auth, &Command { key, epoch }, id(&channel)?)
+                    .await
+            }
+            Self::EventPage {
+                epoch,
+                channel,
+                after,
+            } => {
+                db.github_event_page(auth, epoch, id(&channel)?, after)
+                    .await
+            }
             Self::DequeueRequest {
                 key,
                 epoch,
@@ -760,6 +810,31 @@ impl WireCommand {
 mod tests {
     use super::*;
 
+    #[test]
+    fn event_channel_wire_is_owner_scoped_and_cannot_forge_authenticated_delivery() {
+        let value: Value = serde_json::from_str(include_str!(
+            "../../tests/fixtures/github-event-channel-v1.json"
+        ))
+        .unwrap();
+        let c: WireCommand = serde_json::from_value(value.clone()).unwrap();
+        assert_eq!(c.permission(), Permission::RepositoryWrite);
+        for field in ["verified", "body", "signature", "tenant", "app_id"] {
+            let mut bad = value.clone();
+            bad[field] = json!(true);
+            assert!(serde_json::from_value::<WireCommand>(bad).is_err());
+        }
+        assert!(
+            serde_json::from_value::<WireCommand>(
+                json!({"action":"event_receive","verified":true})
+            )
+            .is_err()
+        );
+        let c: WireCommand = serde_json::from_value(
+            json!({"action":"event_page","epoch":1,"channel":value["channel"],"after":0}),
+        )
+        .unwrap();
+        assert_eq!(c.permission(), Permission::Read);
+    }
     #[test]
     fn import_wire_requires_exact_git_revision_and_owner_bridge_separation() {
         let value: Value =

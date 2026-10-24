@@ -71,6 +71,8 @@ in **Standalone** mode. Both share one Rust engine.
 > one-shot native queue requests and recovery of retained asynchronous results.
 > Explicit [queue removal](docs/github-dequeue.md) adds PR-scoped owner requests,
 > one-shot dequeue and recovery without automatically replaying mutations.
+> [Signed event intake](docs/github-events.md) now retains authenticated merge-group
+> callbacks with explicit repository channels and recovery after process loss.
 > Complete policy/group/final-tree verification and installed-App acceptance remain pending.
 > Neither end-to-end mode is released. No packaged installation is available yet.
 > See [implementation status](docs/implementation-status.md) for evidence and gaps.

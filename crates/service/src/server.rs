@@ -33,7 +33,7 @@ pub struct Server {
     pool: Pool<Database>,
     backend: Option<crate::source::Backend>,
 }
-struct SocketGuard {
+pub(crate) struct SocketGuard {
     path: PathBuf,
     device: u64,
     inode: u64,
@@ -50,7 +50,7 @@ impl Drop for SocketGuard {
         }
     }
 }
-async fn bind(path: &Path) -> Result<(UnixListener, SocketGuard)> {
+pub(crate) async fn bind(path: &Path) -> Result<(UnixListener, SocketGuard)> {
     let parent = files::private_directory(path.parent().ok_or(Error::UnsafeFile)?)?;
     let filename = path.file_name().ok_or(Error::UnsafeFile)?;
     let path = parent.join(filename);
@@ -458,6 +458,8 @@ async fn handle(
                 | "host_publication_state"
                 | "host_inspection_state"
                 | "host_queue_state"
+                | "host_event_state"
+                | "host_event_limit"
                 | "host_pull_state"
                 | "version_conflict" => StatusCode::CONFLICT,
                 "upload_state_changed" | "upload_membership" | "object_busy" | "lease_expired" => {

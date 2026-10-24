@@ -1,4 +1,6 @@
 mod common;
+#[path = "github/events.rs"]
+mod events;
 #[path = "github/imports.rs"]
 mod imports;
 use common::{cleanup, connection, setup};

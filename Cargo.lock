@@ -2031,6 +2031,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "treeharbor-github-webhook"
+version = "0.1.0-dev"
+dependencies = [
+ "hmac",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror",
+ "uuid",
+ "zeroize",
+]
+
+[[package]]
 name = "treeharbor-history"
 version = "0.1.0-dev"
 dependencies = [
@@ -2081,6 +2094,7 @@ dependencies = [
  "tokio-postgres",
  "treeharbor-core",
  "treeharbor-github-contract",
+ "treeharbor-github-webhook",
  "treeharbor-merge",
  "treeharbor-runtime",
  "treeharbor-storage",
@@ -2148,6 +2162,7 @@ dependencies = [
  "treeharbor-git-bridge",
  "treeharbor-github",
  "treeharbor-github-contract",
+ "treeharbor-github-webhook",
  "treeharbor-history",
  "treeharbor-materializer",
  "treeharbor-merge",
