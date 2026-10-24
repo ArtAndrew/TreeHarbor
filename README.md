@@ -64,7 +64,9 @@ in **Standalone** mode. Both share one Rust engine.
 > [Publication requests](docs/github-publications.md) now retain owner intent,
 > one-shot dispatch receipts and recovery observations. The trusted
 > [`github publish` command](docs/github-publications.md#publisher-command) joins
-> these records to branch transport; real installed-App acceptance remains pending.
+> these records to branch transport. A [live synthetic acceptance](docs/evidence/connected-live-20261024.json)
+> passed two isolated agent tasks through real App branch/PR publication and exact
+> head-check capture, including recovery after service restart.
 > [Pull request delivery](docs/github-pulls.md) adds explicit PR creation and text
 > updates with retained identities and recovery after a lost response.
 > [Check observations](docs/github-inspections.md) capture selected App-issued checks
@@ -79,7 +81,8 @@ in **Standalone** mode. Both share one Rust engine.
 > through Caddy while leaving the command socket private.
 > [Event recovery](docs/github-event-recovery.md) adds owner-bounded delivery scans,
 > durable one-shot redelivery and signed-content correlation after interruption.
-> Complete policy/group/final-tree verification and installed-App acceptance remain pending.
+> Signed live callbacks, combined queue candidates and complete policy/group/final-tree
+> verification remain pending. The live tasks are scripted fixtures, not an LLM benchmark.
 > Neither end-to-end mode is released. No packaged installation is available yet.
 > See [implementation status](docs/implementation-status.md) for evidence and gaps.
 

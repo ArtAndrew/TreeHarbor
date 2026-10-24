@@ -3,6 +3,19 @@
 Updated: 2026-10-24. This file describes implemented behavior and remaining release
 gates. A foundation milestone does not complete either mode.
 
+A live Connected path now passed from the real App-imported synthetic revision
+through two simultaneous isolated gVisor tasks, separate immutable ChangeSets,
+actual App branch/PR publication and exact selected-check capture. The tasks edit
+the same `src/lib.rs` in independent workspaces. Each published head passed three
+GitHub Actions tests. Publication, PR and inspection tokens were revoked. After
+service SIGKILL/restart, all six completed results replayed identically with no
+App configuration or Git executable. See the [reviewed evidence](evidence/connected-live-20261024.json),
+[PR 1](https://github.com/TreeHarbor/TreeHarbor-acceptance/pull/1) and
+[PR 2](https://github.com/TreeHarbor/TreeHarbor-acceptance/pull/2).
+These are scripted acceptance workloads, not LLM or performance results. Neither
+PR was enqueued during this observation. Signed live group delivery, combined
+candidate failure/repair and final integration mapping remain unverified.
+
 The experimental runtime adapter now selects native Linux x86-64 or ARM64 from
 the compiled controller target and requires matching Engine/image architecture.
 It retains the same immutable image, external gVisor isolation, bounded ext4
@@ -23,10 +36,10 @@ A subsequent [actual App source import](github-import.md#resource-and-verificati
 passed through a trusted Linux aarch64 bridge: the pinned synthetic root commit
 was retained as 15 native objects and restored through server export to ordinary
 Git with the original commit/tree, all seven paths and strict object verification.
-The small fixture contains one commit. SIGKILL/restart retained its identity, and
-recovery required no App key, Git or original local spool. Publication, callbacks
-and complete queue acceptance remain open; this does not test an aarch64 agent
-runtime or supply the planned remote command transport.
+The imported fixture contains one commit. SIGKILL/restart retained its identity, and
+recovery required no App key, Git or original local spool. The later publication
+and ARM64 runtime observations above are separate acceptance steps. Complete queue
+acceptance and the planned remote command transport remain open.
 
 Completed `github import` retries now print the same v1 result as the initial
 completion, including exact native revision/snapshot. The assigned bridge's context
@@ -467,7 +480,7 @@ resource outcomes and worker-loss recovery. No complete authority mode is implie
 
 | Component | Evidence | Remaining |
 |---|---|---|
-| GitHub App connection/import/projection | Live scoped read probe and durable observation/replay; isolated download, resumable import, accepted-version projection/export, exact-branch transport and durable publication/PR/check/queue/event APIs and CLI with protocol fixtures | Installed-App import/publication/check/queue/callback evidence, complete group/final-tree verification, incremental reuse and unattended operation |
+| GitHub App connection/import/projection | Live scoped import and two isolated agent proposals published as real App branches/PRs, exact head-check capture and restart recovery; queue/event APIs have protocol-fixture coverage | Signed live callbacks, combined queue candidates, complete group/final-tree verification, incremental reuse and unattended operation |
 | Canonical SHA-256 object format | Versioned framing, independent golden vectors, strict decoder | Compatibility policy for later formats |
 | Immutable directory trees and operations | Exact expected-before checks, canonical subtree operations v2, bounded structural diff, structural sharing, explicit deletes; native merge and Git reference matrix | General history rebase, broader rename/base support, live-server Git interop |
 | Local object store | Atomic no-clobber writes, digest verification, file/directory fsync, tenant directories, physical generations and upload receipts | S3, backup/restore, kill fault campaign |
@@ -495,7 +508,7 @@ resource outcomes and worker-loss recovery. No complete authority mode is implie
 | Git source export | Local native-pack CLI and bounded Rust full-DAG projection to self-contained Git SHA-1/SHA-256 bundle; isolated batch Git, exact mapping, verified original Git metadata/IDs, restored fsck and no-replace publication | Backup metadata, incremental projection, GitHub delivery |
 | Live source export | Scoped registered-base reads with GC holds and authority/credential fences; streaming archive v1 and atomically verified pack v3; actual CLI restart/merge/origin roundtrip | Other retained proposals, all-ref export, full metadata backup, incremental transfer, longer jobs and cleanup |
 | Git history import | Pinned self-contained SHA-1/SHA-256 bundle, all-parent native graph, replayed deltas, exact original metadata, atomic full-source pack v2 and resumable HTTP/CLI upload; scoped Linux/SHA-1 App download verified on the live synthetic root | Broader live histories, incremental imports, multi-ref cutover, automated cleanup, larger-repository profiling |
-| Connected | Partial: live read-only App connection, durable bindings, exact source import/projection, publication/PR/check/queue/event operations with explicit fixture coverage | Complete installed-App source-to-main workflow, exact group/final-tree verification and operational acceptance |
+| Connected | Partial: real App import, isolated agent execution, accepted changes, branch/PR publication, exact head-check capture and durable replay | Signed live callbacks, complete installed-App source-to-main workflow, exact group/final-tree verification and operational acceptance |
 | Standalone S2 | Partial: durable native admission/publication, scoped history/candidate diff and single-ChangeSet rebase through CLI/API without Git, managed offline checks, registered-source export, plus explicitly separate transport fixtures | General history stack rewriting, full lifecycle, cutover, full server backup/restore |
 | Release and benchmarks | Not released or measured | Clean installation, artifacts, SBOM/provenance, comparison and operating cost |
 

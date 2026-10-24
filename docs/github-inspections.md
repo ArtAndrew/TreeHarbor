@@ -3,8 +3,12 @@
 Development API and CLI. After [PR delivery](github-pulls.md), capture selected
 GitHub Check Runs for the exact published commit and compare the PR head, base
 and active rulesets before and after capture. This records evidence; it does not
-authorize queue admission or merging. Actual installed-App, merge-group validation
-and complete GitHub queue integration remain release gates.
+authorize queue admission or merging. [Actual installed-App captures](evidence/connected-live-20261024.json)
+passed for two exact synthetic PR heads, selecting the observed GitHub Actions
+App ID and retaining consistent before/after PR/ruleset observations. Both
+completed captures recovered identically after service restart without the App
+configuration. Merge-group validation and complete GitHub queue integration
+remain release gates.
 
 ## Request a capture
 
