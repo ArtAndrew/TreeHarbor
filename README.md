@@ -118,6 +118,10 @@ To build and exercise the local server and credential administration, follow the
 exercises the control plane. [Live source export](docs/live-source-export.md)
 downloads complete pinned history; the [Git export guide](docs/git-export.md)
 converts a completed local pack to a self-contained bundle.
+The [GitHub queue acceptance kit](examples/github-queue/README.md) provides a small
+Rust workload whose independent changes pass but whose clean text merge fails a
+combined check. It includes a real `merge_group` workflow and evidence-capture
+tools; live Connected acceptance remains unfinished.
 The [local node guide](docs/local-node.md) prepares native
 workspace files. [Managed runs](docs/managed-runs.md) add experimental Linux execution
 with explicitly provisioned bounded volumes and approved runtime profiles.

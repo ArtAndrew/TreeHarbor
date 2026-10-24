@@ -1,7 +1,31 @@
 # Implementation status
 
-Updated: 2026-10-23. This file describes implemented behavior and remaining release
+Updated: 2026-10-24. This file describes implemented behavior and remaining release
 gates. A foundation milestone does not complete either mode.
+
+The [GitHub queue acceptance kit](../examples/github-queue/README.md) now provides a
+synthetic Rust seed, a pinned `merge_group` workflow, exact overlapping edits and a
+private-App permission template. Its local driver runs actual Git/Cargo: baseline
+and three independent proposals pass, a textually clean combination fails its
+budget invariant, an explicit new repair passes, and a separate overlap conflicts.
+The workload is configured to run in both OS CI jobs. This prepares live-host acceptance;
+it is not an installed App or a completed TreeHarbor Connected scenario.
+
+A separate read-only operator diagnostic records bounded queue/commit/check
+snapshots using GitHub CLI. Its query was accepted against real TreeHarbor PR47,
+returning the merged commit/tree/parent and a null queue. This verifies query syntax
+and that observation only; populated queue membership and final mapping still need
+the eligible live fixture. Truncated pages are explicit errors. Diagnostic captures
+always keep `merge_verified: false` and cannot register product validation.
+
+Merged signed-event intake (PR47, schema23) has passed all five required checks.
+Inspected CI logs include 244 ordinary tests on each OS, 255 explicit database/Linux
+transport tests and 42 actual gVisor runtime PASS lines. The receiver validates
+original bytes, commits scoped immutable events/dedup/outbox before acknowledgement,
+and recovers after process loss. Actual installed-App callback acceptance, delivery
+backfill, complete group membership/check/final proof and the full operational/
+installation/benchmark gates remain open. Older entries below record prior stages;
+their local counts and then-pending features are historical, not current totals.
 
 Experimental [explicit queue removal](github-dequeue.md) adds an independent Human
 PR-scoped authorization, one-shot Bridge dispatch, immutable PostgreSQL reports
