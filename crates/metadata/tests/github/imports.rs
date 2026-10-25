@@ -373,7 +373,15 @@ async fn expiry_during_import_request_begin_finish_receipt_and_outbox_rolls_back
         let mut f = Fixture::new().await;
         f.bind().await;
         let raw = connection(&f.schema).await;
-        raw.batch_execute("CREATE FUNCTION short_import() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN NEW.expires_at=clock_timestamp()+interval '1 second'; RETURN NEW; END; $$; CREATE TRIGGER short_import BEFORE INSERT ON th_github_imports FOR EACH ROW EXECUTE FUNCTION short_import();").await.unwrap();
+        // Leave time for real object fsync/upload before the boundary under test.
+        // The delay trigger below waits for the retained deadline, not a fixed
+        // sleep measured from unrelated setup work. No production fence changes.
+        let ttl = if matches!(target, "request" | "begin") {
+            1
+        } else {
+            10
+        };
+        raw.batch_execute(&format!("CREATE FUNCTION short_import() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN NEW.expires_at=clock_timestamp()+make_interval(secs=>{ttl}); RETURN NEW; END; $$; CREATE TRIGGER short_import BEFORE INSERT ON th_github_imports FOR EACH ROW EXECUTE FUNCTION short_import();")).await.unwrap();
         let id = Uuid::new_v4();
         let graph = graph();
         let owner = f.owner().await;
@@ -407,7 +415,7 @@ async fn expiry_during_import_request_begin_finish_receipt_and_outbox_rolls_back
             ),
             _ => ("th_outbox", "INSERT", "NEW.kind='github.import.completed'"),
         };
-        raw.batch_execute(&format!("CREATE SEQUENCE delay_seen; CREATE FUNCTION delay_import() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF {condition} THEN PERFORM nextval('delay_seen'); PERFORM pg_sleep(1.2); END IF; RETURN NEW; END; $$; CREATE TRIGGER delay_import AFTER {event} ON {table} FOR EACH ROW EXECUTE FUNCTION delay_import();")).await.unwrap();
+        raw.batch_execute(&format!("CREATE SEQUENCE delay_seen; CREATE FUNCTION delay_import() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF {condition} THEN PERFORM nextval('delay_seen'); PERFORM pg_sleep(GREATEST(0,extract(epoch FROM ((SELECT expires_at FROM th_github_imports WHERE import='{id}'::uuid)-clock_timestamp())))+0.02); END IF; RETURN NEW; END; $$; CREATE TRIGGER delay_import AFTER {event} ON {table} FOR EACH ROW EXECUTE FUNCTION delay_import();")).await.unwrap();
         let result = match target {
             "request" => {
                 f.db.request_github_import(&owner, &cmd("deadline"), id, f.binding, &spec_import())

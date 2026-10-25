@@ -11,7 +11,12 @@ pub struct ManagedPullCheckSpec {
 
 // Derived from a completed, assigned-bridge PR publication. This is a retained
 // source identity, not a fresh remote observation or an authorization to merge.
-async fn source(tx: &Transaction<'_>, s: &Scope, id: Uuid, epoch: i64) -> Result<(Uuid, Value)> {
+pub(super) async fn source(
+    tx: &Transaction<'_>,
+    s: &Scope,
+    id: Uuid,
+    epoch: i64,
+) -> Result<(Uuid, Value)> {
     let p = pulls::load(tx, s, id).await?;
     let b = binding(tx, s, p.get("binding")).await?;
     let projection = projections::load(tx, s, p.get("projection")).await?;

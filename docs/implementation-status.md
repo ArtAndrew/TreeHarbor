@@ -11,8 +11,20 @@ reusing an older program's context. The initial policy proof requires the docume
 legacy-protection profile; it is not a complete host-policy or final-merge proof.
 Contract vectors and loopback HTTP tests cover drift, failure boundaries, exact
 identities and bounded recovery. No acceptance App permissions were changed.
-Durable owner authorization/dispatch records, service/CLI wiring and live check
-publication remain unfinished. This library alone is not a product admission gate.
+Experimental [managed check publication](github-check-publications.md) now adds
+schema28, explicit Bridge `host.check`, execution-derived owner requests, one-shot
+attempt/dispatch records, immutable reports and a private-journal CLI. Source,
+owner/validator/runtime trust, binding, epoch and deadline are rechecked at the
+dispatch boundary. Unknown writes remain fenced after expiry/cancellation and
+cannot be reclassified as not-sent. Historical recovery never renews a grant.
+Seven focused PostgreSQL tests passed, including populated migration, preserved
+credential scope, negative execution, exact group head, revocation, replay and
+expiry during receipt/outbox writes. The actual CLI/server kill regression also
+passed: a lost reservation reply is safely closed as not-sent, and a lost committed
+report reply replays exactly once without an App key. Git import is real; provider
+and terminal-runtime observations in this regression are explicitly fixtures.
+Full live check publication remains unfinished;
+these components alone do not complete the product admission gate.
 
 Experimental [managed Connected checks](github-managed-checks.md) now reuse the
 trusted offline runtime for an owner-approved exact PR head or queue candidate and
@@ -609,7 +621,7 @@ resource outcomes and worker-loss recovery. No complete authority mode is implie
 | Local object store | Atomic no-clobber writes, digest verification, file/directory fsync, tenant directories, physical generations and upload receipts | S3, backup/restore, kill fault campaign |
 | Native DAG and admission | Scoped history/log/ancestry/merge-base HTTP/CLI, persisted refs/policies/queue/checks/reviews, verified candidate commits, final transactional admission and no-Git CLI/process-loss tests | General history stack rebase, automatic scheduling, full lifecycle and recovery |
 | Review diff | Read-only exact ChangeSet/candidate/revision HTTP/CLI, retained integration/policy/version/run identity, scoped GC holds, bounded byte paths and text, actual Git path oracle and restart/page/error tests | Review UI, persistent diff indexing and larger-repository profiling |
-| PostgreSQL metadata and outbox | Real database transaction/idempotency/lease tests; repository authority/epoch checks; additive schema 27 with publication, queue, event recovery, owner policy and PR/group managed-check ledgers; local service pool and crash/replay | Remote service integration and full server restore |
+| PostgreSQL metadata and outbox | Real database transaction/idempotency/lease tests; repository authority/epoch checks; additive schema 28 with publication, queue, event recovery, owner policy, PR/group managed-check and required-check delivery ledgers; local service pool and crash/replay | Remote service integration and full server restore |
 | Native ChangeSet intake | HTTP/CLI immutable proposals and separate ready-seal acceptance, scoped blobs, computed versions, original run lineage, atomic pins/outbox and process-loss replay | GitHub base synchronization, remote transport and retention |
 | Protected incremental source reads | Pinned sessions, verified frontiers, bounded prefix batches and descriptors surviving local GC; authenticated workspace-root sessions | Per-tenant service quotas, bulk node delivery and S3 |
 | Native file materialization | Private copies from exact snapshots, full/sparse selection, staged expansion preserving edits/deletions, bounded IO and filesystem checks; guarded node publication and selected capture after runtime removal | Cache/reflink, wider capture fault matrix and Git-compatible format |
@@ -631,7 +643,7 @@ resource outcomes and worker-loss recovery. No complete authority mode is implie
 | Git source export | Local native-pack CLI and bounded Rust full-DAG projection to self-contained Git SHA-1/SHA-256 bundle; isolated batch Git, exact mapping, verified original Git metadata/IDs, restored fsck and no-replace publication | Backup metadata, incremental projection, GitHub delivery |
 | Live source export | Scoped registered-base reads with GC holds and authority/credential fences; streaming archive v1 and atomically verified pack v3; actual CLI restart/merge/origin roundtrip | Other retained proposals, all-ref export, full metadata backup, incremental transfer, longer jobs and cleanup |
 | Git history import | Pinned self-contained SHA-1/SHA-256 bundle, all-parent native graph, replayed deltas, exact original metadata, atomic full-source pack v2 and resumable HTTP/CLI upload; scoped Linux/SHA-1 App download verified on the live synthetic root | Broader live histories, incremental imports, multi-ref cutover, automated cleanup, larger-repository profiling |
-| Connected | Partial: real App import, isolated agent execution, accepted changes, branch/PR publication, exact head-check capture and durable replay | Signed live callbacks, complete installed-App source-to-main workflow, exact group/final-tree verification and operational acceptance |
+| Connected | Partial: real App import, isolated agent execution, accepted changes, branch/PR publication, exact head-check capture, signed live callbacks and durable replay | Complete installed-App source-to-main workflow with managed required checks, exact group/final-tree verification and operational acceptance |
 | Standalone S2 | Partial: durable native admission/publication, scoped history/candidate diff and single-ChangeSet rebase through CLI/API without Git, managed offline checks, registered-source export, plus explicitly separate transport fixtures | General history stack rewriting, full lifecycle, cutover, full server backup/restore |
 | Release and benchmarks | Not released or measured | Clean installation, artifacts, SBOM/provenance, comparison and operating cost |
 

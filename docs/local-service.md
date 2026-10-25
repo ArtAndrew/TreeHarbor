@@ -74,6 +74,10 @@ not expanded automatically during schema upgrades.
 Experimental [event recovery](github-event-recovery.md) uses a Human's
 `repository.write` request and the assigned Bridge's separate `host.recover`
 grant. Read, publish and merge credentials do not acquire recovery permission.
+Experimental [managed check publication](github-check-publications.md) uses a
+Human's `host.queue` request and an assigned Bridge's explicit `host.check` grant.
+It derives the result from protected execution; an agent cannot supply success.
+Schema28 does not add this permission to any existing credential.
 
 `token-issue` writes a versioned JSON credential to a new mode-0600 file. It never
 overwrites an existing file or prints the secret. Stdout reports the token ID and

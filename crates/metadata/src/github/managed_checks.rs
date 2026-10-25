@@ -1,6 +1,7 @@
 //! Owner-approved offline checks of an imported, exact GitHub PR or queue candidate.
 //! Runtime evidence is independent of GitHub workflow results and admission.
 use super::*;
+pub(super) mod publication;
 mod pull;
 use crate::{
     check_runtime::{self, Subject},

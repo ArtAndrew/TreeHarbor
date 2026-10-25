@@ -26,7 +26,11 @@ leased outbox primitives, an object catalog, persistent root pins and manual
 generation-safe retirement. Catalog tests include real files, a reference
 reachability model and concurrent upload/collection. Migrations verify the
 published checksum chain; tests upgrade historical populated schemas while
-retaining pins, workspaces, receipts and credentials. Current schema 27 adds PR-head
+retaining pins, workspaces, receipts and credentials. Current schema 28 adds
+[managed check publication](github-check-publications.md): immutable owner intent,
+one-shot attempt/dispatch and report ledgers, with opt-in `host.check` grants.
+Populated schema27 migration preserves execution bytes, receipts and token scopes.
+Schema 27 adds PR-head
 sources to [managed Connected checks](github-managed-checks.md), retaining populated
 group evidence and receipts. Schema 26 introduced group execution without
 creating native refs or retroactive approvals. Schema 25 added
