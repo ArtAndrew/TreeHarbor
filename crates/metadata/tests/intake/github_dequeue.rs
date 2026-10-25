@@ -11,6 +11,142 @@ fn spec(f: &QueueFixture) -> DequeueSpec {
 }
 
 #[tokio::test]
+#[ignore = "requires PostgreSQL; repeated real-shaped enqueue/removal cycles retain old fences"]
+async fn dequeue_successor_is_not_blocked_by_a_settled_predecessor() {
+    for no_send in [false, true] {
+        let mut f = QueueFixture::new().await;
+        let mut predecessor = None;
+        for cycle in 0..3 {
+            f.id = Uuid::new_v4();
+            let key = |step: &str| cmd(&format!("cycle-{cycle}-{step}"));
+            f.p.f
+                .db
+                .request_github_queue(&f.owner, &key("request"), f.id, &f.spec)
+                .await
+                .unwrap();
+            let enqueue = Uuid::new_v4();
+            f.p.f
+                .db
+                .begin_github_queue(&f.bridge, &key("begin"), f.id, enqueue)
+                .await
+                .unwrap();
+            let mut sent = f.report().await;
+            sent.version = 3;
+            sent.enqueue_receipt = Some(EnqueueReceipt {
+                request_id: enqueue.to_string(),
+                repository_id: f.target.pull.repository_id,
+                pull_node: f.target.pull.pull_node.clone(),
+                pull_number: f.target.pull.pull_number,
+                queue_id: "MQ_one".into(),
+                entry_id: "MQE_one".into(),
+                head_revision: f.target.pull.head_revision.clone(),
+            });
+            f.p.f
+                .db
+                .report_github_queue(&f.bridge, &key("sent"), f.id, enqueue, &sent)
+                .await
+                .unwrap();
+            if let Some(old) = predecessor {
+                let old_spec = DequeueSpec {
+                    queue: old,
+                    ttl_seconds: 60,
+                    scope: "pull_request".into(),
+                };
+                // A new removal of the predecessor must not remove this live successor.
+                assert!(
+                    f.p.f
+                        .db
+                        .request_github_dequeue(
+                            &f.owner,
+                            &key("old-remove"),
+                            Uuid::new_v4(),
+                            &old_spec
+                        )
+                        .await
+                        .is_err()
+                );
+            }
+            let id = Uuid::new_v4();
+            let removal = spec(&f);
+            let requested =
+                f.p.f
+                    .db
+                    .request_github_dequeue(&f.owner, &key("remove"), id, &removal)
+                    .await
+                    .unwrap();
+            assert_eq!(requested["enqueue_settled"], true);
+            let attempt = Uuid::new_v4();
+            assert_eq!(
+                f.p.f
+                    .db
+                    .begin_github_dequeue(&f.bridge, &key("remove-begin"), id, attempt)
+                    .await
+                    .unwrap()["dispatch_granted"],
+                true
+            );
+            let mut absent = report(&f).await;
+            absent.after = Some(snapshot(&f).await);
+            f.p.f
+                .db
+                .report_github_dequeue(&f.bridge, &key("absent"), id, attempt, &absent)
+                .await
+                .unwrap();
+            // Absence alone cannot release an unknown PR-scoped remote mutation.
+            assert!(
+                f.p.f
+                    .db
+                    .request_github_queue(
+                        &f.owner,
+                        &key("unknown-enqueue"),
+                        Uuid::new_v4(),
+                        &f.spec
+                    )
+                    .await
+                    .is_err()
+            );
+            assert!(
+                f.p.f
+                    .db
+                    .request_github_dequeue(
+                        &f.owner,
+                        &key("unknown-remove"),
+                        Uuid::new_v4(),
+                        &removal
+                    )
+                    .await
+                    .is_err()
+            );
+            let mut settled = report(&f).await;
+            settled.after = Some(snapshot(&f).await);
+            if no_send {
+                settled.mutation_not_sent = true;
+            } else {
+                settled.before = Some(queued(snapshot(&f).await));
+                settled.receipt = Some(receipt(&f, id));
+            }
+            let result =
+                f.p.f
+                    .db
+                    .report_github_dequeue(&f.bridge, &key("settled"), id, attempt, &settled)
+                    .await
+                    .unwrap();
+            assert_eq!(result["state"], "removal_observed");
+            assert_eq!(
+                result,
+                f.p.f
+                    .db
+                    .report_github_dequeue(&f.bridge, &key("settled"), id, attempt, &settled)
+                    .await
+                    .unwrap()
+            );
+            assert!(!result["merge_verified"].as_bool().unwrap());
+            predecessor = Some(f.id.to_string());
+        }
+        cleanup(&f.p.f.schema).await;
+    }
+}
+
+#[tokio::test]
 #[ignore = "requires PostgreSQL; positive no-send recovery, conflicting receipts and cross-intent dispatch fences"]
 async fn dequeue_no_send_recovery_unblocks_cancel_but_never_overlaps_a_new_enqueue() {
     let mut f = QueueFixture::new().await;
