@@ -9,13 +9,50 @@ below retain evidence from individual increments. Their earlier statements about
 unfinished work describe the scope at that time; they are not a replacement for
 the current overview or the full [release gate ledger](#release-gate-ledger).
 
-Latest verified increment: [PR65](https://github.com/ArtAndrew/TreeHarbor/pull/65),
+Last full CI baseline before this increment: [PR65](https://github.com/ArtAndrew/TreeHarbor/pull/65),
 published on 2026-10-25 after all six required checks passed. The
 [CI run](https://github.com/ArtAndrew/TreeHarbor/actions/runs/40172363797) passed
 324 ordinary tests on each of Linux/macOS, 290 real PostgreSQL contracts, 43 actual
 gVisor scenario groups on each of Linux x86-64/ARM64, and 11 webhook TLS/failure
 groups. These correctness checks do not establish complete mode readiness or
 performance superiority.
+
+## Live managed required checks and repair
+
+The [2026-10-25 acceptance record](evidence/connected-required-check-live-20261025.json)
+now links actual managed gVisor execution to required GitHub App checks, retained
+queue membership and the final published candidate. The original PR passed its
+own check; its combined candidate failed. A fresh scripted repair passed separate
+PR and combined-candidate executions and merged through the protected GitHub queue.
+The Rust bridge then confirmed the exact candidate commit, tree and ordered parents
+in the target history. Four distinct managed checks were published; old success
+was not reused for a changed candidate. The later same-SHA `push` workflow is kept
+separate from the selected `merge_group` workflow.
+
+A real service kill plus deliberately hidden local acknowledgement recovered the
+same report and check ID without an App configuration or another publication.
+All four check workspaces and both scripted-repair workspaces were deleted through
+product cleanup. All five temporary credentials were revoked within the authorized
+hour, original grants restored, and the VM copy of the App key removed. The runtime
+proxy and temporary volume were also removed. The trial used private operator drivers, an external
+sandbox and a pinned offline check program. It is not packaged onboarding, an LLM
+benchmark, a full server restore drill or evidence of performance superiority.
+
+The trial also exposed a repeated-removal defect: after a settled removal and a
+new enqueue for the same PR, the predecessor still blocked removal of the successor.
+The conflict check now recognizes the same settled-removal evidence used by
+re-enqueue. Unknown operations, absence without a receipt/positive no-send, and
+attempts to remove a predecessor while its successor is live remain fenced.
+The new PostgreSQL regression failed before the fix and covers three successive
+cycles for both acknowledged-removal and positive-no-send paths. All ten dequeue
+PostgreSQL tests passed on macOS and Linux, strict metadata Clippy passed locally,
+and the previously refused live cleanup request succeeded after the update. The normal exact-head
+CI checks remain required before merge.
+
+Full policy/admission certification and unattended reconciliation remain open.
+The product's `exact_candidate_published` content fact is true for the repair,
+while `checks_verified`, `host_policy_verified` and `merge_verified` remain false
+in the final publication view. No operator override changes those flags.
 
 Experimental [required-check transport](github-required-check-transport.md) now
 creates an exact App check after stable PR/group and required-context reads, then
@@ -24,7 +61,8 @@ scans without retrying creation. Program/epoch-specific names prevent silently
 reusing an older program's context. The initial policy proof requires the documented
 legacy-protection profile; it is not a complete host-policy or final-merge proof.
 Contract vectors and loopback HTTP tests cover drift, failure boundaries, exact
-identities and bounded recovery. No acceptance App permissions were changed.
+identities and bounded recovery. The later bounded live trial used explicitly
+authorized Checks-write and Administration-read permissions on the test App only.
 Experimental [managed check publication](github-check-publications.md) now adds
 schema28, explicit Bridge `host.check`, execution-derived owner requests, one-shot
 attempt/dispatch records, immutable reports and a private-journal CLI. Source,
@@ -38,7 +76,7 @@ The actual CLI/server kill regression also
 passed: a lost reservation reply is safely closed as not-sent, and a lost committed
 report reply replays exactly once without an App key. Git import is real; provider
 and terminal-runtime observations in this regression are explicitly fixtures.
-Full live check publication remains unfinished;
+The bounded live execution/publication trial above now passed;
 these components alone do not complete the product admission gate.
 
 Experimental [managed Connected checks](github-managed-checks.md) now reuse the
@@ -47,9 +85,9 @@ completed Git import. PR checks need no existing inspection or queue entry.
 Schema27 preserves collected group evidence and adds the separate PR source;
 schema26 introduced immutable approval, source and execution receipts;
 current status checks trust again. Unknown exits never become success, and source,
-authority or permission changes fence new starts. This does not publish a required
-GitHub check or complete host admission. Collector-success fixtures are explicitly
-synthetic trusted observations; full live Connected execution remains a gate.
+authority or permission changes fence new starts. Publication uses the separate managed-check publisher; execution alone does not
+complete host admission. Collector-success fixtures in the original regression
+are explicitly synthetic; the separate live record above uses actual execution.
 
 Focused validation: `cargo test -p treeharbor-metadata --locked managed_checks --
 --ignored --test-threads=1` passed 7 PostgreSQL contracts. The separate metadata
