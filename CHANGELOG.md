@@ -26,6 +26,7 @@
 - Exact published-candidate identity/tree/parent and target-ancestry observations, bound to retained membership with crash-safe replay. CI context and complete merge admission remain separate gates.
 - Owner-approved managed checks of exact imported GitHub queue candidates, with shared trusted runtime evidence, revocation fences and retained receipts. Required App-check publication and full live Connected acceptance remain pending.
 - Managed checks of published PR heads before queue admission, sharing the same runtime and scoped lifecycle. PR evidence is separate from group evidence; populated group records survive the additive schema upgrade.
+- Execution-derived required App-check publication with explicit owner/bridge permissions, one-shot dispatch, immutable reports and CLI recovery after lost replies. An uncertain write is not retried; full live Connected admission remains a release gate.
 - Contract tests and product documentation.
 
 There is no installable product release yet.

@@ -31,6 +31,14 @@ fn read<T: DeserializeOwned>(path: &Path) -> Result<T> {
         .map_err(|_| Error::PublicationState)
 }
 impl Journal {
+    pub fn read_optional<T: DeserializeOwned>(&self, name: &str) -> Result<Option<T>> {
+        let path = self.root.join(name);
+        if path.try_exists()? {
+            Ok(Some(read(&path)?))
+        } else {
+            Ok(None)
+        }
+    }
     pub fn open(path: &Path, intent: &Value) -> Result<Self> {
         let root = files::private_directory(path)?;
         let lock = OpenOptions::new()

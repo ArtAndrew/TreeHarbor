@@ -4,6 +4,8 @@ pub(crate) mod imports;
 pub(crate) mod projections;
 pub use projections::ProjectionSpec;
 mod check_policy;
+mod check_publications;
+pub use check_publications::CheckPublicationSpec;
 mod managed_checks;
 pub(crate) use managed_checks::execution_fence;
 pub use managed_checks::{ManagedCheckSpec, ManagedPullCheckSpec};

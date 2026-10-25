@@ -1,5 +1,7 @@
 use super::*;
 use std::path::Path;
+#[path = "check_publications.rs"]
+mod check_publications;
 #[path = "publication_driver.rs"]
 mod driver;
 #[path = "pulls.rs"]
@@ -212,6 +214,7 @@ pub(super) async fn exercise(
     ));
     assert_eq!(status["state"], "observed");
     pulls::exercise(f, server, owner, publisher, publication).await;
+    check_publications::exercise(f, server, owner, publisher, publication, restored).await;
     #[cfg(target_os = "linux")]
     driver::lost_dispatch(f, server, owner, publisher, projection).await;
 }

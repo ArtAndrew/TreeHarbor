@@ -4,6 +4,45 @@ use serde::Deserialize;
 #[derive(Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
 pub enum WireCommand {
+    CheckPublicationRequest {
+        key: String,
+        epoch: i64,
+        publication: String,
+        specification: CheckPublicationSpec,
+    },
+    CheckPublicationBegin {
+        key: String,
+        epoch: i64,
+        publication: String,
+        attempt: String,
+    },
+    CheckPublicationDispatch {
+        key: String,
+        epoch: i64,
+        publication: String,
+        attempt: String,
+        preflight: Box<treeharbor_github_contract::check_publication::Preflight>,
+    },
+    CheckPublicationReport {
+        key: String,
+        epoch: i64,
+        publication: String,
+        attempt: String,
+        report: Box<treeharbor_github_contract::check_publication::Report>,
+    },
+    CheckPublicationStatus {
+        epoch: i64,
+        publication: String,
+    },
+    CheckPublicationContext {
+        epoch: i64,
+        publication: String,
+    },
+    CheckPublicationCancel {
+        key: String,
+        epoch: i64,
+        publication: String,
+    },
     ManagedCheckApprovePull {
         key: String,
         epoch: i64,
@@ -448,6 +487,14 @@ pub(super) fn id(s: &str) -> Result<Uuid> {
 impl WireCommand {
     pub fn permission(&self) -> Permission {
         match self {
+            Self::CheckPublicationRequest { .. } | Self::CheckPublicationCancel { .. } => {
+                Permission::HostQueue
+            }
+            Self::CheckPublicationStatus { .. } => Permission::Read,
+            Self::CheckPublicationContext { .. }
+            | Self::CheckPublicationBegin { .. }
+            | Self::CheckPublicationDispatch { .. }
+            | Self::CheckPublicationReport { .. } => Permission::HostCheck,
             Self::ManagedCheckApprove { .. }
             | Self::ManagedCheckApprovePull { .. }
             | Self::ManagedCheckRevoke { .. } => Permission::PolicyWrite,
@@ -536,6 +583,82 @@ impl WireCommand {
         backend: Option<&str>,
     ) -> Result<Value> {
         match self {
+            Self::CheckPublicationRequest {
+                key,
+                epoch,
+                publication,
+                specification,
+            } => {
+                db.request_github_check_publication(
+                    auth,
+                    &Command { key, epoch },
+                    id(&publication)?,
+                    &specification,
+                )
+                .await
+            }
+            Self::CheckPublicationBegin {
+                key,
+                epoch,
+                publication,
+                attempt,
+            } => {
+                db.begin_github_check_publication(
+                    auth,
+                    &Command { key, epoch },
+                    id(&publication)?,
+                    id(&attempt)?,
+                )
+                .await
+            }
+            Self::CheckPublicationDispatch {
+                key,
+                epoch,
+                publication,
+                attempt,
+                preflight,
+            } => {
+                db.dispatch_github_check_publication(
+                    auth,
+                    &Command { key, epoch },
+                    id(&publication)?,
+                    id(&attempt)?,
+                    &preflight,
+                )
+                .await
+            }
+            Self::CheckPublicationReport {
+                key,
+                epoch,
+                publication,
+                attempt,
+                report,
+            } => {
+                db.report_github_check_publication(
+                    auth,
+                    &Command { key, epoch },
+                    id(&publication)?,
+                    id(&attempt)?,
+                    &report,
+                )
+                .await
+            }
+            Self::CheckPublicationStatus { epoch, publication } => {
+                db.github_check_publication_status(auth, epoch, id(&publication)?, false)
+                    .await
+            }
+            Self::CheckPublicationContext { epoch, publication } => {
+                db.github_check_publication_status(auth, epoch, id(&publication)?, true)
+                    .await
+            }
+            Self::CheckPublicationCancel {
+                key,
+                epoch,
+                publication,
+            } => {
+                db.cancel_github_check_publication(auth, &Command { key, epoch }, id(&publication)?)
+                    .await
+            }
             Self::ManagedCheckApprovePull {
                 key,
                 epoch,

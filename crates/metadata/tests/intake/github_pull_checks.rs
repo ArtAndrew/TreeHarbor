@@ -2,7 +2,9 @@ use super::*;
 use sha2::{Digest, Sha256};
 use treeharbor_metadata::github::ManagedPullCheckSpec;
 
-async fn setup(p: &mut Projection) -> (Authorization, Authorization, Uuid, ManagedPullCheckSpec) {
+pub(super) async fn setup(
+    p: &mut Projection,
+) -> (Authorization, Authorization, Uuid, ManagedPullCheckSpec) {
     let pull = inspections::observed_pull(p).await;
     let git: String = connection(&p.f.schema)
         .await
@@ -400,6 +402,7 @@ async fn pull_check_upgrade_preserves_collected_group_evidence_bytes() {
     // migration fixture, not an execution by the preceding binary. Remove only
     // the new, unused source column/constraint. Collected v1 rows,
     // their program, runtime and historical receipt are fully populated.
+    crate::common::drop_unpopulated_v28(&raw).await;
     raw.batch_execute("ALTER TABLE th_github_managed_checks DROP CONSTRAINT th_github_managed_check_source, DROP CONSTRAINT th_github_managed_check_pull, DROP COLUMN pull, ALTER COLUMN queue SET NOT NULL, ALTER COLUMN membership_sequence SET NOT NULL").await.unwrap();
     raw.execute(
         "UPDATE th_schema_version SET version=26,migration_digest=$1",
@@ -417,7 +420,7 @@ async fn pull_check_upgrade_preserves_collected_group_evidence_bytes() {
             .await
             .unwrap()
             .get::<_, i32>(0),
-        27
+        28
     );
     assert_eq!(
         bytes,

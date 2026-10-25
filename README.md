@@ -92,8 +92,9 @@ in **Standalone** mode. Both share one Rust engine.
 > [Managed Connected checks](docs/github-managed-checks.md) can run an owner-approved
 > offline program on an exact imported PR head or queue candidate. An experimental
 > [required-check transport](docs/github-required-check-transport.md) adds exact
-> App check creation and read-only recovery. Durable publication authorization,
-> CLI wiring and full live Connected acceptance remain pending.
+> App check creation and read-only recovery. [Managed check publication](docs/github-check-publications.md)
+> connects protected execution evidence to owner requests, one-shot dispatch and a
+> recoverable CLI journal. Full live Connected acceptance remains pending.
 > [Published candidate evidence](docs/github-publication-proof.md) checks exact final
 > identity and target ancestry. Complete policy/group-check verification remains pending. The live tasks are
 > scripted fixtures, not an LLM benchmark.

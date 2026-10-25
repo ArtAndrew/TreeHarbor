@@ -24,10 +24,11 @@ exit status and ownership. Unknown process outcome remains an error. The node,
 operator and assigned Git importer remain trusted infrastructure; this is not
 hardware attestation. Import provenance alone does not rehash GitHub history.
 
-**This does not yet gate the GitHub merge queue.** No check run is published to
-GitHub and no additional App permission is required by these local operations.
-A required App check, host-policy verification, fresh remote membership reconciliation
-and full live acceptance remain release gates. Existing workflow-policy approvals
+These local execution operations do not publish a check or require additional App
+permissions. The separate [managed publisher](github-check-publications.md) can
+release the collected result as a required App check with explicit authorization.
+Complete host-policy verification, fresh remote membership reconciliation and full
+live acceptance remain release gates. Existing workflow-policy approvals
 do not automatically select a managed program; this first path needs explicit
 owner approval for each check. Arbitrary Actions workflows gain no context proof.
 
@@ -103,8 +104,8 @@ of `queue`; the retained `subject` contains repository/PR identity, head/base br
 names and the exact head revision. Group responses retain version 1. Both use the
 same prepare/start/collect/revoke/release actions below. A PR success cannot satisfy
 a group execution, even when both commits have identical files. Use a new approval,
-import and execution for the group. This local path still does not publish a required
-GitHub check; the complete host gate remains pending.
+import and execution for the group. Then request publication separately; the
+complete live host gate remains pending.
 
 ### Shared lifecycle
 

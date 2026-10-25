@@ -1,10 +1,10 @@
 # Required GitHub check transport
 
-Development library boundary, not an enabled product command. This transport can
-create and recover a check on an exact PR head or retained merge-group candidate.
-It does not derive execution evidence, authorize a publication or persist a
-dispatch ledger. Durable owner authorization, service/CLI wiring and live managed
-check acceptance remain required before using it as a product admission gate.
+Development library boundary. This transport creates and recovers a check on an
+exact PR head or retained merge-group candidate. The separate
+[managed publisher](github-check-publications.md) derives execution evidence,
+authorizes publication and persists dispatch/report records through the service
+and CLI. Full live managed-check acceptance remains a release gate.
 
 ## Identity and outcome
 

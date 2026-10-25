@@ -430,7 +430,7 @@ async fn accepted_projection_recovers_before_and_after_commit_and_exports_exact_
             .await
             .unwrap()
             .get::<_, i64>(0),
-        1
+        2 // original source plus the exact exported PR head imported for its check
     );
     drop(server);
     f.cleanup().await;

@@ -1,3 +1,5 @@
+#[path = "github_check_publications.rs"]
+mod check_publications;
 #[path = "github_pull_checks.rs"]
 mod pull_checks;
 use super::*;

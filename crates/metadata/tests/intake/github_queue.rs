@@ -28,9 +28,23 @@ struct QueueFixture {
 }
 impl QueueFixture {
     async fn new() -> Self {
+        Self::with_merge_queue(false).await
+    }
+    async fn with_merge_queue(required: bool) -> Self {
         let mut p = Projection::new().await;
         let (inspection, _, v) = inspections::requested(&mut p).await;
-        let report = inspections::report(&p, &v).await;
+        let mut report = inspections::report(&p, &v).await;
+        if required {
+            let golden: Value = serde_json::from_str(include_str!(
+                "../../../github-contract/tests/fixtures/check-publication-v1.json"
+            ))
+            .unwrap();
+            report.rules_before = serde_json::from_value(
+                golden["report"]["preflight"]["policy_before"]["rules"].clone(),
+            )
+            .unwrap();
+            report.rules_after = report.rules_before.clone();
+        }
         p.f.db
             .report_github_inspection(&p.reader, &cmd("inspect-report"), inspection, &report)
             .await
