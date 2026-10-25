@@ -1,12 +1,14 @@
-//! Owner-approved offline checks of an imported, exact GitHub queue candidate.
+//! Owner-approved offline checks of an imported, exact GitHub PR or queue candidate.
 //! Runtime evidence is independent of GitHub workflow results and admission.
 use super::*;
+mod pull;
 use crate::{
     check_runtime::{self, Subject},
     intake::{WorkspaceFormat, WorkspaceSpec},
     integration::{CheckProgram, load_program, trusted},
     runs::RunRequest,
 };
+pub use pull::ManagedPullCheckSpec;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use treeharbor_core::{ObjectId, SourceProfile};
@@ -79,6 +81,19 @@ async fn fresh(tx: &Transaction<'_>, s: &Scope, c: &Row) -> Result<()> {
         return Err(Error::Forbidden);
     }
     if tx.query_opt("SELECT 1 FROM th_github_managed_check_revocations WHERE tenant=$1 AND repository=$2 AND check_run=$3", &[&s.tenant(), &s.repository(), &c.get::<_,Uuid>("check_run")]).await?.is_some(){return Err(Error::ExecutionState);}
+    match (
+        c.get::<_, Option<Uuid>>("queue"),
+        c.get::<_, Option<Uuid>>("pull"),
+    ) {
+        (Some(_), None) => fresh_queue(tx, s, c, epoch).await?,
+        (None, Some(_)) => pull::fresh(tx, s, c).await?,
+        _ => return Err(Error::SchemaMismatch),
+    }
+    let (_, profile) = load_program(tx, s, oid(c.get("program"))?).await?;
+    if tx.query_opt("SELECT 1 FROM th_runtime_profile_revocations WHERE tenant=$1 AND repository=$2 AND digest=$3", &[&s.tenant(), &s.repository(), &profile.digest().as_slice()]).await?.is_some(){return Err(Error::ExecutionState);}
+    Ok(())
+}
+async fn fresh_queue(tx: &Transaction<'_>, s: &Scope, c: &Row, epoch: i64) -> Result<()> {
     let q = queue::load(tx, s, c.get("queue")).await?;
     let b = binding(tx, s, q.get("binding")).await?;
     if q.get::<_, i64>("epoch") != epoch
@@ -109,8 +124,6 @@ async fn fresh(tx: &Transaction<'_>, s: &Scope, c: &Row) -> Result<()> {
     if !latest.consistent(&t) || latest.before.selected(&t) != Some(&selected.member) {
         return Err(Error::HostQueueState);
     }
-    let (_, profile) = load_program(tx, s, oid(c.get("program"))?).await?;
-    if tx.query_opt("SELECT 1 FROM th_runtime_profile_revocations WHERE tenant=$1 AND repository=$2 AND digest=$3", &[&s.tenant(), &s.repository(), &profile.digest().as_slice()]).await?.is_some(){return Err(Error::ExecutionState);}
     Ok(())
 }
 async fn owned(tx: &Transaction<'_>, auth: &Authorization, epoch: i64, id: Uuid) -> Result<Row> {
@@ -142,15 +155,31 @@ async fn evidence(
         snapshot: oid(c.get("snapshot"))?,
     };
     let (observed, outcome) = check_runtime::observe(tx, s, &subject, &p, &profile).await?;
-    let definition=serde_json::to_vec(&json!({"version":1,"tenant":s.tenant(),"repository":s.repository(),"check_run":id,"epoch":c.get::<_,i64>("epoch"),"queue":c.get::<_,Uuid>("queue"),"subject":c.get::<_,Value>("subject"),"import":c.get::<_,Uuid>("import"),"revision":subject.revision.to_string(),"snapshot":subject.snapshot.to_string(),"program":oid(c.get("program"))?.to_string(),"runtime_profile":p.runtime_profile,"image":profile.definition().image,"argv":p.argv,"owner":c.get::<_,String>("principal"),"owner_token":c.get::<_,Uuid>("token"),"validator":subject.validator,"validator_token":e.get::<_,Uuid>("token"),"workspace":subject.workspace,"run":subject.run,"runtime":check_runtime::facts(&observed),"outcome":outcome})).map_err(|_|Error::SchemaMismatch)?;
+    let definition = json!({"version":1,"tenant":s.tenant(),"repository":s.repository(),"check_run":id,"epoch":c.get::<_,i64>("epoch"),"queue":c.get::<_,Option<Uuid>>("queue"),"subject":c.get::<_,Value>("subject"),"import":c.get::<_,Uuid>("import"),"revision":subject.revision.to_string(),"snapshot":subject.snapshot.to_string(),"program":oid(c.get("program"))?.to_string(),"runtime_profile":p.runtime_profile,"image":profile.definition().image,"argv":p.argv,"owner":c.get::<_,String>("principal"),"owner_token":c.get::<_,Uuid>("token"),"validator":subject.validator,"validator_token":e.get::<_,Uuid>("token"),"workspace":subject.workspace,"run":subject.run,"runtime":check_runtime::facts(&observed),"outcome":outcome});
+    let (definition, evidence) = encode_evidence(definition, c.get("pull"))?;
+    Ok((definition, evidence, outcome))
+}
+fn encode_evidence(mut definition: Value, pull: Option<Uuid>) -> Result<(Vec<u8>, Vec<u8>)> {
+    let domain = if let Some(pull) = pull {
+        definition["version"] = json!(2);
+        definition
+            .as_object_mut()
+            .ok_or(Error::SchemaMismatch)?
+            .remove("queue");
+        definition["pull"] = json!(pull);
+        b"treeharbor-github-check-execution\0v2\0"
+    } else {
+        b"treeharbor-github-check-execution\0v1\0"
+    };
+    let definition = serde_json::to_vec(&definition).map_err(|_| Error::SchemaMismatch)?;
     if definition.len() > 65536 {
         return Err(Error::Invalid("check evidence size"));
     }
     let mut hash = Sha256::new();
-    hash.update(b"treeharbor-github-check-execution\0v1\0");
+    hash.update(domain);
     hash.update(&definition);
     let evidence: Vec<u8> = hash.finalize().to_vec();
-    Ok((definition, evidence, outcome))
+    Ok((definition, evidence))
 }
 async fn describe(tx: &Transaction<'_>, s: &Scope, c: &Row) -> Result<Value> {
     let id: Uuid = c.get("check_run");
@@ -166,7 +195,14 @@ async fn describe(tx: &Transaction<'_>, s: &Scope, c: &Row) -> Result<Value> {
         }
         Err(e) => return Err(e),
     };
-    let mut v = json!({"version":1,"check_run":id,"queue":c.get::<_,Uuid>("queue"),"subject":c.get::<_,Value>("subject"),"revision":c.get::<_,String>("revision"),"snapshot":oid(c.get("snapshot"))?.to_string(),"program":oid(c.get("program"))?.to_string(),"validator":c.get::<_,String>("validator"),"state":"approved","current_locally":current,"execution_context_verified":false,"admission_verified":false,"host_policy_verified":false,"merge_verified":false});
+    let mut v = json!({"version":1,"check_run":id,"queue":c.get::<_,Option<Uuid>>("queue"),"subject":c.get::<_,Value>("subject"),"revision":c.get::<_,String>("revision"),"snapshot":oid(c.get("snapshot"))?.to_string(),"program":oid(c.get("program"))?.to_string(),"validator":c.get::<_,String>("validator"),"state":"approved","current_locally":current,"execution_context_verified":false,"admission_verified":false,"host_policy_verified":false,"merge_verified":false});
+    if let Some(pull) = c.get::<_, Option<Uuid>>("pull") {
+        v["version"] = json!(2);
+        v.as_object_mut()
+            .ok_or(Error::SchemaMismatch)?
+            .remove("queue");
+        v["pull"] = json!(pull);
+    }
     if let Some(e) = e {
         v["state"] = json!(e.get::<_, String>("state"));
         v["workspace"] = json!(e.get::<_, Uuid>("workspace"));
@@ -544,5 +580,47 @@ pub(crate) async fn execution_fence(
             Ok(Some(true))
         }
         Err(e) => Err(e),
+    }
+}
+
+#[cfg(test)]
+mod encoding_tests {
+    use super::*;
+    #[test]
+    fn managed_evidence_golden_versions_separate_pull_from_group() {
+        let fixture: Value = serde_json::from_str(include_str!(
+            "../../tests/fixtures/github-managed-evidence.json"
+        ))
+        .unwrap();
+        let input = fixture["input"].clone();
+        for (kind, pull) in [
+            ("group", None),
+            (
+                "pull",
+                Some(Uuid::parse_str("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa").unwrap()),
+            ),
+        ] {
+            let (bytes, digest) = encode_evidence(input.clone(), pull).unwrap();
+            assert_eq!(
+                String::from_utf8(bytes).unwrap(),
+                fixture[kind]["canonical"].as_str().unwrap()
+            );
+            assert_eq!(
+                oid(digest).unwrap().to_string(),
+                fixture[kind]["digest"].as_str().unwrap()
+            );
+        }
+        let original = encode_evidence(input.clone(), None).unwrap().1;
+        for field in [
+            "revision",
+            "snapshot",
+            "program",
+            "owner_token",
+            "validator_token",
+        ] {
+            let mut changed = input.clone();
+            changed[field] = json!("different");
+            assert_ne!(original, encode_evidence(changed, None).unwrap().1);
+        }
     }
 }

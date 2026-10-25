@@ -4,6 +4,12 @@ use serde::Deserialize;
 #[derive(Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
 pub enum WireCommand {
+    ManagedCheckApprovePull {
+        key: String,
+        epoch: i64,
+        check_run: String,
+        specification: ManagedPullCheckSpec,
+    },
     ManagedCheckApprove {
         key: String,
         epoch: i64,
@@ -442,9 +448,9 @@ pub(super) fn id(s: &str) -> Result<Uuid> {
 impl WireCommand {
     pub fn permission(&self) -> Permission {
         match self {
-            Self::ManagedCheckApprove { .. } | Self::ManagedCheckRevoke { .. } => {
-                Permission::PolicyWrite
-            }
+            Self::ManagedCheckApprove { .. }
+            | Self::ManagedCheckApprovePull { .. }
+            | Self::ManagedCheckRevoke { .. } => Permission::PolicyWrite,
             Self::ManagedCheckStatus { .. } => Permission::Read,
             Self::ManagedCheckPrepare { .. }
             | Self::ManagedCheckStart { .. }
@@ -530,6 +536,20 @@ impl WireCommand {
         backend: Option<&str>,
     ) -> Result<Value> {
         match self {
+            Self::ManagedCheckApprovePull {
+                key,
+                epoch,
+                check_run,
+                specification,
+            } => {
+                db.approve_github_managed_pull_check(
+                    auth,
+                    &Command { key, epoch },
+                    id(&check_run)?,
+                    &specification,
+                )
+                .await
+            }
             Self::ManagedCheckApprove {
                 key,
                 epoch,

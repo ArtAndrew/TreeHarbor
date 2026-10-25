@@ -1,7 +1,7 @@
 use super::*;
 use treeharbor_github_contract::{InspectionReport, InspectionTarget, RequiredCheck};
 use treeharbor_metadata::github::InspectionSpec;
-async fn observed_pull(p: &mut Projection) -> Uuid {
+pub(super) async fn observed_pull(p: &mut Projection) -> Uuid {
     let (id, _, v) = pulls::requested(p).await;
     let attempt = Uuid::new_v4();
     p.f.db

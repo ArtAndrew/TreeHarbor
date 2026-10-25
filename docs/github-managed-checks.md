@@ -1,14 +1,16 @@
-# Managed checks for Connected candidates
+# Managed checks for Connected PRs and candidates
 
 Experimental service/CLI support. GitHub continues to own the published branch;
 TreeHarbor does not create a native authoritative ref for the imported candidate.
-This path runs an explicitly approved offline program on a retained queue candidate.
+This path runs an explicitly approved offline program on a published PR head or
+a retained queue candidate.
 It is separate from collecting existing GitHub Actions results.
 
 ## Scope and trust
 
-The Human policy owner selects a stable, complete membership capture, the completed
-GitHub import of that exact candidate, a Validator principal and a check program.
+The Human policy owner selects a published PR or a stable, complete membership
+capture, the completed GitHub import of that exact revision, a Validator principal
+and a check program.
 The service fixes those identities in an immutable approval. The assigned validator
 prepares a fresh full workspace and starts the approved command. The existing
 trusted node verifies materialized files before starting the gVisor runtime.
@@ -31,12 +33,13 @@ owner approval for each check. Arbitrary Actions workflows gain no context proof
 
 ## API and CLI
 
-Upgrade service and CLI together and apply additive database migration 26. Existing
-queues, permissions and receipts remain intact; no existing check gains approval.
+Upgrade service and CLI together and apply additive database migration 27. Existing
+queues, permissions, collected group evidence and receipts remain intact; no existing
+check gains approval. The preceding schema 26 introduced group execution.
 Use `treeharbor client --socket SOCKET --credential-file FILE github --request REQUEST`.
 Keep request and credential files in the operator's private directory.
 
-Owner request (`policy.write`):
+Owner request for a queue candidate (`policy.write`):
 
 ```json
 {
@@ -63,9 +66,52 @@ runtime profile must be registered by the operator in this repository; the check
 program is stored immutably as part of approval. The completed import must belong
 to the same binding/epoch and match the selected full Git candidate revision.
 
+### Before queue admission
+
+[GitHub requires branch checks](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/configuring-pull-request-merges/managing-a-merge-queue)
+to pass before a PR can enter its native merge queue, and checks the resulting
+group revision again. A group-only required check cannot
+bootstrap this sequence. For the PR head, submit:
+
+```json
+{
+  "action": "managed_check_approve_pull",
+  "key": "approve-pr-head-1",
+  "epoch": 1,
+  "check_run": "44444444-4444-4444-8444-444444444444",
+  "specification": {
+    "pull": "55555555-5555-4555-8555-555555555555",
+    "import": "66666666-6666-4666-8666-666666666666",
+    "validator": "ci",
+    "program": {
+      "version": 1,
+      "runtime_profile": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "argv": ["/opt/check", "--offline"]
+    }
+  }
+}
+```
+
+`pull` is TreeHarbor's completed PR delivery ID, not the GitHub PR number. The import
+must contain its exact published Git head and belong to the same repository binding
+and authority epoch. Neither an inspection nor a queue entry is required. A draft
+PR can be tested; that does not waive GitHub's admission rules. Completed source
+publication records do not expire with their former delivery leases.
+
+PR approval, status and execution receipts use version 2 and contain `pull` instead
+of `queue`; the retained `subject` contains repository/PR identity, head/base branch
+names and the exact head revision. Group responses retain version 1. Both use the
+same prepare/start/collect/revoke/release actions below. A PR success cannot satisfy
+a group execution, even when both commits have identical files. Use a new approval,
+import and execution for the group. This local path still does not publish a required
+GitHub check; the complete host gate remains pending.
+
+### Shared lifecycle
+
 | Action | Permission | Additional fields |
 |---|---|---|
 | `managed_check_approve` | Human `policy.write` | `key`, `epoch`, `check_run`, `specification` above |
+| `managed_check_approve_pull` | Human `policy.write` | `key`, `epoch`, `check_run`, PR specification above |
 | `managed_check_prepare` | Assigned Validator `validation.report` | `key`, `epoch`, `check_run` |
 | `managed_check_start` | Assigned Validator `validation.report` | `key`, `epoch`, `check_run` |
 | `managed_check_collect` | Assigned Validator `validation.report` | `key`, `epoch`, `check_run` |
@@ -100,10 +146,27 @@ or stale approval that never requested a runtime can also release its prepared
 files. A running task must first be stopped and collected. Evidence remains after
 workspace cleanup; deleting files never substitutes for stopping processes.
 
+## Evidence encoding
+
+Evidence is SHA-256 over a domain followed by compact UTF-8 JSON with lexicographically
+ordered object keys, no trailing newline, and array order preserved. Group evidence
+keeps the `treeharbor-github-check-execution\0v1\0` domain and version 1 unchanged.
+PR evidence uses `treeharbor-github-check-execution\0v2\0`, version 2, and a `pull`
+UUID instead of `queue`. `\0` denotes a NUL byte in these domains.
+
+Both bind tenant/repository/check/epoch, source subject and import, native revision
+and snapshot, program/profile/image/argv, owner and validator credentials, workspace,
+run, terminal runtime facts and outcome. Runtime facts include attempt, preparation,
+placement, node, file manifest, runtime binding, container, timestamps, exit and
+worker-generation identities. Encoding vectors are in
+[`github-managed-evidence.json`](../crates/metadata/tests/fixtures/github-managed-evidence.json).
+These synthetic vectors test encoding, not source authenticity or runtime isolation.
+
 ## Verification limits
 
-PostgreSQL tests exercise source/authority binding, replay, loss, revocation and
-cleanup. Terminal-success rows in the collector contract test are explicitly
+PostgreSQL tests exercise PR execution without an inspection/queue, exact source and
+authority binding, replay, loss, revocation, cleanup and preservation of populated
+group evidence through migration. Terminal-success rows in collector tests are explicitly
 labelled trusted fixtures, not sandbox evidence. The shared runtime and native
 collector have separate real Linux gVisor tests. A complete Connected run on a
 live GitHub group, with required App-check publication, is still required.
