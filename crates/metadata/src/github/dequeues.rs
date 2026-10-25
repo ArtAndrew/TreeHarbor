@@ -181,7 +181,35 @@ impl Metadata {
         if unsettled_for_pull(&m.tx, s, q.get("binding"), t.pull.pull_number).await? {
             return Err(Error::HostQueueState);
         }
-        if m.tx.query_one("SELECT EXISTS(SELECT 1 FROM th_github_queue WHERE tenant=$1 AND repository=$2 AND binding=$3 AND target#>>'{pull,pull_number}'=$4 AND queue<>$5 AND NOT dispatch_failed AND NOT mutation_not_sent AND (NOT cancel_requested OR attempt IS NOT NULL))",&[&s.tenant(),&s.repository(),&q.get::<_,Uuid>("binding"),&t.pull.pull_number.to_string(),&qid]).await?.get::<_,bool>(0) {
+        // Use the same settled-removal boundary as re-enqueue: a completed
+        // predecessor must not block removing its successor. Unknown writes and
+        // absence without a correlated receipt or positive no-send remain fenced.
+        if m.tx
+            .query_one(
+                "SELECT EXISTS(
+            SELECT 1 FROM th_github_queue q
+            WHERE q.tenant=$1 AND q.repository=$2 AND q.binding=$3
+              AND q.target#>>'{pull,pull_number}'=$4 AND q.queue<>$5
+              AND NOT q.dispatch_failed AND NOT q.mutation_not_sent
+              AND (NOT q.cancel_requested OR q.attempt IS NOT NULL)
+              AND NOT (q.cancel_requested AND EXISTS(
+                SELECT 1 FROM th_github_dequeues d
+                WHERE d.tenant=q.tenant AND d.repository=q.repository AND d.queue=q.queue
+                  AND d.attempt IS NOT NULL
+                  AND (d.retained_receipt IS NOT NULL OR d.mutation_not_sent)
+                  AND d.latest_observation#>>'{after,pull,merged}'='false'
+                  AND d.latest_observation#>'{after,entry}'='null'::jsonb)))",
+                &[
+                    &s.tenant(),
+                    &s.repository(),
+                    &q.get::<_, Uuid>("binding"),
+                    &t.pull.pull_number.to_string(),
+                    &qid,
+                ],
+            )
+            .await?
+            .get::<_, bool>(0)
+        {
             return Err(Error::HostQueueState);
         }
         m.tx.execute("UPDATE th_github_queue SET cancel_requested=true WHERE tenant=$1 AND repository=$2 AND queue=$3",&[&s.tenant(),&s.repository(),&qid]).await?;
