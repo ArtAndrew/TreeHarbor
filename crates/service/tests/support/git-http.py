@@ -77,5 +77,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
 
 server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
-pathlib.Path(port_file).write_text(str(server.server_port), encoding="ascii")
+# Readers treat the port file's existence as readiness. Publish it only after
+# writing/closing the complete value; open(..., "w") briefly exposes an empty
+# file and can make a concurrent Git client connect to the default HTTP port.
+ready = pathlib.Path(port_file).with_suffix(".ready")
+ready.write_text(str(server.server_port), encoding="ascii")
+ready.replace(port_file)
 server.serve_forever()
