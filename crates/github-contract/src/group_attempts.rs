@@ -124,7 +124,12 @@ pub struct Attempt {
     pub referenced_workflows: Option<Vec<ReferencedWorkflow>>,
 }
 impl Attempt {
-    fn validate(&self, t: &QueueTarget, selected: &Target, resolved: &Resolved) -> Result<()> {
+    pub(crate) fn validate(
+        &self,
+        t: &QueueTarget,
+        selected: &Target,
+        resolved: &Resolved,
+    ) -> Result<()> {
         if self.run_id != resolved.run_id
             || self.node_id != selected.workflow.id
             || self.workflow_id != resolved.workflow_id

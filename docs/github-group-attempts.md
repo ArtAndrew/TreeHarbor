@@ -23,7 +23,8 @@ treeharbor github queue --config /private/treeharbor/github-app.json \
 
 `5` is an example check-report sequence, not a membership sequence, PR number or
 workflow ID. Use the original private queue journal. This option requires an
-existing attempt, never enqueues and cannot be combined with `--group-report`.
+existing attempt, never enqueues and cannot be combined with `--group-report`
+or `--attempt-report`.
 Pending journal delivery happens first and works without the App configuration;
 rerun after recovery to request a new provider read.
 
@@ -96,3 +97,5 @@ attempt and revoked its narrowed token. Its source was a previous provider
 diagnostic, not a product membership record; this is not end-to-end queue proof.
 Private-repository entitlement, trusted definitions/policy and final
 published-history proof remain release gates.
+
+An explicitly selected attempt can now supply [executed root-file evidence](github-workflow-policy.md). That separate collection still does not certify runtime context or final merge.

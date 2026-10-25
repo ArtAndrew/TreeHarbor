@@ -3,8 +3,10 @@
 pub(crate) mod imports;
 pub(crate) mod projections;
 pub use projections::ProjectionSpec;
+mod check_policy;
 mod events;
 mod group_attempts;
+pub use check_policy::PolicyPin;
 mod group_checks;
 mod groups;
 mod recovery;
@@ -352,3 +354,5 @@ impl Metadata {
         Ok(result)
     }
 }
+
+mod workflow_definitions;

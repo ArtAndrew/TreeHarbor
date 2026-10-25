@@ -333,6 +333,8 @@ pub struct QueueObservation {
     pub group_checks: Option<crate::group_checks::GroupCheckReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub group_attempt: Option<crate::group_attempts::Report>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workflow_definition: Option<crate::workflow_definitions::Report>,
     /// Version 2 positive completion evidence from the sole enqueue invocation.
     /// Version 1 reports remain readable and cannot assert this fact.
     #[serde(default, skip_serializing_if = "is_false")]
@@ -345,7 +347,8 @@ fn is_false(value: &bool) -> bool {
 impl QueueObservation {
     pub fn validate(&self, t: &QueueTarget) -> Result<()> {
         t.validate()?;
-        if !matches!(self.version, 1..=6)
+        if !matches!(self.version, 1..=7)
+            || (self.version == 7) != self.workflow_definition.is_some()
             || (self.mutation_not_sent
                 && (self.version < 2
                     || self.receipt.is_some()
@@ -395,6 +398,21 @@ impl QueueObservation {
                 return Err(InvalidEvidence);
             }
             a.validate(t, self.finished_at_unix_ms)?;
+        }
+        if let Some(d) = &self.workflow_definition {
+            if self.version != 7
+                || self.group_attempt.is_some()
+                || self.group_checks.is_some()
+                || self.group_capture.is_some()
+                || self.snapshot.is_some()
+                || self.receipt.is_some()
+                || self.enqueue_receipt.is_some()
+                || self.async_result.is_some()
+                || self.mutation_not_sent
+            {
+                return Err(InvalidEvidence);
+            }
+            d.validate(t)?;
         }
         if let Some(r) = &self.enqueue_receipt {
             if self.version != 3

@@ -215,6 +215,7 @@ impl Connection {
             group_capture: Some(capture),
             group_checks: None,
             group_attempt: None,
+            workflow_definition: None,
             receipt: None,
             enqueue_receipt: None,
             async_result: None,

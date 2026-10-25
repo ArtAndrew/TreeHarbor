@@ -1,7 +1,21 @@
 # Implementation status
 
-Updated: 2026-10-24. This file describes implemented behavior and remaining release
+Updated: 2026-10-25. This file describes implemented behavior and remaining release
 gates. A foundation milestone does not complete either mode.
+
+Experimental [owner workflow policies](github-workflow-policy.md) now pin exact
+App/name, workflow identity, path, root-file bytes and expected context identities.
+Additive schema25 stores immutable policies, generation-based active references
+and explicit queue pins. Replacement/revocation fences fresh dispatch, including
+changing away and back to the same policy. Legacy queues gain no approval.
+Version7 file observations revalidate the complete retained attempt/check/membership
+chain. A root file match is separate from current policy, CI success and runtime
+context. The actual killed CLI/server replay and five PostgreSQL policy/upgrade/
+source-linkage cases passed locally. The [installed-App read](evidence/workflow-file-read-20261025.json)
+retrieved the actual executed workflow and verified its Git blob and SHA-256 hashes,
+then revoked its read-only token. Its source remained a provider diagnostic;
+product linkage, owner approval, runtime context, host policy and final publication
+were not certified. No native validation or merge authorization is synthesized.
 
 Experimental [exact-attempt evidence](github-group-attempts.md) links a selected
 retained merge-group check to its workflow attempt and job through independently
@@ -557,7 +571,7 @@ resource outcomes and worker-loss recovery. No complete authority mode is implie
 | Local object store | Atomic no-clobber writes, digest verification, file/directory fsync, tenant directories, physical generations and upload receipts | S3, backup/restore, kill fault campaign |
 | Native DAG and admission | Scoped history/log/ancestry/merge-base HTTP/CLI, persisted refs/policies/queue/checks/reviews, verified candidate commits, final transactional admission and no-Git CLI/process-loss tests | General history stack rebase, automatic scheduling, full lifecycle and recovery |
 | Review diff | Read-only exact ChangeSet/candidate/revision HTTP/CLI, retained integration/policy/version/run identity, scoped GC holds, bounded byte paths and text, actual Git path oracle and restart/page/error tests | Review UI, persistent diff indexing and larger-repository profiling |
-| PostgreSQL metadata and outbox | Real database transaction/idempotency/lease tests; repository authority/epoch checks; additive schema 24 with publication, queue and event recovery ledgers; local service pool and crash/replay | Remote service integration and full server restore |
+| PostgreSQL metadata and outbox | Real database transaction/idempotency/lease tests; repository authority/epoch checks; additive schema 25 with publication, queue, event recovery and owner workflow policy ledgers; local service pool and crash/replay | Remote service integration and full server restore |
 | Native ChangeSet intake | HTTP/CLI immutable proposals and separate ready-seal acceptance, scoped blobs, computed versions, original run lineage, atomic pins/outbox and process-loss replay | GitHub base synchronization, remote transport and retention |
 | Protected incremental source reads | Pinned sessions, verified frontiers, bounded prefix batches and descriptors surviving local GC; authenticated workspace-root sessions | Per-tenant service quotas, bulk node delivery and S3 |
 | Native file materialization | Private copies from exact snapshots, full/sparse selection, staged expansion preserving edits/deletions, bounded IO and filesystem checks; guarded node publication and selected capture after runtime removal | Cache/reflink, wider capture fault matrix and Git-compatible format |

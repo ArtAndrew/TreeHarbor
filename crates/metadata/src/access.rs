@@ -48,6 +48,7 @@ impl Permission {
     }
     pub(crate) fn for_command(kind: &str) -> Result<Self> {
         match kind {
+            "github.policy.set.v1" => Ok(Self::PolicyWrite),
             "github.recovery.request.v1" | "github.recovery.cancel.v1" => Ok(Self::RepositoryWrite),
             "github.recovery.page.v1"
             | "github.recovery.detail.v1"

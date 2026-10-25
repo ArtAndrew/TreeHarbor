@@ -12,6 +12,7 @@ pub(super) struct Request {
     pub epoch: i64,
     pub state: PathBuf,
     pub check: Option<(i64, treeharbor_github_contract::group_checks::Side)>,
+    pub definition_attempt: Option<i64>,
     pub attempt_check: Option<treeharbor_github_contract::group_attempts::Selection>,
 }
 fn identity(c: &Value, r: &Request, credential: &Credential) -> Result<(Value, QueueTarget)> {
@@ -133,7 +134,16 @@ pub(super) async fn run(r: Request) -> Result<bool> {
 }
 /// Recovery for the dequeue driver must never acquire another enqueue grant.
 pub(super) async fn collect(r: Request, allow_dispatch: bool) -> Result<Value> {
-    if r.check.is_some() && r.attempt_check.is_some() {
+    if [
+        r.check.is_some(),
+        r.attempt_check.is_some(),
+        r.definition_attempt.is_some(),
+    ]
+    .into_iter()
+    .filter(|v| *v)
+    .count()
+        > 1
+    {
         return Err(Error::PublicationState);
     }
     let credential = Credential::load(&r.credential_file)?;
@@ -214,6 +224,31 @@ pub(super) async fn collect(r: Request, allow_dispatch: bool) -> Result<Value> {
     } else {
         None
     };
+    let selected_definition = if let Some(sequence) = r.definition_attempt {
+        if c["attempt"].is_null() {
+            return Err(Error::PublicationState);
+        }
+        let v = s
+            .command(json!({"action":"queue_definition_context","attempt_sequence":sequence}))
+            .await?;
+        for field in ["version", "queue", "binding", "epoch", "target"] {
+            if v[field] != c[field] {
+                return Err(Error::PublicationState);
+            }
+        }
+        let target: treeharbor_github_contract::workflow_definitions::Target =
+            serde_json::from_value(v["workflow_definition_target"].clone())
+                .map_err(|_| Error::PublicationState)?;
+        target
+            .validate(&s.target)
+            .map_err(|_| Error::PublicationState)?;
+        if target.attempt_sequence != sequence {
+            return Err(Error::PublicationState);
+        }
+        Some(target)
+    } else {
+        None
+    };
     let (app, config) = load(&r.config)?;
     matches_config(&config, &spec)?;
     let connection = Connection::new(app)?;
@@ -236,7 +271,15 @@ pub(super) async fn collect(r: Request, allow_dispatch: bool) -> Result<Value> {
     } else {
         uuid(&c["attempt"])?
     };
-    let result = if let Some(target) = &selected_attempt {
+    let result = if let Some(target) = &selected_definition {
+        connection
+            .observe_workflow_definition(&config.repository, &s.target, target)
+            .await
+            .map_err(|error| treeharbor_github::MutationFailure {
+                error,
+                mutation_not_sent: false,
+            })
+    } else if let Some(target) = &selected_attempt {
         connection
             .observe_group_attempt(&config.repository, &s.target, target)
             .await
@@ -297,6 +340,7 @@ pub(super) async fn collect(r: Request, allow_dispatch: bool) -> Result<Value> {
                     group_capture: None,
                     group_checks: None,
                     group_attempt: None,
+                    workflow_definition: None,
                     async_result: None,
                     mutation_not_sent: e.mutation_not_sent,
                     token_revoked: false,

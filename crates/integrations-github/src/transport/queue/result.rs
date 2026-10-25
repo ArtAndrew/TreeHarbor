@@ -64,6 +64,7 @@ impl Connection {
             group_capture: None,
             group_checks: None,
             group_attempt: None,
+            workflow_definition: None,
             async_result: Some(result?),
             mutation_not_sent: false,
             token_revoked: revoked,

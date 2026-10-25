@@ -1,0 +1,43 @@
+{
+  "kind": "actual_rust_installed_app_workflow_file_diagnostic",
+  "observed_at": "2026-10-25T04:42:44+00:00",
+  "repository": "TreeHarbor/TreeHarbor-acceptance",
+  "file": {
+    "blob": "git:sha1:25dd9abca7d0b09e1cc6040998aa2cfe20d51040",
+    "byte_size": 1094,
+    "content_sha256": "sha256:f78a57d1cdd8458824aba364d3cce3a4d8bfca51c12159d1cd01491fef3348c3",
+    "mode": 33188,
+    "repository_id": 1431906532,
+    "source": {
+      "path": ".github/workflows/check.yml",
+      "repository_name": "TreeHarbor/TreeHarbor-acceptance",
+      "revision": "git:sha1:eb85eaaef7dd34c7f7887ee5b8787a577ec79ec7"
+    },
+    "tree": "git:sha1:77c9e0bb9246db3013504d9658e7633f2586ce56"
+  },
+  "resolved": {
+    "check_id": 120860441427,
+    "run_id": 40089959365,
+    "suite_id": 108664313585,
+    "workflow_id": 394893730
+  },
+  "selected_attempt": 1,
+  "workflow_run_url": "https://github.com/TreeHarbor/TreeHarbor-acceptance/actions/runs/40089959365/attempts/1",
+  "executed_file_url": "https://github.com/TreeHarbor/TreeHarbor-acceptance/blob/eb85eaaef7dd34c7f7887ee5b8787a577ec79ec7/.github/workflows/check.yml",
+  "content_and_blob_hashes_independently_recomputed": true,
+  "token_revoked": true,
+  "token_permissions": {
+    "contents": "read",
+    "metadata": "read",
+    "pull_requests": "read",
+    "checks": "read"
+  },
+  "product_membership_link_verified": false,
+  "private_repository_entitlement_verified": false,
+  "owner_policy_approval_verified": false,
+  "execution_context_verified": false,
+  "definition_verified": false,
+  "host_policy_verified": false,
+  "merge_verified": false,
+  "limits": "Public synthetic fixture. The source attempt was a prior provider diagnostic, not persisted product membership. No owner policy was installed, workflow started, queue mutation sent, webhook enabled or local queue credentials renewed. This verifies immutable file retrieval, not the complete release or performance."
+}
