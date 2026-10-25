@@ -8,6 +8,7 @@ use serde_json::{Value, json};
 use std::{sync::Arc, time::Duration};
 use tokio::sync::Semaphore;
 use zeroize::Zeroizing;
+pub(crate) mod check_publication;
 pub(crate) mod deliveries;
 pub(crate) mod evidence;
 pub(crate) mod publisher;

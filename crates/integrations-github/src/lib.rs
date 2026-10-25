@@ -3,6 +3,7 @@
 
 mod auth;
 mod transport;
+pub use transport::check_publication::ObservedCheckPublication;
 pub use transport::evidence::ObservedInspection;
 pub use transport::queue::{MutationFailure, ObservedDequeue, ObservedQueue};
 mod wire;
@@ -102,6 +103,7 @@ pub enum Stage {
     Reference,
     PullRequest,
     CheckEvidence,
+    CheckPublication,
     Queue,
     AppIdentity,
     WebhookConfiguration,

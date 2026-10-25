@@ -1,4 +1,5 @@
 //! Immutable evidence shapes and conservative evaluation, without HTTP or credentials.
+pub mod check_publication;
 pub mod deliveries;
 pub mod dequeue;
 pub mod group_attempts;
