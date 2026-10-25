@@ -140,6 +140,7 @@ impl Connection {
             started_at_unix_ms: started,
             finished_at_unix_ms: now()? as i64 * 1000,
             workflow_definition: Some(report),
+            publication: None,
             group_attempt: None,
             group_checks: None,
             group_capture: None,

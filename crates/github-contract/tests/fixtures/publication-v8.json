@@ -1,0 +1,133 @@
+{
+  "version": 8,
+  "started_at_unix_ms": 1,
+  "finished_at_unix_ms": 2,
+  "snapshot": null,
+  "receipt": null,
+  "async_result": null,
+  "publication": {
+    "target": {
+      "membership_sequence": 1,
+      "member": {
+        "entry": {
+          "id": "MQE_one",
+          "state": "AWAITING_CHECKS",
+          "base": {
+            "revision": "git:sha1:2222222222222222222222222222222222222222",
+            "tree": "git:sha1:5555555555555555555555555555555555555555"
+          },
+          "head": {
+            "revision": "git:sha1:3333333333333333333333333333333333333333",
+            "tree": "git:sha1:6666666666666666666666666666666666666666"
+          }
+        },
+        "position": 1,
+        "pull_node": "PR_test_17",
+        "pull_number": 17,
+        "source_repository_id": 11,
+        "source_revision": "git:sha1:1111111111111111111111111111111111111111",
+        "base_ref": "main",
+        "candidate": {
+          "commit": {
+            "revision": "git:sha1:3333333333333333333333333333333333333333",
+            "tree": "git:sha1:6666666666666666666666666666666666666666"
+          },
+          "parents": [
+            {
+              "revision": "git:sha1:2222222222222222222222222222222222222222",
+              "tree": "git:sha1:5555555555555555555555555555555555555555"
+            },
+            {
+              "revision": "git:sha1:1111111111111111111111111111111111111111",
+              "tree": "git:sha1:7777777777777777777777777777777777777777"
+            }
+          ]
+        }
+      }
+    },
+    "before": {
+      "pull": {
+        "repository_id": 11,
+        "number": 17,
+        "node_id": "PR_test_17",
+        "head_ref": "treeharbor/04040404040404040404040404040404",
+        "base_ref": "main",
+        "head_revision": "git:sha1:1111111111111111111111111111111111111111",
+        "base_revision": "git:sha1:2222222222222222222222222222222222222222",
+        "state": "closed",
+        "draft": false,
+        "merged": true
+      },
+      "main": {
+        "revision": "git:sha1:3333333333333333333333333333333333333333",
+        "tree": "git:sha1:6666666666666666666666666666666666666666"
+      },
+      "final_commit": {
+        "commit": {
+          "revision": "git:sha1:3333333333333333333333333333333333333333",
+          "tree": "git:sha1:6666666666666666666666666666666666666666"
+        },
+        "parents": [
+          {
+            "revision": "git:sha1:2222222222222222222222222222222222222222",
+            "tree": "git:sha1:5555555555555555555555555555555555555555"
+          },
+          {
+            "revision": "git:sha1:1111111111111111111111111111111111111111",
+            "tree": "git:sha1:7777777777777777777777777777777777777777"
+          }
+        ]
+      }
+    },
+    "comparison": {
+      "base": {
+        "revision": "git:sha1:3333333333333333333333333333333333333333",
+        "tree": "git:sha1:6666666666666666666666666666666666666666"
+      },
+      "head_revision": "git:sha1:3333333333333333333333333333333333333333",
+      "merge_base": {
+        "revision": "git:sha1:3333333333333333333333333333333333333333",
+        "tree": "git:sha1:6666666666666666666666666666666666666666"
+      },
+      "status": "identical",
+      "ahead_by": 0,
+      "behind_by": 0,
+      "total_commits": 0
+    },
+    "after": {
+      "pull": {
+        "repository_id": 11,
+        "number": 17,
+        "node_id": "PR_test_17",
+        "head_ref": "treeharbor/04040404040404040404040404040404",
+        "base_ref": "main",
+        "head_revision": "git:sha1:1111111111111111111111111111111111111111",
+        "base_revision": "git:sha1:2222222222222222222222222222222222222222",
+        "state": "closed",
+        "draft": false,
+        "merged": true
+      },
+      "main": {
+        "revision": "git:sha1:3333333333333333333333333333333333333333",
+        "tree": "git:sha1:6666666666666666666666666666666666666666"
+      },
+      "final_commit": {
+        "commit": {
+          "revision": "git:sha1:3333333333333333333333333333333333333333",
+          "tree": "git:sha1:6666666666666666666666666666666666666666"
+        },
+        "parents": [
+          {
+            "revision": "git:sha1:2222222222222222222222222222222222222222",
+            "tree": "git:sha1:5555555555555555555555555555555555555555"
+          },
+          {
+            "revision": "git:sha1:1111111111111111111111111111111111111111",
+            "tree": "git:sha1:7777777777777777777777777777777777777777"
+          }
+        ]
+      }
+    }
+  },
+  "token_revoked": true
+}

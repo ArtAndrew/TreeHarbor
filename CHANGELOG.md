@@ -23,6 +23,7 @@
 - Exact candidate-check collection linked to retained membership, with separate push/merge-group suite identities, bounded read access and crash-safe replay. Attempt, workflow definition and final merge verification remain pending.
 - Explicit selected workflow-attempt/job/check collection, with immutable source linkage and separate current-attempt comparison. Trusted definitions and final merge authorization remain pending.
 - Owner workflow policies with immutable queue pins, generation-fenced dispatch, bounded executed root-file capture and crash-safe replay. A file match does not certify runtime context, host policy or final merge.
+- Exact published-candidate identity/tree/parent and target-ancestry observations, bound to retained membership with crash-safe replay. CI context and complete merge admission remain separate gates.
 - Contract tests and product documentation.
 
 There is no installable product release yet.

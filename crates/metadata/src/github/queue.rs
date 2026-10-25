@@ -341,6 +341,9 @@ impl Metadata {
         if let Some(checks) = &report.group_checks {
             group_checks::validate_report(&m.tx, s, &r, checks).await?;
         }
+        if let Some(publication) = &report.publication {
+            publication::validate_report(&m.tx, s, &r, publication).await?;
+        }
         if let Some(definition) = &report.workflow_definition {
             workflow_definitions::validate_report(&m.tx, s, &r, definition).await?;
         }
@@ -437,6 +440,7 @@ impl Metadata {
         let latest = if report.group_checks.is_none()
             && report.group_attempt.is_none()
             && report.workflow_definition.is_none()
+            && report.publication.is_none()
             && report.finished_at_unix_ms >= last
         {
             json!(report)
