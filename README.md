@@ -89,6 +89,9 @@ in **Standalone** mode. Both share one Rust engine.
 > without substituting a later same-SHA push check.
 > [Workflow policies](docs/github-workflow-policy.md) compare exact executed root-file
 > bytes against explicit owner approval and fence dispatch after policy replacement.
+> [Managed Connected checks](docs/github-managed-checks.md) can run an owner-approved
+> offline program on an exact imported candidate. Required GitHub check publication
+> and full live Connected acceptance remain pending.
 > [Published candidate evidence](docs/github-publication-proof.md) checks exact final
 > identity and target ancestry. Complete policy/group-check verification remains pending. The live tasks are
 > scripted fixtures, not an LLM benchmark.

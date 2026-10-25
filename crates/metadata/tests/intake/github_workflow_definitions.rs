@@ -459,6 +459,7 @@ async fn workflow_policy_upgrade_does_not_retroactively_approve_old_queues() {
             .unwrap();
     let raw = connection(&f.p.f.schema).await;
     let grants:Vec<String>=raw.query_one("SELECT permissions FROM th_access_tokens WHERE principal='human' ORDER BY created_at DESC LIMIT 1",&[]).await.unwrap().get(0);
+    crate::common::drop_unpopulated_v26(&raw).await;
     raw.batch_execute("DROP TABLE th_github_queue_policies,th_github_policy_refs,th_github_check_policies; DROP FUNCTION th_github_policy_ref_update();").await.unwrap();
     let mut paths: Vec<_> = std::fs::read_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/migrations"))
         .unwrap()
@@ -487,7 +488,7 @@ async fn workflow_policy_upgrade_does_not_retroactively_approve_old_queues() {
             .await
             .unwrap()
             .get::<_, i32>(0),
-        25
+        26
     );
     assert_eq!(raw.query_one("SELECT permissions FROM th_access_tokens WHERE principal='human' ORDER BY created_at DESC LIMIT 1",&[]).await.unwrap().get::<_,Vec<String>>(0),grants);
     assert_eq!(before, f.request().await);

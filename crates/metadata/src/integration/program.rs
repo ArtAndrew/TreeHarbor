@@ -54,7 +54,7 @@ impl CheckProgram {
         Ok(())
     }
 }
-pub(super) async fn load_program(
+pub(crate) async fn load_program(
     tx: &Transaction<'_>,
     s: &Scope,
     id: ObjectId,

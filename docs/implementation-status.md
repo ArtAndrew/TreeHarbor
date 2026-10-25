@@ -3,6 +3,14 @@
 Updated: 2026-10-25. This file describes implemented behavior and remaining release
 gates. A foundation milestone does not complete either mode.
 
+Experimental [managed Connected checks](github-managed-checks.md) now reuse the
+trusted offline runtime for an owner-approved exact queue candidate and completed
+Git import. Schema26 retains immutable approval, source and execution receipts;
+current status checks trust again. Unknown exits never become success, and source,
+authority or permission changes fence new starts. This does not publish a required
+GitHub check or complete host admission. Collector-success fixtures are explicitly
+synthetic trusted observations; full live Connected execution remains a gate.
+
 Experimental [published candidate evidence](github-publication-proof.md) now compares
 an exact retained queue candidate with the PR's final commit and observed target
 history, including later descendants. Version8 records stable PR/ref snapshots,
@@ -584,7 +592,7 @@ resource outcomes and worker-loss recovery. No complete authority mode is implie
 | Local object store | Atomic no-clobber writes, digest verification, file/directory fsync, tenant directories, physical generations and upload receipts | S3, backup/restore, kill fault campaign |
 | Native DAG and admission | Scoped history/log/ancestry/merge-base HTTP/CLI, persisted refs/policies/queue/checks/reviews, verified candidate commits, final transactional admission and no-Git CLI/process-loss tests | General history stack rebase, automatic scheduling, full lifecycle and recovery |
 | Review diff | Read-only exact ChangeSet/candidate/revision HTTP/CLI, retained integration/policy/version/run identity, scoped GC holds, bounded byte paths and text, actual Git path oracle and restart/page/error tests | Review UI, persistent diff indexing and larger-repository profiling |
-| PostgreSQL metadata and outbox | Real database transaction/idempotency/lease tests; repository authority/epoch checks; additive schema 25 with publication, queue, event recovery and owner workflow policy ledgers; local service pool and crash/replay | Remote service integration and full server restore |
+| PostgreSQL metadata and outbox | Real database transaction/idempotency/lease tests; repository authority/epoch checks; additive schema 26 with publication, queue, event recovery, owner policy and managed-check ledgers; local service pool and crash/replay | Remote service integration and full server restore |
 | Native ChangeSet intake | HTTP/CLI immutable proposals and separate ready-seal acceptance, scoped blobs, computed versions, original run lineage, atomic pins/outbox and process-loss replay | GitHub base synchronization, remote transport and retention |
 | Protected incremental source reads | Pinned sessions, verified frontiers, bounded prefix batches and descriptors surviving local GC; authenticated workspace-root sessions | Per-tenant service quotas, bulk node delivery and S3 |
 | Native file materialization | Private copies from exact snapshots, full/sparse selection, staged expansion preserving edits/deletions, bounded IO and filesystem checks; guarded node publication and selected capture after runtime removal | Cache/reflink, wider capture fault matrix and Git-compatible format |

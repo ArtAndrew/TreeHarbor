@@ -19,7 +19,7 @@ pub(super) async fn load(tx: &Transaction<'_>, s: &Scope, id: Uuid) -> Result<Ro
 pub(super) fn target(r: &Row) -> Result<QueueTarget> {
     serde_json::from_value(r.get("target")).map_err(|_| Error::SchemaMismatch)
 }
-async fn current(tx: &Transaction<'_>, s: &Scope, r: &Row) -> Result<bool> {
+pub(super) async fn current(tx: &Transaction<'_>, s: &Scope, r: &Row) -> Result<bool> {
     let p = projections::load(tx, s, r.get("projection")).await?;
     Ok(p.row.get::<_, String>("state") == "ready"
         && p.row.get::<_, i64>("epoch") == r.get::<_, i64>("epoch")

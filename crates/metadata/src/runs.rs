@@ -396,7 +396,12 @@ async fn effective_stop(tx: &Transaction<'_>, scope: &Scope, run: Uuid) -> Resul
         &[&scope.tenant(),&scope.repository(),&run]).await?;
     tx.query_opt("SELECT g.principal FROM th_agent_runs r JOIN th_repository_access g USING(tenant,repository,principal) WHERE r.tenant=$1 AND r.repository=$2 AND r.run=$3 FOR SHARE OF g",
         &[&scope.tenant(),&scope.repository(),&run]).await?;
-    let check = crate::integration::execution_fence(tx, scope, run).await?;
+    let native = crate::integration::execution_fence(tx, scope, run).await?;
+    let connected = crate::github::execution_fence(tx, scope, run).await?;
+    if native.is_some() && connected.is_some() {
+        return Err(Error::SchemaMismatch);
+    }
+    let check = native.or(connected);
     let permission = if check.is_some() {
         "validation.report"
     } else {
@@ -564,7 +569,7 @@ pub(crate) async fn load_context(
         task: command,
         engine: row.get("engine"),
         container: row.get("container"),
-        check: tx.query_opt("SELECT 1 FROM th_check_executions WHERE tenant=$1 AND repository=$2 AND execution_run=$3", &[&s.tenant(),&s.repository(),&run]).await?.is_some(),
+        check: tx.query_opt("SELECT 1 WHERE EXISTS(SELECT 1 FROM th_check_executions WHERE tenant=$1 AND repository=$2 AND execution_run=$3) OR EXISTS(SELECT 1 FROM th_github_managed_executions WHERE tenant=$1 AND repository=$2 AND execution_run=$3)", &[&s.tenant(),&s.repository(),&run]).await?.is_some(),
     })
 }
 impl Metadata {

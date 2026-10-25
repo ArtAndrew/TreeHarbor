@@ -48,6 +48,13 @@ impl Permission {
     }
     pub(crate) fn for_command(kind: &str) -> Result<Self> {
         match kind {
+            "github.managed_check.approve.v1" | "github.managed_check.revoke.v1" => {
+                Ok(Self::PolicyWrite)
+            }
+            "github.managed_check.prepare.v1"
+            | "github.managed_check.start.v1"
+            | "github.managed_check.collect.v1"
+            | "github.managed_check.release.v1" => Ok(Self::ValidationReport),
             "github.policy.set.v1" => Ok(Self::PolicyWrite),
             "github.recovery.request.v1" | "github.recovery.cancel.v1" => Ok(Self::RepositoryWrite),
             "github.recovery.page.v1"

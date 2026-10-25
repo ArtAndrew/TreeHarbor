@@ -520,7 +520,7 @@ async fn populated_schema23_upgrade_preserves_inbox_without_granting_recovery() 
             .await
             .unwrap()
             .get::<_, i32>(0),
-        25
+        26
     );
     assert_eq!(
         raw.query_one(
@@ -555,6 +555,7 @@ async fn populated_schema23_upgrade_preserves_inbox_without_granting_recovery() 
 
 // Reconstruct only disposable pre-24 fixtures; this is not a product downgrade.
 pub(super) async fn remove_recovery_schema(raw: &tokio_postgres::Client) {
+    crate::common::drop_unpopulated_v26(raw).await;
     raw.batch_execute("DROP TABLE th_github_queue_policies,th_github_policy_refs,th_github_check_policies; DROP FUNCTION th_github_policy_ref_update();").await.unwrap();
     raw.batch_execute("DROP TABLE th_github_event_recovery_pages,th_github_event_recovery_attempts,th_github_event_recoveries; DROP FUNCTION th_github_recovery_immutable(); DROP FUNCTION th_github_recovery_attempt_immutable();").await.unwrap();
     let old_constraints = include_str!("../../migrations/021_github_queue.sql")

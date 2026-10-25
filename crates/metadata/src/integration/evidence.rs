@@ -3,7 +3,7 @@ use super::*;
 use std::collections::BTreeSet;
 use treeharbor_validation::{self as validation, ContextDigest, Receipt};
 
-pub(super) async fn trusted(
+pub(crate) async fn trusted(
     tx: &Transaction<'_>,
     s: &Scope,
     principal: &str,
