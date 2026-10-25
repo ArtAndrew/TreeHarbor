@@ -3,6 +3,20 @@
 Updated: 2026-10-25. This file describes implemented behavior and remaining release
 gates. A foundation milestone does not complete either mode.
 
+For a concise current overview, see [what works today](../README.md#what-works-today)
+and [release readiness](../README.md#what-remains-before-a-full-release). The entries
+below retain evidence from individual increments. Their earlier statements about
+unfinished work describe the scope at that time; they are not a replacement for
+the current overview or the full [release gate ledger](#release-gate-ledger).
+
+Latest verified increment: [PR65](https://github.com/ArtAndrew/TreeHarbor/pull/65),
+published on 2026-10-25 after all six required checks passed. The
+[CI run](https://github.com/ArtAndrew/TreeHarbor/actions/runs/40172363797) passed
+324 ordinary tests on each of Linux/macOS, 290 real PostgreSQL contracts, 43 actual
+gVisor scenario groups on each of Linux x86-64/ARM64, and 11 webhook TLS/failure
+groups. These correctness checks do not establish complete mode readiness or
+performance superiority.
+
 Experimental [required-check transport](github-required-check-transport.md) now
 creates an exact App check after stable PR/group and required-context reads, then
 rereads its immutable identity. Unknown writes are recovered by read-only complete
@@ -17,9 +31,10 @@ attempt/dispatch records, immutable reports and a private-journal CLI. Source,
 owner/validator/runtime trust, binding, epoch and deadline are rechecked at the
 dispatch boundary. Unknown writes remain fenced after expiry/cancellation and
 cannot be reclassified as not-sent. Historical recovery never renews a grant.
-Seven focused PostgreSQL tests passed, including populated migration, preserved
+Eight focused PostgreSQL tests passed, including populated migration, preserved
 credential scope, negative execution, exact group head, revocation, replay and
-expiry during receipt/outbox writes. The actual CLI/server kill regression also
+expiry during receipt/outbox writes, and concurrent no-send/dispatch fencing.
+The actual CLI/server kill regression also
 passed: a lost reservation reply is safely closed as not-sent, and a lost committed
 report reply replays exactly once without an App key. Git import is real; provider
 and terminal-runtime observations in this regression are explicitly fixtures.
