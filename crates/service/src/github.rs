@@ -85,6 +85,9 @@ pub enum Action {
         check_run: Option<String>,
         #[arg(long,default_value="after",value_parser=["before","after"],requires="check_report")]
         check_side: String,
+        /// Read executed workflow bytes for this retained attempt report; never enqueue.
+        #[arg(long,value_parser=clap::value_parser!(i64).range(1..=4096),conflicts_with_all=["group_report","check_report"])]
+        attempt_report: Option<i64>,
     },
     /// Capture exact selected PR checks and active rulesets; does not authorize merge.
     Inspect {
@@ -310,6 +313,7 @@ pub async fn run(action: Action) -> Result<bool> {
             check_suite,
             check_run,
             check_side,
+            attempt_report,
         } => {
             queue::run(queue::Request {
                 config,
@@ -318,6 +322,7 @@ pub async fn run(action: Action) -> Result<bool> {
                 id: queue,
                 epoch,
                 state,
+                definition_attempt: attempt_report,
                 check: group_report.map(|sequence| {
                     (
                         sequence,

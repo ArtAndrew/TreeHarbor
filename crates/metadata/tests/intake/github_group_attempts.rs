@@ -1,5 +1,5 @@
 use super::*;
-async fn report(f: &QueueFixture, source: &QueueObservation) -> QueueObservation {
+pub(super) async fn report(f: &QueueFixture, source: &QueueObservation) -> QueueObservation {
     let mut r: QueueObservation = serde_json::from_str(include_str!(
         "../../../github-contract/tests/fixtures/group-attempt-v6.json"
     ))

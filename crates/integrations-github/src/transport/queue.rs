@@ -5,6 +5,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use treeharbor_github_contract::{PullState, queue::*};
 mod attempts;
 mod checks;
+mod definitions;
 mod dequeue;
 mod enqueue;
 mod groups;
@@ -296,6 +297,7 @@ impl Connection {
             group_capture: None,
             group_checks: None,
             group_attempt: None,
+            workflow_definition: None,
             async_result: None,
             mutation_not_sent,
             token_revoked: revoked,

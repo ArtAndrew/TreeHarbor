@@ -5,6 +5,7 @@ pub mod group_attempts;
 pub mod group_checks;
 pub mod groups;
 pub mod queue;
+pub mod workflow_definitions;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use treeharbor_core::{GitOid, RevisionRef};

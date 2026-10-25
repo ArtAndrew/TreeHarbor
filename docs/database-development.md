@@ -26,9 +26,11 @@ leased outbox primitives, an object catalog, persistent root pins and manual
 generation-safe retirement. Catalog tests include real files, a reference
 reachability model and concurrent upload/collection. Migrations verify the
 published checksum chain; tests upgrade historical populated schemas while
-retaining pins, workspaces, receipts and credentials. Current schema 24 adds
-[GitHub event recovery](github-event-recovery.md), with a populated schema-23
-upgrade test preserving the signed inbox and old permission sets. Schema 13 added
+retaining pins, workspaces, receipts and credentials. Current schema 25 adds
+[owner workflow policies](github-workflow-policy.md); a populated schema24 upgrade
+retains old queue receipts and grants without inventing an approval. Schema24 added
+[GitHub event recovery](github-event-recovery.md), with a populated schema23
+upgrade preserving the signed inbox and old permission sets. Schema 13 added
 durable workspace capture requests and claims. Migration
 005 adds immutable source profiles; historical unresolved profiles remain inspectable
 and drainable. See [profile format and upgrade behavior](source-profile-v1.md). Migration 006 adds

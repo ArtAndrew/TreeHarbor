@@ -1,4 +1,6 @@
 use super::*;
+#[path = "github_workflow_definitions.rs"]
+mod workflow_definitions;
 use treeharbor_github_contract::queue::*;
 use treeharbor_metadata::github::QueueSpec;
 #[path = "github_dequeue.rs"]
@@ -54,6 +56,7 @@ impl QueueFixture {
             bridge,
             inspection,
             spec: QueueSpec {
+                policy: None,
                 inspection: inspection.to_string(),
                 ttl_seconds: 60,
             },
@@ -99,6 +102,7 @@ impl QueueFixture {
             group_capture: None,
             group_checks: None,
             group_attempt: None,
+            workflow_definition: None,
             async_result: None,
             mutation_not_sent: false,
             token_revoked: false,
@@ -524,6 +528,7 @@ async fn queue_upgrade_preserves_inspections_and_requires_new_explicit_capabilit
                 &cmd("after-upgrade"),
                 Uuid::new_v4(),
                 &QueueSpec {
+                    policy: None,
                     inspection: inspection.to_string(),
                     ttl_seconds: 60,
                 },

@@ -158,6 +158,7 @@ pub(super) async fn run(r: Request) -> Result<bool> {
                     state: queue_state.clone(),
                     check: None,
                     attempt_check: None,
+                    definition_attempt: None,
                 },
                 false,
             )

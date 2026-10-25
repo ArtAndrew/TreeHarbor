@@ -7,6 +7,8 @@ mod group_attempts;
 mod group_checks;
 #[path = "groups.rs"]
 mod groups;
+#[path = "workflow_definitions.rs"]
+mod workflow_definitions;
 fn cli(f: &Fixture, id: Uuid, state: &Path, app: &Path) -> Command {
     let mut c = Command::new(env!("CARGO_BIN_EXE_treeharbor"));
     c.env("PATH", "/no-executables")
@@ -371,5 +373,6 @@ pub(super) async fn exercise(
     groups::exercise(f, server, id, &state, &app, owner).await;
     group_checks::exercise(f, server, id, &state, &app, owner).await;
     group_attempts::exercise(f, server, id, &state, &app, owner).await;
+    workflow_definitions::exercise(f, server, id, &state, &app, owner).await;
     f.credential_path = owner.to_owned();
 }

@@ -106,6 +106,29 @@ pub enum WireCommand {
         dequeue: String,
         attempt: String,
     },
+    CheckPolicySet {
+        key: String,
+        epoch: i64,
+        binding: String,
+        base_ref: String,
+        expected_generation: i64,
+        definition: Option<treeharbor_github_contract::workflow_definitions::Policy>,
+    },
+    CheckPolicy {
+        epoch: i64,
+        binding: String,
+        base_ref: String,
+    },
+    QueueDefinitionContext {
+        epoch: i64,
+        queue: String,
+        attempt_sequence: i64,
+    },
+    QueueDefinitions {
+        epoch: i64,
+        queue: String,
+        after: i64,
+    },
     QueueRequest {
         key: String,
         epoch: i64,
@@ -393,6 +416,9 @@ impl WireCommand {
             | Self::DequeueReport { .. }
             | Self::DequeueContext { .. }
             | Self::DequeueDispatchContext { .. } => Permission::HostMerge,
+            Self::CheckPolicySet { .. } => Permission::PolicyWrite,
+            Self::CheckPolicy { .. } | Self::QueueDefinitions { .. } => Permission::Read,
+            Self::QueueDefinitionContext { .. } => Permission::HostMerge,
             Self::QueueRequest { .. } | Self::QueueCancel { .. } => Permission::HostQueue,
             Self::QueueBegin { .. }
             | Self::QueueReport { .. }
@@ -727,6 +753,48 @@ impl WireCommand {
                 after,
             } => {
                 db.github_queue_attempts(auth, epoch, id(&queue)?, after)
+                    .await
+            }
+            Self::CheckPolicySet {
+                key,
+                epoch,
+                binding,
+                base_ref,
+                expected_generation,
+                definition,
+            } => {
+                db.set_github_check_policy(
+                    auth,
+                    &Command { key, epoch },
+                    id(&binding)?,
+                    &base_ref,
+                    expected_generation,
+                    definition.as_ref(),
+                )
+                .await
+            }
+            Self::CheckPolicy {
+                epoch,
+                binding,
+                base_ref,
+            } => {
+                db.github_check_policy(auth, epoch, id(&binding)?, &base_ref)
+                    .await
+            }
+            Self::QueueDefinitionContext {
+                epoch,
+                queue,
+                attempt_sequence,
+            } => {
+                db.github_queue_definition_context(auth, epoch, id(&queue)?, attempt_sequence)
+                    .await
+            }
+            Self::QueueDefinitions {
+                epoch,
+                queue,
+                after,
+            } => {
+                db.github_queue_definitions(auth, epoch, id(&queue)?, after)
                     .await
             }
             Self::QueueContext { epoch, queue } => {

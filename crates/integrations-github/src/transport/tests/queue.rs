@@ -9,6 +9,8 @@ mod group_attempt_tests;
 mod group_check_tests;
 #[path = "groups.rs"]
 mod group_tests;
+#[path = "workflow_definitions.rs"]
+mod workflow_definition_tests;
 use treeharbor_github_contract::queue::QueueTarget;
 fn fixture() -> Value {
     serde_json::from_str(include_str!(concat!(
