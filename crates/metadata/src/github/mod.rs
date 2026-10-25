@@ -355,4 +355,5 @@ impl Metadata {
     }
 }
 
+mod publication;
 mod workflow_definitions;

@@ -88,8 +88,9 @@ in **Standalone** mode. Both share one Rust engine.
 > [Candidate checks](docs/github-group-checks.md) retain exact suite/run identities
 > without substituting a later same-SHA push check.
 > [Workflow policies](docs/github-workflow-policy.md) compare exact executed root-file
-> bytes against explicit owner approval and fence dispatch after policy replacement. Complete
-> policy/group-check/final-tree verification remains pending. The live tasks are
+> bytes against explicit owner approval and fence dispatch after policy replacement.
+> [Published candidate evidence](docs/github-publication-proof.md) checks exact final
+> identity and target ancestry. Complete policy/group-check verification remains pending. The live tasks are
 > scripted fixtures, not an LLM benchmark.
 > Neither end-to-end mode is released. No packaged installation is available yet.
 > See [implementation status](docs/implementation-status.md) for evidence and gaps.

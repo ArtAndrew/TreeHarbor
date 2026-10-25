@@ -1,3 +1,5 @@
+#[path = "github_queue_publication.rs"]
+mod publication_evidence;
 use super::*;
 #[path = "github_workflow_definitions.rs"]
 mod workflow_definitions;
@@ -103,6 +105,7 @@ impl QueueFixture {
             group_checks: None,
             group_attempt: None,
             workflow_definition: None,
+            publication: None,
             async_result: None,
             mutation_not_sent: false,
             token_revoked: false,

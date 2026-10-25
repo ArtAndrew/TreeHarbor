@@ -1,3 +1,5 @@
+#[path = "publication.rs"]
+mod publication;
 use super::*;
 #[path = "dequeue.rs"]
 mod dequeue_tests;

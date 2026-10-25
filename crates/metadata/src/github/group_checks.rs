@@ -5,7 +5,7 @@ use treeharbor_github_contract::{
     queue::{QueueObservation, QueueTarget},
 };
 
-async fn membership(
+pub(super) async fn membership(
     tx: &Transaction<'_>,
     s: &Scope,
     id: Uuid,

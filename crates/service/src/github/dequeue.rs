@@ -159,6 +159,7 @@ pub(super) async fn run(r: Request) -> Result<bool> {
                     check: None,
                     attempt_check: None,
                     definition_attempt: None,
+                    publication_group: None,
                 },
                 false,
             )

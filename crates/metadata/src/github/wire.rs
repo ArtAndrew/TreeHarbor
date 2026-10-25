@@ -119,6 +119,16 @@ pub enum WireCommand {
         binding: String,
         base_ref: String,
     },
+    QueuePublicationContext {
+        epoch: i64,
+        queue: String,
+        membership_sequence: i64,
+    },
+    QueuePublications {
+        epoch: i64,
+        queue: String,
+        after: i64,
+    },
     QueueDefinitionContext {
         epoch: i64,
         queue: String,
@@ -417,8 +427,12 @@ impl WireCommand {
             | Self::DequeueContext { .. }
             | Self::DequeueDispatchContext { .. } => Permission::HostMerge,
             Self::CheckPolicySet { .. } => Permission::PolicyWrite,
-            Self::CheckPolicy { .. } | Self::QueueDefinitions { .. } => Permission::Read,
-            Self::QueueDefinitionContext { .. } => Permission::HostMerge,
+            Self::CheckPolicy { .. }
+            | Self::QueueDefinitions { .. }
+            | Self::QueuePublications { .. } => Permission::Read,
+            Self::QueueDefinitionContext { .. } | Self::QueuePublicationContext { .. } => {
+                Permission::HostMerge
+            }
             Self::QueueRequest { .. } | Self::QueueCancel { .. } => Permission::HostQueue,
             Self::QueueBegin { .. }
             | Self::QueueReport { .. }
@@ -779,6 +793,22 @@ impl WireCommand {
                 base_ref,
             } => {
                 db.github_check_policy(auth, epoch, id(&binding)?, &base_ref)
+                    .await
+            }
+            Self::QueuePublicationContext {
+                epoch,
+                queue,
+                membership_sequence,
+            } => {
+                db.github_queue_publication_context(auth, epoch, id(&queue)?, membership_sequence)
+                    .await
+            }
+            Self::QueuePublications {
+                epoch,
+                queue,
+                after,
+            } => {
+                db.github_queue_publications(auth, epoch, id(&queue)?, after)
                     .await
             }
             Self::QueueDefinitionContext {

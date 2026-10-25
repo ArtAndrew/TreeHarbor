@@ -3,6 +3,19 @@
 Updated: 2026-10-25. This file describes implemented behavior and remaining release
 gates. A foundation milestone does not complete either mode.
 
+Experimental [published candidate evidence](github-publication-proof.md) now compares
+an exact retained queue candidate with the PR's final commit and observed target
+history, including later descendants. Version8 records stable PR/ref snapshots,
+ordered parents/tree and immutable-ID provider ancestry comparisons. It reuses the
+assigned bridge, private journal and retained membership. This content fact does
+not certify CI context, host policy or complete merge admission; those flags remain
+false. The [actual installed-App diagnostic](evidence/publication-read-20261025.json)
+matched acceptance PR2's candidate/final commit/tree/parents and current target;
+its narrowed read token was revoked. Its historical membership input was an
+operator diagnostic, not a product-retained chain. Later-descendant behavior is
+tested with labelled fixtures. Squash/rebase mappings and full live source-chain
+acceptance remain gates.
+
 Experimental [owner workflow policies](github-workflow-policy.md) now pin exact
 App/name, workflow identity, path, root-file bytes and expected context identities.
 Additive schema25 stores immutable policies, generation-based active references

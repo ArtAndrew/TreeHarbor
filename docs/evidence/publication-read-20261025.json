@@ -1,0 +1,154 @@
+{
+  "exact_candidate_published": true,
+  "execution_context_verified": false,
+  "host_policy_verified": false,
+  "kind": "actual_rust_installed_app_publication_diagnostic",
+  "merge_verified": false,
+  "observation": {
+    "async_result": null,
+    "finished_at_unix_ms": 1792905069000,
+    "publication": {
+      "after": {
+        "final_commit": {
+          "commit": {
+            "revision": "git:sha1:eb85eaaef7dd34c7f7887ee5b8787a577ec79ec7",
+            "tree": "git:sha1:77c9e0bb9246db3013504d9658e7633f2586ce56"
+          },
+          "parents": [
+            {
+              "revision": "git:sha1:b2b0a2846f6aee26d9d2f62a868c5b52cc28f48a",
+              "tree": "git:sha1:a305c3f132e3ccd8f9e99efd20fa4aeb29e3202a"
+            },
+            {
+              "revision": "git:sha1:48e2f9f30fdd92040a2b0de48d702deab0de47f3",
+              "tree": "git:sha1:77c9e0bb9246db3013504d9658e7633f2586ce56"
+            }
+          ]
+        },
+        "main": {
+          "revision": "git:sha1:eb85eaaef7dd34c7f7887ee5b8787a577ec79ec7",
+          "tree": "git:sha1:77c9e0bb9246db3013504d9658e7633f2586ce56"
+        },
+        "pull": {
+          "base_ref": "main",
+          "base_revision": "git:sha1:b2b0a2846f6aee26d9d2f62a868c5b52cc28f48a",
+          "draft": false,
+          "head_ref": "treeharbor/c1d55627340587709d9922e60e2a1e8c",
+          "head_revision": "git:sha1:48e2f9f30fdd92040a2b0de48d702deab0de47f3",
+          "merged": true,
+          "node_id": "PR_kwDOVVko5M8AAAABKbaB3w",
+          "number": 2,
+          "repository_id": 1431906532,
+          "state": "closed"
+        }
+      },
+      "before": {
+        "final_commit": {
+          "commit": {
+            "revision": "git:sha1:eb85eaaef7dd34c7f7887ee5b8787a577ec79ec7",
+            "tree": "git:sha1:77c9e0bb9246db3013504d9658e7633f2586ce56"
+          },
+          "parents": [
+            {
+              "revision": "git:sha1:b2b0a2846f6aee26d9d2f62a868c5b52cc28f48a",
+              "tree": "git:sha1:a305c3f132e3ccd8f9e99efd20fa4aeb29e3202a"
+            },
+            {
+              "revision": "git:sha1:48e2f9f30fdd92040a2b0de48d702deab0de47f3",
+              "tree": "git:sha1:77c9e0bb9246db3013504d9658e7633f2586ce56"
+            }
+          ]
+        },
+        "main": {
+          "revision": "git:sha1:eb85eaaef7dd34c7f7887ee5b8787a577ec79ec7",
+          "tree": "git:sha1:77c9e0bb9246db3013504d9658e7633f2586ce56"
+        },
+        "pull": {
+          "base_ref": "main",
+          "base_revision": "git:sha1:b2b0a2846f6aee26d9d2f62a868c5b52cc28f48a",
+          "draft": false,
+          "head_ref": "treeharbor/c1d55627340587709d9922e60e2a1e8c",
+          "head_revision": "git:sha1:48e2f9f30fdd92040a2b0de48d702deab0de47f3",
+          "merged": true,
+          "node_id": "PR_kwDOVVko5M8AAAABKbaB3w",
+          "number": 2,
+          "repository_id": 1431906532,
+          "state": "closed"
+        }
+      },
+      "comparison": {
+        "ahead_by": 0,
+        "base": {
+          "revision": "git:sha1:eb85eaaef7dd34c7f7887ee5b8787a577ec79ec7",
+          "tree": "git:sha1:77c9e0bb9246db3013504d9658e7633f2586ce56"
+        },
+        "behind_by": 0,
+        "head_revision": "git:sha1:eb85eaaef7dd34c7f7887ee5b8787a577ec79ec7",
+        "merge_base": {
+          "revision": "git:sha1:eb85eaaef7dd34c7f7887ee5b8787a577ec79ec7",
+          "tree": "git:sha1:77c9e0bb9246db3013504d9658e7633f2586ce56"
+        },
+        "status": "identical",
+        "total_commits": 0
+      },
+      "target": {
+        "member": {
+          "base_ref": "main",
+          "candidate": {
+            "commit": {
+              "revision": "git:sha1:eb85eaaef7dd34c7f7887ee5b8787a577ec79ec7",
+              "tree": "git:sha1:77c9e0bb9246db3013504d9658e7633f2586ce56"
+            },
+            "parents": [
+              {
+                "revision": "git:sha1:b2b0a2846f6aee26d9d2f62a868c5b52cc28f48a",
+                "tree": "git:sha1:a305c3f132e3ccd8f9e99efd20fa4aeb29e3202a"
+              },
+              {
+                "revision": "git:sha1:48e2f9f30fdd92040a2b0de48d702deab0de47f3",
+                "tree": "git:sha1:77c9e0bb9246db3013504d9658e7633f2586ce56"
+              }
+            ]
+          },
+          "entry": {
+            "base": {
+              "revision": "git:sha1:b2b0a2846f6aee26d9d2f62a868c5b52cc28f48a",
+              "tree": "git:sha1:a305c3f132e3ccd8f9e99efd20fa4aeb29e3202a"
+            },
+            "head": {
+              "revision": "git:sha1:eb85eaaef7dd34c7f7887ee5b8787a577ec79ec7",
+              "tree": "git:sha1:77c9e0bb9246db3013504d9658e7633f2586ce56"
+            },
+            "id": "MQE_lQDOVVko5M8AAAABKbaB384ABOsTzgN3S9o",
+            "state": "AWAITING_CHECKS"
+          },
+          "position": 1,
+          "pull_node": "PR_kwDOVVko5M8AAAABKbaB3w",
+          "pull_number": 2,
+          "source_repository_id": 1431906532,
+          "source_revision": "git:sha1:48e2f9f30fdd92040a2b0de48d702deab0de47f3"
+        },
+        "membership_sequence": 1
+      }
+    },
+    "receipt": null,
+    "snapshot": null,
+    "started_at_unix_ms": 1792905066000,
+    "token_revoked": true,
+    "version": 8
+  },
+  "private_repository_entitlement_verified": false,
+  "product_membership_link_verified": false,
+  "repository": "TreeHarbor/TreeHarbor-acceptance",
+  "pull_number": 2,
+  "source_membership": "Earlier operator diagnostic; not a product-retained version4 membership report.",
+  "token_permissions": {
+    "contents": "read",
+    "metadata": "read",
+    "pull_requests": "read",
+    "checks": "read"
+  },
+  "date": "2026-10-25",
+  "writes_performed": false,
+  "descendant_target_live_tested": false
+}

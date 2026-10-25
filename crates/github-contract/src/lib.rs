@@ -4,6 +4,7 @@ pub mod dequeue;
 pub mod group_attempts;
 pub mod group_checks;
 pub mod groups;
+pub mod publication;
 pub mod queue;
 pub mod workflow_definitions;
 use serde::{Deserialize, Serialize};

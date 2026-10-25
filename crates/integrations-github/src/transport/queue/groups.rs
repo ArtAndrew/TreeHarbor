@@ -45,13 +45,13 @@ impl<T> Items<T> {
     }
 }
 #[derive(Deserialize)]
-struct ParentCommit {
+pub(super) struct ParentCommit {
     oid: String,
     tree: Tree,
     parents: Items<Commit>,
 }
 impl ParentCommit {
-    fn observation(self) -> Result<CommitParents> {
+    pub(super) fn observation(self) -> Result<CommitParents> {
         Ok(CommitParents {
             commit: Commit {
                 oid: self.oid,
@@ -216,6 +216,7 @@ impl Connection {
             group_checks: None,
             group_attempt: None,
             workflow_definition: None,
+            publication: None,
             receipt: None,
             enqueue_receipt: None,
             async_result: None,

@@ -1,3 +1,5 @@
+#[path = "publication.rs"]
+mod publication_evidence;
 use super::*;
 #[path = "dequeue.rs"]
 mod dequeue;
@@ -374,5 +376,6 @@ pub(super) async fn exercise(
     group_checks::exercise(f, server, id, &state, &app, owner).await;
     group_attempts::exercise(f, server, id, &state, &app, owner).await;
     workflow_definitions::exercise(f, server, id, &state, &app, owner).await;
+    publication_evidence::exercise(f, server, id, &state, &app, owner).await;
     f.credential_path = owner.to_owned();
 }

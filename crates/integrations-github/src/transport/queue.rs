@@ -9,6 +9,7 @@ mod definitions;
 mod dequeue;
 mod enqueue;
 mod groups;
+mod publication;
 mod result;
 pub use dequeue::ObservedDequeue;
 
@@ -298,6 +299,7 @@ impl Connection {
             group_checks: None,
             group_attempt: None,
             workflow_definition: None,
+            publication: None,
             async_result: None,
             mutation_not_sent,
             token_revoked: revoked,
