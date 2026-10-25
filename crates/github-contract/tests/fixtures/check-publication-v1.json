@@ -1,0 +1,148 @@
+{
+  "target": {
+    "version": 1,
+    "publication": "12121212-1212-4212-8212-121212121212",
+    "epoch": 1,
+    "app_id": 7,
+    "program": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "evidence": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "conclusion": "success",
+    "source": {
+      "kind": "pull",
+      "target": {
+        "repository_id": 11,
+        "pull_number": 17,
+        "pull_node": "PR_test_17",
+        "head_ref": "treeharbor/04040404040404040404040404040404",
+        "base_ref": "main",
+        "head_revision": "git:sha1:1111111111111111111111111111111111111111",
+        "required": [
+          {
+            "name": "CI / build",
+            "app_id": 7
+          }
+        ]
+      }
+    }
+  },
+  "name": "TreeHarbor/e1/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "external_id": "treeharbor:v1:12121212-1212-4212-8212-121212121212:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "raw_protection": {
+    "required_status_checks": {
+      "strict": true,
+      "checks": [
+        {
+          "context": "TreeHarbor/e1/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "app_id": 7
+        }
+      ]
+    },
+    "enforce_admins": {
+      "enabled": true
+    },
+    "allow_force_pushes": {
+      "enabled": false
+    },
+    "allow_deletions": {
+      "enabled": false
+    },
+    "required_pull_request_reviews": null
+  },
+  "raw_rules": [
+    {
+      "ruleset_id": 6,
+      "type": "merge_queue",
+      "parameters": {
+        "merge_method": "MERGE"
+      }
+    }
+  ],
+  "report": {
+    "version": 1,
+    "started_at_unix_ms": 1000,
+    "finished_at_unix_ms": 2000,
+    "outcome": "observed",
+    "preflight": {
+      "before": {
+        "kind": "pull",
+        "snapshot": {
+          "repository_id": 11,
+          "number": 17,
+          "node_id": "PR_test_17",
+          "head_ref": "treeharbor/04040404040404040404040404040404",
+          "base_ref": "main",
+          "head_revision": "git:sha1:1111111111111111111111111111111111111111",
+          "base_revision": "git:sha1:2222222222222222222222222222222222222222",
+          "state": "open",
+          "draft": false,
+          "merged": false
+        }
+      },
+      "policy_before": {
+        "protection": {
+          "sha256": "sha256:91a56ffdef48b82b25b75262095cdd136ed5574417b718879f1f9c55ee857c90",
+          "app_bound_checks": [
+            {
+              "name": "TreeHarbor/e1/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "app_id": 7
+            }
+          ],
+          "enforce_admins": true,
+          "allow_force_pushes": false,
+          "allow_deletions": false,
+          "has_bypass": false
+        },
+        "rules": {
+          "sha256": "4e71cd99cfe8158b40eb1380ce8993fe9476d5dc798192ae97b849f8257bd745",
+          "count": 1,
+          "merge_queue": true
+        }
+      },
+      "after": {
+        "kind": "pull",
+        "snapshot": {
+          "repository_id": 11,
+          "number": 17,
+          "node_id": "PR_test_17",
+          "head_ref": "treeharbor/04040404040404040404040404040404",
+          "base_ref": "main",
+          "head_revision": "git:sha1:1111111111111111111111111111111111111111",
+          "base_revision": "git:sha1:2222222222222222222222222222222222222222",
+          "state": "open",
+          "draft": false,
+          "merged": false
+        }
+      },
+      "policy_after": {
+        "protection": {
+          "sha256": "sha256:91a56ffdef48b82b25b75262095cdd136ed5574417b718879f1f9c55ee857c90",
+          "app_bound_checks": [
+            {
+              "name": "TreeHarbor/e1/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "app_id": 7
+            }
+          ],
+          "enforce_admins": true,
+          "allow_force_pushes": false,
+          "allow_deletions": false,
+          "has_bypass": false
+        },
+        "rules": {
+          "sha256": "4e71cd99cfe8158b40eb1380ce8993fe9476d5dc798192ae97b849f8257bd745",
+          "count": 1,
+          "merge_queue": true
+        }
+      }
+    },
+    "check": {
+      "id": 73,
+      "app_id": 7,
+      "name": "TreeHarbor/e1/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "head_revision": "git:sha1:1111111111111111111111111111111111111111",
+      "external_id": "treeharbor:v1:12121212-1212-4212-8212-121212121212:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    "token_revoked": true
+  }
+}

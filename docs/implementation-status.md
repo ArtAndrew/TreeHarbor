@@ -3,6 +3,17 @@
 Updated: 2026-10-25. This file describes implemented behavior and remaining release
 gates. A foundation milestone does not complete either mode.
 
+Experimental [required-check transport](github-required-check-transport.md) now
+creates an exact App check after stable PR/group and required-context reads, then
+rereads its immutable identity. Unknown writes are recovered by read-only complete
+scans without retrying creation. Program/epoch-specific names prevent silently
+reusing an older program's context. The initial policy proof requires the documented
+legacy-protection profile; it is not a complete host-policy or final-merge proof.
+Contract vectors and loopback HTTP tests cover drift, failure boundaries, exact
+identities and bounded recovery. No acceptance App permissions were changed.
+Durable owner authorization/dispatch records, service/CLI wiring and live check
+publication remain unfinished. This library alone is not a product admission gate.
+
 Experimental [managed Connected checks](github-managed-checks.md) now reuse the
 trusted offline runtime for an owner-approved exact PR head or queue candidate and
 completed Git import. PR checks need no existing inspection or queue entry.

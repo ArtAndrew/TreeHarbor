@@ -1,4 +1,80 @@
 use super::*;
+
+#[tokio::test]
+async fn required_group_check_targets_candidate_and_stops_on_membership_drift() {
+    use super::super::check_publication_tests as checks;
+    use treeharbor_github_contract::{
+        check_publication as cp, publication, queue::QueueObservation,
+    };
+    let f = checks::fixture();
+    let retained: QueueObservation = serde_json::from_str(include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../github-contract/tests/fixtures/queue-groups-v4.json"
+    )))
+    .unwrap();
+    let mut q = target();
+    q.expected_rules =
+        serde_json::from_value(f["report"]["preflight"]["policy_before"]["rules"].clone()).unwrap();
+    let mut t = checks::target();
+    t.source = cp::Source::Group {
+        queue: Box::new(q),
+        target: Box::new(publication::Target {
+            membership_sequence: 1,
+            member: retained.group_capture.unwrap().before.members.remove(0),
+        }),
+    };
+    for drift in [false, true] {
+        let mut responses = checks::access(true);
+        let mut after = groups();
+        if drift {
+            let p = &mut after["data"]["repository"]["pullRequest"];
+            p["isInMergeQueue"] = json!(false);
+            p["mergeQueueEntry"] = Value::Null;
+            p["mergeQueue"]["entries"]["totalCount"] = json!(0);
+            p["mergeQueue"]["entries"]["nodes"] = json!([]);
+        }
+        for g in [groups(), after] {
+            responses.extend([
+                response(200, g),
+                response(200, f["raw_protection"].clone()),
+                response(200, f["raw_rules"].clone()),
+            ]);
+        }
+        if !drift {
+            responses.extend([
+                response(201, checks::run(&t)),
+                response(200, checks::run(&t)),
+            ]);
+        }
+        responses.push(revoked());
+        let (c, h) = host(responses).await;
+        let result = c
+            .publish_check(&binding(), &t, |p| {
+                assert!(p.eligible(&t));
+                assert!(!drift);
+                async { Ok(()) }
+            })
+            .await;
+        if drift {
+            assert!(result.err().unwrap().mutation_not_sent);
+        } else {
+            let report = result.unwrap().report;
+            assert_eq!(
+                report.check.unwrap().head_revision,
+                format!("git:sha1:{}", "33".repeat(20))
+            );
+            // This is the queue's combined candidate, never the PR source head.
+            assert_ne!(t.source.head().unwrap(), t.source.pull().head_revision);
+        }
+        let requests = h.await.unwrap();
+        assert_eq!(requests.len(), if drift { 11 } else { 13 });
+        for i in [4, 7] {
+            assert!(request_text(&requests[i]).starts_with("POST /graphql "));
+            assert!(!request_text(&requests[i]).contains("mutation "));
+        }
+    }
+}
+
 fn groups() -> Value {
     let mut g = queued();
     let r = &mut g["data"]["repository"];

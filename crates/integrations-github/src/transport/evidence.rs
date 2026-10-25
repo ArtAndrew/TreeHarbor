@@ -47,7 +47,7 @@ struct Runs {
 }
 
 impl Connection {
-    async fn evidence_pull(
+    pub(super) async fn evidence_pull(
         &self,
         b: &RepositoryBinding,
         t: &InspectionTarget,

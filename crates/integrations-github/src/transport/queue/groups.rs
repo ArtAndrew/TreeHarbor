@@ -164,7 +164,7 @@ fn decode(value: Value, b: &RepositoryBinding, t: &QueueTarget) -> Result<GroupS
     Ok(result)
 }
 impl Connection {
-    async fn group_snapshot(
+    pub(in crate::transport) async fn group_snapshot(
         &self,
         b: &RepositoryBinding,
         t: &QueueTarget,
