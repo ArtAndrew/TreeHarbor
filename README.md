@@ -62,7 +62,7 @@ tests, not completion of the entire product.
 | Workspaces | Full/sparse file preparation, expansion preserving edits, explicit drain/cleanup and recovery | Optimized caching, automatic scheduling and Git-compatible workspace format |
 | Agent execution | Managed Linux tasks through external gVisor, resource limits, capture after runtime removal and process-loss recovery | Automated runtime provisioning and node replacement |
 | Developer interfaces | Local authenticated API and CLI; experimental MCP stdio adapter | Packaged onboarding and remote service transport |
-| Connected | Real GitHub import, branch/PR publication, checks capture, queue requests and signed events | Complete managed required-check → queue → final-main acceptance and unattended operation |
+| Connected | Real GitHub import, branch/PR publication, managed required checks, queue requests, candidate/final-history evidence and signed events | Complete host-policy/admission certification and unattended operation |
 | Standalone | Native refs/history, candidate checks/reviews, merge, single-ChangeSet rebase and publication without Git/GitHub on the native path | Full lifecycle, broader history rewriting and fenced migration between modes |
 | Data recovery and interop | Durable transaction/retry paths, object retention and full-history Git import/export for supported inputs | Full server backup/restore, automatic GC/reconciliation and S3 backend |
 
@@ -71,6 +71,11 @@ scripted agents and published their proposals as real GitHub PRs. A subsequent
 [queue test](docs/evidence/connected-queue-live-20261024.json) merged a passing change
 and rejected an incompatible combined candidate. These are bounded acceptance
 results, not an LLM benchmark or proof that the complete Connected release is ready.
+A [managed-check trial](docs/evidence/connected-required-check-live-20261025.json)
+subsequently ran fresh checks for the original PR, its failing combined candidate,
+a scripted repair and the repair's combined candidate. The repair merged through
+GitHub's queue; TreeHarbor matched the checked candidate to the final commit and
+recovered a check receipt after a server crash without publishing it twice.
 
 The CI suite exercises Rust on Linux/macOS, real PostgreSQL contracts, and actual
 gVisor tasks on Linux x86-64/ARM64. See [CI runs](https://github.com/ArtAndrew/TreeHarbor/actions)
@@ -95,8 +100,8 @@ incompatibility. See [security boundaries](SECURITY.md).
 
 ## What remains before a full release?
 
-1. Complete the real Connected workflow, including managed required checks,
-   failed combined candidates, repair, restart recovery and final GitHub history.
+1. Complete Connected host-policy and admission certification, automatic
+   reconciliation, and repeatable operation beyond the bounded live trials.
 2. Verify the full Standalone lifecycle and safe transfer of repository authority
    between modes, with a single writer throughout.
 3. Finish storage and operations: S3, automatic cleanup/GC, full server backup and

@@ -1,0 +1,391 @@
+{
+  "version": 1,
+  "observed_on": "2026-10-25",
+  "repository": "https://github.com/TreeHarbor/TreeHarbor-acceptance",
+  "implementation_commit": "9f85bbfb4c5ed4eafcded12bfd778af663c3ebf8",
+  "workload": "Synthetic Rust scheduling configuration: a prior scripted proposal and current main fit the memory budget separately; their combined candidate exceeds it. A fresh scripted repair increases the budget for four workers. Not an LLM or performance benchmark.",
+  "environment": {
+    "platform": "Linux ARM64 test VM",
+    "runtime": "gVisor runsc release-20261012.0",
+    "check_image": "sha256:facc213b920d0825de7ad2c8658be718b14ff03ef471740544b9a12dee633203",
+    "runtime_profile": "sha256:4420d453b65a7c192b766984637fc242f22c8a20cca3e8d566200c925861b08f",
+    "check_program": "sha256:fbf4549c44b781b823a98fb7b591b28c329a1c0f0624218b009bd3462044df2c",
+    "network": "offline task execution; trusted bridge alone accesses GitHub",
+    "workspace_limit_bytes": 268435456,
+    "memory_limit_bytes": 1073741824,
+    "runtime_timeout_ms": 30000
+  },
+  "managed_checks": [
+    {
+      "case": "pr1",
+      "git_revision": "git:sha1:f08ad43ba4bc274fb4ea26cf8000107e475c2d5a",
+      "native_revision": "native:sha256:d25f96308fc16303ba02ba74ceb19f7cc5f03ae3b44f08f0894bbfc5674b8117",
+      "snapshot": "sha256:a273475ef46ef524e0b270595e06559577defe07d469e6f722d8ee2258b22e89",
+      "check_run": "a4aff319-7dee-4404-9a10-29154f6eca5b",
+      "agent_run": "aa483edd-c5e0-4527-a1bb-e5d7ab32a0ad",
+      "program": "sha256:fbf4549c44b781b823a98fb7b591b28c329a1c0f0624218b009bd3462044df2c",
+      "evidence": "sha256:bde6857da81a4baaee09cffc0695f1150d330235f827cfdb3bcfc9b96f31331c",
+      "outcome": "passed",
+      "runtime_exit_code": 0,
+      "runtime_removed": true,
+      "publication": "1c3aae01-c017-4780-a290-a2233008767c",
+      "host_check": {
+        "app_id": 5452239,
+        "conclusion": "success",
+        "external_id": "treeharbor:v1:1c3aae01-c017-4780-a290-a2233008767c:bde6857da81a4baaee09cffc0695f1150d330235f827cfdb3bcfc9b96f31331c",
+        "head_revision": "git:sha1:f08ad43ba4bc274fb4ea26cf8000107e475c2d5a",
+        "id": 121110646550,
+        "name": "TreeHarbor/e1/fbf4549c44b781b823a98fb7b591b28c329a1c0f0624218b009bd3462044df2c",
+        "status": "completed"
+      },
+      "host_check_url": "https://github.com/TreeHarbor/TreeHarbor-acceptance/runs/121110646550",
+      "publication_report_sequence": 1,
+      "token_revoked": true
+    },
+    {
+      "case": "pr1-group",
+      "git_revision": "git:sha1:c01ea3144425f24bd6ae6337352127f887a1dd0e",
+      "native_revision": "native:sha256:f547d93397e18c5407b442e37ac7289ea873bfb2ef38ee0a3b3e8568022645d0",
+      "snapshot": "sha256:b65695981f1c531a41e65af6c758d8bb9ae7f9d48cbb17686033fbe1357b848c",
+      "check_run": "98662ad4-4ce7-44cf-aac1-f57cb2791950",
+      "agent_run": "ae0b86c1-0662-40ff-a682-a9bee0e091de",
+      "program": "sha256:fbf4549c44b781b823a98fb7b591b28c329a1c0f0624218b009bd3462044df2c",
+      "evidence": "sha256:2dce2ebde99cac1c711458a8afb48903941bddf5ee518f121e875b5216e08a81",
+      "outcome": "failed",
+      "runtime_exit_code": 1,
+      "runtime_removed": true,
+      "publication": "396c68b5-f1b0-41fe-b32e-5de42dbe8dc3",
+      "host_check": {
+        "app_id": 5452239,
+        "conclusion": "failure",
+        "external_id": "treeharbor:v1:396c68b5-f1b0-41fe-b32e-5de42dbe8dc3:2dce2ebde99cac1c711458a8afb48903941bddf5ee518f121e875b5216e08a81",
+        "head_revision": "git:sha1:c01ea3144425f24bd6ae6337352127f887a1dd0e",
+        "id": 121111549565,
+        "name": "TreeHarbor/e1/fbf4549c44b781b823a98fb7b591b28c329a1c0f0624218b009bd3462044df2c",
+        "status": "completed"
+      },
+      "host_check_url": "https://github.com/TreeHarbor/TreeHarbor-acceptance/runs/121111549565",
+      "publication_report_sequence": 1,
+      "token_revoked": true
+    },
+    {
+      "case": "repair",
+      "git_revision": "git:sha1:c51f7ef64592c8852ed4abc44125e39a6928356a",
+      "native_revision": "native:sha256:2b2c6ca21e9d7487a2fe02901b51195eef90f8800338df5d564769c8a4cc9eff",
+      "snapshot": "sha256:93331caa4e3fe81b3c1ea239b5fa30d06727f5d2e7569b6017941bd7f64120cd",
+      "check_run": "9a77da9a-1e02-45b5-9334-181ecbb41e78",
+      "agent_run": "7eb8e5a6-17c4-48e6-bff8-9ee57677eda2",
+      "program": "sha256:fbf4549c44b781b823a98fb7b591b28c329a1c0f0624218b009bd3462044df2c",
+      "evidence": "sha256:97ad7774580cfd0748cea5dc7d9c7b8c108ebf16bd95bf95153bf18404be0260",
+      "outcome": "passed",
+      "runtime_exit_code": 0,
+      "runtime_removed": true,
+      "publication": "ff6fee83-9812-4b70-a76d-267dffe53829",
+      "host_check": {
+        "app_id": 5452239,
+        "conclusion": "success",
+        "external_id": "treeharbor:v1:ff6fee83-9812-4b70-a76d-267dffe53829:97ad7774580cfd0748cea5dc7d9c7b8c108ebf16bd95bf95153bf18404be0260",
+        "head_revision": "git:sha1:c51f7ef64592c8852ed4abc44125e39a6928356a",
+        "id": 121112202396,
+        "name": "TreeHarbor/e1/fbf4549c44b781b823a98fb7b591b28c329a1c0f0624218b009bd3462044df2c",
+        "status": "completed"
+      },
+      "host_check_url": "https://github.com/TreeHarbor/TreeHarbor-acceptance/runs/121112202396",
+      "publication_report_sequence": 1,
+      "token_revoked": true
+    },
+    {
+      "case": "repair-group",
+      "git_revision": "git:sha1:a91d290d47abeaec32867dd21bb7107bec87ef05",
+      "native_revision": "native:sha256:7a2432f8b121ff5172ddff9bc850af0292ff77f5d717a684e4fd9fe3d4bb6061",
+      "snapshot": "sha256:93331caa4e3fe81b3c1ea239b5fa30d06727f5d2e7569b6017941bd7f64120cd",
+      "check_run": "47b5fc2d-5f8d-4592-9d4f-159fa907ada2",
+      "agent_run": "8cb846da-c7a9-438b-9216-43238251db58",
+      "program": "sha256:fbf4549c44b781b823a98fb7b591b28c329a1c0f0624218b009bd3462044df2c",
+      "evidence": "sha256:d1fab320ab8ac46e36aa975961207c3c2458c75ff8b8b3b5b3fa0b50a1ac205b",
+      "outcome": "passed",
+      "runtime_exit_code": 0,
+      "runtime_removed": true,
+      "publication": "a885b150-fdbe-418c-af92-cf8c161d56af",
+      "host_check": {
+        "app_id": 5452239,
+        "conclusion": "success",
+        "external_id": "treeharbor:v1:a885b150-fdbe-418c-af92-cf8c161d56af:d1fab320ab8ac46e36aa975961207c3c2458c75ff8b8b3b5b3fa0b50a1ac205b",
+        "head_revision": "git:sha1:a91d290d47abeaec32867dd21bb7107bec87ef05",
+        "id": 121112389557,
+        "name": "TreeHarbor/e1/fbf4549c44b781b823a98fb7b591b28c329a1c0f0624218b009bd3462044df2c",
+        "status": "completed"
+      },
+      "host_check_url": "https://github.com/TreeHarbor/TreeHarbor-acceptance/runs/121112389557",
+      "publication_report_sequence": 1,
+      "token_revoked": true
+    }
+  ],
+  "merge_group_workflows": [
+    {
+      "case": "pr1-group",
+      "queue": "db1443bc-7c27-447c-b282-30f8722d5910",
+      "product_report_sequence": 6,
+      "target": {
+        "membership_sequence": 4,
+        "side": "after",
+        "subject": {
+          "revision": "git:sha1:c01ea3144425f24bd6ae6337352127f887a1dd0e",
+          "tree": "git:sha1:450532e3eb170bc0149a3900d4596a1fad79806c"
+        }
+      },
+      "suite": {
+        "app_id": 15368,
+        "head_revision": "git:sha1:c01ea3144425f24bd6ae6337352127f887a1dd0e",
+        "id": "CS_kwDOVVko5M8AAAAZWjagAg",
+        "repository_id": 1431906532,
+        "runs": [
+          {
+            "completed_at_unix_ms": 1792914662000,
+            "conclusion": "FAILURE",
+            "id": "CR_kwDOVVko5M8AAAAcMs72Jg",
+            "name": "Queue fixture",
+            "started_at_unix_ms": 1792914618000,
+            "status": "COMPLETED"
+          }
+        ],
+        "workflow": {
+          "event": "merge_group",
+          "file": {
+            "path": ".github/workflows/check.yml",
+            "repository_file_url": "https://github.com/TreeHarbor/TreeHarbor-acceptance/blob/c01ea3144425f24bd6ae6337352127f887a1dd0e/.github/workflows/check.yml",
+            "repository_name": "TreeHarbor/TreeHarbor-acceptance"
+          },
+          "id": "WFR_kwLOVVko5M8AAAAJWpLoYQ",
+          "observed_run_attempt": 1,
+          "workflow_id": "W_kwDOVVko5M4XiZmi"
+        }
+      }
+    },
+    {
+      "case": "repair-group",
+      "queue": "ba6c29c8-8848-4914-9b15-34f3516df1e6",
+      "product_report_sequence": 8,
+      "target": {
+        "membership_sequence": 6,
+        "side": "after",
+        "subject": {
+          "revision": "git:sha1:a91d290d47abeaec32867dd21bb7107bec87ef05",
+          "tree": "git:sha1:ed7c16f7b4c4f52dd36ecb5cf905e11305eeee31"
+        }
+      },
+      "suite": {
+        "app_id": 15368,
+        "head_revision": "git:sha1:a91d290d47abeaec32867dd21bb7107bec87ef05",
+        "id": "CS_kwDOVVko5M8AAAAZWkHCVA",
+        "repository_id": 1431906532,
+        "runs": [
+          {
+            "completed_at_unix_ms": 1792914921000,
+            "conclusion": "SUCCESS",
+            "id": "CR_kwDOVVko5M8AAAAcMtvJqQ",
+            "name": "Queue fixture",
+            "started_at_unix_ms": 1792914880000,
+            "status": "COMPLETED"
+          }
+        ],
+        "workflow": {
+          "event": "merge_group",
+          "file": {
+            "path": ".github/workflows/check.yml",
+            "repository_file_url": "https://github.com/TreeHarbor/TreeHarbor-acceptance/blob/a91d290d47abeaec32867dd21bb7107bec87ef05/.github/workflows/check.yml",
+            "repository_name": "TreeHarbor/TreeHarbor-acceptance"
+          },
+          "id": "WFR_kwLOVVko5M8AAAAJWpc1IQ",
+          "observed_run_attempt": 1,
+          "workflow_id": "W_kwDOVVko5M4XiZmi"
+        }
+      }
+    }
+  ],
+  "pull_results": [
+    {
+      "headRefOid": "f08ad43ba4bc274fb4ea26cf8000107e475c2d5a",
+      "mergeCommit": null,
+      "mergedAt": null,
+      "number": 1,
+      "state": "OPEN",
+      "url": "https://github.com/TreeHarbor/TreeHarbor-acceptance/pull/1"
+    },
+    {
+      "headRefOid": "c51f7ef64592c8852ed4abc44125e39a6928356a",
+      "mergeCommit": {
+        "oid": "a91d290d47abeaec32867dd21bb7107bec87ef05"
+      },
+      "mergedAt": "2026-10-25T07:55:29Z",
+      "number": 3,
+      "state": "MERGED",
+      "url": "https://github.com/TreeHarbor/TreeHarbor-acceptance/pull/3"
+    }
+  ],
+  "published_candidate": {
+    "queue": "ba6c29c8-8848-4914-9b15-34f3516df1e6",
+    "product_report_sequence": 9,
+    "candidate": {
+      "commit": {
+        "revision": "git:sha1:a91d290d47abeaec32867dd21bb7107bec87ef05",
+        "tree": "git:sha1:ed7c16f7b4c4f52dd36ecb5cf905e11305eeee31"
+      },
+      "parents": [
+        {
+          "revision": "git:sha1:eb85eaaef7dd34c7f7887ee5b8787a577ec79ec7",
+          "tree": "git:sha1:77c9e0bb9246db3013504d9658e7633f2586ce56"
+        },
+        {
+          "revision": "git:sha1:c51f7ef64592c8852ed4abc44125e39a6928356a",
+          "tree": "git:sha1:ed7c16f7b4c4f52dd36ecb5cf905e11305eeee31"
+        }
+      ]
+    },
+    "final_commit": {
+      "commit": {
+        "revision": "git:sha1:a91d290d47abeaec32867dd21bb7107bec87ef05",
+        "tree": "git:sha1:ed7c16f7b4c4f52dd36ecb5cf905e11305eeee31"
+      },
+      "parents": [
+        {
+          "revision": "git:sha1:eb85eaaef7dd34c7f7887ee5b8787a577ec79ec7",
+          "tree": "git:sha1:77c9e0bb9246db3013504d9658e7633f2586ce56"
+        },
+        {
+          "revision": "git:sha1:c51f7ef64592c8852ed4abc44125e39a6928356a",
+          "tree": "git:sha1:ed7c16f7b4c4f52dd36ecb5cf905e11305eeee31"
+        }
+      ]
+    },
+    "observed_main": {
+      "revision": "git:sha1:a91d290d47abeaec32867dd21bb7107bec87ef05",
+      "tree": "git:sha1:ed7c16f7b4c4f52dd36ecb5cf905e11305eeee31"
+    },
+    "comparison": {
+      "ahead_by": 0,
+      "base": {
+        "revision": "git:sha1:a91d290d47abeaec32867dd21bb7107bec87ef05",
+        "tree": "git:sha1:ed7c16f7b4c4f52dd36ecb5cf905e11305eeee31"
+      },
+      "behind_by": 0,
+      "head_revision": "git:sha1:a91d290d47abeaec32867dd21bb7107bec87ef05",
+      "merge_base": {
+        "revision": "git:sha1:a91d290d47abeaec32867dd21bb7107bec87ef05",
+        "tree": "git:sha1:ed7c16f7b4c4f52dd36ecb5cf905e11305eeee31"
+      },
+      "status": "identical",
+      "total_commits": 0
+    },
+    "exact_candidate_published": true,
+    "checks_verified": false,
+    "host_policy_verified": false,
+    "merge_verified": false
+  },
+  "recovery": {
+    "fault": "actual service SIGKILL; injected local ACK loss only",
+    "same_observation": true,
+    "same_report_sequence": true,
+    "exact_ack_recovered": true,
+    "without_app_configuration_or_git": true,
+    "check_id": 121110646550
+  },
+  "policy": {
+    "required_checks": [
+      {
+        "context": "Queue fixture",
+        "app_id": 15368
+      },
+      {
+        "context": "TreeHarbor/e1/fbf4549c44b781b823a98fb7b591b28c329a1c0f0624218b009bd3462044df2c",
+        "app_id": 5452239
+      }
+    ],
+    "enforce_admins": true,
+    "force_pushes": false,
+    "deletions": false,
+    "existing_queue_ruleset_unchanged": true,
+    "direct_merge_or_bypass": false
+  },
+  "repair": {
+    "pull": "b50a31b7-01ac-4586-8fc1-e91270887b15",
+    "changeset": "00a6ec49-c445-46c5-b99e-a8c5d5338d97",
+    "run": "95c66321-fccf-4ea0-8e91-53560452ab61",
+    "base": "native:sha256:14df174a07069ca742017fb4ed6bab6f9e47e336ba0cb60a8300a1fc680523fb",
+    "result_snapshot": "sha256:93331caa4e3fe81b3c1ea239b5fa30d06727f5d2e7569b6017941bd7f64120cd",
+    "runtime_removed": true,
+    "workspace_deleted": true,
+    "initial_image_failure": "First scripted repair image had a root-only executable; its run failed with exit125 and no ChangeSet was accepted. A distinct run used a corrected immutable image. Both records were retained."
+  },
+  "workspace_cleanup": [
+    {
+      "case": "pr1",
+      "cleanup": "572aadcf-860e-4ac7-acd1-6e08bb646a21",
+      "generation": 2,
+      "state": "deleted",
+      "workspace": "ad9adf6a-8231-44c5-a97b-8fbac39b955f"
+    },
+    {
+      "case": "pr1-group",
+      "cleanup": "d5667c6f-efea-40fa-bfe3-10ade79c6248",
+      "generation": 2,
+      "state": "deleted",
+      "workspace": "35d12eb9-9ecf-4a0c-ac3a-254c862470ea"
+    },
+    {
+      "case": "repair",
+      "cleanup": "1eb3dc00-8070-4497-afd4-781441c085b7",
+      "generation": 2,
+      "state": "deleted",
+      "workspace": "47a4b1ab-19bf-4bc6-9ebd-1a0726c7641e"
+    },
+    {
+      "case": "repair-group",
+      "cleanup": "10dacbb6-d912-4e62-b0ce-def4b189c3db",
+      "generation": 2,
+      "state": "deleted",
+      "workspace": "54b308f2-6236-47fb-836e-9dabf3e601d2"
+    }
+  ],
+  "limits": [
+    "Manually orchestrated bounded acceptance, not unattended installation or production readiness.",
+    "Managed execution and check delivery are real, with retained product membership and final-history linkage. Full host-policy and final-admission certification remain unfinished; merge_verified stays false.",
+    "The original rejected PR remains open and unmerged. An absent queue entry is reported as uncertain, not a certified rejection cause.",
+    "No new signed webhook evidence: ingress stayed disabled throughout this trial.",
+    "The service was killed and restarted with local ACK loss injected; this does not establish whole-system backup/restore.",
+    "No general semantic-conflict detector or performance superiority is claimed."
+  ],
+  "cleanup": {
+    "credentials": {
+      "revoked": true,
+      "token_count": 5,
+      "original_grants_restored": true
+    },
+    "revoked_credential_denied": {
+      "error": {
+        "code": "unauthenticated"
+      }
+    },
+    "all_six_workspaces_deleted": true,
+    "no_agent_containers": true,
+    "proxy_stopped": true,
+    "volume_unmounted": true,
+    "temporary_backing_deleted": true,
+    "vm_app_key_and_config_removed": true,
+    "local_credential_files_removed": true,
+    "webhook_and_tunnel_enabled_during_trial": false,
+    "test_required_policy_retained": true,
+    "product_repository_policy_changed": false,
+    "credential_lifetime_seconds": 1104
+  },
+  "repeated_removal_fix": {
+    "source_commit": "beaf468",
+    "regression_failed_before_fix": true,
+    "postgres_dequeue_tests_passed": 10,
+    "linux_dequeue_tests_passed": 10,
+    "live_result": "removal_observed",
+    "remote_removal_mutation_needed": false,
+    "schema_changed": false,
+    "description": "A settled predecessor no longer blocks removing a requeued successor. Unknown attempts and attempts to remove a predecessor while a successor is active remain fenced."
+  }
+}
