@@ -1,3 +1,5 @@
+#[path = "github_managed_checks.rs"]
+mod managed_checks;
 #[path = "github_queue_publication.rs"]
 mod publication_evidence;
 use super::*;

@@ -4,6 +4,42 @@ use serde::Deserialize;
 #[derive(Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
 pub enum WireCommand {
+    ManagedCheckApprove {
+        key: String,
+        epoch: i64,
+        check_run: String,
+        specification: ManagedCheckSpec,
+    },
+    ManagedCheckStatus {
+        epoch: i64,
+        check_run: String,
+    },
+    ManagedCheckRevoke {
+        key: String,
+        epoch: i64,
+        check_run: String,
+    },
+    ManagedCheckPrepare {
+        key: String,
+        epoch: i64,
+        check_run: String,
+    },
+    ManagedCheckStart {
+        key: String,
+        epoch: i64,
+        check_run: String,
+    },
+    ManagedCheckCollect {
+        key: String,
+        epoch: i64,
+        check_run: String,
+    },
+    ManagedCheckRelease {
+        key: String,
+        epoch: i64,
+        check_run: String,
+    },
+
     RecoveryRequest {
         key: String,
         epoch: i64,
@@ -406,6 +442,14 @@ pub(super) fn id(s: &str) -> Result<Uuid> {
 impl WireCommand {
     pub fn permission(&self) -> Permission {
         match self {
+            Self::ManagedCheckApprove { .. } | Self::ManagedCheckRevoke { .. } => {
+                Permission::PolicyWrite
+            }
+            Self::ManagedCheckStatus { .. } => Permission::Read,
+            Self::ManagedCheckPrepare { .. }
+            | Self::ManagedCheckStart { .. }
+            | Self::ManagedCheckCollect { .. }
+            | Self::ManagedCheckRelease { .. } => Permission::ValidationReport,
             Self::RecoveryRequest { .. } | Self::RecoveryCancel { .. } => {
                 Permission::RepositoryWrite
             }
@@ -486,6 +530,65 @@ impl WireCommand {
         backend: Option<&str>,
     ) -> Result<Value> {
         match self {
+            Self::ManagedCheckApprove {
+                key,
+                epoch,
+                check_run,
+                specification,
+            } => {
+                db.approve_github_managed_check(
+                    auth,
+                    &Command { key, epoch },
+                    id(&check_run)?,
+                    &specification,
+                )
+                .await
+            }
+            Self::ManagedCheckStatus { epoch, check_run } => {
+                db.github_managed_check_status(auth, epoch, id(&check_run)?)
+                    .await
+            }
+            Self::ManagedCheckRevoke {
+                key,
+                epoch,
+                check_run,
+            } => {
+                db.revoke_github_managed_check(auth, &Command { key, epoch }, id(&check_run)?)
+                    .await
+            }
+            Self::ManagedCheckPrepare {
+                key,
+                epoch,
+                check_run,
+            } => {
+                db.prepare_github_managed_check(auth, &Command { key, epoch }, id(&check_run)?)
+                    .await
+            }
+            Self::ManagedCheckStart {
+                key,
+                epoch,
+                check_run,
+            } => {
+                db.start_github_managed_check(auth, &Command { key, epoch }, id(&check_run)?)
+                    .await
+            }
+            Self::ManagedCheckCollect {
+                key,
+                epoch,
+                check_run,
+            } => {
+                db.collect_github_managed_check(auth, &Command { key, epoch }, id(&check_run)?)
+                    .await
+            }
+            Self::ManagedCheckRelease {
+                key,
+                epoch,
+                check_run,
+            } => {
+                db.release_github_managed_check(auth, &Command { key, epoch }, id(&check_run)?)
+                    .await
+            }
+
             Self::RecoveryRequest {
                 key,
                 epoch,

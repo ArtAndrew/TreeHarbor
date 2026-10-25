@@ -43,3 +43,9 @@ pub async fn cleanup(schema: &str) {
         .await
         .unwrap();
 }
+
+#[allow(dead_code)]
+pub async fn drop_unpopulated_v26(raw: &Client) {
+    assert_eq!(raw.query_one("SELECT (SELECT count(*) FROM th_github_managed_checks)+(SELECT count(*) FROM th_github_managed_executions)+(SELECT count(*) FROM th_github_managed_check_revocations)", &[]).await.unwrap().get::<_,i64>(0),0);
+    raw.batch_execute("DROP TABLE th_github_managed_executions,th_github_managed_check_revocations,th_github_managed_checks; DROP FUNCTION th_github_managed_execution_identity();").await.unwrap();
+}

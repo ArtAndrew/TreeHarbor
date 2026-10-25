@@ -10,6 +10,7 @@ use uuid::Uuid;
 
 pub mod access;
 pub mod catalog;
+mod check_runtime;
 pub mod cleanup;
 pub mod commands;
 pub mod exports;
@@ -52,6 +53,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/023_github_events.sql"),
     include_str!("../migrations/024_github_event_recovery.sql"),
     include_str!("../migrations/025_github_check_policy.sql"),
+    include_str!("../migrations/026_github_managed_checks.sql"),
 ];
 const MAX_JSON: usize = 1024 * 1024;
 

@@ -125,7 +125,8 @@ async fn current(tx: &Transaction<'_>, s: &Scope, seal: &Row, removed: bool) -> 
         AND w.state='in_use' AND w.format='native' AND p.state='prepared'
         AND w.node=m.node AND p.node=m.node AND p.workspace=w.workspace
         AND p.base_revision=w.base_revision AND p.profile=w.resolved_profile
-        AND NOT EXISTS(SELECT 1 FROM th_check_executions c WHERE c.tenant=m.tenant AND c.repository=m.repository AND c.execution_run=m.run)"#,
+        AND NOT EXISTS(SELECT 1 FROM th_check_executions c WHERE c.tenant=m.tenant AND c.repository=m.repository AND c.execution_run=m.run)
+        AND NOT EXISTS(SELECT 1 FROM th_github_managed_executions c WHERE c.tenant=m.tenant AND c.repository=m.repository AND c.execution_run=m.run)"#,
         &[&s.tenant(),&s.repository(),&seal.get::<_,Uuid>("run"),&owner,&seal.get::<_,i64>("workspace_generation"),&seal.get::<_,i64>("epoch"),&seal.get::<_,String>("authority")]).await?.ok_or(Error::ExecutionState)?;
     if removed
         && (!row.get::<_, bool>(0)
@@ -239,7 +240,8 @@ impl Metadata {
             WHERE m.tenant=$1 AND m.repository=$2 AND m.run=$3 AND r.principal=$4 AND w.principal=$4
             AND r.workspace_generation=$5 AND w.generation=$5 AND r.epoch=$6 AND w.epoch=$6
             AND m.authority=$7 AND w.state='in_use' AND p.state='prepared' AND w.format='native'
-            AND NOT EXISTS(SELECT 1 FROM th_check_executions c WHERE c.tenant=m.tenant AND c.repository=m.repository AND c.execution_run=m.run)"#,
+            AND NOT EXISTS(SELECT 1 FROM th_check_executions c WHERE c.tenant=m.tenant AND c.repository=m.repository AND c.execution_run=m.run)
+        AND NOT EXISTS(SELECT 1 FROM th_github_managed_executions c WHERE c.tenant=m.tenant AND c.repository=m.repository AND c.execution_run=m.run)"#,
             &[&s.tenant(),&s.repository(),&input.run,&ctx.principal,&input.generation,&ctx.epoch,&ctx.authority.as_str()]).await?.ok_or(Error::ExecutionState)?;
         let profile = SourceProfile::decode(&source.get::<_, Vec<u8>>("definition"))?;
         if let Some(paths) = profile.paths()

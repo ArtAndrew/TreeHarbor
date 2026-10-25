@@ -229,6 +229,7 @@ fn receipt(f: &QueueFixture, id: Uuid) -> DequeueReceipt {
 }
 pub(super) async fn drop_unpopulated_v22(raw: &tokio_postgres::Client) {
     assert_eq!(raw.query_one("SELECT (SELECT count(*) FROM th_github_queue_policies)+(SELECT count(*) FROM th_github_policy_refs)+(SELECT count(*) FROM th_github_check_policies)",&[]).await.unwrap().get::<_,i64>(0),0);
+    crate::common::drop_unpopulated_v26(raw).await;
     raw.batch_execute("DROP TABLE th_github_queue_policies,th_github_policy_refs,th_github_check_policies; DROP FUNCTION th_github_policy_ref_update();").await.unwrap();
     // Historical fixtures predate event recovery. Remove only their empty
     // additive tables before reconstructing the older schema under test.

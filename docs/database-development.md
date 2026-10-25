@@ -26,7 +26,8 @@ leased outbox primitives, an object catalog, persistent root pins and manual
 generation-safe retirement. Catalog tests include real files, a reference
 reachability model and concurrent upload/collection. Migrations verify the
 published checksum chain; tests upgrade historical populated schemas while
-retaining pins, workspaces, receipts and credentials. Current schema 25 adds
+retaining pins, workspaces, receipts and credentials. Current schema 26 adds [managed Connected checks](github-managed-checks.md) without
+creating native refs or retroactive approvals. Schema 25 added
 [owner workflow policies](github-workflow-policy.md); a populated schema24 upgrade
 retains old queue receipts and grants without inventing an approval. Schema24 added
 [GitHub event recovery](github-event-recovery.md), with a populated schema23

@@ -342,67 +342,30 @@ async fn observed_evidence(
 ) -> Result<(Vec<u8>, String)> {
     let c = candidate(tx, s, e.candidate).await?;
     let (program, profile) = load_program(tx, s, e.program).await?;
-    let row=tx.query_opt(r#"SELECT m.*,r.state AS run_state,r.principal,r.workspace,r.workspace_generation,r.epoch,
-        p.base_revision,p.snapshot,p.profile AS source_profile,p.manifest_digest,p.node AS prepared_node,
-        p.workspace AS prepared_workspace,p.generation AS prepared_generation,p.epoch AS prepared_epoch,
-        p.storage_instance AS prepared_storage,p.slot AS prepared_slot
-        FROM th_managed_runs m JOIN th_agent_runs r USING(tenant,repository,run)
-        JOIN th_workspace_preparations p ON p.attempt=m.preparation
-        WHERE m.tenant=$1 AND m.repository=$2 AND m.run=$3 AND p.tenant=m.tenant AND p.repository=m.repository"#,&[&s.tenant,&s.repository,&e.run]).await?.ok_or(Error::ExecutionState)?;
-    let r = &row;
-    let revision = RevisionRef::Native(c.revision.ok_or(Error::IntegrationState)?).to_string();
+    let revision = RevisionRef::Native(c.revision.ok_or(Error::IntegrationState)?);
     let snapshot = c.snapshot.ok_or(Error::IntegrationState)?;
-    let argv = serde_json::to_vec(&program.argv).map_err(|_| Error::SchemaMismatch)?;
+    let (row, outcome) = crate::check_runtime::observe(
+        tx,
+        s,
+        &crate::check_runtime::Subject {
+            run: e.run,
+            workspace: e.workspace,
+            validator: &e.validator,
+            epoch: c.epoch,
+            authority: "standalone",
+            revision,
+            snapshot,
+        },
+        &program,
+        &profile,
+    )
+    .await?;
+    let r = &row;
+    let revision = revision.to_string();
     let node: String = r.get("node");
-    if !r.get::<_, bool>("removed")
-        || r.get::<_, String>("principal") != e.validator
-        || r.get::<_, Uuid>("workspace") != e.workspace
-        || r.get::<_, i64>("workspace_generation") != 1
-        || r.get::<_, i64>("epoch") != c.epoch
-        || r.get::<_, String>("authority") != "standalone"
-        || r.get::<_, String>("base_revision") != revision
-        || r.get::<_, Vec<u8>>("snapshot") != bytes(snapshot)
-        || r.get::<_, Vec<u8>>("source_profile") != SourceProfile::full().id().as_bytes()
-        || r.get::<_, Option<Vec<u8>>>("manifest_digest").is_none()
-        || r.get::<_, Vec<u8>>("profile") != profile.digest()
-        || r.get::<_, Vec<u8>>("argv") != argv
-        || r.get::<_, String>("prepared_node") != node
-        || r.get::<_, Uuid>("prepared_workspace") != e.workspace
-        || r.get::<_, i64>("prepared_generation") != 1
-        || r.get::<_, i64>("prepared_epoch") != c.epoch
-        || r.get::<_, Uuid>("prepared_storage") != r.get::<_, Uuid>("storage_instance")
-        || r.get::<_, Uuid>("prepared_slot") != r.get::<_, Uuid>("slot")
-    {
-        return Err(Error::ExecutionState);
-    }
-    if !trusted(tx, s, &node, "node", "runtime.control", None).await? {
-        return Err(Error::Forbidden);
-    }
     let state: String = r.get("run_state");
     let exit: Option<i64> = r.get("exit_code");
     let oom: Option<bool> = r.get("oom_killed");
-    if state == "succeeded"
-        && ["runtime_started_at", "runtime_finished_at"]
-            .iter()
-            .any(|field| {
-                r.get::<_, Option<String>>(*field)
-                    .is_none_or(|v| v.is_empty() || v == "0001-01-01T00:00:00Z")
-            })
-    {
-        return Err(Error::ExecutionState);
-    }
-    let outcome = match state.as_str() {
-        "succeeded"
-            if exit == Some(0) && oom == Some(false) && !r.get::<_, bool>("stop_requested") =>
-        {
-            "passed"
-        }
-        "failed" if exit.is_some() => "failed",
-        "cancelled" => "cancelled",
-        "lost" => "error",
-        _ => return Err(Error::ExecutionState),
-    }
-    .to_owned();
     let definition = serde_json::to_vec(&json!([
         1,
         s.tenant,

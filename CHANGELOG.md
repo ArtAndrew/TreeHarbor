@@ -24,6 +24,7 @@
 - Explicit selected workflow-attempt/job/check collection, with immutable source linkage and separate current-attempt comparison. Trusted definitions and final merge authorization remain pending.
 - Owner workflow policies with immutable queue pins, generation-fenced dispatch, bounded executed root-file capture and crash-safe replay. A file match does not certify runtime context, host policy or final merge.
 - Exact published-candidate identity/tree/parent and target-ancestry observations, bound to retained membership with crash-safe replay. CI context and complete merge admission remain separate gates.
+- Owner-approved managed checks of exact imported GitHub queue candidates, with shared trusted runtime evidence, revocation fences and retained receipts. Required App-check publication and full live Connected acceptance remain pending.
 - Contract tests and product documentation.
 
 There is no installable product release yet.
