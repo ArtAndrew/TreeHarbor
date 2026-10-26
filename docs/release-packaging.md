@@ -52,5 +52,6 @@ repository state and backups separately.
 binaries on Linux x86-64 and ARM64, verify archive checksums, install into a fresh
 prefix and execute CLI help/version commands. Synthetic ELF unit tests cover archive
 boundaries and installer failure paths; they do not exercise a runtime or database.
-Neither suite proves the complete two-agent workflow. Packaging checks currently
-publish no assets, tags or release, and generate no SBOM/provenance attestation.
+Neither suite proves the complete two-agent workflow. Passing package jobs retain development archives as authenticated GitHub Actions
+artifacts for seven days. These are not approved releases. The workflow creates no
+tag or GitHub release, and generates no SBOM/provenance attestation.
