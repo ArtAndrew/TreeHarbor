@@ -7,7 +7,8 @@ gates. An observed check delivery is not a complete merge authorization.
 
 ## Prerequisites and authority
 
-Upgrade server and CLI together and apply additive migration 28. Existing data,
+Upgrade server and CLI together and apply the current additive migration29
+(including the migration28 publisher). Existing data,
 repository grants and tokens are preserved; none silently gains `host.check`.
 Use a private operator directory for credentials, requests and publisher state.
 
@@ -37,6 +38,11 @@ disable force pushes/deletion and have no legacy review bypass allowances. An
 effective merge-queue rule must also be present. Ruleset-only protection is not
 supported by this initial verifier. Program/image/epoch changes require explicit
 host-rule rotation; TreeHarbor never silently changes branch protection.
+After [branch admission-policy adoption](github-admission-policy.md), target
+version2 instead uses the returned `TreeHarbor/e<epoch>/a<context SHA256>` name,
+which also binds binding/base/policy generation. Both host preflight reads must
+match the policy's entire required set and reviewed rules fingerprint. Policy
+rotation requires explicit host-context rotation even for an unchanged program.
 
 ## Request and run
 
@@ -99,7 +105,10 @@ false: a required-context preflight does not certify the complete host policy.
 | `cancelled` | Cancelled before an attempt | A new owner request is required |
 
 Only one unresolved publication may exist per repository/binding/epoch/exact Git
-head/program. Expiry or cancellation after an attempt does not release that fence.
+head/program/host context. Legacy version1 keeps its original context bucket;
+version2 separates policy generations and base branches. An unresolved old context
+cannot authorize another send, but does not block a distinct new context.
+Expiry or cancellation after an attempt does not release that context's fence.
 An `uncertain` attempt cannot later become `not_sent`. Observed and not-sent
 terminal records and all reports are immutable.
 

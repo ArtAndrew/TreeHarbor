@@ -143,9 +143,9 @@ invalidates current evidence. Expiry prevents new authenticated calls; explicit
 credential revocation additionally fences work already accepted.
 
 Release a collected workspace through the normal drain/cleanup protocol. A revoked
-or stale approval that never requested a runtime can also release its prepared
-files. A running task must first be stopped and collected. Evidence remains after
-workspace cleanup; deleting files never substitutes for stopping processes.
+or stale preparing/requested execution can also request drain and stop. Physical
+cleanup waits for a terminal task and confirmed runtime removal. Evidence remains
+after workspace cleanup; deleting files never substitutes for stopping processes.
 
 ## Evidence encoding
 
@@ -171,3 +171,17 @@ group evidence through migration. Terminal-success rows in collector tests are e
 labelled trusted fixtures, not sandbox evidence. The shared runtime and native
 collector have separate real Linux gVisor tests. A complete Connected run on a
 live GitHub group, with required App-check publication, is still required.
+
+## Versioned branch policy
+
+An adopted [admission policy](github-admission-policy.md) constrains approved
+programs and validators and pins each approval to a branch-policy generation.
+The first collection checks current policy before accepting the result; stored
+historical results retain their original meaning after revocation. A stale
+preparing/requested execution can still use the normal drain and cleanup path.
+
+Policy-bound evidence uses domain `treeharbor-github-check-execution\0v3\0`,
+version3 and an immutable `admission:{binding,generation,policy}` field. Group
+evidence retains `queue`; PR evidence retains `pull` instead. Previous evidence
+versions1/2 and their domains remain unchanged. Independent canonical/hash vectors
+cover both source kinds and changes to each admission identity field.

@@ -122,3 +122,33 @@ fn canonical_policy_checks_exact_required_set_context_and_noncanonical_input() {
     reverse.checks.reverse();
     assert_eq!(ordered.digest().unwrap(), reverse.digest().unwrap());
 }
+
+#[test]
+fn individual_file_match_is_separate_from_complete_required_set_approval() {
+    let (mut t, r, p) = fixture();
+    let d = r.workflow_definition.as_ref().unwrap();
+    let c = &p.checks[0];
+    assert!(d.workflow_file_matches_requirement(&t, c));
+    t.pull
+        .required
+        .push(treeharbor_github_contract::RequiredCheck {
+            name: "additional managed check".into(),
+            app_id: 999,
+        });
+    assert!(d.workflow_file_matches_requirement(&t, c));
+    assert!(!d.workflow_file_approved(&t, &p));
+    for field in ["app", "name", "workflow", "path", "content"] {
+        let mut changed = c.clone();
+        match field {
+            "app" => changed.required.app_id += 1,
+            "name" => changed.required.name.push('x'),
+            "workflow" => changed.workflow_id.push('x'),
+            "path" => changed.path = ".github/workflows/other.yml".into(),
+            _ => changed.content_sha256 = format!("sha256:{}", "ab".repeat(32)),
+        }
+        assert!(
+            !d.workflow_file_matches_requirement(&t, &changed),
+            "{field}"
+        );
+    }
+}

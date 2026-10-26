@@ -96,6 +96,7 @@ impl Metadata {
         }
         let t = queue::target(&r)?;
         let policy = check_policy::pinned(&tx, s, &r).await?;
+        let admission = admission_policy::pinned_queue(&tx, s, &r).await?;
         let rows=tx.query("SELECT sequence,report FROM th_github_queue_reports WHERE tenant=$1 AND repository=$2 AND queue=$3 AND sequence>$4 AND report->'workflow_definition' IS NOT NULL AND report->'workflow_definition'<>'null'::jsonb ORDER BY sequence LIMIT 2",&[&s.tenant(),&s.repository(),&id,&after]).await?;
         let mut captures = Vec::new();
         if let Some(row) = rows.first() {
@@ -107,9 +108,15 @@ impl Metadata {
                 .as_ref()
                 .ok_or(Error::SchemaMismatch)?;
             let source = validate_report(&tx, s, &r, d).await?;
-            let approved = policy
-                .as_ref()
-                .is_some_and(|(_, p, _)| d.workflow_file_approved(&t, p));
+            let approved = if let Some((_, p, _)) = &admission {
+                p.workflows
+                    .iter()
+                    .any(|c| d.workflow_file_matches_requirement(&t, c))
+            } else {
+                policy
+                    .as_ref()
+                    .is_some_and(|(_, p, _)| d.workflow_file_approved(&t, p))
+            };
             captures.push(json!({"sequence":row.get::<_,i64>("sequence"),"report":report,
                 "workflow_file_matches_pinned_policy":approved,"source_current_attempt_matches":source.current_attempt_matches(),
                 "execution_context_verified":false,"definition_verified":false}));
@@ -121,7 +128,7 @@ impl Metadata {
         };
         context(&tx, auth, epoch, Permission::Read).await?;
         let result = json!({"version":1,"queue":id,"binding":r.get::<_,Uuid>("binding"),"epoch":epoch,"captures":captures,"next_after":next,
-            "workflow_policy":policy.map(|(pin,_,current)|json!({"pin":pin,"current":current})),"merge_verified":false,"host_policy_verified":false});
+            "workflow_policy":policy.map(|(pin,_,current)|json!({"pin":pin,"current":current})),"admission_policy":admission.map(|(pin,_,current)|json!({"pin":pin,"current":current})),"merge_verified":false,"host_policy_verified":false});
         tx.commit().await?;
         Ok(result)
     }

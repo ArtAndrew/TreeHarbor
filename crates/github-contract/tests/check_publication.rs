@@ -11,6 +11,251 @@ fn fixture() -> (Target, Report, Value) {
     )
 }
 
+fn admission_fixture() -> (Target, Report, Value) {
+    // Expected bytes and hashes were produced by an independent Python stdlib
+    // reference, rather than by the Rust implementation under test.
+    let v: Value =
+        serde_json::from_str(include_str!("fixtures/check-publication-v2.json")).unwrap();
+    (
+        serde_json::from_value(v["target"].clone()).unwrap(),
+        serde_json::from_value(v["report"].clone()).unwrap(),
+        v,
+    )
+}
+
+#[test]
+fn version_one_keeps_its_exact_encoding_and_legacy_name() {
+    let (t, _, v) = fixture();
+    let (_, _, admission) = admission_fixture();
+    assert_eq!(
+        serde_json::to_string(&t).unwrap(),
+        admission["legacy_target_json"]
+    );
+    assert_eq!(t.name().unwrap(), v["name"]);
+    assert!(!json!(t).as_object().unwrap().contains_key("admission"));
+
+    // A null optional value carries no policy authority and normalizes to the
+    // same omitted canonical field as a historical v1 target.
+    let mut null = v["target"].clone();
+    null["admission"] = Value::Null;
+    let normalized: Target = serde_json::from_value(null).unwrap();
+    normalized.validate().unwrap();
+    assert_eq!(normalized, t);
+    assert_eq!(json!(normalized), v["target"]);
+
+    let mut other_base = t.clone();
+    let Source::Pull { target } = &mut other_base.source else {
+        unreachable!()
+    };
+    target.base_ref = "release/2026.10".into();
+    assert_eq!(other_base.name().unwrap(), v["name"]);
+}
+
+#[test]
+fn version_two_matches_independent_admission_name_and_wire_vector() {
+    let (t, r, v) = admission_fixture();
+    t.validate().unwrap();
+    r.validate(&t).unwrap();
+    assert!(r.preflight.as_ref().unwrap().eligible(&t));
+    assert_eq!(t.name().unwrap(), v["name"]);
+    assert_eq!(t.external_id().unwrap(), v["external_id"]);
+    assert_eq!(serde_json::to_string(&t).unwrap(), v["target_json"]);
+    assert_eq!(json!(t), v["target"]);
+    assert_eq!(json!(r), v["report"]);
+    let a = t.admission.as_ref().unwrap();
+    assert_eq!(
+        json!([
+            t.epoch,
+            a.binding.to_string(),
+            t.source.pull().base_ref,
+            a.generation,
+            t.program
+        ])
+        .to_string(),
+        v["context_json"]
+    );
+    assert_eq!(
+        t.name().unwrap(),
+        format!(
+            "TreeHarbor/e{}/a{}",
+            t.epoch,
+            v["context_sha256"].as_str().unwrap()
+        )
+    );
+}
+
+#[test]
+fn admission_context_rotates_scoped_identity_and_retains_policy_without_hashing_it() {
+    let (original, report, v) = admission_fixture();
+    let original_name = original.name().unwrap();
+    let mut names = std::collections::BTreeSet::new();
+    for vector in v["context_vectors"].as_array().unwrap() {
+        let label = vector["label"].as_str().unwrap();
+        let mut t = original.clone();
+        t.epoch = vector["epoch"].as_i64().unwrap();
+        t.program = vector["program"].as_str().unwrap().into();
+        t.admission = Some(serde_json::from_value(vector["admission"].clone()).unwrap());
+        let Source::Pull { target } = &mut t.source else {
+            unreachable!()
+        };
+        target.base_ref = vector["base_ref"].as_str().unwrap().into();
+        t.validate().unwrap();
+        let name = t.name().unwrap();
+        assert_eq!(name, vector["name"], "{label}");
+        assert_eq!(
+            context_name(
+                t.epoch,
+                &t.program,
+                &t.source.pull().base_ref,
+                t.admission.as_ref()
+            )
+            .unwrap(),
+            name,
+            "{label}"
+        );
+        assert!(name.len() < 100, "{label}");
+        assert_eq!(name.rsplit_once('/').unwrap().1.len(), 65, "{label}");
+        if matches!(label, "original" | "policy") {
+            assert_eq!(name, original_name, "{label}");
+            report.validate(&t).unwrap();
+        } else {
+            assert_ne!(name, original_name, "{label}");
+            assert!(
+                names.insert(name),
+                "distinct rotations must not alias: {label}"
+            );
+            assert!(report.validate(&t).is_err(), "{label}");
+            assert!(!report.preflight.as_ref().unwrap().eligible(&t), "{label}");
+        }
+        assert_eq!(json!(t)["admission"], vector["admission"], "{label}");
+    }
+}
+
+#[test]
+fn target_versions_cannot_omit_or_inherit_admission_authority() {
+    let (legacy, _, _) = fixture();
+    let (admitted, _, _) = admission_fixture();
+    let mut t = legacy;
+    t.admission = admitted.admission.clone();
+    assert!(t.validate().is_err());
+    assert!(t.name().is_err());
+    let mut t = admitted.clone();
+    t.admission = None;
+    assert!(t.validate().is_err());
+    assert!(t.name().is_err());
+    for version in [0, 3, u8::MAX] {
+        t.version = version;
+        assert!(t.validate().is_err(), "version {version} without admission");
+        t.admission = admitted.admission.clone();
+        assert!(t.validate().is_err(), "version {version} with admission");
+        t.admission = None;
+    }
+    let (_, _, v) = admission_fixture();
+    for null in [false, true] {
+        let mut raw = v["target"].clone();
+        if null {
+            raw["admission"] = Value::Null;
+        } else {
+            raw.as_object_mut().unwrap().remove("admission");
+        }
+        assert!(
+            serde_json::from_value::<Target>(raw)
+                .unwrap()
+                .validate()
+                .is_err()
+        );
+    }
+}
+
+#[test]
+fn admission_fields_are_strict_and_invalid_identities_fail_closed() {
+    let (_, _, v) = admission_fixture();
+    for field in ["binding", "generation", "policy"] {
+        let mut missing = v["target"].clone();
+        missing["admission"].as_object_mut().unwrap().remove(field);
+        assert!(
+            serde_json::from_value::<Target>(missing).is_err(),
+            "missing {field}"
+        );
+    }
+    for (field, value) in [
+        ("binding", Value::Null),
+        ("binding", json!(17)),
+        ("binding", json!("not-a-uuid")),
+        ("generation", Value::Null),
+        ("generation", json!("42")),
+        ("generation", json!(1.5)),
+        ("generation", json!(i64::MAX as u64 + 1)),
+        ("policy", Value::Null),
+        ("policy", json!(42)),
+    ] {
+        let mut raw = v["target"].clone();
+        raw["admission"][field] = value.clone();
+        assert!(
+            serde_json::from_value::<Target>(raw).is_err(),
+            "{field}: {value}"
+        );
+    }
+    for scope in ["target", "admission"] {
+        let mut raw = v["target"].clone();
+        if scope == "target" {
+            raw["unexpected"] = json!(true);
+        } else {
+            raw["admission"]["unexpected"] = json!(true);
+        }
+        assert!(serde_json::from_value::<Target>(raw).is_err(), "{scope}");
+    }
+    for (field, value) in [
+        ("binding", json!("00000000-0000-0000-0000-000000000000")),
+        ("generation", json!(0)),
+        ("generation", json!(-1)),
+        ("generation", json!(i64::MIN)),
+        ("policy", json!("ef".repeat(32))),
+        ("policy", json!(format!("sha256:{}", "EF".repeat(32)))),
+        ("policy", json!(format!("sha256:{}", "ef".repeat(31)))),
+        ("policy", json!(format!("sha256:{}", "gg".repeat(32)))),
+    ] {
+        let mut raw = v["target"].clone();
+        raw["admission"][field] = value.clone();
+        let t: Target = serde_json::from_value(raw).unwrap();
+        assert!(t.validate().is_err(), "{field}: {value}");
+        assert!(t.name().is_err(), "{field}: {value}");
+    }
+    let mut duplicate = v["target_json"].as_str().unwrap().to_owned();
+    duplicate = duplicate.replacen(
+        "\"generation\":42",
+        "\"generation\":42,\"generation\":43",
+        1,
+    );
+    assert!(serde_json::from_str::<Target>(&duplicate).is_err());
+}
+
+#[test]
+fn context_name_checks_bounds_before_constructing_a_required_name() {
+    let (t, _, _) = admission_fixture();
+    let admission = t.admission.as_ref().unwrap();
+    for epoch in [0, -1, i64::MIN] {
+        assert!(context_name(epoch, &t.program, "main", Some(admission)).is_err());
+        assert!(context_name(epoch, &t.program, "main", None).is_err());
+    }
+    for generation in [0, -1, i64::MIN] {
+        let mut changed = admission.clone();
+        changed.generation = generation;
+        assert!(context_name(t.epoch, &t.program, "main", Some(&changed)).is_err());
+    }
+    for base in ["".to_owned(), " ".into(), "x".repeat(129), "main\n".into()] {
+        assert!(context_name(t.epoch, &t.program, &base, Some(admission)).is_err());
+    }
+    for program in [
+        "aa".repeat(32),
+        format!("sha256:{}", "AA".repeat(32)),
+        format!("sha256:{}", "aa".repeat(31)),
+    ] {
+        assert!(context_name(t.epoch, &program, "main", Some(admission)).is_err());
+        assert!(context_name(t.epoch, &program, "main", None).is_err());
+    }
+}
+
 #[test]
 fn exact_publication_vector_binds_program_epoch_and_execution() {
     let (t, r, v) = fixture();

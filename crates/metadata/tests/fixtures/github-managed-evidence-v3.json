@@ -1,0 +1,67 @@
+{
+  "input": {
+    "version": 1,
+    "tenant": "test-tenant",
+    "repository": "11111111-1111-4111-8111-111111111111",
+    "check_run": "11111111-1111-4111-8111-111111111111",
+    "epoch": 1,
+    "queue": "11111111-1111-4111-8111-111111111111",
+    "subject": {
+      "membership_sequence": 1,
+      "member": {
+        "id": "MQE_fixture"
+      }
+    },
+    "revision": "native:sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    "snapshot": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    "program": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    "runtime_profile": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    "image": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    "argv": [
+      "/check",
+      "--offline"
+    ],
+    "owner": "owner",
+    "owner_token": "11111111-1111-4111-8111-111111111111",
+    "validator": "ci",
+    "validator_token": "11111111-1111-4111-8111-111111111111",
+    "workspace": "11111111-1111-4111-8111-111111111111",
+    "run": "11111111-1111-4111-8111-111111111111",
+    "runtime": {
+      "attempt": "11111111-1111-4111-8111-111111111111",
+      "preparation": "11111111-1111-4111-8111-111111111111",
+      "binding": "1111111111111111111111111111111111111111111111111111111111111111",
+      "manifest": "2222222222222222222222222222222222222222222222222222222222222222",
+      "node": "node",
+      "storage": "11111111-1111-4111-8111-111111111111",
+      "slot": "11111111-1111-4111-8111-111111111111",
+      "volume": "3333333333333333333333333333333333333333333333333333333333333333",
+      "engine": "fixture",
+      "container": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "state": "succeeded",
+      "exit_code": 0,
+      "oom_killed": false,
+      "started_at": "2026-10-25T00:00:00Z",
+      "finished_at": "2026-10-25T00:00:01Z",
+      "stop_requested": false,
+      "finished_generation": 1,
+      "finished_worker": "11111111-1111-4111-8111-111111111111"
+    },
+    "outcome": "passed",
+    "import": "11111111-1111-4111-8111-111111111111",
+    "admission": {
+      "binding": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      "generation": 7,
+      "policy": "sha256:abababababababababababababababababababababababababababababababab"
+    }
+  },
+  "pull_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+  "group": {
+    "canonical": "{\"admission\":{\"binding\":\"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa\",\"generation\":7,\"policy\":\"sha256:abababababababababababababababababababababababababababababababab\"},\"argv\":[\"/check\",\"--offline\"],\"check_run\":\"11111111-1111-4111-8111-111111111111\",\"epoch\":1,\"image\":\"sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"import\":\"11111111-1111-4111-8111-111111111111\",\"outcome\":\"passed\",\"owner\":\"owner\",\"owner_token\":\"11111111-1111-4111-8111-111111111111\",\"program\":\"sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"queue\":\"11111111-1111-4111-8111-111111111111\",\"repository\":\"11111111-1111-4111-8111-111111111111\",\"revision\":\"native:sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"run\":\"11111111-1111-4111-8111-111111111111\",\"runtime\":{\"attempt\":\"11111111-1111-4111-8111-111111111111\",\"binding\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"container\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"engine\":\"fixture\",\"exit_code\":0,\"finished_at\":\"2026-10-25T00:00:01Z\",\"finished_generation\":1,\"finished_worker\":\"11111111-1111-4111-8111-111111111111\",\"manifest\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"node\":\"node\",\"oom_killed\":false,\"preparation\":\"11111111-1111-4111-8111-111111111111\",\"slot\":\"11111111-1111-4111-8111-111111111111\",\"started_at\":\"2026-10-25T00:00:00Z\",\"state\":\"succeeded\",\"stop_requested\":false,\"storage\":\"11111111-1111-4111-8111-111111111111\",\"volume\":\"3333333333333333333333333333333333333333333333333333333333333333\"},\"runtime_profile\":\"sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"snapshot\":\"sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"subject\":{\"member\":{\"id\":\"MQE_fixture\"},\"membership_sequence\":1},\"tenant\":\"test-tenant\",\"validator\":\"ci\",\"validator_token\":\"11111111-1111-4111-8111-111111111111\",\"version\":3,\"workspace\":\"11111111-1111-4111-8111-111111111111\"}",
+    "digest": "sha256:1f62b11e42b42e027d52867162a994a8087951044a03959dc66129734eb0b851"
+  },
+  "pull": {
+    "canonical": "{\"admission\":{\"binding\":\"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa\",\"generation\":7,\"policy\":\"sha256:abababababababababababababababababababababababababababababababab\"},\"argv\":[\"/check\",\"--offline\"],\"check_run\":\"11111111-1111-4111-8111-111111111111\",\"epoch\":1,\"image\":\"sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"import\":\"11111111-1111-4111-8111-111111111111\",\"outcome\":\"passed\",\"owner\":\"owner\",\"owner_token\":\"11111111-1111-4111-8111-111111111111\",\"program\":\"sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"pull\":\"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa\",\"repository\":\"11111111-1111-4111-8111-111111111111\",\"revision\":\"native:sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"run\":\"11111111-1111-4111-8111-111111111111\",\"runtime\":{\"attempt\":\"11111111-1111-4111-8111-111111111111\",\"binding\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"container\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"engine\":\"fixture\",\"exit_code\":0,\"finished_at\":\"2026-10-25T00:00:01Z\",\"finished_generation\":1,\"finished_worker\":\"11111111-1111-4111-8111-111111111111\",\"manifest\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"node\":\"node\",\"oom_killed\":false,\"preparation\":\"11111111-1111-4111-8111-111111111111\",\"slot\":\"11111111-1111-4111-8111-111111111111\",\"started_at\":\"2026-10-25T00:00:00Z\",\"state\":\"succeeded\",\"stop_requested\":false,\"storage\":\"11111111-1111-4111-8111-111111111111\",\"volume\":\"3333333333333333333333333333333333333333333333333333333333333333\"},\"runtime_profile\":\"sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"snapshot\":\"sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"subject\":{\"member\":{\"id\":\"MQE_fixture\"},\"membership_sequence\":1},\"tenant\":\"test-tenant\",\"validator\":\"ci\",\"validator_token\":\"11111111-1111-4111-8111-111111111111\",\"version\":3,\"workspace\":\"11111111-1111-4111-8111-111111111111\"}",
+    "digest": "sha256:194a00b080c8f23920c4eb9dfd6c075b481476d25988ae3c6a5ff518dfae2880"
+  }
+}

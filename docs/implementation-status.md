@@ -1,6 +1,6 @@
 # Implementation status
 
-Updated: 2026-10-25. This file describes implemented behavior and remaining release
+Updated: 2026-10-26. This file describes implemented behavior and remaining release
 gates. A foundation milestone does not complete either mode.
 
 For a concise current overview, see [what works today](../README.md#what-works-today)
@@ -9,13 +9,50 @@ below retain evidence from individual increments. Their earlier statements about
 unfinished work describe the scope at that time; they are not a replacement for
 the current overview or the full [release gate ledger](#release-gate-ledger).
 
-Last full CI baseline before this increment: [PR65](https://github.com/ArtAndrew/TreeHarbor/pull/65),
+Last full CI baseline before this increment: [PR67](https://github.com/ArtAndrew/TreeHarbor/pull/67),
 published on 2026-10-25 after all six required checks passed. The
-[CI run](https://github.com/ArtAndrew/TreeHarbor/actions/runs/40172363797) passed
-324 ordinary tests on each of Linux/macOS, 290 real PostgreSQL contracts, 43 actual
+[CI run](https://github.com/ArtAndrew/TreeHarbor/actions/runs/40175201363) passed
+324 ordinary tests on each of Linux/macOS, 291 real PostgreSQL contracts, 43 actual
 gVisor scenario groups on each of Linux x86-64/ARM64, and 11 webhook TLS/failure
 groups. These correctness checks do not establish complete mode readiness or
 performance superiority.
+
+## Branch admission policy
+
+Experimental [Connected admission policy](github-admission-policy.md) adds
+schema29: owner-controlled branch policy references, immutable queue/check pins,
+explicit adoption and compare-and-swap generation changes. New actions on adopted
+branches require the current pin; revocation leaves a tombstone and restoring
+older policy bytes creates a different generation. Legacy requests keep their
+original receipts and do not inherit newly adopted approval.
+
+The policy combines offline CheckPrograms/allowed validators and workflow
+requirements. The owner-only read-only preview returns the next generation's
+required App/name pairs without approving or configuring GitHub. Queue admission
+checks the exact required set and reviewed rules fingerprint. Managed approval,
+prepare/start/first collection and required-check dispatch check the current policy;
+execution transitions also recheck dependencies after receipt/outbox writes.
+Historical collected results and late publication reports remain recoverable.
+Stale requested executions use normal drain/stop/removal fencing for cleanup.
+
+Check target version2 and execution evidence version3 retain admission identity.
+Version2 context names bind epoch/binding/base/generation/program, so older
+same-SHA success cannot satisfy a rotated policy. Same-context unknown effects
+remain fenced; a distinct new context can progress without retrying the old POST.
+Legacy target/evidence encodings and permission grants remain unchanged.
+
+Independent canonical/context/evidence vectors, actual loopback transport tests,
+PostgreSQL revocation/ABA/CAS/scope/cleanup/migration tests cover this increment.
+The focused suite passed 14 PostgreSQL cases plus one wire case. A real CLI/service
+test also passed: process death before commit leaves no policy/receipt/outbox;
+after a committed response is held from the client, killing both processes and
+retrying returns the original receipt. It also covers owner-only preview, context
+rotation, revocation/restoration and preservation of the legacy workflow policy.
+Local verification passed 336 ordinary workspace tests and 298 real database/service
+contracts, plus formatting and strict workspace Clippy. Provider/runtime fixtures
+are labelled; live adopted-policy acceptance remains a gate. Full host/review policy,
+workflow execution-context and final-admission certification remain incomplete;
+verified merge/admission flags remain false. Required CI must pass before merge.
 
 ## Live managed required checks and repair
 

@@ -10,6 +10,11 @@ Upgrade CLI and service together and run the normal database migration before
 using these commands. Migration25 is additive; old queue requests and their
 receipts keep their original meaning and acquire no implicit policy.
 
+For new branch adoption, [admission policy](github-admission-policy.md) combines
+managed programs and workflow requirements under one generation fence. The older
+workflow policy described here keeps its historical meaning. A saved root-file
+match remains separate from current policy eligibility and execution-context proof.
+
 ## Configure an owner policy
 
 Use the generic authenticated client, with a human credential that has

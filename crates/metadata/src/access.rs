@@ -63,7 +63,7 @@ impl Permission {
             | "github.managed_check.start.v1"
             | "github.managed_check.collect.v1"
             | "github.managed_check.release.v1" => Ok(Self::ValidationReport),
-            "github.policy.set.v1" => Ok(Self::PolicyWrite),
+            "github.policy.set.v1" | "github.admission_policy.set.v1" => Ok(Self::PolicyWrite),
             "github.recovery.request.v1" | "github.recovery.cancel.v1" => Ok(Self::RepositoryWrite),
             "github.recovery.page.v1"
             | "github.recovery.detail.v1"

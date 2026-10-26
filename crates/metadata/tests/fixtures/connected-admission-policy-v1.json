@@ -1,0 +1,58 @@
+{
+  "policy": {
+    "version": 1,
+    "rules": {
+      "sha256": "abababababababababababababababababababababababababababababababab",
+      "count": 5,
+      "merge_queue": true
+    },
+    "managed": [
+      {
+        "program": {
+          "version": 1,
+          "runtime_profile": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+          "argv": [
+            "/check",
+            "strict"
+          ]
+        },
+        "validators": [
+          "ci",
+          "trusted-ci"
+        ]
+      },
+      {
+        "program": {
+          "version": 1,
+          "runtime_profile": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+          "argv": [
+            "/check",
+            "compile"
+          ]
+        },
+        "validators": [
+          "ci",
+          "trusted-ci"
+        ]
+      }
+    ],
+    "workflows": [
+      {
+        "required": {
+          "name": "CI / build",
+          "app_id": 7
+        },
+        "workflow_id": "WF_checks",
+        "path": ".github/workflows/check.yml",
+        "content_sha256": "sha256:085e2fe834d512b46741154f1387748d505a7bfca2bde566c9b18a62e3c4281e",
+        "expected_context": {
+          "environment": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+          "toolchain": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+          "dependencies": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      }
+    ]
+  },
+  "canonical": "{\"version\":1,\"rules\":{\"sha256\":\"abababababababababababababababababababababababababababababababab\",\"count\":5,\"merge_queue\":true},\"managed\":[{\"program\":{\"version\":1,\"runtime_profile\":\"sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"argv\":[\"/check\",\"strict\"]},\"validators\":[\"ci\",\"trusted-ci\"]},{\"program\":{\"version\":1,\"runtime_profile\":\"sha256:2222222222222222222222222222222222222222222222222222222222222222\",\"argv\":[\"/check\",\"compile\"]},\"validators\":[\"ci\",\"trusted-ci\"]}],\"workflows\":[{\"required\":{\"name\":\"CI / build\",\"app_id\":7},\"workflow_id\":\"WF_checks\",\"path\":\".github/workflows/check.yml\",\"content_sha256\":\"sha256:085e2fe834d512b46741154f1387748d505a7bfca2bde566c9b18a62e3c4281e\",\"expected_context\":{\"environment\":\"sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"toolchain\":\"sha256:2222222222222222222222222222222222222222222222222222222222222222\",\"dependencies\":\"sha256:3333333333333333333333333333333333333333333333333333333333333333\"}}]}",
+  "digest": "sha256:1ccbe3e6d918fb433e2a1ac3ca4775a51325591fd259a4c099eb23a820979691"
+}

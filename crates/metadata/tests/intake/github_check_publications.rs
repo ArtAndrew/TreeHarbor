@@ -1,3 +1,5 @@
+#[path = "github_admission_policy.rs"]
+mod admission_policy;
 use super::*;
 use sha2::{Digest, Sha256};
 use treeharbor_github_contract::{PullState, RequiredCheck, check_publication as cp};
@@ -766,7 +768,7 @@ async fn check_publication_upgrade_does_not_expand_existing_credentials() {
             .await
             .unwrap()
             .get::<_, i32>(0),
-        28
+        29
     );
     assert!(
         p.f.db

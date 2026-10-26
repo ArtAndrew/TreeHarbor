@@ -46,6 +46,7 @@ pub async fn cleanup(schema: &str) {
 
 #[allow(dead_code)]
 pub async fn drop_unpopulated_v28(raw: &Client) {
+    drop_unpopulated_v29(raw).await;
     assert_eq!(raw.query_one("SELECT (SELECT count(*) FROM th_github_check_publications)+(SELECT count(*) FROM th_github_check_publication_reports)",&[]).await.unwrap().get::<_,i64>(0),0);
     raw.batch_execute("DROP TABLE th_github_check_publication_reports,th_github_check_publications; DROP FUNCTION th_github_check_publication_identity();").await.unwrap();
     raw.batch_execute(
@@ -63,4 +64,10 @@ pub async fn drop_unpopulated_v26(raw: &Client) {
     drop_unpopulated_v28(raw).await;
     assert_eq!(raw.query_one("SELECT (SELECT count(*) FROM th_github_managed_checks)+(SELECT count(*) FROM th_github_managed_executions)+(SELECT count(*) FROM th_github_managed_check_revocations)", &[]).await.unwrap().get::<_,i64>(0),0);
     raw.batch_execute("DROP TABLE th_github_managed_executions,th_github_managed_check_revocations,th_github_managed_checks; DROP FUNCTION th_github_managed_execution_identity();").await.unwrap();
+}
+
+#[allow(dead_code)]
+pub async fn drop_unpopulated_v29(raw: &Client) {
+    assert_eq!(raw.query_one("SELECT (SELECT count(*) FROM th_github_admission_policies)+(SELECT count(*) FROM th_github_admission_refs)+(SELECT count(*) FROM th_github_queue_admission)+(SELECT count(*) FROM th_github_check_admission)", &[]).await.unwrap().get::<_,i64>(0),0);
+    raw.batch_execute("DROP TABLE th_github_check_admission,th_github_queue_admission,th_github_admission_refs,th_github_admission_policies; DROP FUNCTION th_github_admission_ref_update(); DROP INDEX th_github_check_publication_unresolved; ALTER TABLE th_github_check_publications DROP COLUMN context_name; CREATE UNIQUE INDEX th_github_check_publication_unresolved ON th_github_check_publications(tenant,repository,binding,epoch,head,program) WHERE state IN ('requested','attempting','uncertain');").await.unwrap();
 }

@@ -4,6 +4,26 @@ use serde::Deserialize;
 #[derive(Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
 pub enum WireCommand {
+    AdmissionPolicyPlan {
+        epoch: i64,
+        binding: String,
+        base_ref: String,
+        expected_generation: i64,
+        definition: AdmissionPolicy,
+    },
+    AdmissionPolicySet {
+        key: String,
+        epoch: i64,
+        binding: String,
+        base_ref: String,
+        expected_generation: i64,
+        definition: Option<AdmissionPolicy>,
+    },
+    AdmissionPolicy {
+        epoch: i64,
+        binding: String,
+        base_ref: String,
+    },
     CheckPublicationRequest {
         key: String,
         epoch: i64,
@@ -487,6 +507,10 @@ pub(super) fn id(s: &str) -> Result<Uuid> {
 impl WireCommand {
     pub fn permission(&self) -> Permission {
         match self {
+            Self::AdmissionPolicySet { .. } | Self::AdmissionPolicyPlan { .. } => {
+                Permission::PolicyWrite
+            }
+            Self::AdmissionPolicy { .. } => Permission::Read,
             Self::CheckPublicationRequest { .. } | Self::CheckPublicationCancel { .. } => {
                 Permission::HostQueue
             }
@@ -583,6 +607,49 @@ impl WireCommand {
         backend: Option<&str>,
     ) -> Result<Value> {
         match self {
+            Self::AdmissionPolicyPlan {
+                epoch,
+                binding,
+                base_ref,
+                expected_generation,
+                definition,
+            } => {
+                db.plan_github_admission_policy(
+                    auth,
+                    epoch,
+                    id(&binding)?,
+                    &base_ref,
+                    expected_generation,
+                    &definition,
+                )
+                .await
+            }
+            Self::AdmissionPolicySet {
+                key,
+                epoch,
+                binding,
+                base_ref,
+                expected_generation,
+                definition,
+            } => {
+                db.set_github_admission_policy(
+                    auth,
+                    &Command { key, epoch },
+                    id(&binding)?,
+                    &base_ref,
+                    expected_generation,
+                    definition.as_ref(),
+                )
+                .await
+            }
+            Self::AdmissionPolicy {
+                epoch,
+                binding,
+                base_ref,
+            } => {
+                db.github_admission_policy(auth, epoch, id(&binding)?, &base_ref)
+                    .await
+            }
             Self::CheckPublicationRequest {
                 key,
                 epoch,

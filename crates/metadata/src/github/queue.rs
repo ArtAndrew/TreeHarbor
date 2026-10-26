@@ -12,6 +12,8 @@ pub struct QueueSpec {
     pub ttl_seconds: i32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub policy: Option<PolicyPin>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub admission: Option<PolicyPin>,
 }
 pub(super) async fn load(tx: &Transaction<'_>, s: &Scope, id: Uuid) -> Result<Row> {
     tx.query_opt("SELECT *,expires_at>clock_timestamp() AS unexpired,(extract(epoch from expires_at)*1000)::bigint AS deadline,(extract(epoch from started_at)*1000)::bigint AS started,(extract(epoch from clock_timestamp())*1000)::bigint AS now_ms FROM th_github_queue WHERE tenant=$1 AND repository=$2 AND queue=$3",&[&s.tenant(),&s.repository(),&id]).await?.ok_or(Error::NotFound)
@@ -93,6 +95,10 @@ async fn describe(tx: &Transaction<'_>, s: &Scope, r: &Row, dynamic: bool) -> Re
     if dynamic {
         v["is_current_version"] = json!(current(tx, s, r).await?);
         v["unexpired"] = json!(r.get::<_, bool>("unexpired"));
+        v["admission_policy"] = admission_policy::pinned_queue(tx, s, r)
+            .await?
+            .map(|(pin, _, current)| json!({"pin":pin,"current":current}))
+            .unwrap_or(Value::Null);
         v["workflow_policy"] = check_policy::pinned(tx, s, r)
             .await?
             .map(|(pin, _, current)| json!({"pin":pin,"current":current}))
@@ -140,6 +146,7 @@ async fn fresh(
     }
     projections::active_binding(tx, auth.scope(), r.get("binding"), epoch).await?;
     check_policy::fresh(tx, auth.scope(), &r).await?;
+    admission_policy::queue_policy(tx, auth.scope(), &r).await?;
     if permission == Permission::HostMerge {
         assigned(tx, auth, epoch, &r).await?;
     }
@@ -209,6 +216,14 @@ impl Metadata {
         m.copy_root_pin(&i.get::<_, String>("pin_holder"), &pin)
             .await?;
         m.tx.execute("INSERT INTO th_github_queue(tenant,repository,queue,inspection,pull,projection,binding,epoch,principal,bridge,native_commit,target,expires_at,pin_holder) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,clock_timestamp()+($13::integer*interval '1 second'),$14)",&[&s.tenant(),&s.repository(),&id,&inspection,&i.get::<_,Uuid>("pull"),&i.get::<_,Uuid>("projection"),&binding_id,&c.epoch,&auth.principal(),&binding.bridge,&i.get::<_,Vec<u8>>("native_commit"),&json!(t),&spec.ttl_seconds,&pin]).await?;
+        admission_policy::pin_queue(
+            &m.tx,
+            s,
+            &load(&m.tx, s, id).await?,
+            &t,
+            spec.admission.as_ref(),
+        )
+        .await?;
         if let Some(policy) = &spec.policy {
             check_policy::pin(&m.tx, s, &load(&m.tx, s, id).await?, &t, policy).await?;
         }

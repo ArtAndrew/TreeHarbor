@@ -1,4 +1,6 @@
 use super::*;
+#[path = "github/admission_policy.rs"]
+mod admission_policy;
 #[path = "github/events.rs"]
 mod events;
 #[path = "github/projections.rs"]

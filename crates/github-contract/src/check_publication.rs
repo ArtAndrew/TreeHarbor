@@ -1,7 +1,54 @@
 //! Exact, owner-authorized check publication. A receipt is not a merge proof.
 use super::{groups::*, publication, queue::QueueTarget, *};
+use sha2::{Digest, Sha256};
 use treeharbor_core::ObjectId;
 use uuid::Uuid;
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct AdmissionContext {
+    pub binding: Uuid,
+    pub generation: i64,
+    pub policy: String,
+}
+impl AdmissionContext {
+    fn validate(&self) -> Result<()> {
+        if self.binding.is_nil() || self.generation <= 0 {
+            return Err(InvalidEvidence);
+        }
+        digest(&self.policy)
+    }
+}
+
+/// Policy generation is scoped to binding/epoch/base. Policy digest is retained
+/// in evidence, but not hashed into a name that may itself occur in host rules.
+pub fn context_name(
+    epoch: i64,
+    program: &str,
+    base: &str,
+    admission: Option<&AdmissionContext>,
+) -> Result<String> {
+    if epoch <= 0 {
+        return Err(InvalidEvidence);
+    }
+    digest(program)?;
+    if let Some(a) = admission {
+        a.validate()?;
+        text(base, 128)?;
+        let mut h = Sha256::new();
+        h.update(b"treeharbor-github-admission-context\0v1\0");
+        h.update(
+            serde_json::to_vec(&(epoch, a.binding.to_string(), base, a.generation, program))
+                .map_err(|_| InvalidEvidence)?,
+        );
+        Ok(format!(
+            "TreeHarbor/e{epoch}/a{}",
+            ObjectId::from_bytes(h.finalize().into()).hex()
+        ))
+    } else {
+        Ok(format!("TreeHarbor/e{epoch}/{}", &program[7..]))
+    }
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
@@ -55,6 +102,8 @@ pub struct Target {
     pub evidence: String,
     pub conclusion: Conclusion,
     pub source: Source,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub admission: Option<AdmissionContext>,
 }
 fn digest(value: &str) -> Result<()> {
     let id: ObjectId = value.parse().map_err(|_| InvalidEvidence)?;
@@ -65,12 +114,18 @@ fn digest(value: &str) -> Result<()> {
 }
 impl Target {
     pub fn validate(&self) -> Result<()> {
-        if self.version != 1 || self.publication.is_nil() || self.epoch <= 0 {
+        if !matches!((self.version, &self.admission), (1, None) | (2, Some(_)))
+            || self.publication.is_nil()
+            || self.epoch <= 0
+        {
             return Err(InvalidEvidence);
         }
         positive(self.app_id)?;
         digest(&self.program)?;
         digest(&self.evidence)?;
+        if let Some(a) = &self.admission {
+            a.validate()?;
+        }
         self.source.validate()?;
         if serde_json::to_vec(self).map_err(|_| InvalidEvidence)?.len() > 32768 {
             return Err(InvalidEvidence);
@@ -80,7 +135,12 @@ impl Target {
     /// A changed program/authority requires explicit required-context rotation.
     pub fn name(&self) -> Result<String> {
         self.validate()?;
-        Ok(format!("TreeHarbor/e{}/{}", self.epoch, &self.program[7..]))
+        context_name(
+            self.epoch,
+            &self.program,
+            &self.source.pull().base_ref,
+            self.admission.as_ref(),
+        )
     }
     pub fn external_id(&self) -> Result<String> {
         self.validate()?;

@@ -128,6 +128,7 @@ impl Metadata {
         load_program(&m.tx, s, program).await?;
         m.tx.execute("INSERT INTO th_github_managed_checks(tenant,repository,check_run,epoch,pull,import,revision,snapshot,subject,program,validator,principal,token) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)", &[&s.tenant(),&s.repository(),&id,&cmd.epoch,&spec.pull,&spec.import,&i.get::<_,String>("revision"),&i.get::<_,Vec<u8>>("snapshot"),&subject,&program.as_bytes().as_slice(),&spec.validator,&auth.principal(),&auth.token_id()]).await?;
         let c = check(&m.tx, s, id).await?;
+        admission_policy::pin_check(&m.tx, s, &c).await?;
         super::fresh(&m.tx, s, &c).await?;
         validator(&m.tx, s, &c, None).await?;
         let v = describe(&m.tx, s, &c).await?;
