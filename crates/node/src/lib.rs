@@ -14,7 +14,7 @@ pub use worker::Prepare;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    #[error("node runtime boundary failed")]
+    #[error("node runtime boundary failed: {0}")]
     Runtime(#[from] treeharbor_runtime::Error),
     #[error("node filesystem operation failed")]
     Io(#[from] std::io::Error),

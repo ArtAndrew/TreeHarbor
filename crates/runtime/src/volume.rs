@@ -269,6 +269,21 @@ fn unescape(value: &str) -> Result<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn task_directory_mode_zero_keeps_identity_readable_without_changing_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("files");
+        fs::create_dir(&path).unwrap();
+        let inode = fs::metadata(&path).unwrap().ino();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0)).unwrap();
+        let opened = files_directory(&path);
+        let mode = fs::metadata(&path).unwrap().mode() & 0o777;
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o700)).unwrap();
+        assert_eq!(mode, 0);
+        assert_eq!(opened.unwrap().metadata().unwrap().ino(), inode);
+    }
     #[test]
     fn mount_proof_rejects_aliases_shared_and_nested_mounts() {
         let device = rustix::fs::makedev(7, 3);
