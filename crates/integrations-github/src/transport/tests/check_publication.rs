@@ -132,6 +132,101 @@ async fn exact_check_uses_only_scoped_write_and_immutable_program_evidence() {
 }
 
 #[tokio::test]
+async fn version_two_publishes_the_independent_admission_context_and_exact_identity() {
+    let f: Value = serde_json::from_str(include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../github-contract/tests/fixtures/check-publication-v2.json"
+    )))
+    .unwrap();
+    let t: Target = serde_json::from_value(f["target"].clone()).unwrap();
+    let mut p = pull();
+    p["base"]["ref"] = json!(t.source.pull().base_ref);
+    let exact_run = json!({
+        "id":73,"app":{"id":7},"name":f["name"],
+        "head_sha":"11".repeat(20),"external_id":f["external_id"],
+        "status":"completed","conclusion":"success"
+    });
+    let mut responses = access(true);
+    for _ in 0..2 {
+        responses.extend([
+            response(200, p.clone()),
+            response(200, f["raw_protection"].clone()),
+            response(200, f["raw_rules"].clone()),
+        ]);
+    }
+    responses.extend([
+        response(201, exact_run.clone()),
+        response(200, exact_run),
+        revoked(),
+    ]);
+    let (c, h) = host(responses).await;
+    let result = c
+        .publish_check(&binding(), &t, |preflight| {
+            assert_eq!(json!(preflight), f["report"]["preflight"]);
+            async { Ok(()) }
+        })
+        .await
+        .unwrap();
+    result.report.validate(&t).unwrap();
+    assert_eq!(json!(result.report.check), f["report"]["check"]);
+    let requests = h.await.unwrap();
+    assert_eq!(requests.len(), 13);
+    assert!(
+        request_text(&requests[5])
+            .starts_with("GET /repos/example-org/demo/branches/release%2F2026.10/protection ")
+    );
+    let sent = body(&requests[10]);
+    assert_eq!(sent["name"], f["name"]);
+    assert_eq!(sent["external_id"], f["external_id"]);
+    assert_eq!(sent["head_sha"], "11".repeat(20));
+    assert_eq!(sent["status"], "completed");
+    assert_eq!(sent["conclusion"], "success");
+}
+
+#[tokio::test]
+async fn version_two_recovery_filters_by_current_context_and_rejects_older_names() {
+    let f: Value = serde_json::from_str(include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../github-contract/tests/fixtures/check-publication-v2.json"
+    )))
+    .unwrap();
+    let t: Target = serde_json::from_value(f["target"].clone()).unwrap();
+    for legacy_name in [false, true] {
+        let exact_run = json!({
+            "id":73,"app":{"id":7},
+            "name":if legacy_name {fixture()["name"].clone()} else {f["name"].clone()},
+            "head_sha":"11".repeat(20),"external_id":f["external_id"],
+            "status":"completed","conclusion":"success"
+        });
+        let mut responses = access(false);
+        responses.extend([
+            response(200, listing(vec![exact_run.clone()])),
+            response(200, listing(vec![exact_run])),
+            revoked(),
+        ]);
+        let (c, h) = host(responses).await;
+        let result = c.observe_published_check(&binding(), &t, None).await;
+        if legacy_name {
+            assert!(result.is_err());
+        } else {
+            let report = result.unwrap().report;
+            assert_eq!(report.outcome, Outcome::Observed);
+            assert_eq!(json!(report.check), f["report"]["check"]);
+        }
+        let requests = h.await.unwrap();
+        let query_name = f["name"].as_str().unwrap().replace('/', "%2F");
+        for request in &requests[4..6] {
+            assert!(request_text(request).contains(&format!("check_name={query_name}&")));
+        }
+        assert!(
+            requests
+                .iter()
+                .all(|r| !request_text(r).starts_with("POST /repos/"))
+        );
+    }
+}
+
+#[tokio::test]
 async fn policy_head_and_callback_failures_never_send_a_check() {
     for case in [
         "head",

@@ -23,6 +23,18 @@ fn target(r: &Row) -> Result<Target> {
     {
         return Err(Error::SchemaMismatch);
     }
+    let context = if t.admission.is_some() {
+        t.name().map_err(|_| Error::SchemaMismatch)?
+    } else {
+        String::new()
+    };
+    if r.get::<_, String>("context_name") != context
+        || t.admission
+            .as_ref()
+            .is_some_and(|a| a.binding != r.get::<_, Uuid>("binding"))
+    {
+        return Err(Error::SchemaMismatch);
+    }
     Ok(t)
 }
 async fn assigned(
@@ -63,6 +75,11 @@ async fn conditions(tx: &Transaction<'_>, s: &Scope, r: &Row) -> Result<()> {
             .await?;
     if b != r.get::<_, Uuid>("binding") || t != target(r)? {
         return Err(Error::ExecutionState);
+    }
+    if let Some(value) = r.get::<_, Option<Value>>("preflight") {
+        let preflight: Preflight =
+            serde_json::from_value(value).map_err(|_| Error::SchemaMismatch)?;
+        admission_policy::publication_preflight(tx, s, r.get("check_run"), &preflight).await?;
     }
     Ok(())
 }
@@ -151,10 +168,15 @@ impl Metadata {
         let b = specification(&binding(&m.tx, s, binding_id).await?)?;
         let head = t.source.head().map_err(|_| Error::SchemaMismatch)?;
         let program: ObjectId = t.program.parse()?;
-        if m.tx.query_opt("SELECT 1 FROM th_github_check_publications WHERE tenant=$1 AND repository=$2 AND (publication=$3 OR (binding=$4 AND epoch=$5 AND head=$6 AND program=$7 AND state IN ('requested','attempting','uncertain')))", &[&s.tenant(),&s.repository(),&id,&binding_id,&c.epoch,&head,&program.as_bytes().as_slice()]).await?.is_some() {
+        let context = if t.admission.is_some() {
+            t.name().map_err(|_| Error::SchemaMismatch)?
+        } else {
+            String::new()
+        };
+        if m.tx.query_opt("SELECT 1 FROM th_github_check_publications WHERE tenant=$1 AND repository=$2 AND (publication=$3 OR (binding=$4 AND epoch=$5 AND head=$6 AND program=$7 AND context_name=$8 AND state IN ('requested','attempting','uncertain')))", &[&s.tenant(),&s.repository(),&id,&binding_id,&c.epoch,&head,&program.as_bytes().as_slice(),&context]).await?.is_some() {
             return Err(Error::HostPublicationState);
         }
-        m.tx.execute("INSERT INTO th_github_check_publications(tenant,repository,publication,check_run,binding,epoch,principal,token,bridge,target,head,program,state,expires_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'requested',clock_timestamp()+make_interval(secs=>$13))", &[&s.tenant(),&s.repository(),&id,&spec.check_run,&binding_id,&c.epoch,&auth.principal(),&auth.token_id(),&b.bridge,&json!(t),&head,&program.as_bytes().as_slice(),&(spec.ttl_seconds as f64)]).await?;
+        m.tx.execute("INSERT INTO th_github_check_publications(tenant,repository,publication,check_run,binding,epoch,principal,token,bridge,target,head,program,context_name,state,expires_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$14,'requested',clock_timestamp()+make_interval(secs=>$13))", &[&s.tenant(),&s.repository(),&id,&spec.check_run,&binding_id,&c.epoch,&auth.principal(),&auth.token_id(),&b.bridge,&json!(t),&head,&program.as_bytes().as_slice(),&(spec.ttl_seconds as f64),&context]).await?;
         finish_fresh(
             m,
             auth,
@@ -279,6 +301,7 @@ impl Metadata {
             return Err(Error::HostPublicationState);
         }
         let s = auth.scope();
+        admission_policy::publication_preflight(&m.tx, s, r.get("check_run"), preflight).await?;
         m.tx.execute("UPDATE th_github_check_publications SET preflight=$4,dispatched_at=clock_timestamp() WHERE tenant=$1 AND repository=$2 AND publication=$3", &[&s.tenant(),&s.repository(),&id,&json!(preflight)]).await?;
         let receipt = finish_fresh(
             m,

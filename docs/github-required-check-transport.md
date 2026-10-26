@@ -8,8 +8,8 @@ and CLI. Full live managed-check acceptance remains a release gate.
 
 ## Identity and outcome
 
-`treeharbor-github-contract::check_publication` defines version 1 of `Target` and
-`Report`. The independent [wire vector](../crates/github-contract/tests/fixtures/check-publication-v1.json)
+`treeharbor-github-contract::check_publication` defines `Target` versions 1/2 and
+`Report` version 1. The independent [wire vector](../crates/github-contract/tests/fixtures/check-publication-v1.json)
 contains a PR target, raw protection/rule responses, their fingerprints and the
 exact expected receipt. Neither record is a native Validation or merge proof.
 
@@ -20,7 +20,7 @@ candidate parents. Same-tree commits are not interchangeable. The caller must
 derive this target from trusted execution evidence; it must not accept an agent's
 assertion of success.
 
-The context is `TreeHarbor/e<epoch>/<full program SHA-256 hex>`. Host protection
+The version 1 context is `TreeHarbor/e<epoch>/<full program SHA-256 hex>`. Host protection
 must require this exact name and App ID. Changing the program, runtime image
 included in the program, or authority epoch requires explicit host-rule rotation.
 There is no automatic mutation of branch protection. Changing only the evidence
@@ -94,3 +94,13 @@ Contract tests and actual loopback HTTP fixtures exercise PR/group drift, weak
 protection, lost responses, wrong issuers/SHAs, callback rejection, pagination,
 duplicate recovery, negative outcomes and failed revocation. These fixtures are
 not evidence of a live installed-App write or the full Connected release gate.
+
+## Adopted policy targets
+
+[Admission policy](github-admission-policy.md) introduces target version2 with
+`admission:{binding,generation,policy}`. Its context name hashes binding, base,
+generation, program and epoch, so an old same-SHA success cannot satisfy a rotated
+policy. The transport uses the same preflight, exact returned-check read and
+read-only unknown-result recovery for both versions. Version1 wire/name/fixture
+bytes are preserved; a version2 target requires its admission context. Only the
+coordinator derives that context from immutable policy pins.

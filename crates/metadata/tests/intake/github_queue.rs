@@ -75,6 +75,7 @@ impl QueueFixture {
             inspection,
             spec: QueueSpec {
                 policy: None,
+                admission: None,
                 inspection: inspection.to_string(),
                 ttl_seconds: 60,
             },
@@ -548,6 +549,7 @@ async fn queue_upgrade_preserves_inspections_and_requires_new_explicit_capabilit
                 Uuid::new_v4(),
                 &QueueSpec {
                     policy: None,
+                    admission: None,
                     inspection: inspection.to_string(),
                     ttl_seconds: 60,
                 },

@@ -53,7 +53,7 @@ does not establish that two changes work together; the combined result needs che
 
 ## What works today?
 
-Status as of **2026-10-25**. “Implemented” describes the stated component and its
+Status as of **2026-10-26**. “Implemented” describes the stated component and its
 tests, not completion of the entire product.
 
 | Area | Implemented and tested | Still incomplete |
@@ -62,7 +62,7 @@ tests, not completion of the entire product.
 | Workspaces | Full/sparse file preparation, expansion preserving edits, explicit drain/cleanup and recovery | Optimized caching, automatic scheduling and Git-compatible workspace format |
 | Agent execution | Managed Linux tasks through external gVisor, resource limits, capture after runtime removal and process-loss recovery | Automated runtime provisioning and node replacement |
 | Developer interfaces | Local authenticated API and CLI; experimental MCP stdio adapter | Packaged onboarding and remote service transport |
-| Connected | Real GitHub import, branch/PR publication, managed required checks, queue requests, candidate/final-history evidence and signed events | Complete host-policy/admission certification and unattended operation |
+| Connected | Real GitHub import, branch/PR publication, managed required checks, versioned branch-policy fences, queue requests, candidate/final-history evidence and signed events | Complete host-policy/admission certification and unattended operation |
 | Standalone | Native refs/history, candidate checks/reviews, merge, single-ChangeSet rebase and publication without Git/GitHub on the native path | Full lifecycle, broader history rewriting and fenced migration between modes |
 | Data recovery and interop | Durable transaction/retry paths, object retention and full-history Git import/export for supported inputs | Full server backup/restore, automatic GC/reconciliation and S3 backend |
 

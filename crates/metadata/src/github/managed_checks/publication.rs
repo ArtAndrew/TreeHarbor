@@ -26,6 +26,7 @@ pub(in crate::github) async fn derive(
     }
     let epoch: i64 = c.get("epoch");
     let program = oid(c.get("program"))?.to_string();
+    let admission = admission_policy::recorded_context(tx, s, &c).await?;
     let (binding_id, source) = if let Some(id) = c.get::<_, Option<Uuid>>("pull") {
         let (binding_id, mut subject) = pull::source(tx, s, id, epoch).await?;
         if subject != c.get::<_, Value>("subject") {
@@ -39,7 +40,13 @@ pub(in crate::github) async fn derive(
         // Structural identity only: PR preflight must not depend on an already
         // passing inspection/queue or on its own result.
         subject["required"] = json!([RequiredCheck {
-            name: format!("TreeHarbor/e{epoch}/{}", &program[7..]),
+            name: cp::context_name(
+                epoch,
+                &program,
+                subject["base_ref"].as_str().ok_or(Error::SchemaMismatch)?,
+                admission.as_ref()
+            )
+            .map_err(|_| Error::SchemaMismatch)?,
             app_id: spec.app_id
         }]);
         let target = serde_json::from_value(subject).map_err(|_| Error::SchemaMismatch)?;
@@ -58,7 +65,8 @@ pub(in crate::github) async fn derive(
     };
     let spec = specification(&binding(tx, s, binding_id).await?)?;
     let target = cp::Target {
-        version: 1,
+        version: if admission.is_some() { 2 } else { 1 },
+        admission,
         publication,
         epoch,
         app_id: spec.app_id,

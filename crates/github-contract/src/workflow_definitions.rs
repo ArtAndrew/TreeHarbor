@@ -242,15 +242,26 @@ impl Report {
         Ok(())
     }
     /// Root file approval only. Expected runtime and transitive dependencies need separate proof.
-    pub fn workflow_file_approved(&self, t: &QueueTarget, p: &Policy) -> bool {
+    /// Only an individual root-file match. The caller must separately establish
+    /// the complete required-set policy and current eligibility/runtime context.
+    pub fn workflow_file_matches_requirement(&self, t: &QueueTarget, c: &CheckApproval) -> bool {
         self.validate(t).is_ok()
-            && p.matches_required(t).is_ok()
-            && p.checks.iter().any(|c| {
-                c.required.name == self.target.check.check.name
-                    && c.required.app_id == self.target.check.app_id
-                    && c.workflow_id == self.target.check.workflow.workflow_id
-                    && c.path == self.file.source.path
-                    && c.content_sha256 == self.file.content_sha256
-            })
+            && Policy {
+                version: 1,
+                checks: vec![c.clone()],
+            }
+            .canonical()
+            .is_ok()
+            && c.required.name == self.target.check.check.name
+            && c.required.app_id == self.target.check.app_id
+            && c.workflow_id == self.target.check.workflow.workflow_id
+            && c.path == self.file.source.path
+            && c.content_sha256 == self.file.content_sha256
+    }
+    pub fn workflow_file_approved(&self, t: &QueueTarget, p: &Policy) -> bool {
+        p.matches_required(t).is_ok()
+            && p.checks
+                .iter()
+                .any(|c| self.workflow_file_matches_requirement(t, c))
     }
 }

@@ -90,6 +90,7 @@ async fn fresh(tx: &Transaction<'_>, s: &Scope, c: &Row) -> Result<()> {
         (None, Some(_)) => pull::fresh(tx, s, c).await?,
         _ => return Err(Error::SchemaMismatch),
     }
+    admission_policy::check_policy(tx, s, c).await?;
     let (_, profile) = load_program(tx, s, oid(c.get("program"))?).await?;
     if tx.query_opt("SELECT 1 FROM th_runtime_profile_revocations WHERE tenant=$1 AND repository=$2 AND digest=$3", &[&s.tenant(), &s.repository(), &profile.digest().as_slice()]).await?.is_some(){return Err(Error::ExecutionState);}
     Ok(())
@@ -157,6 +158,10 @@ async fn evidence(
     };
     let (observed, outcome) = check_runtime::observe(tx, s, &subject, &p, &profile).await?;
     let definition = json!({"version":1,"tenant":s.tenant(),"repository":s.repository(),"check_run":id,"epoch":c.get::<_,i64>("epoch"),"queue":c.get::<_,Option<Uuid>>("queue"),"subject":c.get::<_,Value>("subject"),"import":c.get::<_,Uuid>("import"),"revision":subject.revision.to_string(),"snapshot":subject.snapshot.to_string(),"program":oid(c.get("program"))?.to_string(),"runtime_profile":p.runtime_profile,"image":profile.definition().image,"argv":p.argv,"owner":c.get::<_,String>("principal"),"owner_token":c.get::<_,Uuid>("token"),"validator":subject.validator,"validator_token":e.get::<_,Uuid>("token"),"workspace":subject.workspace,"run":subject.run,"runtime":check_runtime::facts(&observed),"outcome":outcome});
+    let mut definition = definition;
+    if let Some(admission) = admission_policy::recorded_context(tx, s, c).await? {
+        definition["admission"] = json!(admission);
+    }
     let (definition, evidence) = encode_evidence(definition, c.get("pull"))?;
     Ok((definition, evidence, outcome))
 }
@@ -171,6 +176,12 @@ fn encode_evidence(mut definition: Value, pull: Option<Uuid>) -> Result<(Vec<u8>
         b"treeharbor-github-check-execution\0v2\0"
     } else {
         b"treeharbor-github-check-execution\0v1\0"
+    };
+    let domain = if definition.get("admission").is_some() {
+        definition["version"] = json!(3);
+        b"treeharbor-github-check-execution\0v3\0".as_slice()
+    } else {
+        domain
     };
     let definition = serde_json::to_vec(&definition).map_err(|_| Error::SchemaMismatch)?;
     if definition.len() > 65536 {
@@ -234,6 +245,24 @@ async fn describe(tx: &Transaction<'_>, s: &Scope, c: &Row) -> Result<Value> {
         }
     }
     v["current_locally"] = json!(current);
+    Ok(v)
+}
+// Recheck all approval dependencies after receipt/outbox writes, including clock-based
+// token expiry. Repository mutation locking serializes concurrent policy changes.
+async fn complete_fresh_execution(
+    m: crate::Mutation<'_>,
+    auth: &Authorization,
+    epoch: i64,
+    c: &Row,
+    v: Value,
+    events: Vec<Event>,
+) -> Result<Value> {
+    m.write_completion(&v, &events).await?;
+    context(&m.tx, auth, epoch, Permission::ValidationReport).await?;
+    fresh(&m.tx, auth.scope(), c).await?;
+    let e = execution(&m.tx, auth.scope(), c.get("check_run")).await?;
+    validator(&m.tx, auth.scope(), c, e.as_ref()).await?;
+    m.tx.commit().await?;
     Ok(v)
 }
 impl Metadata {
@@ -307,6 +336,7 @@ impl Metadata {
         load_program(&m.tx, s, program).await?;
         m.tx.execute("INSERT INTO th_github_managed_checks(tenant,repository,check_run,epoch,queue,membership_sequence,import,revision,snapshot,subject,program,validator,principal,token) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)", &[&s.tenant(),&s.repository(),&id,&cmd.epoch,&spec.queue,&spec.membership_sequence,&spec.import,&i.get::<_,String>("revision"),&i.get::<_,Vec<u8>>("snapshot"),&json!(subject),&program.as_bytes().as_slice(),&spec.validator,&auth.principal(),&auth.token_id()]).await?;
         let c = check(&m.tx, s, id).await?;
+        admission_policy::pin_check(&m.tx, s, &c).await?;
         fresh(&m.tx, s, &c).await?;
         validator(&m.tx, s, &c, None).await?;
         let v = describe(&m.tx, s, &c).await?;
@@ -380,7 +410,11 @@ impl Metadata {
         .await?;
         m.tx.execute("INSERT INTO th_github_managed_executions(tenant,repository,check_run,token,workspace,execution_run,state) VALUES($1,$2,$3,$4,$5,$6,'preparing')", &[&s.tenant(),&s.repository(),&id,&auth.token_id(),&workspace,&run]).await?;
         let v = describe(&m.tx, s, &c).await?;
-        m.complete(
+        complete_fresh_execution(
+            m,
+            auth,
+            cmd.epoch,
+            &c,
             v,
             vec![Event {
                 kind: "workspace.prepare".into(),
@@ -435,7 +469,11 @@ impl Metadata {
             .await?;
         m.tx.execute("UPDATE th_github_managed_executions SET state='requested' WHERE tenant=$1 AND repository=$2 AND check_run=$3", &[&s.tenant(),&s.repository(),&id]).await?;
         let v = describe(&m.tx, s, &c).await?;
-        m.complete(
+        complete_fresh_execution(
+            m,
+            auth,
+            cmd.epoch,
+            &c,
             v,
             vec![Event {
                 kind: "run.execute".into(),
@@ -475,10 +513,11 @@ impl Metadata {
         if e.get::<_, String>("state") != "requested" {
             return Err(Error::ExecutionState);
         }
+        fresh(&m.tx, s, &c).await?;
         let (definition, evidence, outcome) = evidence(&m.tx, s, &c, &e).await?;
         m.tx.execute("UPDATE th_github_managed_executions SET state='collected',outcome=$4,evidence=$5,definition=$6 WHERE tenant=$1 AND repository=$2 AND check_run=$3", &[&s.tenant(),&s.repository(),&id,&outcome,&evidence,&definition]).await?;
         let v = describe(&m.tx, s, &c).await?;
-        m.complete(v, vec![]).await
+        complete_fresh_execution(m, auth, cmd.epoch, &c, v, vec![]).await
     }
     pub async fn github_managed_check_status(
         &mut self,
@@ -524,9 +563,13 @@ impl Metadata {
             .await?
             .ok_or(Error::ExecutionState)?;
         if e.get::<_, String>("state") != "collected" {
-            // A cancelled approval may have allocated files before a runtime
-            // was ever requested. It must also have a bounded cleanup path.
-            if e.get::<_, String>("state") != "preparing" {
+            // Revoked/stale approvals must retain a drain path before or after
+            // execution starts. Drain handles stop/removal fencing; it never
+            // treats missing heartbeat or an uncollected result as success.
+            if !matches!(
+                e.get::<_, String>("state").as_str(),
+                "preparing" | "requested"
+            ) {
                 return Err(Error::ExecutionState);
             }
             match fresh(&m.tx, s, &c).await {
@@ -587,6 +630,24 @@ pub(crate) async fn execution_fence(
 #[cfg(test)]
 mod encoding_tests {
     use super::*;
+    #[test]
+    fn policy_bound_execution_evidence_has_independent_v3_bytes_and_identity() {
+        let v: Value = serde_json::from_str(include_str!(
+            "../../tests/fixtures/github-managed-evidence-v3.json"
+        ))
+        .unwrap();
+        let pull = Uuid::parse_str(v["pull_id"].as_str().unwrap()).unwrap();
+        for (kind, pull) in [("group", None), ("pull", Some(pull))] {
+            let (bytes, digest) = encode_evidence(v["input"].clone(), pull).unwrap();
+            assert_eq!(String::from_utf8(bytes).unwrap(), v[kind]["canonical"]);
+            assert_eq!(oid(digest.clone()).unwrap().to_string(), v[kind]["digest"]);
+            for field in ["binding", "generation", "policy"] {
+                let mut changed = v["input"].clone();
+                changed["admission"][field] = json!("changed-identity");
+                assert_ne!(digest, encode_evidence(changed, pull).unwrap().1);
+            }
+        }
+    }
     #[test]
     fn managed_evidence_golden_versions_separate_pull_from_group() {
         let fixture: Value = serde_json::from_str(include_str!(

@@ -20,7 +20,7 @@ impl PolicyPin {
     }
 }
 // GitHub API branch name (e.g. main), matching InspectionTarget.base_ref.
-fn base(value: &str) -> Result<()> {
+pub(super) fn base(value: &str) -> Result<()> {
     if value.is_empty()
         || value.len() > 128
         || value.split('/').any(|p| {
