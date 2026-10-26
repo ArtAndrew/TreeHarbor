@@ -1,0 +1,99 @@
+{
+  "proof": {
+    "version": 1,
+    "tenant": "pilot-team",
+    "repository": "34343434-3434-4434-8434-343434343434",
+    "queue": "45454545-4545-4454-8454-454545454545",
+    "check_run": "56565656-5656-4565-8565-565656565656",
+    "execution_run": "67676767-6767-4676-8676-676767676767",
+    "collection_key": "collect:exact-candidate:1",
+    "collected_at_unix_ms": 1000000,
+    "decided_at_unix_ms": 1003000,
+    "target": {
+      "version": 2,
+      "publication": "12121212-1212-4212-8212-121212121212",
+      "epoch": 19,
+      "app_id": 7,
+      "program": "sha256:00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff",
+      "evidence": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "conclusion": "success",
+      "source": {
+        "kind": "group",
+        "queue": {
+          "pull": {
+            "repository_id": 11,
+            "pull_number": 17,
+            "pull_node": "PR_test_17",
+            "head_ref": "treeharbor/04040404040404040404040404040404",
+            "base_ref": "main",
+            "head_revision": "git:sha1:1111111111111111111111111111111111111111",
+            "required": [
+              {
+                "name": "CI / build",
+                "app_id": 7
+              }
+            ]
+          },
+          "expected_base_revision": "git:sha1:2222222222222222222222222222222222222222",
+          "expected_rules": {
+            "sha256": "03917fa871eea7e165463e8a8eaca7bc761c26cd6a15a40df2106b234635b07f",
+            "count": 1,
+            "merge_queue": true
+          }
+        },
+        "target": {
+          "membership_sequence": 1,
+          "member": {
+            "entry": {
+              "id": "MQE_one",
+              "state": "AWAITING_CHECKS",
+              "base": {
+                "revision": "git:sha1:2222222222222222222222222222222222222222",
+                "tree": "git:sha1:5555555555555555555555555555555555555555"
+              },
+              "head": {
+                "revision": "git:sha1:3333333333333333333333333333333333333333",
+                "tree": "git:sha1:6666666666666666666666666666666666666666"
+              }
+            },
+            "position": 1,
+            "pull_node": "PR_test_17",
+            "pull_number": 17,
+            "source_repository_id": 11,
+            "source_revision": "git:sha1:1111111111111111111111111111111111111111",
+            "base_ref": "main",
+            "candidate": {
+              "commit": {
+                "revision": "git:sha1:3333333333333333333333333333333333333333",
+                "tree": "git:sha1:6666666666666666666666666666666666666666"
+              },
+              "parents": [
+                {
+                  "revision": "git:sha1:2222222222222222222222222222222222222222",
+                  "tree": "git:sha1:5555555555555555555555555555555555555555"
+                },
+                {
+                  "revision": "git:sha1:1111111111111111111111111111111111111111",
+                  "tree": "git:sha1:7777777777777777777777777777777777777777"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "admission": {
+        "binding": "23232323-2323-4232-8232-232323232323",
+        "generation": 42,
+        "policy": "sha256:efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef"
+      }
+    },
+    "host_policy_sequence": 9,
+    "host_policy_digest": "sha256:d7fd350f2ed842f5090181e94d9f556609dd5efbc6da80bbc7c8acb597685d5d",
+    "configuration_digest": "sha256:c537d0adc04beca90ff7bd1c75c4820d15695cafbadd03e24d70d01dbaa32793",
+    "preflight_digest": "sha256:dededededededededededededededededededededededededededededededede",
+    "capture_started_at_unix_ms": 1001000,
+    "capture_finished_at_unix_ms": 1002000
+  },
+  "canonical": "{\"capture_finished_at_unix_ms\":1002000,\"capture_started_at_unix_ms\":1001000,\"check_run\":\"56565656-5656-4565-8565-565656565656\",\"collected_at_unix_ms\":1000000,\"collection_key\":\"collect:exact-candidate:1\",\"configuration_digest\":\"sha256:c537d0adc04beca90ff7bd1c75c4820d15695cafbadd03e24d70d01dbaa32793\",\"decided_at_unix_ms\":1003000,\"execution_run\":\"67676767-6767-4676-8676-676767676767\",\"host_policy_digest\":\"sha256:d7fd350f2ed842f5090181e94d9f556609dd5efbc6da80bbc7c8acb597685d5d\",\"host_policy_sequence\":9,\"preflight_digest\":\"sha256:dededededededededededededededededededededededededededededededede\",\"queue\":\"45454545-4545-4454-8454-454545454545\",\"repository\":\"34343434-3434-4434-8434-343434343434\",\"target\":{\"admission\":{\"binding\":\"23232323-2323-4232-8232-232323232323\",\"generation\":42,\"policy\":\"sha256:efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef\"},\"app_id\":7,\"conclusion\":\"success\",\"epoch\":19,\"evidence\":\"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"program\":\"sha256:00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff\",\"publication\":\"12121212-1212-4212-8212-121212121212\",\"source\":{\"kind\":\"group\",\"queue\":{\"expected_base_revision\":\"git:sha1:2222222222222222222222222222222222222222\",\"expected_rules\":{\"count\":1,\"merge_queue\":true,\"sha256\":\"03917fa871eea7e165463e8a8eaca7bc761c26cd6a15a40df2106b234635b07f\"},\"pull\":{\"base_ref\":\"main\",\"head_ref\":\"treeharbor/04040404040404040404040404040404\",\"head_revision\":\"git:sha1:1111111111111111111111111111111111111111\",\"pull_node\":\"PR_test_17\",\"pull_number\":17,\"repository_id\":11,\"required\":[{\"app_id\":7,\"name\":\"CI / build\"}]}},\"target\":{\"member\":{\"base_ref\":\"main\",\"candidate\":{\"commit\":{\"revision\":\"git:sha1:3333333333333333333333333333333333333333\",\"tree\":\"git:sha1:6666666666666666666666666666666666666666\"},\"parents\":[{\"revision\":\"git:sha1:2222222222222222222222222222222222222222\",\"tree\":\"git:sha1:5555555555555555555555555555555555555555\"},{\"revision\":\"git:sha1:1111111111111111111111111111111111111111\",\"tree\":\"git:sha1:7777777777777777777777777777777777777777\"}]},\"entry\":{\"base\":{\"revision\":\"git:sha1:2222222222222222222222222222222222222222\",\"tree\":\"git:sha1:5555555555555555555555555555555555555555\"},\"head\":{\"revision\":\"git:sha1:3333333333333333333333333333333333333333\",\"tree\":\"git:sha1:6666666666666666666666666666666666666666\"},\"id\":\"MQE_one\",\"state\":\"AWAITING_CHECKS\"},\"position\":1,\"pull_node\":\"PR_test_17\",\"pull_number\":17,\"source_repository_id\":11,\"source_revision\":\"git:sha1:1111111111111111111111111111111111111111\"},\"membership_sequence\":1}},\"version\":2},\"tenant\":\"pilot-team\",\"version\":1}",
+  "digest": "sha256:98e37e5d53710810a39a0f07a4df76928e985094c4816bcd56a35a09e3dc7340"
+}
