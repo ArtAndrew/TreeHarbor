@@ -1,8 +1,9 @@
 # Backup and restore (development)
 
 A supported operational restore procedure remains a release gate. The current
-restore drill tests the durable source service; it does not certify resuming
-workers or publishing to GitHub after a disaster. Keep independent backups while
+restore drill tests the durable source service and explicit replacement-node
+execution; it does not certify resuming old workers or publishing to GitHub after
+a disaster. Keep independent backups while
 evaluating development builds.
 
 ## Reference backup boundary
@@ -54,14 +55,24 @@ Linux/PostgreSQL/gVisor environment it:
 - starts the real service with copied objects and the original object path absent;
 - exports published history into ordinary Git and reads accepted agent changes;
 - removes/corrupts a restored object, requires export failure, then verifies recovery
-  after restoring its exact bytes.
+  after restoring its exact bytes;
+- retains a requested but unexecuted check without converting it to validation;
+- explicitly revokes old node credentials, restarts the restored service and requires
+  an explicit node authentication failure and refusal to execute the old check with Engine available;
+- registers a fresh node with new local state and volume, runs a fresh approved
+  check through gVisor, publishes its exact native candidate, verifies the result
+  in ordinary Git and cleans up the new check workspace.
 
-This is a shared storage recovery test with synthetic agent programs. It exercises
-no live GitHub reconciliation and resumes no task on a restored node. Run it only
+This is a shared storage and deliberate replacement-node recovery test with
+synthetic agent programs. The operator keeps all original writers stopped and
+explicitly revokes old node tokens before allowing a new node to work. It does
+not discover or fence other infrastructure automatically. It exercises no live
+GitHub reconciliation and resumes no old task or copied node journal. Run it only
 through the disposable runtime CI harness; it is not an operator backup utility.
 
 The drill passed with installed static binaries on
 [Linux x86-64](https://github.com/ArtAndrew/TreeHarbor/actions/runs/40317254806/job/121553337315)
 and [ARM64](https://github.com/ArtAndrew/TreeHarbor/actions/runs/40317254806/job/121553336736)
-on 2026-10-26. These job results cover the stated source-recovery scope; the full
+on 2026-10-26. These earlier job results cover source recovery, before the additional
+replacement-node scenario; the full
 candidate run still needed its Linux lint correction before merge.

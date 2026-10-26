@@ -77,8 +77,8 @@ class Checks(managed.Harness):
         self.native("review", self.reviewer, candidate=candidate, review=str(uuid.uuid4()), decision="approve")
         return dict(candidate=candidate, check=check, entry=entry, target=target, policy=policy_id, candidate_snapshot=result["snapshot"])
 
-    def check_case(self, expected="candidate\n", delay=0, tamper=False):
-        number, node, slot, mount, profile = self.placement_profile(timeout=15000)
+    def check_case(self, expected="candidate\n", delay=0, tamper=False, node=0, timeout=15000):
+        number, node, slot, mount, profile = self.placement_profile(node=node, timeout=timeout)
         program = {"version": 1, "runtime_profile": profile,
                    "argv": ["/probe", "check", expected, str(delay)]}
         case = self.build_candidate(program)
@@ -299,7 +299,8 @@ class Checks(managed.Harness):
         self.export_and_restore(landed, "after-cleanup")
         assert self.native("check_status", self.ci, run=passed["check"]) == original_check
         print("PASS cleanup export: removed agent/check files preserve native history, exact check evidence and ordinary Git restoration", flush=True)
-        cold_restore.exercise(self, landed, managed)
+        pending_restore = self.check_case(timeout=16000)
+        cold_restore.exercise(self, landed, managed, pending_restore)
 
 
 if __name__ == "__main__":
