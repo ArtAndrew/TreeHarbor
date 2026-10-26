@@ -241,8 +241,9 @@ version3 and the immutable `admission` context. It retains `queue` for groups or
 The gate proves current local policy eligibility and the supported preflight
 requirements. Full effective host/review-policy coverage, workflow execution-context
 proof, complete cross-check/final admission, unattended reconciliation and live
-acceptance of an adopted policy remain release requirements. The product's
-`host_policy_verified`, `admission_verified` and `merge_verified` flags remain false.
+acceptance of an adopted policy remain release requirements. Policy adoption alone
+does not set verification flags; `merge_verified` remains false. The optional
+fresh host-policy assessment below can establish bounded current eligibility.
 
 The separate [candidate evidence reader](github-admission-evidence.md) evaluates
 the complete requirement set against retained candidate/execution/check receipts.

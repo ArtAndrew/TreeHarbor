@@ -1,6 +1,8 @@
 //! Real PostgreSQL aggregation boundaries. Source, host and runtime facts below
 //! are trusted fixtures, not actual provider calls or sandbox execution.
 use super::*;
+#[path = "github_current_host_policy.rs"]
+mod current_host_policy;
 use treeharbor_github_contract::{group_checks as gc, publication as published};
 use treeharbor_metadata::github::{InspectionSpec, ManagedPullCheckSpec};
 
@@ -25,6 +27,9 @@ struct Released {
 }
 impl Candidate {
     async fn new(count: usize) -> Self {
+        Self::new_with_configuration(count, false).await
+    }
+    async fn new_with_configuration(count: usize, full: bool) -> Self {
         let mut f = QueueFixture::with_merge_queue(true).await;
         let (owner, validator, import, program) =
             setup_source(&mut f.p, &format!("git:sha1:{}", "aa".repeat(20))).await;
@@ -35,7 +40,7 @@ impl Candidate {
                 p
             })
             .collect();
-        let policy = AdmissionPolicy {
+        let mut policy = AdmissionPolicy {
             version: 1,
             host_configuration: None,
             rules: rules(),
@@ -48,6 +53,9 @@ impl Candidate {
                 .collect(),
             workflows: vec![],
         };
+        if full {
+            policy = current_host_policy::policy(&f, &policy);
+        }
         let adopted = set(&mut f.p, &owner, 0, Some(&policy)).await;
         let required: Vec<_> = policy
             .required(7, 1, f.p.binding, "main", 1)
@@ -424,6 +432,9 @@ impl Candidate {
     async fn capture(&mut self, label: &str, checks: gc::GroupChecks) -> i64 {
         let mut observed = self.f.report().await;
         observed.version = 5;
+        if self.policy.version == 2 {
+            observed.token_revoked = true;
+        }
         observed.group_checks = Some(gc::GroupCheckReport {
             target: gc::GroupCheckTarget {
                 membership_sequence: 1,

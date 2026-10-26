@@ -1,0 +1,103 @@
+{
+  "evidence": {
+    "version": 2,
+    "tenant": "tenant-a",
+    "repository": "11111111-1111-4111-8111-111111111111",
+    "queue": "22222222-2222-4222-8222-222222222222",
+    "binding": "33333333-3333-4333-8333-333333333333",
+    "epoch": 7,
+    "policy": {
+      "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+      "generation": 3
+    },
+    "check_sequence": 9,
+    "membership_sequence": 5,
+    "candidate": {
+      "commit": {
+        "revision": "git:sha1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "tree": "git:sha1:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "parents": [
+        {
+          "revision": "git:sha1:cccccccccccccccccccccccccccccccccccccccc",
+          "tree": "git:sha1:dddddddddddddddddddddddddddddddddddddddd"
+        },
+        {
+          "revision": "git:sha1:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "tree": "git:sha1:ffffffffffffffffffffffffffffffffffffffff"
+        }
+      ]
+    },
+    "requirements": [
+      {
+        "kind": "managed",
+        "required": {
+          "app_id": 17,
+          "name": "TreeHarbor/e7/a5555555555555555555555555555555555555555555555555555555555555555"
+        },
+        "verified": true,
+        "reasons": [],
+        "check_run": "66666666-6666-4666-8666-666666666666",
+        "publication": "77777777-7777-4777-8777-777777777777",
+        "receipt_sequence": 2,
+        "host_check": {
+          "id": 9007199254740993,
+          "node_id": "CR_opaque-v2"
+        },
+        "evidence": "sha256:8888888888888888888888888888888888888888888888888888888888888888"
+      }
+    ],
+    "reasons": [],
+    "complete": true,
+    "publication": null,
+    "capture_sources_trusted": false,
+    "host_policy": {
+      "version": 1,
+      "sequence": 14,
+      "membership_sequence": 5,
+      "capture_digest": "sha256:d7fd350f2ed842f5090181e94d9f556609dd5efbc6da80bbc7c8acb597685d5d",
+      "owner_pin": {
+        "policy": {
+          "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+          "generation": 3
+        },
+        "configuration_digest": "sha256:c537d0adc04beca90ff7bd1c75c4820d15695cafbadd03e24d70d01dbaa32793"
+      },
+      "evaluation": {
+        "version": 2,
+        "before_digest": "sha256:c537d0adc04beca90ff7bd1c75c4820d15695cafbadd03e24d70d01dbaa32793",
+        "after_digest": "sha256:c537d0adc04beca90ff7bd1c75c4820d15695cafbadd03e24d70d01dbaa32793",
+        "before": {
+          "required": [
+            {
+              "name": "CI / build",
+              "app_id": 7
+            }
+          ],
+          "reviews": [],
+          "configuration_reasons": [],
+          "candidate_requirements": []
+        },
+        "after": {
+          "required": [
+            {
+              "name": "CI / build",
+              "app_id": 7
+            }
+          ],
+          "reviews": [],
+          "configuration_reasons": [],
+          "candidate_requirements": []
+        },
+        "reasons": []
+      },
+      "started_at_unix_ms": 1793000000000,
+      "finished_at_unix_ms": 1793000001000,
+      "reasons": [
+        "capture_submitter_not_trusted"
+      ]
+    }
+  },
+  "canonical": "{\"binding\":\"33333333-3333-4333-8333-333333333333\",\"candidate\":{\"commit\":{\"revision\":\"git:sha1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"tree\":\"git:sha1:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"},\"parents\":[{\"revision\":\"git:sha1:cccccccccccccccccccccccccccccccccccccccc\",\"tree\":\"git:sha1:dddddddddddddddddddddddddddddddddddddddd\"},{\"revision\":\"git:sha1:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\",\"tree\":\"git:sha1:ffffffffffffffffffffffffffffffffffffffff\"}]},\"capture_sources_trusted\":false,\"check_sequence\":9,\"complete\":true,\"epoch\":7,\"host_policy\":{\"capture_digest\":\"sha256:d7fd350f2ed842f5090181e94d9f556609dd5efbc6da80bbc7c8acb597685d5d\",\"evaluation\":{\"after\":{\"candidate_requirements\":[],\"configuration_reasons\":[],\"required\":[{\"app_id\":7,\"name\":\"CI / build\"}],\"reviews\":[]},\"after_digest\":\"sha256:c537d0adc04beca90ff7bd1c75c4820d15695cafbadd03e24d70d01dbaa32793\",\"before\":{\"candidate_requirements\":[],\"configuration_reasons\":[],\"required\":[{\"app_id\":7,\"name\":\"CI / build\"}],\"reviews\":[]},\"before_digest\":\"sha256:c537d0adc04beca90ff7bd1c75c4820d15695cafbadd03e24d70d01dbaa32793\",\"reasons\":[],\"version\":2},\"finished_at_unix_ms\":1793000001000,\"membership_sequence\":5,\"owner_pin\":{\"configuration_digest\":\"sha256:c537d0adc04beca90ff7bd1c75c4820d15695cafbadd03e24d70d01dbaa32793\",\"policy\":{\"digest\":\"sha256:4444444444444444444444444444444444444444444444444444444444444444\",\"generation\":3}},\"reasons\":[\"capture_submitter_not_trusted\"],\"sequence\":14,\"started_at_unix_ms\":1793000000000,\"version\":1},\"membership_sequence\":5,\"policy\":{\"digest\":\"sha256:4444444444444444444444444444444444444444444444444444444444444444\",\"generation\":3},\"publication\":null,\"queue\":\"22222222-2222-4222-8222-222222222222\",\"reasons\":[],\"repository\":\"11111111-1111-4111-8111-111111111111\",\"requirements\":[{\"check_run\":\"66666666-6666-4666-8666-666666666666\",\"evidence\":\"sha256:8888888888888888888888888888888888888888888888888888888888888888\",\"host_check\":{\"id\":9007199254740993,\"node_id\":\"CR_opaque-v2\"},\"kind\":\"managed\",\"publication\":\"77777777-7777-4777-8777-777777777777\",\"reasons\":[],\"receipt_sequence\":2,\"required\":{\"app_id\":17,\"name\":\"TreeHarbor/e7/a5555555555555555555555555555555555555555555555555555555555555555\"},\"verified\":true}],\"tenant\":\"tenant-a\",\"version\":2}",
+  "digest": "sha256:e989b717f9c73aa5994ca3e0ed53a41bdb13d35bfa71adb38132ecd4fa0113c6"
+}

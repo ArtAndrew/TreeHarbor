@@ -1,0 +1,590 @@
+{
+  "queue_target": {
+    "pull": {
+      "repository_id": 11,
+      "pull_number": 17,
+      "pull_node": "PR_test_17",
+      "head_ref": "treeharbor/04040404040404040404040404040404",
+      "base_ref": "main",
+      "head_revision": "git:sha1:1111111111111111111111111111111111111111",
+      "required": [
+        {
+          "name": "CI / build",
+          "app_id": 7
+        }
+      ]
+    },
+    "expected_base_revision": "git:sha1:2222222222222222222222222222222222222222",
+    "expected_rules": {
+      "sha256": "03917fa871eea7e165463e8a8eaca7bc761c26cd6a15a40df2106b234635b07f",
+      "count": 1,
+      "merge_queue": true
+    }
+  },
+  "report": {
+    "version": 2,
+    "repository_name": "example/repo",
+    "target": {
+      "membership_sequence": 1,
+      "member": {
+        "entry": {
+          "id": "MQE_one",
+          "state": "AWAITING_CHECKS",
+          "base": {
+            "revision": "git:sha1:2222222222222222222222222222222222222222",
+            "tree": "git:sha1:5555555555555555555555555555555555555555"
+          },
+          "head": {
+            "revision": "git:sha1:3333333333333333333333333333333333333333",
+            "tree": "git:sha1:6666666666666666666666666666666666666666"
+          }
+        },
+        "position": 1,
+        "pull_node": "PR_test_17",
+        "pull_number": 17,
+        "source_repository_id": 11,
+        "source_revision": "git:sha1:1111111111111111111111111111111111111111",
+        "base_ref": "main",
+        "candidate": {
+          "commit": {
+            "revision": "git:sha1:3333333333333333333333333333333333333333",
+            "tree": "git:sha1:6666666666666666666666666666666666666666"
+          },
+          "parents": [
+            {
+              "revision": "git:sha1:2222222222222222222222222222222222222222",
+              "tree": "git:sha1:5555555555555555555555555555555555555555"
+            },
+            {
+              "revision": "git:sha1:1111111111111111111111111111111111111111",
+              "tree": "git:sha1:7777777777777777777777777777777777777777"
+            }
+          ]
+        }
+      }
+    },
+    "before": {
+      "group": {
+        "target": {
+          "pull": {
+            "repository_id": 11,
+            "number": 17,
+            "node_id": "PR_test_17",
+            "head_ref": "treeharbor/04040404040404040404040404040404",
+            "base_ref": "main",
+            "head_revision": "git:sha1:1111111111111111111111111111111111111111",
+            "base_revision": "git:sha1:2222222222222222222222222222222222222222",
+            "state": "open",
+            "draft": false,
+            "merged": false
+          },
+          "queue_enabled": true,
+          "configuration": {
+            "id": "MQ_one",
+            "merge_method": "MERGE",
+            "merging_strategy": "ALLGREEN",
+            "maximum_entries_to_build": 5,
+            "maximum_entries_to_merge": 5,
+            "minimum_entries_to_merge": 1,
+            "minimum_entries_wait_minutes": 0,
+            "check_timeout_minutes": 20
+          },
+          "queue_id": "MQ_one",
+          "entry": {
+            "id": "MQE_one",
+            "state": "AWAITING_CHECKS",
+            "base": {
+              "revision": "git:sha1:2222222222222222222222222222222222222222",
+              "tree": "git:sha1:5555555555555555555555555555555555555555"
+            },
+            "head": {
+              "revision": "git:sha1:3333333333333333333333333333333333333333",
+              "tree": "git:sha1:6666666666666666666666666666666666666666"
+            }
+          },
+          "final_commit": null
+        },
+        "main": {
+          "revision": "git:sha1:8888888888888888888888888888888888888888",
+          "tree": "git:sha1:9999999999999999999999999999999999999999"
+        },
+        "members": [
+          {
+            "entry": {
+              "id": "MQE_one",
+              "state": "AWAITING_CHECKS",
+              "base": {
+                "revision": "git:sha1:2222222222222222222222222222222222222222",
+                "tree": "git:sha1:5555555555555555555555555555555555555555"
+              },
+              "head": {
+                "revision": "git:sha1:3333333333333333333333333333333333333333",
+                "tree": "git:sha1:6666666666666666666666666666666666666666"
+              }
+            },
+            "position": 1,
+            "pull_node": "PR_test_17",
+            "pull_number": 17,
+            "source_repository_id": 11,
+            "source_revision": "git:sha1:1111111111111111111111111111111111111111",
+            "base_ref": "main",
+            "candidate": {
+              "commit": {
+                "revision": "git:sha1:3333333333333333333333333333333333333333",
+                "tree": "git:sha1:6666666666666666666666666666666666666666"
+              },
+              "parents": [
+                {
+                  "revision": "git:sha1:2222222222222222222222222222222222222222",
+                  "tree": "git:sha1:5555555555555555555555555555555555555555"
+                },
+                {
+                  "revision": "git:sha1:1111111111111111111111111111111111111111",
+                  "tree": "git:sha1:7777777777777777777777777777777777777777"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "protection": {
+        "status": 200,
+        "value": {
+          "enforce_admins": {
+            "enabled": true
+          },
+          "allow_force_pushes": {
+            "enabled": false
+          },
+          "allow_deletions": {
+            "enabled": false
+          },
+          "required_status_checks": {
+            "strict": true,
+            "contexts": [
+              "CI / build"
+            ],
+            "checks": [
+              {
+                "context": "CI / build",
+                "app_id": 7
+              }
+            ]
+          },
+          "required_pull_request_reviews": null,
+          "required_linear_history": {
+            "enabled": false
+          },
+          "required_signatures": {
+            "enabled": false
+          },
+          "block_creations": {
+            "enabled": false
+          },
+          "allow_fork_syncing": {
+            "enabled": false
+          },
+          "required_conversation_resolution": {
+            "enabled": false
+          },
+          "lock_branch": {
+            "enabled": false
+          },
+          "restrictions": null
+        }
+      },
+      "rules": [
+        {
+          "type": "merge_queue",
+          "ruleset_id": 42,
+          "ruleset_source_type": "Repository",
+          "ruleset_source": "example/repo",
+          "parameters": {
+            "merge_method": "MERGE",
+            "grouping_strategy": "ALLGREEN",
+            "max_entries_to_build": 5,
+            "max_entries_to_merge": 5,
+            "min_entries_to_merge": 1,
+            "min_entries_to_merge_wait_minutes": 0,
+            "check_response_timeout_minutes": 20
+          }
+        }
+      ],
+      "rulesets": [
+        {
+          "source": {
+            "id": 42,
+            "kind": "Repository",
+            "name": "example/repo"
+          },
+          "document": {
+            "status": 200,
+            "value": {
+              "id": 42,
+              "source_type": "Repository",
+              "source": "example/repo",
+              "target": "branch",
+              "enforcement": "active",
+              "bypass_actors": [],
+              "conditions": {
+                "ref_name": {
+                  "include": [
+                    "refs/heads/main"
+                  ],
+                  "exclude": []
+                }
+              },
+              "rules": [
+                {
+                  "type": "merge_queue",
+                  "parameters": {
+                    "merge_method": "MERGE",
+                    "grouping_strategy": "ALLGREEN",
+                    "max_entries_to_build": 5,
+                    "max_entries_to_merge": 5,
+                    "min_entries_to_merge": 1,
+                    "min_entries_to_merge_wait_minutes": 0,
+                    "check_response_timeout_minutes": 20
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "review": {
+        "pull": {
+          "repository_id": 11,
+          "number": 17,
+          "node_id": "PR_test_17",
+          "head_ref": "treeharbor/04040404040404040404040404040404",
+          "base_ref": "main",
+          "head_revision": "git:sha1:1111111111111111111111111111111111111111",
+          "base_revision": "git:sha1:2222222222222222222222222222222222222222",
+          "state": "open",
+          "draft": false,
+          "merged": false
+        },
+        "decision": null,
+        "threads": [
+          {
+            "id": "PRRT_test_1",
+            "resolved": true,
+            "outdated": false
+          }
+        ]
+      },
+      "visibility": {
+        "target": {
+          "repository_id": 11,
+          "repository_name": "example/repo",
+          "base_ref": "main"
+        },
+        "owner_kind": "Organization",
+        "queue_id": "MQ_one",
+        "legacy": {
+          "id": "BPR_fixture",
+          "repository_id": 11,
+          "flags": {
+            "allowsDeletions": false,
+            "allowsForcePushes": false,
+            "blocksCreations": false,
+            "dismissesStaleReviews": false,
+            "isAdminEnforced": true,
+            "lockAllowsFetchAndMerge": false,
+            "lockBranch": false,
+            "requireLastPushApproval": false,
+            "requiresApprovingReviews": false,
+            "requiresCodeOwnerReviews": false,
+            "requiresCommitSignatures": false,
+            "requiresConversationResolution": false,
+            "requiresDeployments": false,
+            "requiresLinearHistory": false,
+            "requiresStatusChecks": true,
+            "requiresStrictStatusChecks": true,
+            "restrictsPushes": false,
+            "restrictsReviewDismissals": false
+          },
+          "approving_reviews": 0,
+          "required_contexts": [
+            "CI / build"
+          ],
+          "deployment_environments": [],
+          "bypass_pull_requests": {
+            "total_count": 0,
+            "nodes": [],
+            "has_next_page": false
+          },
+          "bypass_force_pushes": {
+            "total_count": 0,
+            "nodes": [],
+            "has_next_page": false
+          }
+        }
+      }
+    },
+    "after": {
+      "group": {
+        "target": {
+          "pull": {
+            "repository_id": 11,
+            "number": 17,
+            "node_id": "PR_test_17",
+            "head_ref": "treeharbor/04040404040404040404040404040404",
+            "base_ref": "main",
+            "head_revision": "git:sha1:1111111111111111111111111111111111111111",
+            "base_revision": "git:sha1:2222222222222222222222222222222222222222",
+            "state": "open",
+            "draft": false,
+            "merged": false
+          },
+          "queue_enabled": true,
+          "configuration": {
+            "id": "MQ_one",
+            "merge_method": "MERGE",
+            "merging_strategy": "ALLGREEN",
+            "maximum_entries_to_build": 5,
+            "maximum_entries_to_merge": 5,
+            "minimum_entries_to_merge": 1,
+            "minimum_entries_wait_minutes": 0,
+            "check_timeout_minutes": 20
+          },
+          "queue_id": "MQ_one",
+          "entry": {
+            "id": "MQE_one",
+            "state": "AWAITING_CHECKS",
+            "base": {
+              "revision": "git:sha1:2222222222222222222222222222222222222222",
+              "tree": "git:sha1:5555555555555555555555555555555555555555"
+            },
+            "head": {
+              "revision": "git:sha1:3333333333333333333333333333333333333333",
+              "tree": "git:sha1:6666666666666666666666666666666666666666"
+            }
+          },
+          "final_commit": null
+        },
+        "main": {
+          "revision": "git:sha1:8888888888888888888888888888888888888888",
+          "tree": "git:sha1:9999999999999999999999999999999999999999"
+        },
+        "members": [
+          {
+            "entry": {
+              "id": "MQE_one",
+              "state": "AWAITING_CHECKS",
+              "base": {
+                "revision": "git:sha1:2222222222222222222222222222222222222222",
+                "tree": "git:sha1:5555555555555555555555555555555555555555"
+              },
+              "head": {
+                "revision": "git:sha1:3333333333333333333333333333333333333333",
+                "tree": "git:sha1:6666666666666666666666666666666666666666"
+              }
+            },
+            "position": 1,
+            "pull_node": "PR_test_17",
+            "pull_number": 17,
+            "source_repository_id": 11,
+            "source_revision": "git:sha1:1111111111111111111111111111111111111111",
+            "base_ref": "main",
+            "candidate": {
+              "commit": {
+                "revision": "git:sha1:3333333333333333333333333333333333333333",
+                "tree": "git:sha1:6666666666666666666666666666666666666666"
+              },
+              "parents": [
+                {
+                  "revision": "git:sha1:2222222222222222222222222222222222222222",
+                  "tree": "git:sha1:5555555555555555555555555555555555555555"
+                },
+                {
+                  "revision": "git:sha1:1111111111111111111111111111111111111111",
+                  "tree": "git:sha1:7777777777777777777777777777777777777777"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "protection": {
+        "status": 200,
+        "value": {
+          "enforce_admins": {
+            "enabled": true
+          },
+          "allow_force_pushes": {
+            "enabled": false
+          },
+          "allow_deletions": {
+            "enabled": false
+          },
+          "required_status_checks": {
+            "strict": true,
+            "contexts": [
+              "CI / build"
+            ],
+            "checks": [
+              {
+                "context": "CI / build",
+                "app_id": 7
+              }
+            ]
+          },
+          "required_pull_request_reviews": null,
+          "required_linear_history": {
+            "enabled": false
+          },
+          "required_signatures": {
+            "enabled": false
+          },
+          "block_creations": {
+            "enabled": false
+          },
+          "allow_fork_syncing": {
+            "enabled": false
+          },
+          "required_conversation_resolution": {
+            "enabled": false
+          },
+          "lock_branch": {
+            "enabled": false
+          },
+          "restrictions": null
+        }
+      },
+      "rules": [
+        {
+          "type": "merge_queue",
+          "ruleset_id": 42,
+          "ruleset_source_type": "Repository",
+          "ruleset_source": "example/repo",
+          "parameters": {
+            "merge_method": "MERGE",
+            "grouping_strategy": "ALLGREEN",
+            "max_entries_to_build": 5,
+            "max_entries_to_merge": 5,
+            "min_entries_to_merge": 1,
+            "min_entries_to_merge_wait_minutes": 0,
+            "check_response_timeout_minutes": 20
+          }
+        }
+      ],
+      "rulesets": [
+        {
+          "source": {
+            "id": 42,
+            "kind": "Repository",
+            "name": "example/repo"
+          },
+          "document": {
+            "status": 200,
+            "value": {
+              "id": 42,
+              "source_type": "Repository",
+              "source": "example/repo",
+              "target": "branch",
+              "enforcement": "active",
+              "bypass_actors": [],
+              "conditions": {
+                "ref_name": {
+                  "include": [
+                    "refs/heads/main"
+                  ],
+                  "exclude": []
+                }
+              },
+              "rules": [
+                {
+                  "type": "merge_queue",
+                  "parameters": {
+                    "merge_method": "MERGE",
+                    "grouping_strategy": "ALLGREEN",
+                    "max_entries_to_build": 5,
+                    "max_entries_to_merge": 5,
+                    "min_entries_to_merge": 1,
+                    "min_entries_to_merge_wait_minutes": 0,
+                    "check_response_timeout_minutes": 20
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "review": {
+        "pull": {
+          "repository_id": 11,
+          "number": 17,
+          "node_id": "PR_test_17",
+          "head_ref": "treeharbor/04040404040404040404040404040404",
+          "base_ref": "main",
+          "head_revision": "git:sha1:1111111111111111111111111111111111111111",
+          "base_revision": "git:sha1:2222222222222222222222222222222222222222",
+          "state": "open",
+          "draft": false,
+          "merged": false
+        },
+        "decision": null,
+        "threads": [
+          {
+            "id": "PRRT_test_1",
+            "resolved": true,
+            "outdated": false
+          }
+        ]
+      },
+      "visibility": {
+        "target": {
+          "repository_id": 11,
+          "repository_name": "example/repo",
+          "base_ref": "main"
+        },
+        "owner_kind": "Organization",
+        "queue_id": "MQ_one",
+        "legacy": {
+          "id": "BPR_fixture",
+          "repository_id": 11,
+          "flags": {
+            "allowsDeletions": false,
+            "allowsForcePushes": false,
+            "blocksCreations": false,
+            "dismissesStaleReviews": false,
+            "isAdminEnforced": true,
+            "lockAllowsFetchAndMerge": false,
+            "lockBranch": false,
+            "requireLastPushApproval": false,
+            "requiresApprovingReviews": false,
+            "requiresCodeOwnerReviews": false,
+            "requiresCommitSignatures": false,
+            "requiresConversationResolution": false,
+            "requiresDeployments": false,
+            "requiresLinearHistory": false,
+            "requiresStatusChecks": true,
+            "requiresStrictStatusChecks": true,
+            "restrictsPushes": false,
+            "restrictsReviewDismissals": false
+          },
+          "approving_reviews": 0,
+          "required_contexts": [
+            "CI / build"
+          ],
+          "deployment_environments": [],
+          "bypass_pull_requests": {
+            "total_count": 0,
+            "nodes": [],
+            "has_next_page": false
+          },
+          "bypass_force_pushes": {
+            "total_count": 0,
+            "nodes": [],
+            "has_next_page": false
+          }
+        }
+      }
+    }
+  },
+  "canonical": "{\"after\":{\"group\":{\"main\":{\"revision\":\"git:sha1:8888888888888888888888888888888888888888\",\"tree\":\"git:sha1:9999999999999999999999999999999999999999\"},\"members\":[{\"base_ref\":\"main\",\"candidate\":{\"commit\":{\"revision\":\"git:sha1:3333333333333333333333333333333333333333\",\"tree\":\"git:sha1:6666666666666666666666666666666666666666\"},\"parents\":[{\"revision\":\"git:sha1:2222222222222222222222222222222222222222\",\"tree\":\"git:sha1:5555555555555555555555555555555555555555\"},{\"revision\":\"git:sha1:1111111111111111111111111111111111111111\",\"tree\":\"git:sha1:7777777777777777777777777777777777777777\"}]},\"entry\":{\"base\":{\"revision\":\"git:sha1:2222222222222222222222222222222222222222\",\"tree\":\"git:sha1:5555555555555555555555555555555555555555\"},\"head\":{\"revision\":\"git:sha1:3333333333333333333333333333333333333333\",\"tree\":\"git:sha1:6666666666666666666666666666666666666666\"},\"id\":\"MQE_one\",\"state\":\"AWAITING_CHECKS\"},\"position\":1,\"pull_node\":\"PR_test_17\",\"pull_number\":17,\"source_repository_id\":11,\"source_revision\":\"git:sha1:1111111111111111111111111111111111111111\"}],\"target\":{\"configuration\":{\"check_timeout_minutes\":20,\"id\":\"MQ_one\",\"maximum_entries_to_build\":5,\"maximum_entries_to_merge\":5,\"merge_method\":\"MERGE\",\"merging_strategy\":\"ALLGREEN\",\"minimum_entries_to_merge\":1,\"minimum_entries_wait_minutes\":0},\"entry\":{\"base\":{\"revision\":\"git:sha1:2222222222222222222222222222222222222222\",\"tree\":\"git:sha1:5555555555555555555555555555555555555555\"},\"head\":{\"revision\":\"git:sha1:3333333333333333333333333333333333333333\",\"tree\":\"git:sha1:6666666666666666666666666666666666666666\"},\"id\":\"MQE_one\",\"state\":\"AWAITING_CHECKS\"},\"final_commit\":null,\"pull\":{\"base_ref\":\"main\",\"base_revision\":\"git:sha1:2222222222222222222222222222222222222222\",\"draft\":false,\"head_ref\":\"treeharbor/04040404040404040404040404040404\",\"head_revision\":\"git:sha1:1111111111111111111111111111111111111111\",\"merged\":false,\"node_id\":\"PR_test_17\",\"number\":17,\"repository_id\":11,\"state\":\"open\"},\"queue_enabled\":true,\"queue_id\":\"MQ_one\"}},\"protection\":{\"status\":200,\"value\":{\"allow_deletions\":{\"enabled\":false},\"allow_force_pushes\":{\"enabled\":false},\"allow_fork_syncing\":{\"enabled\":false},\"block_creations\":{\"enabled\":false},\"enforce_admins\":{\"enabled\":true},\"lock_branch\":{\"enabled\":false},\"required_conversation_resolution\":{\"enabled\":false},\"required_linear_history\":{\"enabled\":false},\"required_pull_request_reviews\":null,\"required_signatures\":{\"enabled\":false},\"required_status_checks\":{\"checks\":[{\"app_id\":7,\"context\":\"CI / build\"}],\"contexts\":[\"CI / build\"],\"strict\":true},\"restrictions\":null}},\"review\":{\"decision\":null,\"pull\":{\"base_ref\":\"main\",\"base_revision\":\"git:sha1:2222222222222222222222222222222222222222\",\"draft\":false,\"head_ref\":\"treeharbor/04040404040404040404040404040404\",\"head_revision\":\"git:sha1:1111111111111111111111111111111111111111\",\"merged\":false,\"node_id\":\"PR_test_17\",\"number\":17,\"repository_id\":11,\"state\":\"open\"},\"threads\":[{\"id\":\"PRRT_test_1\",\"outdated\":false,\"resolved\":true}]},\"rules\":[{\"parameters\":{\"check_response_timeout_minutes\":20,\"grouping_strategy\":\"ALLGREEN\",\"max_entries_to_build\":5,\"max_entries_to_merge\":5,\"merge_method\":\"MERGE\",\"min_entries_to_merge\":1,\"min_entries_to_merge_wait_minutes\":0},\"ruleset_id\":42,\"ruleset_source\":\"example/repo\",\"ruleset_source_type\":\"Repository\",\"type\":\"merge_queue\"}],\"rulesets\":[{\"document\":{\"status\":200,\"value\":{\"bypass_actors\":[],\"conditions\":{\"ref_name\":{\"exclude\":[],\"include\":[\"refs/heads/main\"]}},\"enforcement\":\"active\",\"id\":42,\"rules\":[{\"parameters\":{\"check_response_timeout_minutes\":20,\"grouping_strategy\":\"ALLGREEN\",\"max_entries_to_build\":5,\"max_entries_to_merge\":5,\"merge_method\":\"MERGE\",\"min_entries_to_merge\":1,\"min_entries_to_merge_wait_minutes\":0},\"type\":\"merge_queue\"}],\"source\":\"example/repo\",\"source_type\":\"Repository\",\"target\":\"branch\"}},\"source\":{\"id\":42,\"kind\":\"Repository\",\"name\":\"example/repo\"}}],\"visibility\":{\"legacy\":{\"approving_reviews\":0,\"bypass_force_pushes\":{\"has_next_page\":false,\"nodes\":[],\"total_count\":0},\"bypass_pull_requests\":{\"has_next_page\":false,\"nodes\":[],\"total_count\":0},\"deployment_environments\":[],\"flags\":{\"allowsDeletions\":false,\"allowsForcePushes\":false,\"blocksCreations\":false,\"dismissesStaleReviews\":false,\"isAdminEnforced\":true,\"lockAllowsFetchAndMerge\":false,\"lockBranch\":false,\"requireLastPushApproval\":false,\"requiresApprovingReviews\":false,\"requiresCodeOwnerReviews\":false,\"requiresCommitSignatures\":false,\"requiresConversationResolution\":false,\"requiresDeployments\":false,\"requiresLinearHistory\":false,\"requiresStatusChecks\":true,\"requiresStrictStatusChecks\":true,\"restrictsPushes\":false,\"restrictsReviewDismissals\":false},\"id\":\"BPR_fixture\",\"repository_id\":11,\"required_contexts\":[\"CI / build\"]},\"owner_kind\":\"Organization\",\"queue_id\":\"MQ_one\",\"target\":{\"base_ref\":\"main\",\"repository_id\":11,\"repository_name\":\"example/repo\"}}},\"before\":{\"group\":{\"main\":{\"revision\":\"git:sha1:8888888888888888888888888888888888888888\",\"tree\":\"git:sha1:9999999999999999999999999999999999999999\"},\"members\":[{\"base_ref\":\"main\",\"candidate\":{\"commit\":{\"revision\":\"git:sha1:3333333333333333333333333333333333333333\",\"tree\":\"git:sha1:6666666666666666666666666666666666666666\"},\"parents\":[{\"revision\":\"git:sha1:2222222222222222222222222222222222222222\",\"tree\":\"git:sha1:5555555555555555555555555555555555555555\"},{\"revision\":\"git:sha1:1111111111111111111111111111111111111111\",\"tree\":\"git:sha1:7777777777777777777777777777777777777777\"}]},\"entry\":{\"base\":{\"revision\":\"git:sha1:2222222222222222222222222222222222222222\",\"tree\":\"git:sha1:5555555555555555555555555555555555555555\"},\"head\":{\"revision\":\"git:sha1:3333333333333333333333333333333333333333\",\"tree\":\"git:sha1:6666666666666666666666666666666666666666\"},\"id\":\"MQE_one\",\"state\":\"AWAITING_CHECKS\"},\"position\":1,\"pull_node\":\"PR_test_17\",\"pull_number\":17,\"source_repository_id\":11,\"source_revision\":\"git:sha1:1111111111111111111111111111111111111111\"}],\"target\":{\"configuration\":{\"check_timeout_minutes\":20,\"id\":\"MQ_one\",\"maximum_entries_to_build\":5,\"maximum_entries_to_merge\":5,\"merge_method\":\"MERGE\",\"merging_strategy\":\"ALLGREEN\",\"minimum_entries_to_merge\":1,\"minimum_entries_wait_minutes\":0},\"entry\":{\"base\":{\"revision\":\"git:sha1:2222222222222222222222222222222222222222\",\"tree\":\"git:sha1:5555555555555555555555555555555555555555\"},\"head\":{\"revision\":\"git:sha1:3333333333333333333333333333333333333333\",\"tree\":\"git:sha1:6666666666666666666666666666666666666666\"},\"id\":\"MQE_one\",\"state\":\"AWAITING_CHECKS\"},\"final_commit\":null,\"pull\":{\"base_ref\":\"main\",\"base_revision\":\"git:sha1:2222222222222222222222222222222222222222\",\"draft\":false,\"head_ref\":\"treeharbor/04040404040404040404040404040404\",\"head_revision\":\"git:sha1:1111111111111111111111111111111111111111\",\"merged\":false,\"node_id\":\"PR_test_17\",\"number\":17,\"repository_id\":11,\"state\":\"open\"},\"queue_enabled\":true,\"queue_id\":\"MQ_one\"}},\"protection\":{\"status\":200,\"value\":{\"allow_deletions\":{\"enabled\":false},\"allow_force_pushes\":{\"enabled\":false},\"allow_fork_syncing\":{\"enabled\":false},\"block_creations\":{\"enabled\":false},\"enforce_admins\":{\"enabled\":true},\"lock_branch\":{\"enabled\":false},\"required_conversation_resolution\":{\"enabled\":false},\"required_linear_history\":{\"enabled\":false},\"required_pull_request_reviews\":null,\"required_signatures\":{\"enabled\":false},\"required_status_checks\":{\"checks\":[{\"app_id\":7,\"context\":\"CI / build\"}],\"contexts\":[\"CI / build\"],\"strict\":true},\"restrictions\":null}},\"review\":{\"decision\":null,\"pull\":{\"base_ref\":\"main\",\"base_revision\":\"git:sha1:2222222222222222222222222222222222222222\",\"draft\":false,\"head_ref\":\"treeharbor/04040404040404040404040404040404\",\"head_revision\":\"git:sha1:1111111111111111111111111111111111111111\",\"merged\":false,\"node_id\":\"PR_test_17\",\"number\":17,\"repository_id\":11,\"state\":\"open\"},\"threads\":[{\"id\":\"PRRT_test_1\",\"outdated\":false,\"resolved\":true}]},\"rules\":[{\"parameters\":{\"check_response_timeout_minutes\":20,\"grouping_strategy\":\"ALLGREEN\",\"max_entries_to_build\":5,\"max_entries_to_merge\":5,\"merge_method\":\"MERGE\",\"min_entries_to_merge\":1,\"min_entries_to_merge_wait_minutes\":0},\"ruleset_id\":42,\"ruleset_source\":\"example/repo\",\"ruleset_source_type\":\"Repository\",\"type\":\"merge_queue\"}],\"rulesets\":[{\"document\":{\"status\":200,\"value\":{\"bypass_actors\":[],\"conditions\":{\"ref_name\":{\"exclude\":[],\"include\":[\"refs/heads/main\"]}},\"enforcement\":\"active\",\"id\":42,\"rules\":[{\"parameters\":{\"check_response_timeout_minutes\":20,\"grouping_strategy\":\"ALLGREEN\",\"max_entries_to_build\":5,\"max_entries_to_merge\":5,\"merge_method\":\"MERGE\",\"min_entries_to_merge\":1,\"min_entries_to_merge_wait_minutes\":0},\"type\":\"merge_queue\"}],\"source\":\"example/repo\",\"source_type\":\"Repository\",\"target\":\"branch\"}},\"source\":{\"id\":42,\"kind\":\"Repository\",\"name\":\"example/repo\"}}],\"visibility\":{\"legacy\":{\"approving_reviews\":0,\"bypass_force_pushes\":{\"has_next_page\":false,\"nodes\":[],\"total_count\":0},\"bypass_pull_requests\":{\"has_next_page\":false,\"nodes\":[],\"total_count\":0},\"deployment_environments\":[],\"flags\":{\"allowsDeletions\":false,\"allowsForcePushes\":false,\"blocksCreations\":false,\"dismissesStaleReviews\":false,\"isAdminEnforced\":true,\"lockAllowsFetchAndMerge\":false,\"lockBranch\":false,\"requireLastPushApproval\":false,\"requiresApprovingReviews\":false,\"requiresCodeOwnerReviews\":false,\"requiresCommitSignatures\":false,\"requiresConversationResolution\":false,\"requiresDeployments\":false,\"requiresLinearHistory\":false,\"requiresStatusChecks\":true,\"requiresStrictStatusChecks\":true,\"restrictsPushes\":false,\"restrictsReviewDismissals\":false},\"id\":\"BPR_fixture\",\"repository_id\":11,\"required_contexts\":[\"CI / build\"]},\"owner_kind\":\"Organization\",\"queue_id\":\"MQ_one\",\"target\":{\"base_ref\":\"main\",\"repository_id\":11,\"repository_name\":\"example/repo\"}}},\"repository_name\":\"example/repo\",\"target\":{\"member\":{\"base_ref\":\"main\",\"candidate\":{\"commit\":{\"revision\":\"git:sha1:3333333333333333333333333333333333333333\",\"tree\":\"git:sha1:6666666666666666666666666666666666666666\"},\"parents\":[{\"revision\":\"git:sha1:2222222222222222222222222222222222222222\",\"tree\":\"git:sha1:5555555555555555555555555555555555555555\"},{\"revision\":\"git:sha1:1111111111111111111111111111111111111111\",\"tree\":\"git:sha1:7777777777777777777777777777777777777777\"}]},\"entry\":{\"base\":{\"revision\":\"git:sha1:2222222222222222222222222222222222222222\",\"tree\":\"git:sha1:5555555555555555555555555555555555555555\"},\"head\":{\"revision\":\"git:sha1:3333333333333333333333333333333333333333\",\"tree\":\"git:sha1:6666666666666666666666666666666666666666\"},\"id\":\"MQE_one\",\"state\":\"AWAITING_CHECKS\"},\"position\":1,\"pull_node\":\"PR_test_17\",\"pull_number\":17,\"source_repository_id\":11,\"source_revision\":\"git:sha1:1111111111111111111111111111111111111111\"},\"membership_sequence\":1},\"version\":2}",
+  "digest": "sha256:d7fd350f2ed842f5090181e94d9f556609dd5efbc6da80bbc7c8acb597685d5d",
+  "configuration_digest": "sha256:c537d0adc04beca90ff7bd1c75c4820d15695cafbadd03e24d70d01dbaa32793"
+}

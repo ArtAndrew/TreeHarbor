@@ -115,6 +115,9 @@ pub struct Snapshot {
     pub rules: Vec<Value>,
     pub rulesets: Vec<Ruleset>,
     pub review: Review,
+    /// Collected in this candidate round, never borrowed from a bootstrap report.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub visibility: Option<Box<crate::host_configuration::Visibility>>,
 }
 
 fn bounded(v: &Value, bytes: usize) -> Result<()> {
@@ -197,7 +200,42 @@ impl Snapshot {
     pub fn validate(&self, repository: &str, t: &QueueTarget) -> Result<()> {
         self.group.validate(t)?;
         self.review.validate(t)?;
-        validate_documents(repository, &self.protection, &self.rules, &self.rulesets)
+        validate_documents(repository, &self.protection, &self.rules, &self.rulesets)?;
+        self.configuration(repository, t)?;
+        Ok(())
+    }
+    pub fn configuration(
+        &self,
+        repository: &str,
+        t: &QueueTarget,
+    ) -> Result<Option<crate::host_configuration::Configuration>> {
+        let Some(visibility) = &self.visibility else {
+            return Ok(None);
+        };
+        let c = crate::host_configuration::Configuration {
+            version: 1,
+            profile: crate::host_policy_evaluation::Profile {
+                version: 1,
+                repository_id: t.pull.repository_id,
+                repository_name: repository.into(),
+                base_ref: t.pull.base_ref.clone(),
+                protection: self.protection.clone(),
+                rules: self.rules.clone(),
+                rulesets: self.rulesets.clone(),
+                queue: self.group.target.configuration.clone(),
+            },
+            visibility: *visibility.clone(),
+        };
+        let target = crate::host_configuration::Target {
+            repository_id: t.pull.repository_id,
+            repository_name: repository.into(),
+            base_ref: t.pull.base_ref.clone(),
+        };
+        c.validate(&target)?;
+        if c.visibility.queue_id != self.group.target.queue_id {
+            return Err(InvalidEvidence);
+        }
+        Ok(Some(c))
     }
 }
 
@@ -275,7 +313,11 @@ pub struct Report {
 impl Report {
     pub fn validate(&self, t: &QueueTarget) -> Result<()> {
         self.target.validate(t)?;
-        if self.version != 1 || self.repository_name.len() > 201 {
+        if !matches!(self.version, 1 | 2)
+            || (self.version == 2) != self.before.visibility.is_some()
+            || (self.version == 2) != self.after.visibility.is_some()
+            || self.repository_name.len() > 201
+        {
             return Err(InvalidEvidence);
         }
         let parts: Vec<_> = self.repository_name.split('/').collect();
@@ -362,7 +404,11 @@ impl Report {
     pub fn digest(&self, t: &QueueTarget) -> Result<String> {
         self.validate(t)?;
         let mut h = Sha256::new();
-        h.update(b"treeharbor-github-host-policy-observation\0v1\0");
+        h.update(if self.version == 1 {
+            b"treeharbor-github-host-policy-observation\0v1\0"
+        } else {
+            b"treeharbor-github-host-policy-observation\0v2\0"
+        });
         let canonical = serde_json::to_value(self).map_err(|_| InvalidEvidence)?;
         h.update(serde_json::to_vec(&canonical).map_err(|_| InvalidEvidence)?);
         Ok(treeharbor_core::ObjectId::from_bytes(h.finalize().into()).to_string())

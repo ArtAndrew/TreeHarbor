@@ -35,7 +35,11 @@ fn matches<'a>(snapshot: &'a gc::Snapshot, required: &RequiredCheck) -> Vec<&'a 
 }
 fn digest(evidence: &Value) -> Result<String> {
     let mut h = Sha256::new();
-    h.update(b"treeharbor-connected-check-set\0v1\0");
+    h.update(match evidence["version"].as_u64() {
+        Some(1) => b"treeharbor-connected-check-set\0v1\0",
+        Some(2) => b"treeharbor-connected-check-set\0v2\0",
+        _ => return Err(Error::SchemaMismatch),
+    });
     h.update(serde_json::to_vec(evidence).map_err(|_| Error::SchemaMismatch)?);
     Ok(ObjectId::from_bytes(h.finalize().into()).to_string())
 }
@@ -243,6 +247,25 @@ impl Metadata {
         check_sequence: i64,
         publication_sequence: Option<i64>,
     ) -> Result<Value> {
+        self.github_queue_admission_with_host_policy(
+            auth,
+            epoch,
+            id,
+            check_sequence,
+            publication_sequence,
+            None,
+        )
+        .await
+    }
+    pub async fn github_queue_admission_with_host_policy(
+        &mut self,
+        auth: &Authorization,
+        epoch: i64,
+        id: Uuid,
+        check_sequence: i64,
+        publication_sequence: Option<i64>,
+        host_policy_sequence: Option<i64>,
+    ) -> Result<Value> {
         uuid(id)?;
         let tx = self.client.transaction().await?;
         settings(&tx).await?;
@@ -255,6 +278,7 @@ impl Metadata {
         }
         let t = queue::target(&q)?;
         let r = report(&tx, s, id, check_sequence, &t).await?;
+        let checks_finished = r.finished_at_unix_ms;
         let checks = r.group_checks.ok_or(Error::Invalid("check report"))?;
         let g = group_checks::validate_report(&tx, s, &q, &checks).await?;
         let view = match checks.target.side {
@@ -355,11 +379,29 @@ impl Metadata {
         } else {
             None
         };
-        let evidence = json!({"version":1,"tenant":s.tenant(),"repository":s.repository(),"queue":id,"binding":binding_id,"epoch":epoch,
+        let mut evidence = json!({"version":1,"tenant":s.tenant(),"repository":s.repository(),"queue":id,"binding":binding_id,"epoch":epoch,
             "policy":policy,"check_sequence":check_sequence,"membership_sequence":selected.membership_sequence,"candidate":candidate,
             "requirements":requirements,"reasons":reasons,"complete":complete,"publication":publication});
-        let result = json!({"version":1,"evidence_digest":digest(&evidence)?,"evidence":evidence,"current_locally":current,
-            "checks_verified":complete && current,"host_policy_verified":false,"admission_verified":false,"merge_verified":false});
+        let host_verified = if let Some(sequence) = host_policy_sequence {
+            let (host, verified) =
+                host_policy::current::evaluate(&tx, s, &q, sequence, &selected, checks_finished)
+                    .await?;
+            let sources_trusted = host_policy::current::trusted_sources(
+                &tx,
+                s,
+                &q,
+                &[check_sequence, selected.membership_sequence],
+            )
+            .await?;
+            evidence["version"] = json!(2);
+            evidence["capture_sources_trusted"] = json!(sources_trusted);
+            evidence["host_policy"] = host;
+            verified && sources_trusted && current
+        } else {
+            false
+        };
+        let result = json!({"version":evidence["version"],"evidence_digest":digest(&evidence)?,"evidence":evidence,"current_locally":current,
+            "checks_verified":complete && current,"host_policy_verified":host_verified,"admission_verified":complete && current && host_verified,"merge_verified":false});
         context(&tx, auth, epoch, Permission::Read).await?;
         tx.commit().await?;
         Ok(result)
@@ -369,6 +411,38 @@ impl Metadata {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn v2_encoding_binds_host_capture_owner_pin_and_source_trust_without_reinterpreting_v1() {
+        let v: Value = serde_json::from_str(include_str!(
+            "../../tests/fixtures/connected-check-set-v2.json"
+        ))
+        .unwrap();
+        let e = &v["evidence"];
+        assert_eq!(
+            serde_json::to_vec(e).unwrap(),
+            v["canonical"].as_str().unwrap().as_bytes()
+        );
+        assert_eq!(digest(e).unwrap(), v["digest"]);
+        for path in [
+            "/host_policy/sequence",
+            "/host_policy/capture_digest",
+            "/host_policy/owner_pin/policy/generation",
+            "/host_policy/owner_pin/configuration_digest",
+            "/host_policy/evaluation/before_digest",
+            "/host_policy/started_at_unix_ms",
+            "/host_policy/reasons",
+            "/capture_sources_trusted",
+        ] {
+            let mut changed = e.clone();
+            *changed.pointer_mut(path).unwrap() = Value::Null;
+            assert_ne!(digest(&changed).unwrap(), v["digest"], "{path}");
+        }
+        let mut changed = e.clone();
+        changed["version"] = json!(1);
+        assert_ne!(digest(&changed).unwrap(), v["digest"]);
+        changed["version"] = json!(3);
+        assert!(digest(&changed).is_err());
+    }
     #[test]
     fn check_set_encoding_matches_independent_vector_and_binds_every_source() {
         let v: Value = serde_json::from_str(include_str!(

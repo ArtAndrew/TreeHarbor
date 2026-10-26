@@ -265,10 +265,18 @@ pub fn evaluate(report: &hp::Report, t: &QueueTarget) -> Result<Evaluation> {
     let mut reasons = report.capture_reasons(t)?;
     let p = Profile::from_snapshot(&report.repository_name, t, &report.before)?;
     let q = Profile::from_snapshot(&report.repository_name, t, &report.after)?;
-    let before_digest = p.digest()?;
-    let after_digest = q.digest()?;
-    let before = p.analyze()?;
-    let after = q.analyze()?;
+    let analyze = |s: &hp::Snapshot, p: &Profile| -> Result<(String, Analysis)> {
+        if let Some(c) = s.configuration(&report.repository_name, t)? {
+            Ok((
+                c.digest(&c.visibility.target)?,
+                c.analyze(&c.visibility.target)?,
+            ))
+        } else {
+            Ok((p.digest()?, p.analyze()?))
+        }
+    };
+    let (before_digest, before) = analyze(&report.before, &p)?;
+    let (after_digest, after) = analyze(&report.after, &q)?;
     if before_digest != after_digest {
         reasons.insert("configuration_changed".into());
     }
@@ -310,7 +318,7 @@ pub fn evaluate(report: &hp::Report, t: &QueueTarget) -> Result<Evaluation> {
         }
     }
     Ok(Evaluation {
-        version: 1,
+        version: report.version,
         before_digest,
         after_digest,
         before,
