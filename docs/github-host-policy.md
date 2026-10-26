@@ -2,8 +2,8 @@
 
 TreeHarbor can retain GitHub branch protection, applicable rules, their source
 rulesets, and PR review/thread state for an exact saved queue candidate. This is
-**evidence collection**, not a complete interpretation of GitHub policy or
-permission to merge. `host_policy_verified`, `admission_verified` and
+**evidence collection and conservative policy analysis**, not permission to merge.
+`host_policy_verified`, `admission_verified` and
 `merge_verified` remain false, including when the capture has no diagnostic reasons.
 
 ## Collect and read
@@ -39,7 +39,7 @@ A repository reader sends this through `treeharbor client ... github --request`:
 ```
 
 The response returns at most one immutable capture, its `capture_digest`,
-`capture_reasons`, and `next_after` when another page exists. The assigned bridge
+`capture_reasons`, a versioned `evaluation`, and `next_after` when another page exists. The assigned bridge
 can select the exact source with `queue_host_policy_context` and
 `membership_sequence`. The server checks the saved membership, upstream binding,
 tenant, repository, queue and authority epoch. A caller cannot substitute a
@@ -57,11 +57,65 @@ Two full observation rounds retain:
   connection, with resolved/outdated state and exact PR identity on every page.
 
 Unknown rule fields remain in raw documents. Missing bypass actors are different
-from an observed empty array. Unknown semantic clauses, review counts, code-owner
-policy and bypass behavior are not interpreted by this collector. A stable
+from an observed empty array. A stable
 `CHANGES_REQUESTED` observation can have no capture-consistency reasons and still
 cannot authorize a merge. A null review decision does not mean no reviews are
 required.
+
+## Policy analysis
+
+Each returned capture now includes `evaluation` version 1:
+
+- `before_digest` and `after_digest` identify the branch configuration independently
+  of the PR, candidate, review decision and review-thread state.
+- `before` and `after` contain the union of required App/name pairs, review
+  requirements, configuration diagnostics and conditions needing candidate evidence.
+- `reasons` combines capture consistency, configuration problems and unmet candidate
+  conditions. It compares the entire required check set to the queue target and
+  binds review/thread evaluation to the original PR head.
+
+The analyzer checks legacy protection flags, explicit check issuers, review
+requirements, visible bypass lists, complete source rulesets and all seven merge
+queue settings against the observed queue configuration. Unknown fields/rules,
+missing fields needed by this profile, ambiguous issuers, contradictory check
+contexts or redacted bypass information produce named diagnostics. Unsupported
+source-selection conditions and restrictions also remain unproven. Raw documents
+stay available for inspection; diagnostics do not rewrite the captured evidence.
+
+Review counts, code-owner approval, last-push approval and required teams are
+retained as distinct requirements. An `APPROVED` enum does not prove them. Unresolved
+required conversations still block diagnostics even when their threads are marked
+outdated. Signature, linear-history, HEADGREEN and non-MERGE publication conditions
+remain explicit candidate-evidence requirements; they cannot inherit the simpler
+MERGE/ALLGREEN proof. Deployment, workflow-rule and other unsupported clauses
+remain unproven rather than disappearing from the policy.
+Groups with multiple members also need policy/review evidence for the other
+members; evaluating the selected PR does not certify the whole group.
+
+For example, `queue_configuration_unproven` means that queue settings are missing,
+ambiguous or disagree between the applicable rule and queue observation.
+`legacy/required_signatures/flag_unproven` means the legacy response does not prove
+the signature setting. A read-only collector may legitimately lack fields needed
+for complete evaluation. No extra GitHub permissions are requested automatically.
+
+**Empty evaluation reasons still do not authorize admission.** The owner-reviewed
+configuration pin, current generation/trust checks, complete candidate CI evidence,
+workflow execution context and final publication are separate predicates. This
+increment exposes historical diagnostics; it does not dispatch or certify a merge.
+
+Configuration profile version 1 contains repository ID/name, base branch, complete
+legacy protection, applicable rules, source documents and optional queue settings.
+It has no PR prerequisite and can be analyzed by the shared contract library before
+any candidate exists. A configuration-only network inspection/onboarding command
+and owner pinning are not implemented yet.
+
+Its digest is SHA-256 of `treeharbor-github-host-policy-configuration`, NUL, `v1`,
+NUL, then compact JSON with lexically ordered object keys. Top-level effective rules
+sort by their compact JSON representation; source documents sort by numeric source
+ID. Nested arrays and all raw metadata remain significant. The encoding is bounded
+to 48KiB and fixed by an independent Python/hashlib fixture. Changing only PR state
+does not rotate this identity; changing a retained policy field does. Observation
+digests and configuration digests deliberately have different domains.
 
 Malformed identities, missing pages, duplicate rules/threads, changing PR identity
 or counts across review pages, and inconsistent ruleset sources reject collection.
@@ -96,7 +150,7 @@ returns the original receipt. Binding retirement does not erase historical facts
 reporting still requires the assigned bridge's current repository authorization.
 
 Before/after reads are not an atomic transaction with GitHub and cannot exclude an
-unseen administrator change between requests. Full supported-policy evaluation,
+unseen administrator change between requests. Complete policy support,
 owner-reviewed policy pinning, workflow execution-context proof, final admission
 and live installed-App acceptance remain separate release gates. Local transport
 fixtures and real database/process-recovery tests do not close those gates.

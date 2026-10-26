@@ -196,65 +196,73 @@ pub fn rules_fingerprint(rules: &[Value]) -> Result<RuleObservation> {
 impl Snapshot {
     pub fn validate(&self, repository: &str, t: &QueueTarget) -> Result<()> {
         self.group.validate(t)?;
-        self.protection.validate()?;
         self.review.validate(t)?;
-        rules_fingerprint(&self.rules)?;
-        if self.rulesets.len() > MAX_RULESETS {
-            return Err(InvalidEvidence);
-        }
-        let mut sources = BTreeMap::new();
-        for r in &self.rules {
-            let s = source(r)?;
-            s.validate(repository)?;
-            if sources.insert(s.id, s.clone()).is_some_and(|old| old != s) {
-                return Err(InvalidEvidence);
-            }
-        }
-        let mut seen = BTreeSet::new();
-        for r in &self.rulesets {
-            r.source.validate(repository)?;
-            r.document.validate()?;
-            if !seen.insert(r.source.id) || sources.get(&r.source.id) != Some(&r.source) {
-                return Err(InvalidEvidence);
-            }
-            if let Some(v) = &r.document.value {
-                if v["id"].as_u64() != Some(r.source.id)
-                    || string(v, "source_type")? != r.source.kind
-                    || !string(v, "source")?.eq_ignore_ascii_case(&r.source.name)
-                    || string(v, "target")? != "branch"
-                    || !matches!(
-                        string(v, "enforcement")?,
-                        "active" | "evaluate" | "disabled"
-                    )
-                {
-                    return Err(InvalidEvidence);
-                }
-                let rules = v["rules"].as_array().ok_or(InvalidEvidence)?;
-                if rules.len() > 100 {
-                    return Err(InvalidEvidence);
-                }
-                let mut types = BTreeSet::new();
-                for rule in rules {
-                    bounded(rule, 16384)?;
-                    if !types.insert(kind(rule)?) {
-                        return Err(InvalidEvidence);
-                    }
-                }
-                // Redaction is valid captured evidence, but not an empty bypass list.
-                if let Some(actors) = v.get("bypass_actors")
-                    && actors.as_array().is_none_or(|a| a.len() > 100)
-                {
-                    return Err(InvalidEvidence);
-                }
-            }
-        }
-        if seen != sources.keys().copied().collect() {
-            return Err(InvalidEvidence);
-        }
-        Ok(())
+        validate_documents(repository, &self.protection, &self.rules, &self.rulesets)
     }
 }
 
+pub(crate) fn validate_documents(
+    repository: &str,
+    protection: &Document,
+    rules: &[Value],
+    rulesets: &[Ruleset],
+) -> Result<()> {
+    protection.validate()?;
+    rules_fingerprint(rules)?;
+    if rulesets.len() > MAX_RULESETS {
+        return Err(InvalidEvidence);
+    }
+    let mut sources = BTreeMap::new();
+    for r in rules {
+        let s = source(r)?;
+        s.validate(repository)?;
+        if sources.insert(s.id, s.clone()).is_some_and(|old| old != s) {
+            return Err(InvalidEvidence);
+        }
+    }
+    let mut seen = BTreeSet::new();
+    for r in rulesets {
+        r.source.validate(repository)?;
+        r.document.validate()?;
+        if !seen.insert(r.source.id) || sources.get(&r.source.id) != Some(&r.source) {
+            return Err(InvalidEvidence);
+        }
+        if let Some(v) = &r.document.value {
+            if v["id"].as_u64() != Some(r.source.id)
+                || string(v, "source_type")? != r.source.kind
+                || !string(v, "source")?.eq_ignore_ascii_case(&r.source.name)
+                || string(v, "target")? != "branch"
+                || !matches!(
+                    string(v, "enforcement")?,
+                    "active" | "evaluate" | "disabled"
+                )
+            {
+                return Err(InvalidEvidence);
+            }
+            let rules = v["rules"].as_array().ok_or(InvalidEvidence)?;
+            if rules.len() > 100 {
+                return Err(InvalidEvidence);
+            }
+            let mut types = BTreeSet::new();
+            for rule in rules {
+                bounded(rule, 16384)?;
+                if !types.insert(kind(rule)?) {
+                    return Err(InvalidEvidence);
+                }
+            }
+            // Redaction is valid captured evidence, but not an empty bypass list.
+            if let Some(actors) = v.get("bypass_actors")
+                && actors.as_array().is_none_or(|a| a.len() > 100)
+            {
+                return Err(InvalidEvidence);
+            }
+        }
+    }
+    if seen != sources.keys().copied().collect() {
+        return Err(InvalidEvidence);
+    }
+    Ok(())
+}
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct Report {

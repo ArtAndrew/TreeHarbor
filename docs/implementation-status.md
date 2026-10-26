@@ -9,13 +9,39 @@ below retain evidence from individual increments. Their earlier statements about
 unfinished work describe the scope at that time; they are not a replacement for
 the current overview or the full [release gate ledger](#release-gate-ledger).
 
-Last full CI baseline before this increment: [PR69](https://github.com/ArtAndrew/TreeHarbor/pull/69),
+Last full CI baseline before this increment: [PR70](https://github.com/ArtAndrew/TreeHarbor/pull/70),
 published on 2026-10-26 after all six required checks passed. The
-[CI run](https://github.com/ArtAndrew/TreeHarbor/actions/runs/40280104852) passed
-345 ordinary tests on each of Linux/macOS, 316 real PostgreSQL contracts, 43 actual
+[CI run](https://github.com/ArtAndrew/TreeHarbor/actions/runs/40284681487) passed
+357 ordinary tests on each of Linux/macOS, 317 real PostgreSQL contracts, 43 actual
 gVisor scenario groups on each of Linux x86-64/ARM64, and 11 webhook TLS/failure
 groups. These correctness checks do not establish complete mode readiness or
 performance superiority.
+
+## Effective host-policy analysis
+
+The shared Rust contract now analyzes retained configuration separately from the
+candidate. Profile v1 is independent of PR identity, preserves raw policy fields,
+and has an independent Python/hashlib encoding vector. The historical API page
+includes before/after configuration identities, complete required App/name sets,
+distinct review requirements and named unproven conditions.
+
+The interpreter compares all queue settings, rejects ambiguous issuers and unknown
+clauses, distinguishes hidden bypass from an empty list, and does not infer review
+counts/code-owner/team approval from `APPROVED`. Signature, linear-history,
+HEADGREEN, non-MERGE and multi-member policy proof remain explicit missing evidence.
+All complete verification flags remain false. Existing report bytes, receipts,
+queue state and authorization are preserved; no database migration is required.
+
+The focused contract/GitHub suite passed 172 tests, followed by 13 final interpreter
+cases including two additional boundaries. The real PostgreSQL historical-read/
+replay test and CLI/server process-loss recovery test passed, as did final strict
+workspace Clippy and formatting. Exact-head CI remains required before merge. See [policy analysis](github-host-policy.md#policy-analysis)
+for the encoding, supported interpretation and limits.
+
+Configuration-only network inspection/onboarding, owner profile pinning with
+versioned admission policy, complete review/workflow proof and final current
+admission remain open. A historical diagnostic is not merge authorization. Both
+mode lifecycles, operations, packaging and comparative benchmarks remain required.
 
 ## Host policy and review observations
 
