@@ -9,9 +9,18 @@ and CLI. Full live managed-check acceptance remains a release gate.
 ## Identity and outcome
 
 `treeharbor-github-contract::check_publication` defines `Target` versions 1/2 and
-`Report` version 1. The independent [wire vector](../crates/github-contract/tests/fixtures/check-publication-v1.json)
+`Report` versions 1/2. The independent [wire vector](../crates/github-contract/tests/fixtures/check-publication-v1.json)
 contains a PR target, raw protection/rule responses, their fingerprints and the
 exact expected receipt. Neither record is a native Validation or merge proof.
+
+Report version 2 retains the authenticated REST numeric check ID together with its
+opaque GraphQL node ID. Both must agree across creation/rereading and recovery.
+Version 1 retains its exact older bytes and has no inferred node linkage. The
+[v2 receipt vector](../crates/github-contract/tests/fixtures/check-publication-report-v2.json)
+includes a numeric ID above JavaScript's exact integer range. Clients must preserve
+the integer and must not decode node IDs. The
+[candidate evidence reader](github-admission-evidence.md) uses this pair to join
+managed execution to the exact group check; older receipts remain historical.
 
 A target pins the publication UUID, authority epoch, App ID, approved program
 digest, execution-evidence digest and terminal conclusion. Its source is either

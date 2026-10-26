@@ -46,7 +46,7 @@ fn before() -> Vec<Vec<u8>> {
     r
 }
 pub(super) fn run(t: &Target) -> Value {
-    json!({"id":73,"app":{"id":t.app_id},"name":t.name().unwrap(),"head_sha":t.source.head().unwrap().strip_prefix("git:sha1:").unwrap(),"external_id":t.external_id().unwrap(),"status":"completed","conclusion":t.conclusion})
+    json!({"id":73,"node_id":"opaque-check-fixture-73","app":{"id":t.app_id},"name":t.name().unwrap(),"head_sha":t.source.head().unwrap().strip_prefix("git:sha1:").unwrap(),"external_id":t.external_id().unwrap(),"status":"completed","conclusion":t.conclusion})
 }
 fn body(request: &[u8]) -> Value {
     serde_json::from_str(request_text(request).split("\r\n\r\n").nth(1).unwrap()).unwrap()
@@ -59,6 +59,7 @@ async fn recovery_reads_all_pages_twice_without_hiding_competing_runs() {
     for id in 100..120 {
         let mut r = run(&t);
         r["id"] = json!(id);
+        r["node_id"] = json!(format!("opaque-competing-fixture-{id}"));
         r["external_id"] = json!(format!("other-{id}"));
         other.push(r);
     }
@@ -104,6 +105,11 @@ async fn exact_check_uses_only_scoped_write_and_immutable_program_evidence() {
     result.report.validate(&t).unwrap();
     assert_eq!(calls.load(Ordering::SeqCst), 1);
     assert_eq!(result.report.outcome, Outcome::Observed);
+    assert_eq!(result.report.version, 2);
+    assert_eq!(
+        result.report.check.as_ref().unwrap().node_id.as_deref(),
+        Some("opaque-check-fixture-73")
+    );
     assert!(result.report.token_revoked);
     let requests = h.await.unwrap();
     assert_eq!(requests.len(), 13);
@@ -142,7 +148,7 @@ async fn version_two_publishes_the_independent_admission_context_and_exact_ident
     let mut p = pull();
     p["base"]["ref"] = json!(t.source.pull().base_ref);
     let exact_run = json!({
-        "id":73,"app":{"id":7},"name":f["name"],
+        "id":73,"node_id":"opaque-check-fixture-73","app":{"id":7},"name":f["name"],
         "head_sha":"11".repeat(20),"external_id":f["external_id"],
         "status":"completed","conclusion":"success"
     });
@@ -168,7 +174,9 @@ async fn version_two_publishes_the_independent_admission_context_and_exact_ident
         .await
         .unwrap();
     result.report.validate(&t).unwrap();
-    assert_eq!(json!(result.report.check), f["report"]["check"]);
+    let mut expected = f["report"]["check"].clone();
+    expected["node_id"] = json!("opaque-check-fixture-73");
+    assert_eq!(json!(result.report.check), expected);
     let requests = h.await.unwrap();
     assert_eq!(requests.len(), 13);
     assert!(
@@ -193,7 +201,7 @@ async fn version_two_recovery_filters_by_current_context_and_rejects_older_names
     let t: Target = serde_json::from_value(f["target"].clone()).unwrap();
     for legacy_name in [false, true] {
         let exact_run = json!({
-            "id":73,"app":{"id":7},
+            "id":73,"node_id":"opaque-check-fixture-73","app":{"id":7},
             "name":if legacy_name {fixture()["name"].clone()} else {f["name"].clone()},
             "head_sha":"11".repeat(20),"external_id":f["external_id"],
             "status":"completed","conclusion":"success"
@@ -211,7 +219,9 @@ async fn version_two_recovery_filters_by_current_context_and_rejects_older_names
         } else {
             let report = result.unwrap().report;
             assert_eq!(report.outcome, Outcome::Observed);
-            assert_eq!(json!(report.check), f["report"]["check"]);
+            let mut expected = f["report"]["check"].clone();
+            expected["node_id"] = json!("opaque-check-fixture-73");
+            assert_eq!(json!(report.check), expected);
         }
         let requests = h.await.unwrap();
         let query_name = f["name"].as_str().unwrap().replace('/', "%2F");
@@ -220,6 +230,177 @@ async fn version_two_recovery_filters_by_current_context_and_rejects_older_names
         }
         assert!(
             requests
+                .iter()
+                .all(|r| !request_text(r).starts_with("POST /repos/"))
+        );
+    }
+}
+
+#[tokio::test]
+async fn observed_report_matches_independent_numeric_node_pair_above_float_precision() {
+    let f: Value = serde_json::from_str(include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../github-contract/tests/fixtures/check-publication-report-v2.json"
+    )))
+    .unwrap();
+    let admission: Value = serde_json::from_str(include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../github-contract/tests/fixtures/check-publication-v2.json"
+    )))
+    .unwrap();
+    let t: Target = serde_json::from_value(f["target"].clone()).unwrap();
+    let mut p = pull();
+    p["base"]["ref"] = json!(t.source.pull().base_ref);
+    let mut responses = access(true);
+    for _ in 0..2 {
+        responses.extend([
+            response(200, p.clone()),
+            response(200, admission["raw_protection"].clone()),
+            response(200, admission["raw_rules"].clone()),
+        ]);
+    }
+    responses.extend([
+        response(201, f["raw_run"].clone()),
+        response(200, f["raw_run"].clone()),
+        revoked(),
+    ]);
+    let (c, h) = host(responses).await;
+    let result = c
+        .publish_check(&binding(), &t, |_| async { Ok(()) })
+        .await
+        .unwrap();
+    assert_eq!(result.report.version, 2);
+    assert_eq!(json!(result.report.check), f["report"]["check"]);
+    assert_eq!(json!(result.report.preflight), f["report"]["preflight"]);
+    let requests = h.await.unwrap();
+    assert!(
+        request_text(&requests[11])
+            .starts_with("GET /repos/example-org/demo/check-runs/9007199254740993 ")
+    );
+    assert!(body(&requests[10])["node_id"].is_null());
+
+    let mut responses = access(false);
+    responses.extend([
+        response(200, listing(vec![f["raw_run"].clone()])),
+        response(200, listing(vec![f["raw_run"].clone()])),
+        revoked(),
+    ]);
+    let (c, h) = host(responses).await;
+    let recovered = c
+        .observe_published_check(&binding(), &t, None)
+        .await
+        .unwrap();
+    assert_eq!(recovered.report.version, 2);
+    assert_eq!(json!(recovered.report.check), f["report"]["check"]);
+    assert!(
+        h.await
+            .unwrap()
+            .iter()
+            .all(|r| !request_text(r).starts_with("POST /repos/"))
+    );
+}
+
+#[tokio::test]
+async fn create_and_get_must_agree_on_both_provider_ids_without_alias_inference() {
+    for case in ["numeric", "node", "missing", "null", "malformed"] {
+        let t = target();
+        let mut created = run(&t);
+        match case {
+            "missing" => {
+                created.as_object_mut().unwrap().remove("node_id");
+            }
+            "null" => created["node_id"] = Value::Null,
+            "malformed" => created["node_id"] = json!("node with spaces"),
+            _ => {}
+        }
+        let mut responses = before();
+        responses.push(response(201, created.clone()));
+        if matches!(case, "numeric" | "node") {
+            let mut reread = created;
+            if case == "numeric" {
+                reread["id"] = json!(74);
+            } else {
+                reread["node_id"] = json!("another-opaque-node-for-the-same-number");
+            }
+            responses.push(response(200, reread));
+        }
+        responses.push(revoked());
+        let (c, h) = host(responses).await;
+        let failure = c
+            .publish_check(&binding(), &t, |_| async { Ok(()) })
+            .await
+            .err()
+            .unwrap();
+        assert!(!failure.mutation_not_sent, "{case}");
+        let requests = h.await.unwrap();
+        assert_eq!(
+            requests
+                .iter()
+                .filter(|r| request_text(r).starts_with("POST /repos/"))
+                .count(),
+            1
+        );
+    }
+}
+
+#[tokio::test]
+async fn recovery_requires_unique_numeric_node_pairs_and_stable_opaque_identity() {
+    for case in [
+        "stable",
+        "node-drift",
+        "numeric-drift",
+        "duplicate-node",
+        "missing",
+        "malformed",
+    ] {
+        let t = target();
+        let mut run = run(&t);
+        run["id"] = json!(9_007_199_254_740_993_u64);
+        // The provider's opaque string is accepted independently of this number.
+        run["node_id"] = json!("MDg6Q2hlY2tSdW40");
+        let mut first = listing(vec![run.clone()]);
+        match case {
+            "duplicate-node" => {
+                let mut other = run.clone();
+                other["id"] = json!(9_007_199_254_740_994_u64);
+                other["external_id"] = json!("another-attempt");
+                first = listing(vec![run.clone(), other]);
+            }
+            "missing" => {
+                first["check_runs"][0]
+                    .as_object_mut()
+                    .unwrap()
+                    .remove("node_id");
+            }
+            "malformed" => first["check_runs"][0]["node_id"] = json!("bad\nnode"),
+            _ => {}
+        }
+        let mut responses = access(false);
+        responses.push(response(200, first));
+        if matches!(case, "stable" | "node-drift" | "numeric-drift") {
+            let mut after = run;
+            if case == "node-drift" {
+                after["node_id"] = json!("CR_different_opaque_id");
+            } else if case == "numeric-drift" {
+                after["id"] = json!(9_007_199_254_740_994_u64);
+            }
+            responses.push(response(200, listing(vec![after])));
+        }
+        responses.push(revoked());
+        let (c, h) = host(responses).await;
+        let result = c.observe_published_check(&binding(), &t, None).await;
+        if case == "stable" {
+            let report = result.unwrap().report;
+            assert_eq!(report.version, 2);
+            let check = report.check.unwrap();
+            assert_eq!(check.id, 9_007_199_254_740_993);
+            assert_eq!(check.node_id.as_deref(), Some("MDg6Q2hlY2tSdW40"));
+        } else {
+            assert!(result.is_err(), "{case}");
+        }
+        assert!(
+            h.await
+                .unwrap()
                 .iter()
                 .all(|r| !request_text(r).starts_with("POST /repos/"))
         );
@@ -379,6 +560,7 @@ async fn recovery_is_read_only_and_stable_absence_remains_unknown() {
         let t = target();
         let mut unrelated = run(&t);
         unrelated["id"] = json!(74);
+        unrelated["node_id"] = json!("opaque-check-fixture-74");
         unrelated["external_id"] = json!("other-attempt");
         let runs = if found {
             vec![unrelated, run(&t)]
@@ -440,6 +622,7 @@ async fn recovery_rejects_drift_duplicate_and_incomplete_results() {
         match case {
             "duplicate-external" => {
                 r["id"] = json!(74);
+                r["node_id"] = json!("opaque-check-fixture-74");
                 first = listing(vec![run(&t), r]);
             }
             "duplicate-id" => first = listing(vec![r.clone(), r]),

@@ -18,6 +18,7 @@ struct App {
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 struct Run {
     id: u64,
+    node_id: String,
     app: App,
     name: String,
     head_sha: String,
@@ -34,6 +35,7 @@ impl Run {
     fn checked(self, t: &Target) -> Result<PublishedCheck> {
         let c = PublishedCheck {
             id: self.id,
+            node_id: Some(self.node_id),
             app_id: self.app.id,
             name: self.name,
             head_revision: format!("git:sha1:{}", self.head_sha),
@@ -232,7 +234,7 @@ impl Connection {
         let revoked = self.revoke(&token).await.is_ok();
         let (preflight, check) = result?;
         let report = Report {
-            version: 1,
+            version: 2,
             started_at_unix_ms: started,
             finished_at_unix_ms: now()? as i64 * 1000,
             outcome: Outcome::Observed,
@@ -274,6 +276,7 @@ impl Connection {
         let mut all = Vec::new();
         let mut total = None;
         let mut ids = std::collections::BTreeSet::new();
+        let mut nodes = std::collections::BTreeSet::new();
         for page in 1..=51 {
             let r: Runs = self.json(
                 Stage::CheckPublication, Method::GET,
@@ -289,7 +292,18 @@ impl Connection {
             total = Some(r.total_count);
             let end = r.check_runs.len() < 20;
             for run in r.check_runs {
-                if run.id == 0 || run.id > i64::MAX as u64 || !ids.insert(run.id) {
+                if run.id == 0
+                    || run.id > i64::MAX as u64
+                    || !ids.insert(run.id)
+                    || run.node_id.is_empty()
+                    || run.node_id.len() > 256
+                    || !run.node_id.is_ascii()
+                    || run
+                        .node_id
+                        .bytes()
+                        .any(|b| b.is_ascii_control() || b.is_ascii_whitespace())
+                    || !nodes.insert(run.node_id.clone())
+                {
                     return Err(Error::Evidence);
                 }
                 all.push(run);
@@ -354,7 +368,7 @@ impl Connection {
         let revoked = self.revoke(&token).await.is_ok();
         let check = result?;
         let report = Report {
-            version: 1,
+            version: 2,
             started_at_unix_ms: started,
             finished_at_unix_ms: now()? as i64 * 1000,
             outcome: if check.is_some() {

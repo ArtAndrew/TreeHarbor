@@ -388,132 +388,201 @@ pub(super) async fn exercise(
     assert!(state.join("no-dispatch-ack.json").is_file());
     assert!(!request(f, &json!({"action":"check_publication_begin","key":"check-late","epoch":1,"publication":id,"attempt":Uuid::new_v4()})).status.success());
 
-    // A separately authorized intent and host preflight. The retained report is
-    // a trusted provider fixture; replay never needs the absent App key.
-    f.credential_path = release;
-    let id = Uuid::new_v4();
-    result(request(
-        f,
-        &json!({"action":"check_publication_request","key":"check-next","epoch":1,"publication":id,"specification":{"check_run":check,"ttl_seconds":600}}),
-    ));
-    f.credential_path = bridge;
-    let attempt = Uuid::new_v4();
-    result(request(
-        f,
-        &json!({"action":"check_publication_begin","key":"check-next-begin","epoch":1,"publication":id,"attempt":attempt}),
-    ));
-    let c = result(request(
-        f,
-        &json!({"action":"check_publication_context","epoch":1,"publication":id}),
-    ));
-    let t: cp::Target = serde_json::from_value(c["target"].clone()).unwrap();
-    let golden: Value = serde_json::from_str(include_str!(
-        "../../../../github-contract/tests/fixtures/check-publication-v1.json"
-    ))
-    .unwrap();
-    let mut policy: cp::Policy =
-        serde_json::from_value(golden["report"]["preflight"]["policy_before"].clone()).unwrap();
-    policy.protection.app_bound_checks = vec![RequiredCheck {
-        name: t.name().unwrap(),
-        app_id: t.app_id,
-    }];
-    let p = t.source.pull();
-    let view = cp::SourceView::Pull(treeharbor_github_contract::PullState {
-        repository_id: p.repository_id,
-        number: p.pull_number,
-        node_id: p.pull_node.clone(),
-        head_ref: p.head_ref.clone(),
-        base_ref: p.base_ref.clone(),
-        head_revision: p.head_revision.clone(),
-        base_revision: p.head_revision.clone(),
-        state: "open".into(),
-        draft: true,
-        merged: false,
-    });
-    let pref = cp::Preflight {
-        before: view.clone(),
-        after: view,
-        policy_before: policy.clone(),
-        policy_after: policy,
-    };
-    result(request(
-        f,
-        &json!({"action":"check_publication_dispatch","key":"check-next-dispatch","epoch":1,"publication":id,"attempt":attempt,"preflight":pref}),
-    ));
-    let now = stamp(f).await;
-    let report = cp::Report {
-        version: 1,
-        started_at_unix_ms: now,
-        finished_at_unix_ms: now,
-        outcome: cp::Outcome::Observed,
-        preflight: Some(pref),
-        check: Some(cp::PublishedCheck {
-            id: 73,
-            app_id: t.app_id,
+    // Separately authorized intents and host preflights. These retained reports
+    // are trusted provider fixtures; replay never needs the absent App key.
+    for report_version in [1, 2] {
+        f.credential_path = release.clone();
+        let id = Uuid::new_v4();
+        result(request(
+            f,
+            &json!({"action":"check_publication_request","key":format!("check-next-v{report_version}"),"epoch":1,"publication":id,"specification":{"check_run":check,"ttl_seconds":600}}),
+        ));
+        f.credential_path = bridge.clone();
+        let attempt = Uuid::new_v4();
+        result(request(
+            f,
+            &json!({"action":"check_publication_begin","key":format!("check-next-begin-v{report_version}"),"epoch":1,"publication":id,"attempt":attempt}),
+        ));
+        let c = result(request(
+            f,
+            &json!({"action":"check_publication_context","epoch":1,"publication":id}),
+        ));
+        let t: cp::Target = serde_json::from_value(c["target"].clone()).unwrap();
+        let golden: Value = serde_json::from_str(include_str!(
+            "../../../../github-contract/tests/fixtures/check-publication-v1.json"
+        ))
+        .unwrap();
+        let mut policy: cp::Policy =
+            serde_json::from_value(golden["report"]["preflight"]["policy_before"].clone()).unwrap();
+        policy.protection.app_bound_checks = vec![RequiredCheck {
             name: t.name().unwrap(),
-            head_revision: t.source.head().unwrap().into(),
-            external_id: t.external_id().unwrap(),
-            status: "completed".into(),
-            conclusion: t.conclusion,
-        }),
-        token_revoked: true,
-    };
-    let state = f.dir.path().join("check-observed-driver");
-    fs::create_dir(&state).unwrap();
-    fs::set_permissions(&state, fs::Permissions::from_mode(0o700)).unwrap();
-    let intent = json!({"version":1,"tenant":f.scope.tenant(),"repository":f.scope.repository(),"publication":id,"epoch":1,"check_run":c["check_run"],"binding":c["binding"],"target":t,"expires_at_unix_ms":c["expires_at_unix_ms"],"specification":c["specification"]});
-    files::write_private(&state.join("intent.json"), intent.to_string().as_bytes()).unwrap();
-    files::write_private(
-        &state.join("report-0000.json"),
-        json!({"version":1,"key":"github-publish-report-check-replay","report":report,"token_expires_at":null})
-            .to_string()
-            .as_bytes(),
-    )
-    .unwrap();
-    lost_reply(
-        f,
-        server,
-        id,
-        &state,
-        &app,
-        "\"action\":\"check_publication_report\"",
-        "\"recorded_observation\"",
-    )
-    .await;
-    let recovered = cli(f, id, &state, &app).output().unwrap();
-    assert!(
-        recovered.status.success(),
-        "{}",
-        String::from_utf8_lossy(&recovered.stderr)
-    );
-    let v: Value = serde_json::from_slice(&recovered.stdout).unwrap();
-    assert_eq!(v["state"], "observed");
-    assert_eq!(v["report_sequence"], 1);
-    assert_eq!(v["admission_verified"], false);
-    assert!(state.join("ack-0000.json").is_file());
-    assert_eq!(
-        f.sql
+            app_id: t.app_id,
+        }];
+        let p = t.source.pull();
+        let view = cp::SourceView::Pull(treeharbor_github_contract::PullState {
+            repository_id: p.repository_id,
+            number: p.pull_number,
+            node_id: p.pull_node.clone(),
+            head_ref: p.head_ref.clone(),
+            base_ref: p.base_ref.clone(),
+            head_revision: p.head_revision.clone(),
+            base_revision: p.head_revision.clone(),
+            state: "open".into(),
+            draft: true,
+            merged: false,
+        });
+        let pref = cp::Preflight {
+            before: view.clone(),
+            after: view,
+            policy_before: policy.clone(),
+            policy_after: policy,
+        };
+        result(request(
+            f,
+            &json!({"action":"check_publication_dispatch","key":format!("check-next-dispatch-v{report_version}"),"epoch":1,"publication":id,"attempt":attempt,"preflight":pref}),
+        ));
+        let now = stamp(f).await;
+        let report = cp::Report {
+            version: report_version,
+            started_at_unix_ms: now,
+            finished_at_unix_ms: now,
+            outcome: cp::Outcome::Observed,
+            preflight: Some(pref),
+            check: Some(cp::PublishedCheck {
+                id: if report_version == 1 {
+                    73
+                } else {
+                    9_007_199_254_740_993
+                },
+                node_id: (report_version == 2)
+                    .then(|| "CR_service_opaque_v2_not_numeric_alias".into()),
+                app_id: t.app_id,
+                name: t.name().unwrap(),
+                head_revision: t.source.head().unwrap().into(),
+                external_id: t.external_id().unwrap(),
+                status: "completed".into(),
+                conclusion: t.conclusion,
+            }),
+            token_revoked: true,
+        };
+        let report_json = json!(report);
+        if report_version == 1 {
+            assert!(
+                !report_json["check"]
+                    .as_object()
+                    .unwrap()
+                    .contains_key("node_id")
+            );
+        } else {
+            assert_eq!(
+                report_json["check"]["id"].as_u64(),
+                Some(9_007_199_254_740_993)
+            );
+            assert_eq!(
+                report_json["check"]["node_id"],
+                "CR_service_opaque_v2_not_numeric_alias"
+            );
+        }
+        let state = f
+            .dir
+            .path()
+            .join(format!("check-observed-v{report_version}-driver"));
+        fs::create_dir(&state).unwrap();
+        fs::set_permissions(&state, fs::Permissions::from_mode(0o700)).unwrap();
+        let intent = json!({"version":1,"tenant":f.scope.tenant(),"repository":f.scope.repository(),"publication":id,"epoch":1,"check_run":c["check_run"],"binding":c["binding"],"target":t,"expires_at_unix_ms":c["expires_at_unix_ms"],"specification":c["specification"]});
+        files::write_private(&state.join("intent.json"), intent.to_string().as_bytes()).unwrap();
+        let saved = json!({
+            "version":1,
+            "key":format!("github-publish-report-check-replay-v{report_version}"),
+            "report":report,
+            "token_expires_at":null
+        });
+        files::write_private(
+            &state.join("report-0000.json"),
+            &serde_json::to_vec(&saved).unwrap(),
+        )
+        .unwrap();
+        let saved_report = fs::read(state.join("report-0000.json")).unwrap();
+        lost_reply(
+            f,
+            server,
+            id,
+            &state,
+            &app,
+            "\"action\":\"check_publication_report\"",
+            "\"recorded_observation\"",
+        )
+        .await;
+        assert!(!app.exists());
+        assert!(!state.join("ack-0000.json").exists());
+        let committed: Value = f
+            .sql
             .query_one(
-                "SELECT count(*) FROM th_github_check_publication_reports WHERE publication=$1",
-                &[&id]
+                "SELECT report FROM th_github_check_publication_reports WHERE publication=$1",
+                &[&id],
             )
             .await
             .unwrap()
-            .get::<_, i64>(0),
-        1
-    );
-    assert_eq!(
-        f.sql
+            .get(0);
+        assert_eq!(committed, report_json);
+        let recovered = cli(f, id, &state, &app).output().unwrap();
+        assert!(
+            recovered.status.success(),
+            "{}",
+            String::from_utf8_lossy(&recovered.stderr)
+        );
+        let v: Value = serde_json::from_slice(&recovered.stdout).unwrap();
+        assert_eq!(v["state"], "observed");
+        assert_eq!(v["report_sequence"], 1);
+        assert_eq!(v["observation"], report_json);
+        assert_eq!(v["admission_verified"], false);
+        assert!(state.join("ack-0000.json").is_file());
+        let ack: Value =
+            serde_json::from_slice(&fs::read(state.join("ack-0000.json")).unwrap()).unwrap();
+        assert_eq!(ack["recorded_observation"], report_json);
+        assert_eq!(
+            fs::read(state.join("report-0000.json")).unwrap(),
+            saved_report
+        );
+        let retained: Value = f
+            .sql
             .query_one(
-                "SELECT count(*) FROM th_outbox WHERE kind='github.check_publication.dispatched'",
-                &[]
+                "SELECT report FROM th_github_check_publication_reports WHERE publication=$1",
+                &[&id],
             )
             .await
             .unwrap()
-            .get::<_, i64>(0),
-        1
-    );
-    let replay = cli(f, id, &state, &app).output().unwrap();
-    assert!(replay.status.success());
+            .get(0);
+        assert_eq!(retained, report_json);
+        assert_eq!(
+            f.sql
+                .query_one(
+                    "SELECT count(*) FROM th_github_check_publication_reports WHERE publication=$1",
+                    &[&id]
+                )
+                .await
+                .unwrap()
+                .get::<_, i64>(0),
+            1
+        );
+        assert_eq!(
+            f.sql
+                .query_one(
+                    "SELECT count(*) FROM th_outbox WHERE kind='github.check_publication.dispatched'",
+                    &[]
+                )
+                .await
+                .unwrap()
+                .get::<_, i64>(0),
+            i64::from(report_version)
+        );
+        let replay = cli(f, id, &state, &app).output().unwrap();
+        assert!(replay.status.success());
+        assert_eq!(serde_json::from_slice::<Value>(&replay.stdout).unwrap(), v);
+        assert_eq!(
+            fs::read(state.join("report-0000.json")).unwrap(),
+            saved_report
+        );
+    }
     drop(session);
 }

@@ -2,6 +2,71 @@
 use super::*;
 use treeharbor_github_contract::{RequiredCheck, check_publication as cp};
 
+/// Verifies a retained group publication against immutable collected runtime
+/// facts. This deliberately grants no current execution or dispatch authority.
+pub(in crate::github) async fn verify_recorded_group(
+    tx: &Transaction<'_>,
+    s: &Scope,
+    check_run: Uuid,
+    target: &cp::Target,
+) -> Result<()> {
+    target.validate().map_err(|_| Error::SchemaMismatch)?;
+    let c = check(tx, s, check_run).await?;
+    let e = execution(tx, s, check_run)
+        .await?
+        .ok_or(Error::ExecutionState)?;
+    if c.get::<_, Option<Uuid>>("pull").is_some() || e.get::<_, String>("state") != "collected" {
+        return Err(Error::ExecutionState);
+    }
+    let q = queue::load(tx, s, c.get("queue")).await?;
+    let cp::Source::Group {
+        queue: expected_queue,
+        target: selected,
+    } = &target.source
+    else {
+        return Err(Error::ExecutionState);
+    };
+    let t = queue::target(&q)?;
+    let recorded: Target =
+        serde_json::from_value(c.get("subject")).map_err(|_| Error::SchemaMismatch)?;
+    let g =
+        group_checks::membership(tx, s, c.get("queue"), c.get("membership_sequence"), &t).await?;
+    recorded
+        .validate_source(&t, &g)
+        .map_err(|_| Error::SchemaMismatch)?;
+    let binding_id = q.get("binding");
+    let spec = specification(&binding(tx, s, binding_id).await?)?;
+    let admission = admission_policy::recorded_context(tx, s, &c).await?;
+    let (definition, digest, outcome, _) = evidence_recorded(tx, s, &c, &e).await?;
+    if e.get::<_, Option<Vec<u8>>>("definition").as_deref() != Some(definition.as_slice())
+        || e.get::<_, Option<Vec<u8>>>("evidence").as_deref() != Some(digest.as_slice())
+        || e.get::<_, Option<String>>("outcome").as_deref() != Some(outcome.as_str())
+    {
+        return Err(Error::SchemaMismatch);
+    }
+    let conclusion = match outcome.as_str() {
+        "passed" => cp::Conclusion::Success,
+        "failed" => cp::Conclusion::Failure,
+        "cancelled" => cp::Conclusion::Cancelled,
+        "error" => cp::Conclusion::ActionRequired,
+        _ => return Err(Error::SchemaMismatch),
+    };
+    if **expected_queue != t
+        || **selected != recorded
+        || selected.membership_sequence != c.get::<_, i64>("membership_sequence")
+        || target.epoch != c.get::<_, i64>("epoch")
+        || target.epoch != q.get::<_, i64>("epoch")
+        || target.app_id != spec.app_id
+        || target.program != oid(c.get("program"))?.to_string()
+        || target.admission != admission
+        || target.evidence != oid(digest)?.to_string()
+        || target.conclusion != conclusion
+    {
+        return Err(Error::SchemaMismatch);
+    }
+    Ok(())
+}
+
 pub(in crate::github) async fn derive(
     tx: &Transaction<'_>,
     s: &Scope,

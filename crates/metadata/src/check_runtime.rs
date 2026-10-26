@@ -24,6 +24,29 @@ pub(crate) async fn observe(
     program: &CheckProgram,
     profile: &Profile,
 ) -> Result<(Row, String)> {
+    let (row, outcome) = observe_recorded(tx, s, subject, program, profile).await?;
+    if !trusted(
+        tx,
+        s,
+        &row.get::<_, String>("node"),
+        "node",
+        "runtime.control",
+        None,
+    )
+    .await?
+    {
+        return Err(Error::Forbidden);
+    }
+    Ok((row, outcome))
+}
+/// Retained terminal facts only. Does not grant current execution or publication.
+pub(crate) async fn observe_recorded(
+    tx: &Transaction<'_>,
+    s: &Scope,
+    subject: &Subject<'_>,
+    program: &CheckProgram,
+    profile: &Profile,
+) -> Result<(Row, String)> {
     let row=tx.query_opt(r#"SELECT m.*,r.state AS run_state,r.principal,r.workspace,r.workspace_generation,r.epoch,
         p.base_revision,p.snapshot,p.profile AS source_profile,p.manifest_digest,p.node AS prepared_node,
         p.workspace AS prepared_workspace,p.generation AS prepared_generation,p.epoch AS prepared_epoch,
@@ -54,9 +77,6 @@ pub(crate) async fn observe(
         || r.get::<_, Uuid>("prepared_slot") != r.get::<_, Uuid>("slot")
     {
         return Err(Error::ExecutionState);
-    }
-    if !trusted(tx, s, &node, "node", "runtime.control", None).await? {
-        return Err(Error::Forbidden);
     }
     let state: String = r.get("run_state");
     let exit: Option<i64> = r.get("exit_code");

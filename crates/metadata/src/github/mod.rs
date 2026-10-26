@@ -3,6 +3,7 @@
 pub(crate) mod imports;
 pub(crate) mod projections;
 pub use projections::ProjectionSpec;
+mod admission_evidence;
 mod admission_policy;
 pub use admission_policy::{AdmissionPolicy, ManagedRequirement};
 mod check_policy;

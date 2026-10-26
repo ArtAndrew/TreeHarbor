@@ -4,6 +4,12 @@ use serde::Deserialize;
 #[derive(Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
 pub enum WireCommand {
+    QueueAdmissionEvidence {
+        epoch: i64,
+        queue: String,
+        check_sequence: i64,
+        publication_sequence: Option<i64>,
+    },
     AdmissionPolicyPlan {
         epoch: i64,
         binding: String,
@@ -510,7 +516,7 @@ impl WireCommand {
             Self::AdmissionPolicySet { .. } | Self::AdmissionPolicyPlan { .. } => {
                 Permission::PolicyWrite
             }
-            Self::AdmissionPolicy { .. } => Permission::Read,
+            Self::AdmissionPolicy { .. } | Self::QueueAdmissionEvidence { .. } => Permission::Read,
             Self::CheckPublicationRequest { .. } | Self::CheckPublicationCancel { .. } => {
                 Permission::HostQueue
             }
@@ -607,6 +613,21 @@ impl WireCommand {
         backend: Option<&str>,
     ) -> Result<Value> {
         match self {
+            Self::QueueAdmissionEvidence {
+                epoch,
+                queue,
+                check_sequence,
+                publication_sequence,
+            } => {
+                db.github_queue_admission_evidence(
+                    auth,
+                    epoch,
+                    id(&queue)?,
+                    check_sequence,
+                    publication_sequence,
+                )
+                .await
+            }
             Self::AdmissionPolicyPlan {
                 epoch,
                 binding,

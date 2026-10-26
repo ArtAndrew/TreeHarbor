@@ -9,13 +9,46 @@ below retain evidence from individual increments. Their earlier statements about
 unfinished work describe the scope at that time; they are not a replacement for
 the current overview or the full [release gate ledger](#release-gate-ledger).
 
-Last full CI baseline before this increment: [PR67](https://github.com/ArtAndrew/TreeHarbor/pull/67),
-published on 2026-10-25 after all six required checks passed. The
-[CI run](https://github.com/ArtAndrew/TreeHarbor/actions/runs/40175201363) passed
-324 ordinary tests on each of Linux/macOS, 291 real PostgreSQL contracts, 43 actual
+Last full CI baseline before this increment: [PR68](https://github.com/ArtAndrew/TreeHarbor/pull/68),
+published on 2026-10-26 after all six required checks passed. The
+[CI run](https://github.com/ArtAndrew/TreeHarbor/actions/runs/40277068996) passed
+336 ordinary tests on each of Linux/macOS, 306 real PostgreSQL contracts, 43 actual
 gVisor scenario groups on each of Linux x86-64/ARM64, and 11 webhook TLS/failure
 groups. These correctness checks do not establish complete mode readiness or
 performance superiority.
+
+## Candidate check-set evidence
+
+The experimental [evidence reader](github-admission-evidence.md) evaluates every
+pinned admission clause for one exact retained queue candidate. Managed requirements
+join original collected runtime facts, immutable publication receipts and the exact
+provider check. Report version 2 preserves the authenticated numeric/node ID pair;
+legacy v1 bytes and replay remain unchanged and do not gain inferred linkage.
+
+Missing, failed, ambiguous or inconsistent evidence prevents a complete set. PR
+checks cannot cover the combined candidate. Historical evidence is distinct from
+current source/policy/runtime/owner/reporter trust; revocation or cancellation
+invalidates current use without erasing completed facts. Later check captures or
+unknown same-context publications also fence current use. The read creates no
+approvals, receipts or outbox events. Optional final-publication linkage requires
+the same full candidate and membership. Independent encoding vectors cover the
+returned historical evidence digest.
+
+Workflow attempt/root-file diagnostics remain separate from execution-context
+proof: those clauses still report `workflow_context_unproven`. Complete effective
+host/review policy, final admission, unattended operation and live adopted-policy
+acceptance remain gates. The complete merge/admission/host-policy flags stay false.
+Provider/runtime fixtures are labelled. Required exact-head CI checks must pass
+before merge; this is not an installable release.
+
+Local verification passed 345 ordinary workspace tests, 308 real database/service
+contracts on macOS, formatting and strict workspace Clippy. The new focused suite
+passed 10 PostgreSQL cases and one wire
+case; publication contract and loopback transport suites passed 14 and 13 cases.
+The real CLI/service recovery case exercises both report versions, including a
+committed reply lost to the client, restart and exact replay without duplicate
+receipts or outbox effects. Exact-head CI remains required before publication of
+this increment.
 
 ## Branch admission policy
 
@@ -52,7 +85,8 @@ Local verification passed 336 ordinary workspace tests and 298 real database/ser
 contracts, plus formatting and strict workspace Clippy. Provider/runtime fixtures
 are labelled; live adopted-policy acceptance remains a gate. Full host/review policy,
 workflow execution-context and final-admission certification remain incomplete;
-verified merge/admission flags remain false. Required CI must pass before merge.
+verified merge/admission flags remain false. Published in PR68 after all six
+required checks passed.
 
 ## Live managed required checks and repair
 

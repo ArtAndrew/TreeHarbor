@@ -158,6 +158,7 @@ async fn report(
         preflight: pref,
         check: if outcome == cp::Outcome::Observed {
             Some(cp::PublishedCheck {
+                node_id: None,
                 id: 73,
                 app_id: t.app_id,
                 name: t.name().unwrap(),

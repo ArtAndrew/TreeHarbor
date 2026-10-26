@@ -145,6 +145,20 @@ async fn evidence(
     c: &Row,
     e: &Row,
 ) -> Result<(Vec<u8>, Vec<u8>, String)> {
+    let (definition, digest, outcome, node) = evidence_recorded(tx, s, c, e).await?;
+    if !trusted(tx, s, &node, "node", "runtime.control", None).await? {
+        return Err(Error::Forbidden);
+    }
+    Ok((definition, digest, outcome))
+}
+// Historical facts retain all structural/runtime predicates. Current callers use
+// evidence() and fresh()/validator() before treating them as eligible.
+async fn evidence_recorded(
+    tx: &Transaction<'_>,
+    s: &Scope,
+    c: &Row,
+    e: &Row,
+) -> Result<(Vec<u8>, Vec<u8>, String, String)> {
     let id: Uuid = c.get("check_run");
     let (p, profile) = load_program(tx, s, oid(c.get("program"))?).await?;
     let subject = Subject {
@@ -156,14 +170,15 @@ async fn evidence(
         revision: c.get::<_, String>("revision").parse()?,
         snapshot: oid(c.get("snapshot"))?,
     };
-    let (observed, outcome) = check_runtime::observe(tx, s, &subject, &p, &profile).await?;
+    let (observed, outcome) =
+        check_runtime::observe_recorded(tx, s, &subject, &p, &profile).await?;
     let definition = json!({"version":1,"tenant":s.tenant(),"repository":s.repository(),"check_run":id,"epoch":c.get::<_,i64>("epoch"),"queue":c.get::<_,Option<Uuid>>("queue"),"subject":c.get::<_,Value>("subject"),"import":c.get::<_,Uuid>("import"),"revision":subject.revision.to_string(),"snapshot":subject.snapshot.to_string(),"program":oid(c.get("program"))?.to_string(),"runtime_profile":p.runtime_profile,"image":profile.definition().image,"argv":p.argv,"owner":c.get::<_,String>("principal"),"owner_token":c.get::<_,Uuid>("token"),"validator":subject.validator,"validator_token":e.get::<_,Uuid>("token"),"workspace":subject.workspace,"run":subject.run,"runtime":check_runtime::facts(&observed),"outcome":outcome});
     let mut definition = definition;
     if let Some(admission) = admission_policy::recorded_context(tx, s, c).await? {
         definition["admission"] = json!(admission);
     }
     let (definition, evidence) = encode_evidence(definition, c.get("pull"))?;
-    Ok((definition, evidence, outcome))
+    Ok((definition, evidence, outcome, observed.get("node")))
 }
 fn encode_evidence(mut definition: Value, pull: Option<Uuid>) -> Result<(Vec<u8>, Vec<u8>)> {
     let domain = if let Some(pull) = pull {

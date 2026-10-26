@@ -5,6 +5,12 @@ Experimental Connected service/CLI support. This connects a collected
 Full live execution, queue admission and final-merge acceptance remain release
 gates. An observed check delivery is not a complete merge authorization.
 
+New Report version 2 receipts preserve numeric and opaque node check identities
+for [candidate check-set evaluation](github-admission-evidence.md). Version 1
+receipts and journal replay remain supported. Explicit publication-owner or
+reporting-bridge trust revocation invalidates current aggregate eligibility while
+the immutable receipt remains historical; dispatch expiry alone does not erase it.
+
 ## Prerequisites and authority
 
 Upgrade server and CLI together and apply the current additive migration29

@@ -1,0 +1,136 @@
+{
+  "target": {
+    "version": 2,
+    "publication": "12121212-1212-4212-8212-121212121212",
+    "epoch": 19,
+    "app_id": 7,
+    "program": "sha256:00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff",
+    "evidence": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "conclusion": "success",
+    "source": {
+      "kind": "pull",
+      "target": {
+        "repository_id": 11,
+        "pull_number": 17,
+        "pull_node": "PR_test_17",
+        "head_ref": "treeharbor/04040404040404040404040404040404",
+        "base_ref": "release/2026.10",
+        "head_revision": "git:sha1:1111111111111111111111111111111111111111",
+        "required": [
+          {
+            "name": "CI / build",
+            "app_id": 7
+          }
+        ]
+      }
+    },
+    "admission": {
+      "binding": "23232323-2323-4232-8232-232323232323",
+      "generation": 42,
+      "policy": "sha256:efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef"
+    }
+  },
+  "report": {
+    "version": 2,
+    "started_at_unix_ms": 1000,
+    "finished_at_unix_ms": 2000,
+    "outcome": "observed",
+    "preflight": {
+      "before": {
+        "kind": "pull",
+        "snapshot": {
+          "repository_id": 11,
+          "number": 17,
+          "node_id": "PR_test_17",
+          "head_ref": "treeharbor/04040404040404040404040404040404",
+          "base_ref": "release/2026.10",
+          "head_revision": "git:sha1:1111111111111111111111111111111111111111",
+          "base_revision": "git:sha1:2222222222222222222222222222222222222222",
+          "state": "open",
+          "draft": false,
+          "merged": false
+        }
+      },
+      "policy_before": {
+        "protection": {
+          "sha256": "sha256:1b533c01ff8c7a6cce63b32c8170b485ddc8b179180268ec2fd8089b6f41a4eb",
+          "app_bound_checks": [
+            {
+              "name": "TreeHarbor/e19/a207941346bdc787c4b8c924036f58eff4484d9a50dbed0aadecd200ef4785f61",
+              "app_id": 7
+            }
+          ],
+          "enforce_admins": true,
+          "allow_force_pushes": false,
+          "allow_deletions": false,
+          "has_bypass": false
+        },
+        "rules": {
+          "sha256": "4e71cd99cfe8158b40eb1380ce8993fe9476d5dc798192ae97b849f8257bd745",
+          "count": 1,
+          "merge_queue": true
+        }
+      },
+      "after": {
+        "kind": "pull",
+        "snapshot": {
+          "repository_id": 11,
+          "number": 17,
+          "node_id": "PR_test_17",
+          "head_ref": "treeharbor/04040404040404040404040404040404",
+          "base_ref": "release/2026.10",
+          "head_revision": "git:sha1:1111111111111111111111111111111111111111",
+          "base_revision": "git:sha1:2222222222222222222222222222222222222222",
+          "state": "open",
+          "draft": false,
+          "merged": false
+        }
+      },
+      "policy_after": {
+        "protection": {
+          "sha256": "sha256:1b533c01ff8c7a6cce63b32c8170b485ddc8b179180268ec2fd8089b6f41a4eb",
+          "app_bound_checks": [
+            {
+              "name": "TreeHarbor/e19/a207941346bdc787c4b8c924036f58eff4484d9a50dbed0aadecd200ef4785f61",
+              "app_id": 7
+            }
+          ],
+          "enforce_admins": true,
+          "allow_force_pushes": false,
+          "allow_deletions": false,
+          "has_bypass": false
+        },
+        "rules": {
+          "sha256": "4e71cd99cfe8158b40eb1380ce8993fe9476d5dc798192ae97b849f8257bd745",
+          "count": 1,
+          "merge_queue": true
+        }
+      }
+    },
+    "check": {
+      "id": 9007199254740993,
+      "node_id": "opaque-check_Az09-_=Z",
+      "app_id": 7,
+      "name": "TreeHarbor/e19/a207941346bdc787c4b8c924036f58eff4484d9a50dbed0aadecd200ef4785f61",
+      "head_revision": "git:sha1:1111111111111111111111111111111111111111",
+      "external_id": "treeharbor:v1:12121212-1212-4212-8212-121212121212:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    "token_revoked": true
+  },
+  "report_json": "{\"version\":2,\"started_at_unix_ms\":1000,\"finished_at_unix_ms\":2000,\"outcome\":\"observed\",\"preflight\":{\"before\":{\"kind\":\"pull\",\"snapshot\":{\"repository_id\":11,\"number\":17,\"node_id\":\"PR_test_17\",\"head_ref\":\"treeharbor/04040404040404040404040404040404\",\"base_ref\":\"release/2026.10\",\"head_revision\":\"git:sha1:1111111111111111111111111111111111111111\",\"base_revision\":\"git:sha1:2222222222222222222222222222222222222222\",\"state\":\"open\",\"draft\":false,\"merged\":false}},\"policy_before\":{\"protection\":{\"sha256\":\"sha256:1b533c01ff8c7a6cce63b32c8170b485ddc8b179180268ec2fd8089b6f41a4eb\",\"app_bound_checks\":[{\"name\":\"TreeHarbor/e19/a207941346bdc787c4b8c924036f58eff4484d9a50dbed0aadecd200ef4785f61\",\"app_id\":7}],\"enforce_admins\":true,\"allow_force_pushes\":false,\"allow_deletions\":false,\"has_bypass\":false},\"rules\":{\"sha256\":\"4e71cd99cfe8158b40eb1380ce8993fe9476d5dc798192ae97b849f8257bd745\",\"count\":1,\"merge_queue\":true}},\"after\":{\"kind\":\"pull\",\"snapshot\":{\"repository_id\":11,\"number\":17,\"node_id\":\"PR_test_17\",\"head_ref\":\"treeharbor/04040404040404040404040404040404\",\"base_ref\":\"release/2026.10\",\"head_revision\":\"git:sha1:1111111111111111111111111111111111111111\",\"base_revision\":\"git:sha1:2222222222222222222222222222222222222222\",\"state\":\"open\",\"draft\":false,\"merged\":false}},\"policy_after\":{\"protection\":{\"sha256\":\"sha256:1b533c01ff8c7a6cce63b32c8170b485ddc8b179180268ec2fd8089b6f41a4eb\",\"app_bound_checks\":[{\"name\":\"TreeHarbor/e19/a207941346bdc787c4b8c924036f58eff4484d9a50dbed0aadecd200ef4785f61\",\"app_id\":7}],\"enforce_admins\":true,\"allow_force_pushes\":false,\"allow_deletions\":false,\"has_bypass\":false},\"rules\":{\"sha256\":\"4e71cd99cfe8158b40eb1380ce8993fe9476d5dc798192ae97b849f8257bd745\",\"count\":1,\"merge_queue\":true}}},\"check\":{\"id\":9007199254740993,\"node_id\":\"opaque-check_Az09-_=Z\",\"app_id\":7,\"name\":\"TreeHarbor/e19/a207941346bdc787c4b8c924036f58eff4484d9a50dbed0aadecd200ef4785f61\",\"head_revision\":\"git:sha1:1111111111111111111111111111111111111111\",\"external_id\":\"treeharbor:v1:12121212-1212-4212-8212-121212121212:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"status\":\"completed\",\"conclusion\":\"success\"},\"token_revoked\":true}",
+  "legacy_report_json": "{\"version\":1,\"started_at_unix_ms\":1000,\"finished_at_unix_ms\":2000,\"outcome\":\"observed\",\"preflight\":{\"before\":{\"kind\":\"pull\",\"snapshot\":{\"repository_id\":11,\"number\":17,\"node_id\":\"PR_test_17\",\"head_ref\":\"treeharbor/04040404040404040404040404040404\",\"base_ref\":\"main\",\"head_revision\":\"git:sha1:1111111111111111111111111111111111111111\",\"base_revision\":\"git:sha1:2222222222222222222222222222222222222222\",\"state\":\"open\",\"draft\":false,\"merged\":false}},\"policy_before\":{\"protection\":{\"sha256\":\"sha256:91a56ffdef48b82b25b75262095cdd136ed5574417b718879f1f9c55ee857c90\",\"app_bound_checks\":[{\"name\":\"TreeHarbor/e1/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"app_id\":7}],\"enforce_admins\":true,\"allow_force_pushes\":false,\"allow_deletions\":false,\"has_bypass\":false},\"rules\":{\"sha256\":\"4e71cd99cfe8158b40eb1380ce8993fe9476d5dc798192ae97b849f8257bd745\",\"count\":1,\"merge_queue\":true}},\"after\":{\"kind\":\"pull\",\"snapshot\":{\"repository_id\":11,\"number\":17,\"node_id\":\"PR_test_17\",\"head_ref\":\"treeharbor/04040404040404040404040404040404\",\"base_ref\":\"main\",\"head_revision\":\"git:sha1:1111111111111111111111111111111111111111\",\"base_revision\":\"git:sha1:2222222222222222222222222222222222222222\",\"state\":\"open\",\"draft\":false,\"merged\":false}},\"policy_after\":{\"protection\":{\"sha256\":\"sha256:91a56ffdef48b82b25b75262095cdd136ed5574417b718879f1f9c55ee857c90\",\"app_bound_checks\":[{\"name\":\"TreeHarbor/e1/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"app_id\":7}],\"enforce_admins\":true,\"allow_force_pushes\":false,\"allow_deletions\":false,\"has_bypass\":false},\"rules\":{\"sha256\":\"4e71cd99cfe8158b40eb1380ce8993fe9476d5dc798192ae97b849f8257bd745\",\"count\":1,\"merge_queue\":true}}},\"check\":{\"id\":73,\"app_id\":7,\"name\":\"TreeHarbor/e1/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"head_revision\":\"git:sha1:1111111111111111111111111111111111111111\",\"external_id\":\"treeharbor:v1:12121212-1212-4212-8212-121212121212:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"status\":\"completed\",\"conclusion\":\"success\"},\"token_revoked\":true}",
+  "raw_run": {
+    "id": 9007199254740993,
+    "node_id": "opaque-check_Az09-_=Z",
+    "app": {
+      "id": 7
+    },
+    "name": "TreeHarbor/e19/a207941346bdc787c4b8c924036f58eff4484d9a50dbed0aadecd200ef4785f61",
+    "head_sha": "1111111111111111111111111111111111111111",
+    "external_id": "treeharbor:v1:12121212-1212-4212-8212-121212121212:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "status": "completed",
+    "conclusion": "success"
+  }
+}

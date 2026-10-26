@@ -23,6 +23,142 @@ fn admission_fixture() -> (Target, Report, Value) {
     )
 }
 
+fn linked_receipt_fixture() -> (Target, Report, Value) {
+    let v: Value =
+        serde_json::from_str(include_str!("fixtures/check-publication-report-v2.json")).unwrap();
+    (
+        serde_json::from_value(v["target"].clone()).unwrap(),
+        serde_json::from_value(v["report"].clone()).unwrap(),
+        v,
+    )
+}
+
+#[test]
+fn linked_receipt_matches_independent_wire_bytes_and_preserves_large_numeric_id() {
+    let (t, report, v) = linked_receipt_fixture();
+    report.validate(&t).unwrap();
+    assert_eq!(serde_json::to_string(&report).unwrap(), v["report_json"]);
+    assert_eq!(json!(report), v["report"]);
+    let check = report.check.as_ref().unwrap();
+    assert_eq!(check.id, 9_007_199_254_740_993);
+    assert_eq!(check.node_id.as_deref(), Some("opaque-check_Az09-_=Z"));
+    assert_eq!(v["raw_run"]["id"], check.id);
+    assert_eq!(v["raw_run"]["node_id"], check.node_id.as_deref().unwrap());
+
+    let (legacy_target, legacy, legacy_fixture) = fixture();
+    legacy.validate(&legacy_target).unwrap();
+    assert_eq!(
+        serde_json::to_string(&legacy).unwrap(),
+        v["legacy_report_json"]
+    );
+    assert_eq!(json!(legacy), legacy_fixture["report"]);
+    assert!(
+        !json!(legacy.check)
+            .as_object()
+            .unwrap()
+            .contains_key("node_id")
+    );
+    let mut null = legacy_fixture["report"].clone();
+    null["check"]["node_id"] = Value::Null;
+    let normalized: Report = serde_json::from_value(null).unwrap();
+    normalized.validate(&legacy_target).unwrap();
+    assert_eq!(normalized, legacy);
+    assert_eq!(
+        serde_json::to_string(&normalized).unwrap(),
+        v["legacy_report_json"]
+    );
+}
+
+#[test]
+fn report_version_requires_an_explicit_observed_node_link_without_upgrading_legacy_receipts() {
+    let (t, original, _) = linked_receipt_fixture();
+    let mut v1 = original.clone();
+    v1.version = 1;
+    assert!(v1.validate(&t).is_err());
+    v1.check.as_mut().unwrap().node_id = None;
+    v1.validate(&t).unwrap();
+    let mut v2 = original.clone();
+    v2.check.as_mut().unwrap().node_id = None;
+    assert!(v2.validate(&t).is_err());
+    for version in [0, 3, u8::MAX] {
+        let mut bad = original.clone();
+        bad.version = version;
+        assert!(bad.validate(&t).is_err());
+    }
+    for version in [1, 2] {
+        for outcome in [Outcome::Unknown, Outcome::NotSent] {
+            let mut absent = original.clone();
+            absent.version = version;
+            absent.outcome = outcome;
+            assert!(absent.validate(&t).is_err());
+            absent.check = None;
+            absent.validate(&t).unwrap();
+        }
+    }
+}
+
+#[test]
+fn node_identity_is_bounded_opaque_text_and_is_never_decoded_from_the_numeric_id() {
+    let (t, original, _) = linked_receipt_fixture();
+    for node in [
+        "not-a-base64-node".to_owned(),
+        "opaque:node/not-derived+from-id=".into(),
+        "MDg6Q2hlY2tSdW40".into(),
+        "x".repeat(256),
+    ] {
+        let mut report = original.clone();
+        report.check.as_mut().unwrap().node_id = Some(node.clone());
+        report.validate(&t).unwrap();
+        assert_eq!(json!(report)["check"]["node_id"], node);
+        assert_eq!(report.check.as_ref().unwrap().id, 9_007_199_254_740_993);
+    }
+    for node in [
+        "".to_owned(),
+        " ".into(),
+        "node with spaces".into(),
+        "node\n".into(),
+        "node\tidentity".into(),
+        "node\0".into(),
+        "node\u{7f}".into(),
+        "ノード".into(),
+        "x".repeat(257),
+    ] {
+        let mut report = original.clone();
+        report.check.as_mut().unwrap().node_id = Some(node.clone());
+        assert!(report.validate(&t).is_err(), "{node:?}");
+    }
+}
+
+#[test]
+fn linked_receipt_wire_rejects_missing_null_duplicate_and_mistyped_node_fields() {
+    let (t, _, v) = linked_receipt_fixture();
+    for value in [Value::Null, json!(73), json!([]), json!({"id":"node"})] {
+        let mut raw = v["report"].clone();
+        raw["check"]["node_id"] = value.clone();
+        match serde_json::from_value::<Report>(raw) {
+            Ok(report) => assert!(report.validate(&t).is_err(), "{value}"),
+            Err(_) => assert!(!value.is_null(), "null is the optional wire absence"),
+        }
+    }
+    let mut raw = v["report"].clone();
+    raw["check"].as_object_mut().unwrap().remove("node_id");
+    assert!(
+        serde_json::from_value::<Report>(raw)
+            .unwrap()
+            .validate(&t)
+            .is_err()
+    );
+    let mut raw = v["report"].clone();
+    raw["check"]["node"] = json!("asserted-alias");
+    assert!(serde_json::from_value::<Report>(raw).is_err());
+    let duplicate = v["report_json"].as_str().unwrap().replacen(
+        "\"node_id\":\"opaque-check_Az09-_=Z\"",
+        "\"node_id\":\"opaque-check_Az09-_=Z\",\"node_id\":\"other\"",
+        1,
+    );
+    assert!(serde_json::from_str::<Report>(&duplicate).is_err());
+}
+
 #[test]
 fn version_one_keeps_its_exact_encoding_and_legacy_name() {
     let (t, _, v) = fixture();
