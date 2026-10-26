@@ -452,7 +452,7 @@ impl Metadata {
         if seq > 4096 {
             return Err(Error::UploadLimit);
         }
-        m.tx.execute("INSERT INTO th_github_queue_reports(tenant,repository,queue,sequence,report) VALUES($1,$2,$3,$4,$5)",&[&s.tenant(),&s.repository(),&id,&seq,&json!(report)]).await?;
+        m.tx.execute("INSERT INTO th_github_queue_reports(tenant,repository,queue,sequence,report,reporter,token) VALUES($1,$2,$3,$4,$5,$6,$7)",&[&s.tenant(),&s.repository(),&id,&seq,&json!(report),&auth.principal(),&auth.token_id()]).await?;
         // A late journal receipt can contain the only provider UUID. Retain it
         // without replacing a more recent live observation.
         let latest = if report.group_checks.is_none()

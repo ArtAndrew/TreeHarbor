@@ -259,16 +259,37 @@ impl Connection {
         b: &RepositoryBinding,
         t: &QueueTarget,
         token: &wire::Token,
+        configuration: Option<(OwnerType, bool)>,
     ) -> Result<hp::Snapshot> {
-        let group = self.group_snapshot(b, t, token).await?;
-        let base = t.pull.base_ref.replace('/', "%2F");
-        let protection = self
-            .host_document(
-                &format!("repos/{}/{}/branches/{base}/protection", b.owner, b.name),
-                token,
-            )
-            .await?;
-        let (rules, rulesets) = self.host_rules(b, &t.pull.base_ref, token).await?;
+        let mut group = self.group_snapshot(b, t, token).await?;
+        let (protection, rules, rulesets, visibility) =
+            if let Some((kind, settings)) = configuration {
+                let target = treeharbor_github_contract::host_configuration::Target {
+                    repository_id: b.repository_id,
+                    repository_name: format!("{}/{}", b.owner, b.name),
+                    base_ref: t.pull.base_ref.clone(),
+                };
+                let c = self
+                    .configuration_round(b, &target, kind, token, settings)
+                    .await?;
+                group.target.configuration = c.profile.queue;
+                (
+                    c.profile.protection,
+                    c.profile.rules,
+                    c.profile.rulesets,
+                    Some(Box::new(c.visibility)),
+                )
+            } else {
+                let base = t.pull.base_ref.replace('/', "%2F");
+                let protection = self
+                    .host_document(
+                        &format!("repos/{}/{}/branches/{base}/protection", b.owner, b.name),
+                        token,
+                    )
+                    .await?;
+                let (rules, rulesets) = self.host_rules(b, &t.pull.base_ref, token).await?;
+                (protection, rules, rulesets, None)
+            };
         let review = self.host_review(b, t, token).await?;
         let snapshot = hp::Snapshot {
             group,
@@ -276,6 +297,7 @@ impl Connection {
             rules,
             rulesets,
             review,
+            visibility,
         };
         snapshot
             .validate(&format!("{}/{}", b.owner, b.name), t)
@@ -290,6 +312,27 @@ impl Connection {
         t: &QueueTarget,
         target: &publication::Target,
     ) -> Result<ObservedQueue> {
+        self.observe_host_policy_inner(b, t, target, None).await
+    }
+    /// Capture full configuration in the candidate's two rounds. Queue settings
+    /// need explicit Contents-write; false never silently escalates credentials.
+    pub async fn observe_candidate_configuration(
+        &self,
+        b: &RepositoryBinding,
+        t: &QueueTarget,
+        target: &publication::Target,
+        include_queue_settings: bool,
+    ) -> Result<ObservedQueue> {
+        self.observe_host_policy_inner(b, t, target, Some(include_queue_settings))
+            .await
+    }
+    async fn observe_host_policy_inner(
+        &self,
+        b: &RepositoryBinding,
+        t: &QueueTarget,
+        target: &publication::Target,
+        configuration: Option<bool>,
+    ) -> Result<ObservedQueue> {
         b.validate()?;
         t.validate().map_err(|_| Error::Evidence)?;
         target.validate(t).map_err(|_| Error::Evidence)?;
@@ -301,16 +344,21 @@ impl Connection {
             .map_err(|_| Error::Deadline)?
             .map_err(|_| Error::Configuration)?;
         let started = now()? as i64 * 1000;
-        let cap = wire::Capability::HostPolicy;
+        let cap = if configuration == Some(true) {
+            wire::Capability::HostPolicySettings
+        } else {
+            wire::Capability::HostPolicy
+        };
         let (installation, token) = tokio::time::timeout(PROBE_TIMEOUT, self.mint_for(b, cap))
             .await
             .map_err(|_| Error::Deadline)??;
         let result = tokio::time::timeout(PROBE_TIMEOUT, async {
-            self.observe_for(b, &installation, &token, cap).await?;
-            let before = self.host_snapshot(b, t, &token).await?;
-            let after = self.host_snapshot(b, t, &token).await?;
+            let observed = self.observe_for(b, &installation, &token, cap).await?;
+            let mode = configuration.map(|settings| (observed.owner_type, settings));
+            let before = self.host_snapshot(b, t, &token, mode).await?;
+            let after = self.host_snapshot(b, t, &token, mode).await?;
             Ok::<_, Error>(hp::Report {
-                version: 1,
+                version: if configuration.is_some() { 2 } else { 1 },
                 repository_name: format!("{}/{}", b.owner, b.name),
                 target: target.clone(),
                 before,
@@ -322,7 +370,7 @@ impl Connection {
         .and_then(|r| r);
         let revoked = self.revoke(&token).await.is_ok();
         let observation = QueueObservation {
-            version: 9,
+            version: if configuration.is_some() { 10 } else { 9 },
             started_at_unix_ms: started,
             finished_at_unix_ms: now()? as i64 * 1000,
             host_policy: Some(Box::new(result?)),

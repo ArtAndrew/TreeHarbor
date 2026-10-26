@@ -353,8 +353,8 @@ fn is_false(value: &bool) -> bool {
 impl QueueObservation {
     pub fn validate(&self, t: &QueueTarget) -> Result<()> {
         t.validate()?;
-        if !matches!(self.version, 1..=9)
-            || (self.version == 9) != self.host_policy.is_some()
+        if !matches!(self.version, 1..=10)
+            || matches!(self.version, 9 | 10) != self.host_policy.is_some()
             || (self.version == 8) != self.publication.is_some()
             || (self.version == 7) != self.workflow_definition.is_some()
             || (self.mutation_not_sent
@@ -369,7 +369,8 @@ impl QueueObservation {
             return Err(InvalidEvidence);
         }
         if let Some(p) = &self.host_policy {
-            if self.snapshot.is_some()
+            if p.version != self.version - 8
+                || self.snapshot.is_some()
                 || self.receipt.is_some()
                 || self.async_result.is_some()
                 || self.enqueue_receipt.is_some()

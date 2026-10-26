@@ -161,6 +161,7 @@ pub(super) async fn run(r: Request) -> Result<bool> {
                     definition_attempt: None,
                     publication_group: None,
                     host_policy_group: None,
+                    host_policy_settings: false,
                 },
                 false,
             )

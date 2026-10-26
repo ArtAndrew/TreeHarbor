@@ -123,6 +123,9 @@ pub enum Action {
         /// Capture full host policy/review for retained membership; never enqueue.
         #[arg(long,value_parser=clap::value_parser!(i64).range(1..=4096),conflicts_with_all=["group_report","check_report","attempt_report","publication_group"])]
         host_policy_group: Option<i64>,
+        /// Include queue settings; explicitly requests Contents-write for this read.
+        #[arg(long, requires = "host_policy_group")]
+        host_policy_settings: bool,
     },
     /// Capture exact selected PR checks and active rulesets; does not authorize merge.
     Inspect {
@@ -439,6 +442,7 @@ pub async fn run(action: Action) -> Result<bool> {
             attempt_report,
             publication_group,
             host_policy_group,
+            host_policy_settings,
         } => {
             queue::run(queue::Request {
                 config,
@@ -449,6 +453,7 @@ pub async fn run(action: Action) -> Result<bool> {
                 state,
                 publication_group,
                 host_policy_group,
+                host_policy_settings,
                 definition_attempt: attempt_report,
                 check: group_report.map(|sequence| {
                     (

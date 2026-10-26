@@ -14,6 +14,7 @@ pub(super) struct Request {
     pub check: Option<(i64, treeharbor_github_contract::group_checks::Side)>,
     pub publication_group: Option<i64>,
     pub host_policy_group: Option<i64>,
+    pub host_policy_settings: bool,
     pub definition_attempt: Option<i64>,
     pub attempt_check: Option<treeharbor_github_contract::group_attempts::Selection>,
 }
@@ -136,6 +137,9 @@ pub(super) async fn run(r: Request) -> Result<bool> {
 }
 /// Recovery for the dequeue driver must never acquire another enqueue grant.
 pub(super) async fn collect(r: Request, allow_dispatch: bool) -> Result<Value> {
+    if r.host_policy_settings && r.host_policy_group.is_none() {
+        return Err(Error::PublicationState);
+    }
     if [
         r.publication_group.is_some(),
         r.host_policy_group.is_some(),
@@ -327,7 +331,12 @@ pub(super) async fn collect(r: Request, allow_dispatch: bool) -> Result<Value> {
     };
     let result = if let Some(target) = &selected_policy {
         connection
-            .observe_host_policy(&config.repository, &s.target, target)
+            .observe_candidate_configuration(
+                &config.repository,
+                &s.target,
+                target,
+                r.host_policy_settings,
+            )
             .await
             .map_err(|error| treeharbor_github::MutationFailure {
                 error,

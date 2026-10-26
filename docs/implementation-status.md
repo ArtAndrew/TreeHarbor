@@ -9,13 +9,42 @@ below retain evidence from individual increments. Their earlier statements about
 unfinished work describe the scope at that time; they are not a replacement for
 the current overview or the full [release gate ledger](#release-gate-ledger).
 
-Last full CI baseline before this increment: [PR72](https://github.com/ArtAndrew/TreeHarbor/pull/72),
+Last full CI baseline before this increment: [PR73](https://github.com/ArtAndrew/TreeHarbor/pull/73),
 published on 2026-10-26 after all six required checks passed. The
-[CI run](https://github.com/ArtAndrew/TreeHarbor/actions/runs/40292026513) passed
-383 ordinary tests on each of Linux/macOS, 317 real PostgreSQL contracts, 43 actual
+[CI run](https://github.com/ArtAndrew/TreeHarbor/actions/runs/40296092230) passed
+388 ordinary tests on each of Linux/macOS, 319 real PostgreSQL contracts, 43 actual
 gVisor scenario groups on each of Linux x86-64/ARM64, and 11 webhook TLS/failure
 groups. These correctness checks do not establish complete mode readiness or
 performance superiority.
+
+## Connected Preview priority and candidate assessment
+
+The next release targets one installable Connected workflow for controlled pilots.
+Standalone remains a later milestone. Neither an alpha tag nor the current tests
+establish production readiness or complete the full two-mode roadmap.
+
+Candidate policy capture now retains complete supplementary visibility in each
+actual provider observation round (Report v2, QueueObservation v10), with the old
+v1 encoding preserved. Explicit `--host-policy-settings` requests the existing
+Contents-write grant for settings reads; the default does not escalate privileges.
+
+The optional `host_policy_sequence` on `queue_admission_evidence` joins a fresh
+capture to the owner-reviewed configuration, exact checks/candidate, latest
+membership and current trust. Supported complete results can report a bounded
+current admission assessment; `merge_verified` remains false and no write grant
+is issued. Unknown review/workflow requirements and multi-member policy coverage
+remain unproven. See [the contract](github-admission-evidence.md).
+
+Schema 30 retains authenticated report sources. Legacy rows retain their payloads
+with unknown attribution, so a new assessment requires fresh attributable evidence;
+a replay cannot silently upgrade an old report's trust.
+
+Local verification includes independent v1/v2 encoding vectors, actual HTTP
+transport fixtures, PostgreSQL current-policy/source-revocation and populated
+schema-upgrade tests, plus real CLI/service recovery for both report versions
+after a committed response is lost. Provider payloads in these tests are fixtures;
+this increment still needs full CI and live installed-App acceptance before its
+behavior can count toward the release gate.
 
 ## Owner-reviewed configuration pins
 

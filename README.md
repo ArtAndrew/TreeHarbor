@@ -98,6 +98,21 @@ A workspace provides files; **the external runtime provides the execution sandbo
 Agents must not receive publisher credentials. Tests cannot detect every semantic
 incompatibility. See [security boundaries](SECURITY.md).
 
+## Next release: Connected Preview
+
+The first installable release will focus on one complete GitHub workflow:
+**connect a repository → run two agents → submit changes → check the exact combined
+candidate → repair a conflict or failure → integrate through GitHub → clean up.**
+
+Before publishing it, we must verify installation in a clean environment, the
+end-to-end demo, restart/retry and backup/restore, export/disconnection, and the
+release artifacts. The supported runtime and GitHub-policy limits will be explicit.
+This preview is intended for controlled pilot repositories; it is not available yet.
+
+Standalone will follow in a later release. Its existing native components remain
+experimental; both modes continue to share the Rust core and standard ELv2.
+See the [release order](ROADMAP.md).
+
 ## What remains before a full release?
 
 1. Complete Connected host-policy and admission certification, automatic

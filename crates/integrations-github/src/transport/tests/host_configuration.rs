@@ -1,6 +1,6 @@
 use super::*;
 use treeharbor_github_contract::host_configuration::{Configuration, Target};
-fn fixture() -> Configuration {
+pub(super) fn fixture() -> Configuration {
     let v: Value = serde_json::from_str(include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/../github-contract/tests/fixtures/host-configuration-inspection-v1.json"
@@ -14,7 +14,7 @@ fn fixture() -> Configuration {
     c.profile.rulesets[0].document.value.as_mut().unwrap()["source"] = json!("example-org/demo");
     c
 }
-fn graph(c: &Configuration, settings: bool) -> Value {
+pub(super) fn graph(c: &Configuration, settings: bool) -> Value {
     let l = c.visibility.legacy.as_ref().unwrap();
     let mut rule = json!({"id":l.id,"repository":{"databaseId":11},"requiredApprovingReviewCount":l.approving_reviews,
         "requiredStatusCheckContexts":l.required_contexts,"requiredDeploymentEnvironments":l.deployment_environments,
@@ -43,7 +43,7 @@ fn access(settings: bool) -> Vec<Vec<u8>> {
         response(200, repository()),
     ]
 }
-fn round(c: &Configuration, g: Value) -> Vec<Vec<u8>> {
+pub(super) fn round(c: &Configuration, g: Value) -> Vec<Vec<u8>> {
     vec![
         response(200, g),
         response(200, c.profile.protection.value.clone().unwrap()),

@@ -68,6 +68,11 @@ pub async fn drop_unpopulated_v26(raw: &Client) {
 
 #[allow(dead_code)]
 pub async fn drop_unpopulated_v29(raw: &Client) {
+    raw.batch_execute(
+        "ALTER TABLE th_github_queue_reports DROP COLUMN reporter, DROP COLUMN token",
+    )
+    .await
+    .unwrap();
     assert_eq!(raw.query_one("SELECT (SELECT count(*) FROM th_github_admission_policies)+(SELECT count(*) FROM th_github_admission_refs)+(SELECT count(*) FROM th_github_queue_admission)+(SELECT count(*) FROM th_github_check_admission)", &[]).await.unwrap().get::<_,i64>(0),0);
     raw.batch_execute("DROP TABLE th_github_check_admission,th_github_queue_admission,th_github_admission_refs,th_github_admission_policies; DROP FUNCTION th_github_admission_ref_update(); DROP INDEX th_github_check_publication_unresolved; ALTER TABLE th_github_check_publications DROP COLUMN context_name; CREATE UNIQUE INDEX th_github_check_publication_unresolved ON th_github_check_publications(tenant,repository,binding,epoch,head,program) WHERE state IN ('requested','attempting','uncertain');").await.unwrap();
 }

@@ -1049,7 +1049,7 @@ async fn admission_policy_upgrade_preserves_populated_v28_without_implicit_pins(
     )
     .await
     .unwrap();
-    let snapshot = "SELECT jsonb_build_object('queues',(SELECT jsonb_agg(to_jsonb(q) ORDER BY queue) FROM th_github_queue q),'queue_reports',(SELECT jsonb_agg(to_jsonb(q) ORDER BY queue,sequence) FROM th_github_queue_reports q),'checks',(SELECT jsonb_agg(to_jsonb(c) ORDER BY check_run) FROM th_github_managed_checks c),'executions',(SELECT jsonb_agg(to_jsonb(e) ORDER BY check_run) FROM th_github_managed_executions e),'publications',(SELECT jsonb_agg(to_jsonb(p)-'context_name' ORDER BY publication) FROM th_github_check_publications p),'reports',(SELECT jsonb_agg(to_jsonb(p) ORDER BY publication,sequence) FROM th_github_check_publication_reports p),'grants',(SELECT jsonb_agg(to_jsonb(a) ORDER BY principal) FROM th_repository_access a),'tokens',(SELECT jsonb_agg(to_jsonb(t) ORDER BY token) FROM th_access_tokens t),'operations',(SELECT jsonb_agg(to_jsonb(o) ORDER BY key) FROM th_operations o),'outbox',(SELECT jsonb_agg(to_jsonb(o) ORDER BY id) FROM th_outbox o))";
+    let snapshot = "SELECT jsonb_build_object('queues',(SELECT jsonb_agg(to_jsonb(q) ORDER BY queue) FROM th_github_queue q),'queue_reports',(SELECT jsonb_agg(to_jsonb(q)-'reporter'-'token' ORDER BY queue,sequence) FROM th_github_queue_reports q),'checks',(SELECT jsonb_agg(to_jsonb(c) ORDER BY check_run) FROM th_github_managed_checks c),'executions',(SELECT jsonb_agg(to_jsonb(e) ORDER BY check_run) FROM th_github_managed_executions e),'publications',(SELECT jsonb_agg(to_jsonb(p)-'context_name' ORDER BY publication) FROM th_github_check_publications p),'reports',(SELECT jsonb_agg(to_jsonb(p) ORDER BY publication,sequence) FROM th_github_check_publication_reports p),'grants',(SELECT jsonb_agg(to_jsonb(a) ORDER BY principal) FROM th_repository_access a),'tokens',(SELECT jsonb_agg(to_jsonb(t) ORDER BY token) FROM th_access_tokens t),'operations',(SELECT jsonb_agg(to_jsonb(o) ORDER BY key) FROM th_operations o),'outbox',(SELECT jsonb_agg(to_jsonb(o) ORDER BY id) FROM th_outbox o))";
     let before: Value = raw.query_one(snapshot, &[]).await.unwrap().get(0);
     let execution_bytes: Vec<u8> = raw
         .query_one(
@@ -1090,7 +1090,7 @@ async fn admission_policy_upgrade_preserves_populated_v28_without_implicit_pins(
             .await
             .unwrap()
             .get::<_, i32>(0),
-        29
+        30
     );
     assert_eq!(raw.query_one("SELECT (SELECT count(*) FROM th_github_admission_policies)+(SELECT count(*) FROM th_github_admission_refs)+(SELECT count(*) FROM th_github_queue_admission)+(SELECT count(*) FROM th_github_check_admission)", &[]).await.unwrap().get::<_, i64>(0), 0);
     assert_eq!(

@@ -145,7 +145,7 @@ fn decode(
 }
 
 impl Connection {
-    async fn configuration_round(
+    pub(super) async fn configuration_round(
         &self,
         b: &RepositoryBinding,
         t: &hc::Target,

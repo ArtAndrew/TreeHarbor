@@ -329,3 +329,134 @@ async fn duplicate_rules_foreign_details_and_upstream_failure_revoke_without_mut
         );
     }
 }
+
+#[tokio::test]
+async fn candidate_configuration_is_collected_in_each_round_with_explicit_settings_scope() {
+    for settings in [false, true] {
+        let c = super::host_configuration_tests::fixture();
+        let (mut t, r) = fixture();
+        t.expected_rules = hp::rules_fingerprint(&c.profile.rules).unwrap();
+        let mut replies = access();
+        let mut minted = token();
+        minted["permissions"] = json!({"contents":if settings {"write"}else{"read"},"metadata":"read","pull_requests":"read","administration":"read","merge_queues":"read"});
+        replies[1] = response(201, minted);
+        for _ in 0..2 {
+            replies.push(response(200, group_tests::groups()));
+            replies.extend(super::host_configuration_tests::round(
+                &c,
+                super::host_configuration_tests::graph(&c, settings),
+            ));
+            replies.push(response(200, review()));
+        }
+        replies.push(revoked());
+        let (connection, h) = host(replies).await;
+        let out = connection
+            .observe_candidate_configuration(&binding(), &t, &r.target, settings)
+            .await
+            .unwrap();
+        let requests = h.await.unwrap();
+        assert_eq!(requests.len(), 17);
+        assert_eq!(out.observation.version, 10);
+        assert!(out.observation.token_revoked);
+        let observed = out.observation.host_policy.unwrap();
+        assert_eq!(observed.version, 2);
+        assert_eq!(observed.before.visibility.as_deref(), Some(&c.visibility));
+        assert_eq!(observed.before, observed.after);
+        let captured = observed
+            .before
+            .configuration(&observed.repository_name, &t)
+            .unwrap()
+            .unwrap();
+        if settings {
+            assert_eq!(captured, c);
+        } else {
+            assert!(captured.profile.queue.is_none());
+        }
+        let mint: Value =
+            serde_json::from_str(request_text(&requests[1]).split_once("\r\n\r\n").unwrap().1)
+                .unwrap();
+        assert_eq!(
+            mint["permissions"]["contents"],
+            if settings { "write" } else { "read" }
+        );
+        assert_eq!(mint["permissions"]["pull_requests"], "read");
+        assert_eq!(mint["permissions"]["merge_queues"], "read");
+        for request in &requests[4..16] {
+            assert!(!request_text(request).contains("mutation "));
+        }
+        for index in [5, 11] {
+            let v: Value = serde_json::from_str(
+                request_text(&requests[index])
+                    .split_once("\r\n\r\n")
+                    .unwrap()
+                    .1,
+            )
+            .unwrap();
+            assert_eq!(v["variables"]["settings"], settings);
+        }
+        assert!(request_text(requests.last().unwrap()).starts_with("DELETE /installation/token "));
+    }
+}
+
+#[tokio::test]
+async fn candidate_configuration_drift_is_retained_but_incomplete_visibility_fails_and_revokes() {
+    for case in ["drift", "missing_flag", "queue", "revocation"] {
+        let c = super::host_configuration_tests::fixture();
+        let (mut t, r) = fixture();
+        t.expected_rules = hp::rules_fingerprint(&c.profile.rules).unwrap();
+        let mut replies = access();
+        let mut graph = super::host_configuration_tests::graph(&c, false);
+        if case == "missing_flag" {
+            graph["data"]["repository"]["ref"]["branchProtectionRule"]
+                .as_object_mut()
+                .unwrap()
+                .remove("restrictsPushes");
+        }
+        if case == "queue" {
+            graph["data"]["repository"]["mergeQueue"]["id"] = json!("MQ_other");
+        }
+        for round in 0..if matches!(case, "missing_flag" | "queue") {
+            1
+        } else {
+            2
+        } {
+            replies.push(response(200, group_tests::groups()));
+            if case == "drift" && round == 1 {
+                graph["data"]["repository"]["ref"]["branchProtectionRule"]["id"] =
+                    json!("BPR_replaced");
+            }
+            let mut pages = super::host_configuration_tests::round(&c, graph.clone());
+            if case == "missing_flag" {
+                pages.truncate(1);
+            }
+            replies.extend(pages);
+            if case != "missing_flag" {
+                replies.push(response(200, review()));
+            }
+        }
+        replies.push(if case == "revocation" {
+            response(503, json!({"message":"synthetic revoke failure"}))
+        } else {
+            revoked()
+        });
+        let (connection, h) = host(replies).await;
+        let out = connection
+            .observe_candidate_configuration(&binding(), &t, &r.target, false)
+            .await;
+        let requests = h.await.unwrap();
+        assert!(request_text(requests.last().unwrap()).starts_with("DELETE /installation/token "));
+        match case {
+            "drift" => assert!(
+                out.unwrap()
+                    .observation
+                    .host_policy
+                    .unwrap()
+                    .capture_reasons(&t)
+                    .unwrap()
+                    .contains("capture_changed")
+            ),
+            "revocation" => assert!(!out.unwrap().observation.token_revoked),
+            _ => assert!(out.is_err(), "{case}"),
+        }
+    }
+}

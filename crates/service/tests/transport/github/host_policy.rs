@@ -14,6 +14,19 @@ pub(super) async fn exercise(
     app: &Path,
     owner: &Path,
 ) {
+    for version in [1u8, 2] {
+        exercise_version(f, server, id, state, app, owner, version).await;
+    }
+}
+async fn exercise_version(
+    f: &mut Fixture,
+    server: &mut Process,
+    id: Uuid,
+    state: &Path,
+    app: &Path,
+    owner: &Path,
+    version: u8,
+) {
     f.credential_path = f.dir.path().join("queue-bridge.json");
     let context = result(request(
         f,
@@ -31,16 +44,23 @@ pub(super) async fn exercise(
         f,
         &json!({"action":"queue_host_policy_context","epoch":1,"queue":id.to_string(),"membership_sequence":membership}),
     ));
-    let fixture: Value = serde_json::from_str(include_str!(
-        "../../../../github-contract/tests/fixtures/host-policy-v1.json"
-    ))
+    let fixture: Value = serde_json::from_str(if version == 1 {
+        include_str!("../../../../github-contract/tests/fixtures/host-policy-v1.json")
+    } else {
+        include_str!("../../../../github-contract/tests/fixtures/host-policy-v2.json")
+    })
     .unwrap();
     let mut policy = fixture["report"].clone();
     policy["target"] = selected["host_policy_target"].clone();
     policy["repository_name"] = json!("example-org/demo");
     for side in ["before", "after"] {
+        let configuration = policy[side]["group"]["target"]["configuration"].clone();
         policy[side]["group"] = groups["captures"][0]["report"]["group_capture"]["before"].clone();
         policy[side]["review"]["pull"] = policy[side]["group"]["target"]["pull"].clone();
+        if version == 2 {
+            policy[side]["group"]["target"]["configuration"] = configuration;
+            policy[side]["visibility"]["target"]["repository_name"] = json!("example-org/demo");
+        }
         policy[side]["rules"][0]["ruleset_source"] = json!("example-org/demo");
         policy[side]["rulesets"][0]["source"]["name"] = json!("example-org/demo");
         policy[side]["rulesets"][0]["document"]["value"]["source"] = json!("example-org/demo");
@@ -54,15 +74,15 @@ pub(super) async fn exercise(
         .await
         .unwrap()
         .get(0);
-    let report = json!({"version":9,"started_at_unix_ms":at,"finished_at_unix_ms":at,
+    let report = json!({"version":version+8,"started_at_unix_ms":at,"finished_at_unix_ms":at,
         "snapshot":null,"receipt":null,"async_result":null,"token_revoked":true,
         "host_policy":policy});
     let index = sequence as usize;
-    files::write_private(&state.join(format!("report-{index:04}.json")),json!({"version":1,"key":"github-publish-report-host_policy-fixture","report":report,"token_expires_at":null}).to_string().as_bytes()).unwrap();
+    files::write_private(&state.join(format!("report-{index:04}.json")),json!({"version":1,"key":format!("github-publish-report-host_policy-v{version}-fixture"),"report":report,"token_expires_at":null}).to_string().as_bytes()).unwrap();
     let diagnostic = f.dir.path().join("queue-host-policy.stderr");
     let (original, hold, received) = proxy(
         f,
-        "queue-host-policy-report.sock",
+        &format!("queue-host-policy-v{version}-report.sock"),
         "\"action\":\"queue_report\"",
         "\"host_policy\"",
     )
@@ -114,18 +134,20 @@ pub(super) async fn exercise(
     f.credential_path = owner.to_owned();
     let page = result(request(
         f,
-        &json!({"action":"queue_host_policies","epoch":1,"queue":id.to_string(),"after":0}),
+        &json!({"action":"queue_host_policies","epoch":1,"queue":id.to_string(),"after":sequence}),
     ));
     assert_eq!(page["captures"].as_array().unwrap().len(), 1);
     assert_eq!(page["captures"][0]["report"], report);
     assert!(page["captures"][0]["capture_digest"].is_string());
-    assert_eq!(page["captures"][0]["evaluation"]["version"], 1);
-    assert!(
-        page["captures"][0]["evaluation"]["reasons"]
-            .as_array()
-            .unwrap()
-            .contains(&json!("legacy/required_signatures/flag_unproven"))
-    );
+    assert_eq!(page["captures"][0]["evaluation"]["version"], version);
+    if version == 1 {
+        assert!(
+            page["captures"][0]["evaluation"]["reasons"]
+                .as_array()
+                .unwrap()
+                .contains(&json!("legacy/required_signatures/flag_unproven"))
+        );
+    }
     assert_eq!(page["host_policy_verified"], false);
     assert_eq!(page["admission_verified"], false);
     assert_eq!(page["merge_verified"], false);

@@ -19,6 +19,7 @@ pub enum WireCommand {
         queue: String,
         check_sequence: i64,
         publication_sequence: Option<i64>,
+        host_policy_sequence: Option<i64>,
     },
     AdmissionPolicyPlan {
         epoch: i64,
@@ -645,13 +646,15 @@ impl WireCommand {
                 queue,
                 check_sequence,
                 publication_sequence,
+                host_policy_sequence,
             } => {
-                db.github_queue_admission_evidence(
+                db.github_queue_admission_with_host_policy(
                     auth,
                     epoch,
                     id(&queue)?,
                     check_sequence,
                     publication_sequence,
+                    host_policy_sequence,
                 )
                 .await
             }

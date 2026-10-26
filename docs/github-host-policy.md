@@ -3,8 +3,10 @@
 TreeHarbor can retain GitHub branch protection, applicable rules, their source
 rulesets, and PR review/thread state for an exact saved queue candidate. This is
 **evidence collection and conservative policy analysis**, not permission to merge.
-`host_policy_verified`, `admission_verified` and
-`merge_verified` remain false, including when the capture has no diagnostic reasons.
+Historical capture pages keep `host_policy_verified`, `admission_verified` and
+`merge_verified` false, including when there are no diagnostic reasons. The optional
+[current candidate assessment](github-admission-evidence.md) joins a selected
+capture to checks, owner policy and current local trust; it grants no write authority.
 
 ## Collect and read
 
@@ -31,6 +33,10 @@ Merge queues **read** on the selected repository. The collector requests only
 these read permissions in its temporary installation token and attempts to revoke
 it on both success and failure. It does not expand App grants. GitHub can omit
 ruleset bypass actors from read-only responses; that remains explicitly unproven.
+For explicit queue-settings reads, add `--host-policy-settings`. This requests
+Contents **write** in the temporary token; the App must already have that grant.
+Other permissions remain read-only, and the command performs no host mutation.
+There is no automatic escalation when the default capture is incomplete.
 
 A repository reader sends this through `treeharbor client ... github --request`:
 
@@ -53,6 +59,7 @@ Two full observation rounds retain:
 - Legacy branch protection, or an explicit HTTP 403/404 with no error body.
 - All applicable active branch rules and source-qualified ruleset documents,
   including inherited organization/enterprise sources returned by GitHub.
+- Supplementary repository/ref identity, protection flags and complete visible bypass connections.
 - Current nullable review decision and the complete visible review-thread
   connection, with resolved/outdated state and exact PR identity on every page.
 
@@ -64,7 +71,9 @@ required.
 
 ## Policy analysis
 
-Each returned capture now includes `evaluation` version 1:
+New captures use Report version 2 and `evaluation` version 2, with complete
+Configuration v1 digests from each candidate observation round. Legacy Report
+version 1 retains its Profile v1 evaluation and original bytes. Both expose:
 
 - `before_digest` and `after_digest` identify the branch configuration independently
   of the PR, candidate, review decision and review-thread state.
@@ -108,7 +117,8 @@ legacy protection, applicable rules, source documents and optional queue setting
 It has no PR prerequisite and can be analyzed by the shared contract library before
 any candidate exists. The configuration-only command below can collect it before
 the first PR. Owner pinning is available through [policy version2](github-admission-policy.md#review-and-pin-complete-configuration-version2).
-Current candidate-policy and full admission certification remain incomplete.
+Candidate assessment can join the complete pin to fresh Report v2 evidence; full
+publication/authorization certification remains incomplete.
 
 Its digest is SHA-256 of `treeharbor-github-host-policy-configuration`, NUL, `v1`,
 NUL, then compact JSON with lexically ordered object keys. Top-level effective rules
@@ -134,14 +144,17 @@ pagination never follows provider-supplied URLs.
 
 ## Retention and meaning
 
-Queue observation version 9 contains only a host-policy report version 1. It
-cannot include a dispatch receipt, a `mutation_not_sent` claim, or another evidence
-payload. Earlier report versions retain their encoding and meaning. No database
-migration beyond the current schema29 is introduced.
+Queue observation version 9 contains only a host-policy report version 1;
+version 10 contains only Report version 2. Neither can include a dispatch receipt,
+a `mutation_not_sent` claim or another evidence payload. V1 rejects supplemental
+visibility; v2 requires it on both snapshots. Earlier versions retain their meaning.
+Schema 30 retains the authenticated actor/credential for new reports. Old rows have
+unknown attribution and remain historical; replay does not invent source trust.
 
 The digest is SHA-256 of the UTF-8 domain
 `treeharbor-github-host-policy-observation`, a NUL byte, `v1`, another NUL byte,
 and compact JSON of the complete report with lexically ordered object keys.
+Report version 2 uses the same domain with `v2` instead of `v1`.
 Array order is retained. The digest identifies evidence; it is not a provider
 signature or an approval. An independent fixture fixes the encoding.
 
@@ -152,7 +165,7 @@ reporting still requires the assigned bridge's current repository authorization.
 
 Before/after reads are not an atomic transaction with GitHub and cannot exclude an
 unseen administrator change between requests. Complete policy support,
-owner-reviewed policy pinning, workflow execution-context proof, final admission
+workflow execution-context proof, final admission
 and live installed-App acceptance remain separate release gates. Local transport
 fixtures and real database/process-recovery tests do not close those gates.
 

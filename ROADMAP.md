@@ -3,23 +3,28 @@
 Dates are not release guarantees. Each stage must pass its correctness gates
 before performance claims or production readiness are published.
 
-1. **Durable engine:** canonical objects and DAG queries; PostgreSQL catalog,
-   upload reservations, pins, idempotent ChangeSets, outbox and recovery tests.
-2. **Usable local pilot:** shared authenticated Rust service, CLI/API and MCP adapter,
-   node cache, sparse/full materialization,
-   scoped credentials, one external runtime binding and two-agent conflict demo.
-3. **Connected:** Git import/export, GitHub PR/checks/merge queue, exact candidates
-   and real host tests. GitHub is authoritative for published main.
-4. **Standalone S2:** native refs, review/validation policy, merge/rebase and queue;
-   no Git process or host credentials on the native path; fenced migration.
-5. **Release operations:** S3, GC race/fault campaigns, full-history backup/restore,
-   export, clean installation/update/removal, artifacts, SBOM and provenance.
-6. **Evidence and pilots:** tuned Git and available analogue benchmarks; preparation
-   p50/p95, useful-action latency, bytes, disk, total cost, retries and merge time;
-   observed onboarding with first pilot teams.
+1. **First installable release — Connected Preview:** one complete GitHub workflow,
+   from two parallel agent workspaces through immutable proposals, exact candidate
+   checks, failure/repair and protected integration. Package a reference deployment,
+   verify a clean installation, restart/retry, backup/restore, export and cleanup.
+   Publish the supported policy/runtime matrix and reproducible demo. This is a
+   development preview for controlled pilots, not production support.
+2. **Pilot hardening:** fix observed onboarding and operational problems; improve
+   automatic reconciliation, monitoring and workload performance. Publish raw
+   cold/warm benchmarks and infrastructure costs before making speed claims.
+3. **Broader Connected deployments:** expand supported host policies, storage and
+   remote-worker configurations, with recovery and upgrade tests for each.
+4. **Standalone S2 release:** finish the native history/review/check/queue lifecycle
+   and fenced migration, with no Git process or GitHub credentials on the native
+   path. Reuse the shared Rust core and the same ELv2 license.
+5. **Production readiness:** complete the relevant operational fault campaigns,
+   backup/restore and capacity evidence, supported installation/update procedures,
+   and acceptance with pilot teams for each advertised deployment.
 
-The first six-week Connected pilot is an intermediate milestone. Both modes are
-required for the requested product release. See the [gate ledger](docs/implementation-status.md).
+Standalone is a later release milestone and does not block the first Connected
+Preview. Its existing components remain experimental. The complete two-mode
+product still requires the [full release gates](docs/implementation-status.md#release-gate-ledger).
+Dates and performance targets are not promises.
 
 The experimental MCP stdio adapter is implemented; full host/onboarding acceptance
 remains open. VFS, structural merge and distributed SQL require experiments and
