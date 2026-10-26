@@ -11,6 +11,15 @@ use uuid::Uuid;
 
 pub const DOMAIN: &[u8] = b"treeharbor-github-check-dispatch-policy\0v1\0";
 
+/// Identity of the exact transport observation, not a test of its eligibility.
+pub fn preflight_digest(preflight: &cp::Preflight) -> Result<String> {
+    let mut hash = Sha256::new();
+    hash.update(b"treeharbor-github-check-dispatch-preflight\0v1\0");
+    let value = serde_json::to_value(preflight).map_err(|_| InvalidEvidence)?;
+    hash.update(serde_json::to_vec(&value).map_err(|_| InvalidEvidence)?);
+    Ok(ObjectId::from_bytes(hash.finalize().into()).to_string())
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct PolicyProof {

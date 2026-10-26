@@ -163,11 +163,41 @@ async fn finish_fresh(
     )
     .await?;
     fresh(&m.tx, auth, c.epoch, id, permission).await?;
+    if kind == "github.check_publication.dispatched" {
+        managed_checks::dispatch_policy::recheck(
+            &m.tx,
+            auth.scope(),
+            &load(&m.tx, auth.scope(), id).await?,
+        )
+        .await?;
+    }
     m.tx.commit().await?;
     Ok(value)
 }
 
 impl Metadata {
+    /// Retained dispatch history only. Missing records remain unknown, including
+    /// old publications created before this certificate existed.
+    pub async fn github_check_dispatch_policy(
+        &mut self,
+        auth: &Authorization,
+        epoch: i64,
+        id: Uuid,
+    ) -> Result<Value> {
+        uuid(id)?;
+        let tx = self.client.transaction().await?;
+        settings(&tx).await?;
+        repository_lock(&tx, auth.scope(), false).await?;
+        context(&tx, auth, epoch, Permission::Read).await?;
+        let r = load(&tx, auth.scope(), id).await?;
+        if r.get::<_, i64>("epoch") != epoch {
+            return Err(Error::Fenced);
+        }
+        let v = managed_checks::dispatch_policy::retained(&tx, auth.scope(), &r).await?;
+        context(&tx, auth, epoch, Permission::Read).await?;
+        tx.commit().await?;
+        Ok(v)
+    }
     pub async fn request_github_check_publication(
         &mut self,
         auth: &Authorization,
@@ -336,6 +366,7 @@ impl Metadata {
         }
         let s = auth.scope();
         admission_policy::publication_preflight(&m.tx, s, r.get("check_run"), preflight).await?;
+        managed_checks::dispatch_policy::retain(&m.tx, s, &r, preflight).await?;
         m.tx.execute("UPDATE th_github_check_publications SET preflight=$4,dispatched_at=clock_timestamp() WHERE tenant=$1 AND repository=$2 AND publication=$3", &[&s.tenant(),&s.repository(),&id,&json!(preflight)]).await?;
         let receipt = finish_fresh(
             m,

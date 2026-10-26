@@ -25,7 +25,7 @@ pub(super) fn policy(f: &QueueFixture, proposed: &AdmissionPolicy) -> AdmissionP
     p
 }
 impl Candidate {
-    async fn host_report(&mut self) -> QueueObservation {
+    pub(super) async fn host_report(&mut self) -> QueueObservation {
         let v = self
             .f
             .p
@@ -64,7 +64,7 @@ impl Candidate {
         r.validate(&self.f.target).unwrap();
         r
     }
-    async fn save_host(&mut self, label: &str, r: &QueueObservation) -> i64 {
+    pub(super) async fn save_host(&mut self, label: &str, r: &QueueObservation) -> i64 {
         self.f
             .p
             .f
@@ -276,6 +276,9 @@ async fn current_host_policy_migration_keeps_history_but_does_not_infer_report_t
     let host = c.save_host("upgrade-host", &r).await;
     assert_eq!(c.with_host(checks, host).await["admission_verified"], true);
     let raw = connection(&c.f.p.f.schema).await;
+    raw.batch_execute("DROP TABLE th_github_check_dispatch_policy; DROP INDEX th_github_managed_check_collections")
+        .await
+        .unwrap();
     raw.batch_execute(
         "ALTER TABLE th_github_queue_reports DROP COLUMN reporter, DROP COLUMN token",
     )

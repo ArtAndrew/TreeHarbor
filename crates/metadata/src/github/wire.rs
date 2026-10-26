@@ -4,6 +4,10 @@ use serde::Deserialize;
 #[derive(Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
 pub enum WireCommand {
+    CheckDispatchPolicy {
+        epoch: i64,
+        publication: String,
+    },
     QueueHostPolicyContext {
         epoch: i64,
         queue: String,
@@ -531,7 +535,9 @@ impl WireCommand {
             Self::CheckPublicationRequest { .. } | Self::CheckPublicationCancel { .. } => {
                 Permission::HostQueue
             }
-            Self::CheckPublicationStatus { .. } => Permission::Read,
+            Self::CheckPublicationStatus { .. } | Self::CheckDispatchPolicy { .. } => {
+                Permission::Read
+            }
             Self::CheckPublicationContext { .. }
             | Self::CheckPublicationBegin { .. }
             | Self::CheckPublicationDispatch { .. }
@@ -763,6 +769,10 @@ impl WireCommand {
             }
             Self::CheckPublicationStatus { epoch, publication } => {
                 db.github_check_publication_status(auth, epoch, id(&publication)?, false)
+                    .await
+            }
+            Self::CheckDispatchPolicy { epoch, publication } => {
+                db.github_check_dispatch_policy(auth, epoch, id(&publication)?)
                     .await
             }
             Self::CheckPublicationContext { epoch, publication } => {

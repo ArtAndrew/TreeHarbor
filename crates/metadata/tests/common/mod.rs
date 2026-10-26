@@ -68,6 +68,9 @@ pub async fn drop_unpopulated_v26(raw: &Client) {
 
 #[allow(dead_code)]
 pub async fn drop_unpopulated_v29(raw: &Client) {
+    raw.batch_execute("DROP TABLE th_github_check_dispatch_policy; DROP INDEX th_github_managed_check_collections")
+        .await
+        .unwrap();
     raw.batch_execute(
         "ALTER TABLE th_github_queue_reports DROP COLUMN reporter, DROP COLUMN token",
     )

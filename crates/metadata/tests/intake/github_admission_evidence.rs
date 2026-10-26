@@ -3,6 +3,8 @@
 use super::*;
 #[path = "github_current_host_policy.rs"]
 mod current_host_policy;
+#[path = "github_check_dispatch_policy.rs"]
+mod dispatch_policy;
 use treeharbor_github_contract::{group_checks as gc, publication as published};
 use treeharbor_metadata::github::{InspectionSpec, ManagedPullCheckSpec};
 
@@ -256,13 +258,7 @@ impl Candidate {
             if exit == 0 { "passed" } else { "failed" }
         );
     }
-    async fn release(
-        &mut self,
-        n: usize,
-        exit: i64,
-        receipt_version: u8,
-        outcome: cp::Outcome,
-    ) -> Released {
+    async fn checked(&mut self, n: usize, exit: i64) -> Uuid {
         let id = Uuid::new_v4();
         self.f
             .p
@@ -283,6 +279,16 @@ impl Candidate {
             .await
             .unwrap();
         self.execute(id, &format!("aggregate-{n}"), exit).await;
+        id
+    }
+    async fn release(
+        &mut self,
+        n: usize,
+        exit: i64,
+        receipt_version: u8,
+        outcome: cp::Outcome,
+    ) -> Released {
+        let id = self.checked(n, exit).await;
         self.publish(id, &format!("aggregate-{n}"), receipt_version, outcome)
             .await
     }
@@ -333,6 +339,28 @@ impl Candidate {
             )
             .await
             .unwrap();
+        if self.policy.host_configuration.is_some() && target.conclusion == cp::Conclusion::Success
+        {
+            let capture = self.host_report().await;
+            let raw = capture
+                .host_policy
+                .as_ref()
+                .unwrap()
+                .before
+                .protection
+                .value
+                .as_ref()
+                .unwrap();
+            use sha2::{Digest, Sha256};
+            let hash = treeharbor_core::ObjectId::from_bytes(
+                Sha256::digest(serde_json::to_vec(raw).unwrap()).into(),
+            )
+            .to_string();
+            before.policy_before.protection.sha256 = hash.clone();
+            before.policy_after.protection.sha256 = hash;
+            self.save_host(&format!("{label}-dispatch-host"), &capture)
+                .await;
+        }
         self.f
             .p
             .f

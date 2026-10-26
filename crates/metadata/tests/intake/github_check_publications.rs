@@ -769,7 +769,7 @@ async fn check_publication_upgrade_does_not_expand_existing_credentials() {
             .await
             .unwrap()
             .get::<_, i32>(0),
-        30
+        31
     );
     assert!(
         p.f.db

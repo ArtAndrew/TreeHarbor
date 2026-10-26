@@ -520,7 +520,7 @@ async fn populated_schema23_upgrade_preserves_inbox_without_granting_recovery() 
             .await
             .unwrap()
             .get::<_, i32>(0),
-        30
+        31
     );
     assert_eq!(
         raw.query_one(
