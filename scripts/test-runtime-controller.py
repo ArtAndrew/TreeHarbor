@@ -154,7 +154,7 @@ def main():
         transport = root / "proxy"
         transport.mkdir(mode=0o700)
         log = (root / "proxy.log").open("w")
-        process = subprocess.Popen(["sudo", "-n", sys.executable, str(Path(__file__).absolute()), "--proxy", str(transport), str(os.getgid())], stdout=log, stderr=subprocess.STDOUT)
+        process = subprocess.Popen(["sudo", "-n", sys.executable, "-B", str(Path(__file__).absolute()), "--proxy", str(transport), str(os.getgid())], stdout=log, stderr=subprocess.STDOUT)
         wait_until(lambda: (transport / "proxy.pid").exists())
         secret = root / "host-secret"
         secret.write_text("not-mounted")

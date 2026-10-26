@@ -132,6 +132,7 @@ jobs:
           TH_INSTALL_PREFIX: ${{ runner.temp }}/runtime-package-installed
         run: |
           cargo build --locked --release --target ${{ matrix.arch }}-unknown-linux-musl -p treeharbor-service -p treeharbor-runtime --bins
+          git status --short --untracked-files=normal
           python3 scripts/package-release.py --target ${{ matrix.arch }}-unknown-linux-musl --bin-dir target/${{ matrix.arch }}-unknown-linux-musl/release --output-dir "$TH_PACKAGE_DIR"
           cd "$TH_PACKAGE_DIR"
           sha256sum --check --strict *.sha256
