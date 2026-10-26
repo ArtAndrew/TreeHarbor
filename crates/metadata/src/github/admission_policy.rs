@@ -23,11 +23,16 @@ pub struct AdmissionPolicy {
     pub rules: RuleObservation,
     pub managed: Vec<ManagedRequirement>,
     pub workflows: Vec<wd::CheckApproval>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub host_configuration:
+        Option<Box<treeharbor_github_contract::host_configuration::Configuration>>,
 }
 impl AdmissionPolicy {
     pub fn canonical(&self) -> Result<Vec<u8>> {
-        if self.version != 1
-            || self.managed.len() + self.workflows.len() == 0
+        if !matches!(
+            (self.version, self.host_configuration.is_some()),
+            (1, false) | (2, true)
+        ) || self.managed.len() + self.workflows.len() == 0
             || self.managed.len() + self.workflows.len() > 32
             || !self.rules.merge_queue
             || self.rules.count == 0
@@ -42,6 +47,26 @@ impl AdmissionPolicy {
             return Err(Error::Invalid("admission policy bounds"));
         }
         let mut p = self.clone();
+        if let Some(c) = &self.host_configuration {
+            let target = &c.visibility.target;
+            let analysis = c
+                .analyze(target)
+                .map_err(|_| Error::Invalid("host configuration"))?;
+            if !analysis.configuration_reasons.is_empty()
+                || treeharbor_github_contract::host_policy::rules_fingerprint(&c.profile.rules)
+                    .map_err(|_| Error::Invalid("host configuration rules"))?
+                    != self.rules
+            {
+                return Err(Error::Invalid("unproven host configuration"));
+            }
+            p.host_configuration = Some(Box::new(
+                serde_json::from_slice(
+                    &c.canonical(target)
+                        .map_err(|_| Error::Invalid("host configuration"))?,
+                )
+                .map_err(|_| Error::Invalid("host configuration"))?,
+            ));
+        }
         let mut programs = Vec::new();
         for m in &self.managed {
             let id = m.program.digest()?;
@@ -70,7 +95,14 @@ impl AdmissionPolicy {
                 .map_err(|_| Error::SchemaMismatch)?
                 .checks;
         }
-        let bytes = serde_json::to_vec(&p).map_err(|_| Error::Invalid("admission policy"))?;
+        let bytes = if p.version == 2 {
+            serde_json::to_vec(
+                &serde_json::to_value(&p).map_err(|_| Error::Invalid("admission policy"))?,
+            )
+        } else {
+            serde_json::to_vec(&p)
+        }
+        .map_err(|_| Error::Invalid("admission policy"))?;
         if bytes.len() > 65536 {
             return Err(Error::Invalid("admission policy size"));
         }
@@ -78,7 +110,11 @@ impl AdmissionPolicy {
     }
     pub fn digest(&self) -> Result<ObjectId> {
         let mut h = Sha256::new();
-        h.update(b"treeharbor-connected-admission-policy\0v1\0");
+        h.update(match self.version {
+            1 => b"treeharbor-connected-admission-policy\0v1\0",
+            2 => b"treeharbor-connected-admission-policy\0v2\0",
+            _ => return Err(Error::Invalid("admission policy version")),
+        });
         h.update(self.canonical()?);
         Ok(ObjectId::from_bytes(h.finalize().into()))
     }
@@ -89,7 +125,7 @@ impl AdmissionPolicy {
         }
         Ok(p)
     }
-    pub fn required(
+    fn planned_required(
         &self,
         app: u64,
         epoch: i64,
@@ -121,6 +157,74 @@ impl AdmissionPolicy {
             return Err(Error::Invalid("duplicate admission context"));
         }
         Ok(checks)
+    }
+    pub fn required(
+        &self,
+        app: u64,
+        epoch: i64,
+        binding: Uuid,
+        base: &str,
+        generation: i64,
+    ) -> Result<BTreeSet<RequiredCheck>> {
+        let checks = self.planned_required(app, epoch, binding, base, generation)?;
+        if let Some(c) = &self.host_configuration
+            && (c.visibility.target.base_ref != base
+                || c.analyze(&c.visibility.target)
+                    .map_err(|_| Error::Invalid("host configuration"))?
+                    .required
+                    != checks)
+        {
+            return Err(Error::Invalid("host configuration required checks"));
+        }
+        Ok(checks)
+    }
+    fn bound(&self, upstream: &Upstream, base: &str) -> Result<()> {
+        if let Some(c) = &self.host_configuration {
+            let t = &c.visibility.target;
+            if t.repository_id != upstream.repository_id
+                || t.repository_name != format!("{}/{}", upstream.owner, upstream.name)
+                || t.base_ref != base
+            {
+                return Err(Error::Invalid("host configuration target"));
+            }
+        }
+        Ok(())
+    }
+    /// Prepare owner-reviewable input from an actual stable inspection. This
+    /// changes no stored policy, generation, host rule or approval.
+    pub fn with_inspection(
+        &self,
+        inspection: &treeharbor_github_contract::host_configuration::Inspection,
+    ) -> Result<Self> {
+        self.canonical()?;
+        Self::from_inspection(inspection, self.managed.clone(), self.workflows.clone())
+    }
+    /// Construct a draft directly from requirements, without caller-made rule hashes.
+    pub fn from_inspection(
+        inspection: &treeharbor_github_contract::host_configuration::Inspection,
+        managed: Vec<ManagedRequirement>,
+        workflows: Vec<wd::CheckApproval>,
+    ) -> Result<Self> {
+        let t = &inspection.before.visibility.target;
+        if !inspection
+            .reasons(t)
+            .map_err(|_| Error::Invalid("host inspection"))?
+            .is_empty()
+        {
+            return Err(Error::Invalid("unproven host inspection"));
+        }
+        let p = Self {
+            version: 2,
+            managed,
+            workflows,
+            rules: treeharbor_github_contract::host_policy::rules_fingerprint(
+                &inspection.after.profile.rules,
+            )
+            .map_err(|_| Error::Invalid("host configuration rules"))?,
+            host_configuration: Some(inspection.after.clone()),
+        };
+        p.canonical()?;
+        Ok(p)
     }
     fn permits(&self, program: ObjectId, validator: &str) -> Result<()> {
         if !self
@@ -426,6 +530,7 @@ impl Metadata {
             return Err(Error::HostQueueState);
         }
         if let Some(p) = value {
+            p.bound(&spec.upstream, base)?;
             p.required(spec.app_id, c.epoch, b, base, generation + 1)?;
         }
         let bytes = id.map(|i| i.as_bytes().to_vec());
@@ -486,8 +591,15 @@ impl Metadata {
         {
             return Err(Error::HostQueueState);
         }
-        let required = p.required(spec.app_id, epoch, b, base, generation + 1)?;
-        let v = json!({"version":1,"binding":b,"epoch":epoch,"base_ref":base,"expected_generation":generation,"generation":generation+1,"policy":p.digest()?.to_string(),"required":required,"rules":p.rules,"approved":false});
+        p.bound(&spec.upstream, base)?;
+        let required = p.planned_required(spec.app_id, epoch, b, base, generation + 1)?;
+        let mut v = json!({"version":1,"binding":b,"epoch":epoch,"base_ref":base,"expected_generation":generation,"generation":generation+1,"policy":p.digest()?.to_string(),"required":required,"rules":p.rules,"approved":false});
+        if let Some(c) = &p.host_configuration {
+            v["host_configuration"] = json!({
+                "digest": c.digest(&c.visibility.target).map_err(|_| Error::Invalid("host configuration"))?,
+                "required_matches": c.analyze(&c.visibility.target).map_err(|_| Error::Invalid("host configuration"))?.required == required,
+            });
+        }
         context(&tx, auth, epoch, Permission::PolicyWrite).await?;
         tx.commit().await?;
         Ok(v)
@@ -600,3 +712,6 @@ mod tests {
         assert!(serde_json::from_value::<AdmissionPolicy>(unknown).is_err());
     }
 }
+
+#[cfg(test)]
+mod tests_v2;

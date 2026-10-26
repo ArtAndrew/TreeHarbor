@@ -37,6 +37,7 @@ impl Candidate {
             .collect();
         let policy = AdmissionPolicy {
             version: 1,
+            host_configuration: None,
             rules: rules(),
             managed: programs
                 .iter()

@@ -1,6 +1,8 @@
 //! Real PostgreSQL boundaries; host and terminal-runtime observations are fixtures.
 #[path = "github_admission_evidence.rs"]
 mod admission_evidence;
+#[path = "github_admission_configuration.rs"]
+mod reviewed_configuration;
 use super::*;
 use treeharbor_metadata::github::{AdmissionPolicy, ManagedRequirement, PolicyPin};
 
@@ -14,6 +16,7 @@ fn rules() -> treeharbor_github_contract::RuleObservation {
 fn managed(program: CheckProgram) -> AdmissionPolicy {
     AdmissionPolicy {
         version: 1,
+        host_configuration: None,
         rules: rules(),
         managed: vec![ManagedRequirement {
             program,
@@ -29,6 +32,7 @@ fn workflow(f: &QueueFixture) -> AdmissionPolicy {
     .unwrap();
     AdmissionPolicy {
         version: 1,
+        host_configuration: None,
         rules: f.target.expected_rules.clone(),
         managed: vec![],
         workflows: p.checks,

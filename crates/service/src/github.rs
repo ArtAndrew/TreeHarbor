@@ -22,6 +22,15 @@ mod recovery;
 
 #[derive(Subcommand)]
 pub enum Action {
+    /// Preview required check names and configuration matching without approval.
+    PolicyPlan(PolicyOwnerArgs),
+    /// Adopt an explicitly reviewed policy with a generation fence and replay key.
+    PolicyAdopt {
+        #[command(flatten)]
+        policy: PolicyOwnerArgs,
+        #[arg(long)]
+        key: String,
+    },
     /// Publish one owner-authorized managed check, or recover its existing attempt.
     CheckPublish {
         #[arg(long)]
@@ -225,6 +234,17 @@ pub enum Action {
         #[arg(long,value_parser=clap::value_parser!(i64).range(1..))]
         epoch: i64,
     },
+    /// Prepare a private v2 policy draft from an inspection; no approval or network.
+    PolicyDraft {
+        #[arg(long)]
+        inspection: PathBuf,
+        /// Private JSON: version 1, managed and workflows. No rule hashes required.
+        #[arg(long)]
+        requirements: PathBuf,
+        /// New private file. Existing files are never overwritten.
+        #[arg(long)]
+        output: PathBuf,
+    },
     /// Read branch configuration before the first PR; never approve or enqueue.
     PolicyInspect {
         /// Existing private GitHub App config; key stays in its separate file.
@@ -244,6 +264,49 @@ pub enum Action {
         #[arg(long)]
         config: PathBuf,
     },
+}
+#[derive(clap::Args)]
+pub struct PolicyOwnerArgs {
+    #[arg(long)]
+    socket: PathBuf,
+    #[arg(long)]
+    credential_file: PathBuf,
+    #[arg(long)]
+    binding: Uuid,
+    #[arg(long)]
+    base: String,
+    #[arg(long, value_parser=clap::value_parser!(i64).range(1..))]
+    epoch: i64,
+    #[arg(long, value_parser=clap::value_parser!(i64).range(0..))]
+    expected_generation: i64,
+    #[arg(long)]
+    definition: PathBuf,
+}
+async fn policy_owner(args: PolicyOwnerArgs, key: Option<String>) -> Result<bool> {
+    let credential = Credential::load(&args.credential_file)?;
+    let p: treeharbor_metadata::github::AdmissionPolicy =
+        serde_json::from_slice(&files::read_private(&args.definition, 256 * 1024)?)
+            .map_err(|_| Error::PolicyDraft)?;
+    p.canonical().map_err(|_| Error::PolicyDraft)?;
+    let mut request = json!({"action":if key.is_some(){"admission_policy_set"}else{"admission_policy_plan"},
+        "epoch":args.epoch,"binding":args.binding,"base_ref":args.base,
+        "expected_generation":args.expected_generation,"definition":p});
+    if let Some(key) = key {
+        request["key"] = json!(key);
+    }
+    let result = command(&args.socket, &credential, request).await?;
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&result).map_err(|_| Error::Http)?
+    );
+    Ok(true)
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PolicyRequirements {
+    version: u8,
+    managed: Vec<treeharbor_metadata::github::ManagedRequirement>,
+    workflows: Vec<treeharbor_github_contract::workflow_definitions::CheckApproval>,
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -300,6 +363,8 @@ fn matches_config(config: &Config, spec: &treeharbor_metadata::github::BindingSp
 }
 pub async fn run(action: Action) -> Result<bool> {
     match action {
+        Action::PolicyPlan(policy) => policy_owner(policy, None).await,
+        Action::PolicyAdopt { policy, key } => policy_owner(policy, Some(key)).await,
         Action::CheckPublish {
             config,
             socket,
@@ -583,6 +648,41 @@ pub async fn run(action: Action) -> Result<bool> {
             println!(
                 "{}",
                 serde_json::to_string_pretty(&result).map_err(|_| Error::Http)?
+            );
+            Ok(true)
+        }
+        Action::PolicyDraft {
+            inspection,
+            requirements,
+            output,
+        } => {
+            let source: Value =
+                serde_json::from_slice(&files::read_private(&inspection, 256 * 1024)?)
+                    .map_err(|_| Error::Http)?;
+            // Accept raw Inspection or policy-inspect output. Derived envelope
+            // diagnostics are deliberately not trusted; compute from the source.
+            let observed: treeharbor_github_contract::host_configuration::Inspection =
+                serde_json::from_value(source.get("inspection").unwrap_or(&source).clone())
+                    .map_err(|_| Error::Http)?;
+            let proposal: PolicyRequirements =
+                serde_json::from_slice(&files::read_private(&requirements, 256 * 1024)?)
+                    .map_err(|_| Error::PolicyDraft)?;
+            if proposal.version != 1 {
+                return Err(Error::PolicyDraft);
+            }
+            let draft = treeharbor_metadata::github::AdmissionPolicy::from_inspection(
+                &observed,
+                proposal.managed,
+                proposal.workflows,
+            )
+            .map_err(|_| Error::PolicyDraft)?;
+            let bytes = draft.canonical().map_err(|_| Error::PolicyDraft)?;
+            let id = draft.digest().map_err(|_| Error::PolicyDraft)?;
+            files::write_private(&output, &bytes)?;
+            println!(
+                "{}",
+                json!({"version":1,"output":output,"policy":id.to_string(),
+                "target":observed.after.visibility.target,"approved":false,"admission_verified":false})
             );
             Ok(true)
         }

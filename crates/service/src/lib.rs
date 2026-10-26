@@ -27,6 +27,10 @@ mod webhooks;
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error(
+        "policy draft requires valid requirements and a complete, stable configuration inspection"
+    )]
+    PolicyDraft,
+    #[error(
         "MCP connection failed; submitted mutations may have committed; inspect their original operation keys"
     )]
     Mcp,

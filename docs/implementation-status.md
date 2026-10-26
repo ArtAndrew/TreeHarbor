@@ -9,13 +9,38 @@ below retain evidence from individual increments. Their earlier statements about
 unfinished work describe the scope at that time; they are not a replacement for
 the current overview or the full [release gate ledger](#release-gate-ledger).
 
-Last full CI baseline before this increment: [PR71](https://github.com/ArtAndrew/TreeHarbor/pull/71),
+Last full CI baseline before this increment: [PR72](https://github.com/ArtAndrew/TreeHarbor/pull/72),
 published on 2026-10-26 after all six required checks passed. The
-[CI run](https://github.com/ArtAndrew/TreeHarbor/actions/runs/40287902976) passed
-370 ordinary tests on each of Linux/macOS, 317 real PostgreSQL contracts, 43 actual
+[CI run](https://github.com/ArtAndrew/TreeHarbor/actions/runs/40292026513) passed
+383 ordinary tests on each of Linux/macOS, 317 real PostgreSQL contracts, 43 actual
 gVisor scenario groups on each of Linux x86-64/ARM64, and 11 webhook TLS/failure
 groups. These correctness checks do not establish complete mode readiness or
 performance superiority.
+
+## Owner-reviewed configuration pins
+
+AdmissionPolicy version2 binds a complete Configuration v1 to the owner-approved
+policy. Adoption checks the exact upstream repository/base, effective rules and
+entire required App/name set. The existing generation CAS, immutable records,
+queue/execution fences and replay receipts apply without a database migration.
+V1 bytes/digests stay unchanged. Explicit restoration creates a new generation
+and does not revive an old queue, even when the required checks are identical.
+
+`github policy-draft` constructs private reviewable input from a stable inspection
+and managed/workflow requirements without hand-written rule hashes. It works
+offline and refuses output overwrite. `policy-plan` previews the next context names
+without approval, including a false `required_matches` during host setup.
+`policy-adopt` explicitly stores the reviewed policy with a generation and replay
+key; mismatching configured checks cannot be adopted.
+
+Independent v2/v1 encoding tests, real PostgreSQL queue/CAS/ABA boundaries, actual
+CLI/service crash recovery and private-file CLI tests exercise this increment.
+Local verification on 2026-10-26 passed 388 ordinary workspace tests, 25
+PostgreSQL admission regression cases, two CLI/service recovery scenarios,
+formatting and strict workspace Clippy. Provider observations in those tests are fixtures. A pin records owner intent,
+not a claim that GitHub currently enforces it. Current candidate-bound supplemental
+visibility, complete review/workflow proof and final admission remain unfinished.
+See [reviewed configuration](github-admission-policy.md#review-and-pin-complete-configuration-version2).
 
 ## Configuration inspection before the first PR
 
@@ -36,8 +61,7 @@ case cover independent encoding vectors, target/identity substitution, incomplet
 or duplicate lists, drift, exact permission requests, revocation and errors.
 These are local synthetic-provider tests, not an installed-App acceptance claim.
 See [configuration inspection](github-host-policy.md#inspect-configuration-before-the-first-pr).
-Owner configuration pinning, current candidate policy/review/workflow proof and
-full admission remain open, along with both modes' remaining release gates.
+Current candidate policy/review/workflow proof and full admission remain open, along with both modes' remaining release gates.
 
 ## Effective host-policy analysis
 
@@ -60,8 +84,7 @@ replay test and CLI/server process-loss recovery test passed, as did final stric
 workspace Clippy and formatting. Exact-head CI remains required before merge. See [policy analysis](github-host-policy.md#policy-analysis)
 for the encoding, supported interpretation and limits.
 
-Owner profile pinning with versioned admission policy, complete review/workflow
-proof and final current admission remain open. A historical diagnostic is not merge authorization. Both
+Complete current host-policy/review/workflow proof and final admission remain open. A historical diagnostic is not merge authorization. Both
 mode lifecycles, operations, packaging and comparative benchmarks remain required.
 
 ## Host policy and review observations

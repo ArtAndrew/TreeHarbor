@@ -1,0 +1,202 @@
+{
+  "generator": "Independent Python json/hashlib v2; v1 fixture unchanged",
+  "policy": {
+    "version": 2,
+    "rules": {
+      "sha256": "fe22e94e001aeca40f3aaa8eeb8d63f2cbad077c4468d19240035c39dd16e127",
+      "count": 1,
+      "merge_queue": true
+    },
+    "managed": [],
+    "workflows": [
+      {
+        "required": {
+          "name": "CI / build",
+          "app_id": 7
+        },
+        "workflow_id": "WF_checks",
+        "path": ".github/workflows/check.yml",
+        "content_sha256": "sha256:085e2fe834d512b46741154f1387748d505a7bfca2bde566c9b18a62e3c4281e",
+        "expected_context": {
+          "environment": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+          "toolchain": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+          "dependencies": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      }
+    ],
+    "host_configuration": {
+      "version": 1,
+      "profile": {
+        "version": 1,
+        "repository_id": 11,
+        "repository_name": "example-org/demo",
+        "base_ref": "main",
+        "protection": {
+          "status": 200,
+          "value": {
+            "enforce_admins": {
+              "enabled": true
+            },
+            "allow_force_pushes": {
+              "enabled": false
+            },
+            "allow_deletions": {
+              "enabled": false
+            },
+            "required_status_checks": {
+              "strict": true,
+              "contexts": [
+                "CI / build"
+              ],
+              "checks": [
+                {
+                  "context": "CI / build",
+                  "app_id": 7
+                }
+              ]
+            },
+            "required_pull_request_reviews": null,
+            "required_linear_history": {
+              "enabled": false
+            },
+            "required_signatures": {
+              "enabled": false
+            },
+            "block_creations": {
+              "enabled": false
+            },
+            "allow_fork_syncing": {
+              "enabled": false
+            },
+            "required_conversation_resolution": {
+              "enabled": false
+            },
+            "lock_branch": {
+              "enabled": false
+            },
+            "restrictions": null
+          }
+        },
+        "rules": [
+          {
+            "type": "merge_queue",
+            "ruleset_id": 42,
+            "ruleset_source_type": "Repository",
+            "ruleset_source": "example-org/demo",
+            "parameters": {
+              "merge_method": "MERGE",
+              "grouping_strategy": "ALLGREEN",
+              "max_entries_to_build": 5,
+              "max_entries_to_merge": 5,
+              "min_entries_to_merge": 1,
+              "min_entries_to_merge_wait_minutes": 0,
+              "check_response_timeout_minutes": 20
+            }
+          }
+        ],
+        "rulesets": [
+          {
+            "source": {
+              "id": 42,
+              "kind": "Repository",
+              "name": "example-org/demo"
+            },
+            "document": {
+              "status": 200,
+              "value": {
+                "id": 42,
+                "source_type": "Repository",
+                "source": "example-org/demo",
+                "target": "branch",
+                "enforcement": "active",
+                "bypass_actors": [],
+                "conditions": {
+                  "ref_name": {
+                    "include": [
+                      "refs/heads/main"
+                    ],
+                    "exclude": []
+                  }
+                },
+                "rules": [
+                  {
+                    "type": "merge_queue",
+                    "parameters": {
+                      "merge_method": "MERGE",
+                      "grouping_strategy": "ALLGREEN",
+                      "max_entries_to_build": 5,
+                      "max_entries_to_merge": 5,
+                      "min_entries_to_merge": 1,
+                      "min_entries_to_merge_wait_minutes": 0,
+                      "check_response_timeout_minutes": 20
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        ],
+        "queue": {
+          "id": "MQ_one",
+          "merge_method": "MERGE",
+          "merging_strategy": "ALLGREEN",
+          "maximum_entries_to_build": 5,
+          "maximum_entries_to_merge": 5,
+          "minimum_entries_to_merge": 1,
+          "minimum_entries_wait_minutes": 0,
+          "check_timeout_minutes": 20
+        }
+      },
+      "visibility": {
+        "target": {
+          "repository_id": 11,
+          "repository_name": "example-org/demo",
+          "base_ref": "main"
+        },
+        "owner_kind": "Organization",
+        "queue_id": "MQ_one",
+        "legacy": {
+          "id": "BPR_fixture",
+          "repository_id": 11,
+          "flags": {
+            "allowsDeletions": false,
+            "allowsForcePushes": false,
+            "blocksCreations": false,
+            "dismissesStaleReviews": false,
+            "isAdminEnforced": true,
+            "lockAllowsFetchAndMerge": false,
+            "lockBranch": false,
+            "requireLastPushApproval": false,
+            "requiresApprovingReviews": false,
+            "requiresCodeOwnerReviews": false,
+            "requiresCommitSignatures": false,
+            "requiresConversationResolution": false,
+            "requiresDeployments": false,
+            "requiresLinearHistory": false,
+            "requiresStatusChecks": true,
+            "requiresStrictStatusChecks": true,
+            "restrictsPushes": false,
+            "restrictsReviewDismissals": false
+          },
+          "approving_reviews": 0,
+          "required_contexts": [
+            "CI / build"
+          ],
+          "deployment_environments": [],
+          "bypass_pull_requests": {
+            "total_count": 0,
+            "nodes": [],
+            "has_next_page": false
+          },
+          "bypass_force_pushes": {
+            "total_count": 0,
+            "nodes": [],
+            "has_next_page": false
+          }
+        }
+      }
+    }
+  },
+  "canonical": "{\"host_configuration\":{\"profile\":{\"base_ref\":\"main\",\"protection\":{\"status\":200,\"value\":{\"allow_deletions\":{\"enabled\":false},\"allow_force_pushes\":{\"enabled\":false},\"allow_fork_syncing\":{\"enabled\":false},\"block_creations\":{\"enabled\":false},\"enforce_admins\":{\"enabled\":true},\"lock_branch\":{\"enabled\":false},\"required_conversation_resolution\":{\"enabled\":false},\"required_linear_history\":{\"enabled\":false},\"required_pull_request_reviews\":null,\"required_signatures\":{\"enabled\":false},\"required_status_checks\":{\"checks\":[{\"app_id\":7,\"context\":\"CI / build\"}],\"contexts\":[\"CI / build\"],\"strict\":true},\"restrictions\":null}},\"queue\":{\"check_timeout_minutes\":20,\"id\":\"MQ_one\",\"maximum_entries_to_build\":5,\"maximum_entries_to_merge\":5,\"merge_method\":\"MERGE\",\"merging_strategy\":\"ALLGREEN\",\"minimum_entries_to_merge\":1,\"minimum_entries_wait_minutes\":0},\"repository_id\":11,\"repository_name\":\"example-org/demo\",\"rules\":[{\"parameters\":{\"check_response_timeout_minutes\":20,\"grouping_strategy\":\"ALLGREEN\",\"max_entries_to_build\":5,\"max_entries_to_merge\":5,\"merge_method\":\"MERGE\",\"min_entries_to_merge\":1,\"min_entries_to_merge_wait_minutes\":0},\"ruleset_id\":42,\"ruleset_source\":\"example-org/demo\",\"ruleset_source_type\":\"Repository\",\"type\":\"merge_queue\"}],\"rulesets\":[{\"document\":{\"status\":200,\"value\":{\"bypass_actors\":[],\"conditions\":{\"ref_name\":{\"exclude\":[],\"include\":[\"refs/heads/main\"]}},\"enforcement\":\"active\",\"id\":42,\"rules\":[{\"parameters\":{\"check_response_timeout_minutes\":20,\"grouping_strategy\":\"ALLGREEN\",\"max_entries_to_build\":5,\"max_entries_to_merge\":5,\"merge_method\":\"MERGE\",\"min_entries_to_merge\":1,\"min_entries_to_merge_wait_minutes\":0},\"type\":\"merge_queue\"}],\"source\":\"example-org/demo\",\"source_type\":\"Repository\",\"target\":\"branch\"}},\"source\":{\"id\":42,\"kind\":\"Repository\",\"name\":\"example-org/demo\"}}],\"version\":1},\"version\":1,\"visibility\":{\"legacy\":{\"approving_reviews\":0,\"bypass_force_pushes\":{\"has_next_page\":false,\"nodes\":[],\"total_count\":0},\"bypass_pull_requests\":{\"has_next_page\":false,\"nodes\":[],\"total_count\":0},\"deployment_environments\":[],\"flags\":{\"allowsDeletions\":false,\"allowsForcePushes\":false,\"blocksCreations\":false,\"dismissesStaleReviews\":false,\"isAdminEnforced\":true,\"lockAllowsFetchAndMerge\":false,\"lockBranch\":false,\"requireLastPushApproval\":false,\"requiresApprovingReviews\":false,\"requiresCodeOwnerReviews\":false,\"requiresCommitSignatures\":false,\"requiresConversationResolution\":false,\"requiresDeployments\":false,\"requiresLinearHistory\":false,\"requiresStatusChecks\":true,\"requiresStrictStatusChecks\":true,\"restrictsPushes\":false,\"restrictsReviewDismissals\":false},\"id\":\"BPR_fixture\",\"repository_id\":11,\"required_contexts\":[\"CI / build\"]},\"owner_kind\":\"Organization\",\"queue_id\":\"MQ_one\",\"target\":{\"base_ref\":\"main\",\"repository_id\":11,\"repository_name\":\"example-org/demo\"}}},\"managed\":[],\"rules\":{\"count\":1,\"merge_queue\":true,\"sha256\":\"fe22e94e001aeca40f3aaa8eeb8d63f2cbad077c4468d19240035c39dd16e127\"},\"version\":2,\"workflows\":[{\"content_sha256\":\"sha256:085e2fe834d512b46741154f1387748d505a7bfca2bde566c9b18a62e3c4281e\",\"expected_context\":{\"dependencies\":\"sha256:3333333333333333333333333333333333333333333333333333333333333333\",\"environment\":\"sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"toolchain\":\"sha256:2222222222222222222222222222222222222222222222222222222222222222\"},\"path\":\".github/workflows/check.yml\",\"required\":{\"app_id\":7,\"name\":\"CI / build\"},\"workflow_id\":\"WF_checks\"}]}",
+  "digest": "sha256:5d498a2daf7c5b8c49a3607237c5e1ae4bd21c688d47e916de75d7a6f2029238"
+}
