@@ -142,7 +142,7 @@ class Harness:
         self.transport = self.root / "proxy"
         self.transport.mkdir(mode=0o700)
         log = (self.root / "proxy.log").open("w")
-        self.proxy = subprocess.Popen(["sudo", "-n", sys.executable,
+        self.proxy = subprocess.Popen(["sudo", "-n", sys.executable, "-B",
                                       str(Path("scripts/test-runtime-controller.py").absolute()), "--proxy",
                                       str(self.transport), str(os.getgid())], stdout=log, stderr=subprocess.STDOUT)
         wait_until(lambda: (self.transport / "proxy.pid").exists())
