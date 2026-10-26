@@ -100,6 +100,23 @@ def package(args):
         files[name] = (data, mode)
     for name in ("treeharbor", "treeharbor-runtime-init"):
         add("bin/" + name, binary(args.bin_dir / name, TARGETS[args.target]), 0o755)
+    observations_digest = None
+    observations_path = getattr(args, "input_observations", None)
+    if observations_path is not None:
+        data = regular(observations_path)
+        observations = json.loads(data)
+        expected = {name: hashlib.sha256(files["bin/" + name][0]).hexdigest()
+                    for name in ("treeharbor", "treeharbor-runtime-init")}
+        if (not isinstance(observations, dict) or observations.get("version") != 1
+                or observations.get("target") != args.target
+                or observations.get("packaging_source_revision") != revision
+                or observations.get("binary_sha256") != expected
+                or observations.get("native_link_closure_verified") is not False
+                or observations.get("build_provenance_verified") is not False
+                or not isinstance(observations.get("rust_sbom_sha256"), str)
+                or not re.fullmatch(r"[0-9a-f]{64}", observations.get("rust_sbom_sha256", ""))):
+            raise ValueError("dependency observations do not match packaged binary bytes/source/target")
+        observations_digest = hashlib.sha256(data).hexdigest()
     for name in ("LICENSE", "NOTICE", "THIRD_PARTY_NOTICES.md", "README.md", "SECURITY.md", "Cargo.lock"):
         add(name, regular(ROOT / name))
     # Only tracked public documentation/examples/notices are eligible. Never walk
@@ -117,6 +134,8 @@ def package(args):
                 "source_revision": revision, "source_date_epoch": epoch,
                 "files": {name: {"sha256": hashlib.sha256(data).hexdigest(), "mode": oct(mode)}
                           for name, (data, mode) in sorted(files.items())}}
+    if observations_digest is not None:
+        manifest["rust_dependency_observations_sha256"] = observations_digest
     add("manifest.json", (json.dumps(manifest, sort_keys=True, indent=2) + "\n").encode())
     sums = "".join(f"{hashlib.sha256(data).hexdigest()}  {name}\n" for name, (data, _) in sorted(files.items()))
     add("SHA256SUMS", sums.encode())
@@ -142,6 +161,7 @@ def main():
     parser.add_argument("--target", required=True, choices=TARGETS)
     parser.add_argument("--bin-dir", required=True, type=Path)
     parser.add_argument("--output-dir", required=True, type=Path)
+    parser.add_argument("--input-observations", type=Path)
     try:
         package(parser.parse_args())
     except (OSError, ValueError, subprocess.CalledProcessError) as error:

@@ -95,15 +95,17 @@ def capture(args):
     # Detect mutable prebuilt files being replaced while scanning their copies.
     if any(sbom.sha256(args.bin_dir / n) != hashes[n] for n in NAMES):
         raise ValueError("binary input changed during capture")
+    report_data = (json.dumps(result, sort_keys=True, indent=2, ensure_ascii=False) + "\n").encode()
     observations = {"version": 1, "target": args.target, "packaging_source_revision": revision,
+                    "rust_sbom_sha256": hashlib.sha256(report_data).hexdigest(),
                     "binary_sha256": hashes, "cargo_lock_sha256": sbom.sha256(ROOT / "Cargo.lock"),
                     "observed_rustc": compiler, "available_sysroot_inputs": inputs,
                     "observed_tool_sha256": tool_hashes,
                     "coverage": sbom.COVERAGE, "native_link_closure_verified": False,
                     "build_provenance_verified": False}
     sums = []
-    for name, value in (("rust-dependencies.cdx.json", result), ("input-observations.json", observations)):
-        data = (json.dumps(value, sort_keys=True, indent=2, ensure_ascii=False) + "\n").encode()
+    observation_data = (json.dumps(observations, sort_keys=True, indent=2, ensure_ascii=False) + "\n").encode()
+    for name, data in (("rust-dependencies.cdx.json", report_data), ("input-observations.json", observation_data)):
         with (args.output_dir / name).open("xb") as output:
             output.write(data)
         sums.append(f"{hashlib.sha256(data).hexdigest()}  {name}\n")

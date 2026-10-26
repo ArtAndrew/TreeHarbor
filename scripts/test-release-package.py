@@ -140,6 +140,33 @@ class PackageTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 self.pack()
 
+    def test_dependency_observations_bind_the_bytes_inside_the_archive(self):
+        observations = {"version": 1, "target": "x86_64-unknown-linux-musl",
+                        "packaging_source_revision": self.git("rev-parse", "HEAD").decode().strip(),
+                        "binary_sha256": {n: hashlib.sha256((self.bins / n).read_bytes()).hexdigest()
+                                          for n in ("treeharbor", "treeharbor-runtime-init")},
+                        "rust_sbom_sha256": "ef" * 32,
+                        "native_link_closure_verified": False, "build_provenance_verified": False}
+        path = self.base / "observations.json"
+        path.write_text(json.dumps(observations))
+        args = SimpleNamespace(target="x86_64-unknown-linux-musl", bin_dir=self.bins,
+                               output_dir=self.base / "observed", input_observations=path)
+        with contextlib.redirect_stdout(io.StringIO()):
+            module.package(args)
+        with tarfile.open(next(args.output_dir.glob("*.tar.gz"))) as archive:
+            manifest = json.load(archive.extractfile(next(m for m in archive if m.name.endswith("/manifest.json"))))
+            self.assertEqual(manifest["rust_dependency_observations_sha256"], hashlib.sha256(path.read_bytes()).hexdigest())
+        for field, value in (("target", "aarch64-unknown-linux-musl"),
+                             ("packaging_source_revision", "00" * 20),
+                             ("binary_sha256", {}), ("rust_sbom_sha256", 0),
+                             ("native_link_closure_verified", True), ("build_provenance_verified", True)):
+            invalid = dict(observations, **{field: value})
+            path.write_text(json.dumps(invalid))
+            args.output_dir = self.base / field
+            with self.assertRaisesRegex(ValueError, "do not match"):
+                module.package(args)
+            self.assertFalse(args.output_dir.exists())
+
     def test_dirty_sources_and_internal_docs_never_enter_archive(self):
         self.write("operator-private-key.pem", b"private test sentinel")
         with self.assertRaisesRegex(ValueError, "clean committed"):
