@@ -60,6 +60,7 @@ def exercise(h, landed, managed):
             pid = h.transport / "proxy.pid"
             if pid.exists():
                 managed.command("sudo", "kill", "-TERM", pid.read_text().strip(), check=False)
+                pid.unlink()
         for case in h.cases:
             managed.docker("rm", "--force", "treeharbor-" + case["attempt"], check=False)
         before = snapshot("treeharbor_test")
