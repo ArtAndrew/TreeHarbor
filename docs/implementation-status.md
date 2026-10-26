@@ -9,26 +9,43 @@ below retain evidence from individual increments. Their earlier statements about
 unfinished work describe the scope at that time; they are not a replacement for
 the current overview or the full [release gate ledger](#release-gate-ledger).
 
-Last full CI baseline before this increment: [PR78](https://github.com/ArtAndrew/TreeHarbor/pull/78),
-published on 2026-10-26 after all six required checks and both package jobs passed. The
-[CI run](https://github.com/ArtAndrew/TreeHarbor/actions/runs/40327207164) passed
+Last full CI baseline before this increment: [PR79](https://github.com/ArtAndrew/TreeHarbor/pull/79),
+published on 2026-10-26 after all six required checks and both package jobs passed.
+The [CI run](https://github.com/ArtAndrew/TreeHarbor/actions/runs/40357750037) passed
 402 ordinary tests on Linux and 400 on macOS, 328 real PostgreSQL contracts,
 14 static-runtime unit tests and 48 installed-runtime/controller/managed/native
 scenario groups on each of Linux x86-64/ARM64, and 11 webhook TLS/failure groups.
 These correctness checks do not establish complete mode readiness or performance
-superiority. The current binary-dependency increment still requires its own full and package CI.
+superiority. The additional restored-node scenario below needs its own CI evidence.
 
 ## Binary-derived Rust dependency reports
 
-The current increment adds pinned cargo-auditable/Syft build tooling, binary-hash
-and declared-license joins, removal of local report paths and target sysroot input
-observations. Installed-runtime CI uses the instrumented static binaries, while
-package CI retains checksummed reports beside archives. Full Linux CI for this
-increment is pending. Local normalization boundaries passed; an actual instrumented
-probe report passed the official CycloneDX 1.7 schema and Syft's SPDX conversion.
-An actual ordinary Linux binary without an embedded graph was refused even with
-full source metadata available. This is Cargo coverage, not complete native SBOM
-or signed provenance. See [report scope](binary-dependency-reports.md).
+Pinned cargo-auditable/Syft tooling now builds and inspects the actual static
+binaries on both Linux architectures. [Package CI](https://github.com/ArtAndrew/TreeHarbor/actions/runs/40357750059)
+retains checksummed reports beside archives. The audited archives each contained
+589 manifest files and 279 Rust library components; binary, observation and report
+hashes matched, and both reports passed the official CycloneDX 1.7 JSON schema.
+Normalization boundaries also refuse ordinary binaries without an embedded graph,
+even when source metadata is available. Declared licenses and source archive
+checksums are joined without claiming they identify compiled native inputs.
+This is Cargo coverage, not a complete native SBOM or signed provenance.
+See [report scope](binary-dependency-reports.md).
+
+## Replacement-node recovery drill
+
+The cold restore workload now also retains a requested but unexecuted check.
+After restoration, it explicitly revokes the old node credentials and restarts the
+service; the old worker credentials must produce an explicit authentication error (rather
+than an unrelated missing permission or transport failure), the old worker must
+fail with Engine transport available, and no execution evidence may appear for
+its check. That candidate cannot land. A newly registered node with fresh local
+state, a bounded volume and a new approved program executes a fresh exact check
+through gVisor, publishes the native candidate, exports it to ordinary Git and
+cleans up. This tests deliberate replacement after stopping the original writers;
+it does not resume an old task or reconcile a Connected GitHub publisher.
+The scenario passed locally on Linux ARM64 using the actual installed PR79
+package. Both architecture CI legs for this increment remain required; this is
+not a release approval.
 
 ## Static toolchain notice inventory
 

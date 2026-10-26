@@ -50,6 +50,7 @@ class Harness:
             raise RuntimeError("requires an unprivileged disposable Linux runner")
         self.pg = os.environ["TH_RUNTIME_PG_CONTAINER"]
         self.url = os.environ["TH_RUNTIME_DATABASE_URL"]
+        self.database = "treeharbor_test"
         self.binary = Path(os.environ.get("TH_TEST_SERVICE_BINARY", "target/debug/treeharbor")).absolute()
         self.root = Path(tempfile.mkdtemp(prefix="th-managed-", dir=os.environ.get("RUNNER_TEMP")))
         self.schema = "th_test_" + uuid.uuid4().hex
@@ -80,7 +81,7 @@ class Harness:
         return json.loads(output.stdout)["result"]
 
     def sql(self, query):
-        return docker("exec", self.pg, "psql", "-U", "treeharbor_test", "-d", "treeharbor_test",
+        return docker("exec", self.pg, "psql", "-U", "treeharbor_test", "-d", self.database,
                       "-At", "-v", "ON_ERROR_STOP=1", "-c",
                       f"SET search_path TO {self.schema}; {query}").stdout.strip().splitlines()[-1]
 
@@ -141,13 +142,16 @@ class Harness:
         self.image = docker("build", "--network=none", "--quiet", build).stdout.strip()
         self.transport = self.root / "proxy"
         self.transport.mkdir(mode=0o700)
-        log = (self.root / "proxy.log").open("w")
+        self.start_proxy()
+        self.secret = self.root / "host-secret"
+        self.secret.write_text("not-mounted")
+
+    def start_proxy(self):
+        log = (self.root / "proxy.log").open("a")
         self.proxy = subprocess.Popen(["sudo", "-n", sys.executable, "-B",
                                       str(Path("scripts/test-runtime-controller.py").absolute()), "--proxy",
                                       str(self.transport), str(os.getgid())], stdout=log, stderr=subprocess.STDOUT)
         wait_until(lambda: (self.transport / "proxy.pid").exists())
-        self.secret = self.root / "host-secret"
-        self.secret.write_text("not-mounted")
 
     def node_args(self, node, action):
         return ["node", action, "--config", str(self.config), "--credential-file", str(node["credential"]),

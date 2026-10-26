@@ -2,8 +2,9 @@
 
 Called only by the managed Linux acceptance harness, after real checked agent
 changes have landed. No schema/data edits simulate accepted source or validation.
-This verifies durable source recovery, not Connected host reconciliation or node
-resumption. Backup artifacts contain test credentials and stay in private tempdir.
+This verifies source recovery and explicitly fenced replacement-node execution,
+not Connected host reconciliation or resumption of an old in-flight task. Backup
+artifacts contain test credentials and stay in private tempdir.
 """
 import json
 from pathlib import Path
@@ -12,7 +13,7 @@ import subprocess
 import uuid
 
 
-def exercise(h, landed, managed):
+def exercise(h, landed, managed, pending):
     if not h.schema.startswith("th_test_") or "dbname=treeharbor_test" not in h.url:
         raise RuntimeError("restore drill requires the disposable acceptance database")
     target = "th_restore_" + uuid.uuid4().hex
@@ -24,6 +25,7 @@ def exercise(h, landed, managed):
     hidden_store = h.root / "original-objects-unavailable"
     restored_store = h.root / "restored-objects"
     created, hidden = False, False
+    original_database = h.database
 
     def sql(database, query):
         out = managed.docker("exec", h.pg, "psql", "-U", "treeharbor_test", "-d", database,
@@ -60,6 +62,7 @@ def exercise(h, landed, managed):
             pid = h.transport / "proxy.pid"
             if pid.exists():
                 managed.command("sudo", "kill", "-TERM", pid.read_text().strip(), check=False)
+                h.proxy.wait(timeout=10)
                 pid.unlink()
         for case in h.cases:
             managed.docker("rm", "--force", "treeharbor-" + case["attempt"], check=False)
@@ -86,6 +89,7 @@ def exercise(h, landed, managed):
         config["database_url"] = h.url.replace("dbname=treeharbor_test", "dbname=" + target)
         config["storage"] = dict(original_config["storage"], root=str(restored_store))
         managed.private_json(h.config, config)
+        h.database = target
         start_service("original")
         assert snapshot(target) == before, "startup altered restored metadata"
         h.export_and_restore(landed, "cold-restored")
@@ -118,6 +122,79 @@ def exercise(h, landed, managed):
         start_service("repaired")
         h.export_and_restore(landed, "cold-repaired")
         print("PASS cold restore: missing and corrupt restored objects refuse export; restoring exact bytes recovers the complete Git history", flush=True)
+
+        # The old node runtime was never started for this requested check. The
+        # backup retains a request, not evidence of execution. Do not infer a
+        # successful check or restart an old node merely because metadata exists.
+        pending_before = h.native("check_status", h.ci, run=pending["check"])
+        assert pending_before["state"] == "requested"
+        assert h.native("land", h.integrator, check=False,
+                        candidate=pending["candidate"]).returncode != 0
+        for node in h.nodes:
+            token_id = json.loads(node["credential"].read_text())["token_id"]
+            h.admin("token-revoke", *h.scope, "--token-id", token_id)
+            denied = h.cli(*h.node_args(node, "run-once"),
+                           "--engine-socket", h.transport / "engine.sock", check=False)
+            assert denied.returncode != 0
+            assert denied.stderr.strip() == "credential file is invalid"
+        # Restart the restored service so denial cannot depend on a local cache.
+        h.server.kill()
+        h.server.wait(timeout=10)
+        start_service("fenced")
+        for node in h.nodes:
+            denied = h.cli(*h.node_args(node, "run-once"),
+                           "--engine-socket", h.transport / "engine.sock", check=False)
+            assert denied.returncode != 0
+            assert denied.stderr.strip() == "credential file is invalid"
+        # Keep Engine transport available: denial of the old worker must not be
+        # explained by the deliberately stopped proxy or an inaccessible Engine.
+        h.transport = h.root / "restored-proxy"
+        h.transport.mkdir(mode=0o700)
+        h.start_proxy()
+        old = h.cli(*h.node_args(pending["node"], "run-once"),
+                    "--engine-socket", h.transport / "engine.sock", check=False)
+        assert old.returncode != 0
+        assert old.stderr.strip() == "credential file is invalid"
+        assert not (pending["files"] / "check-executions").exists()
+        assert managed.docker("inspect", "treeharbor-" + pending["attempt"],
+                              check=False).returncode != 0
+        assert h.native("land", h.integrator, check=False,
+                        candidate=pending["candidate"]).returncode != 0
+        assert h.sql(f"SELECT count(*) FROM th_check_execution_evidence WHERE check_run='{pending['check']}'") == "0"
+        print("PASS cold restore: requested check is not validation; revoked old nodes remain denied after restart and cannot execute or publish", flush=True)
+
+        # Only an explicitly registered fresh node, fresh bounded volume and a
+        # new approved program/candidate are allowed to resume useful work. No
+        # old private node journal is copied into the replacement node.
+        name = "restore-replacement-node"
+        credential = h.principal(name, "node", ["runtime.control"])
+        root = h.root / name
+        identity = h.value("node", "initialize", "--root", root,
+                           "--tenant", "managed-ci", "--principal", name)
+        h.admin("node-register", "--tenant", "managed-ci", "--principal", name,
+                "--storage", identity["storage"])
+        index = len(h.nodes)
+        h.nodes.append({"root": root, "credential": credential, "storage": identity["storage"]})
+        fresh = h.check_case(node=index, timeout=17000)
+        assert fresh["node"]["root"] != pending["node"]["root"]
+        assert fresh["workspace"] != pending["workspace"]
+        assert fresh["candidate"] != pending["candidate"]
+        assert h.native("land", h.integrator, check=False,
+                        candidate=fresh["candidate"]).returncode != 0
+        h.completed_check(fresh, h.start(fresh))
+        assert (fresh["files"] / "check-executions").read_bytes() == b"one check\n"
+        result = h.native("land", h.integrator, key="restored-fresh-land",
+                          candidate=fresh["candidate"])
+        assert result["state"] == "landed"
+        assert result == h.native("land", h.integrator, key="restored-fresh-land",
+                                  candidate=fresh["candidate"])
+        assert h.native("ref_resolve", h.policy_admin, name=fresh["target"])["head"] == result["revision"]
+        h.export_and_restore(result, "replacement-node")
+        h.native("check_release", h.ci, run=fresh["check"])
+        h.cleanup_workspace(fresh, already_drained=True)
+        assert h.native("check_status", h.ci, run=fresh["check"])["state"] == "collected"
+        print("PASS cold restore: fresh node executes actual gVisor check, exact candidate lands once, exports to ordinary Git and cleans up", flush=True)
+
     finally:
         if h.server and h.server.poll() is None:
             h.server.kill()
@@ -126,4 +203,5 @@ def exercise(h, landed, managed):
             managed.docker("exec", h.pg, "dropdb", "-U", "treeharbor_test", "--force", target, check=False)
         if hidden:
             hidden_store.rename(original_store)
+        h.database = original_database
         managed.private_json(h.config, original_config)
