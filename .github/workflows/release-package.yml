@@ -7,6 +7,10 @@ on:
       - scripts/install-release.sh
       - scripts/test-release-package.py
       - scripts/test-release-install.py
+      - scripts/normalize-rust-sbom.py
+      - scripts/capture-rust-sbom.py
+      - scripts/install-sbom-tools.sh
+      - scripts/test-sbom-normalization.py
   workflow_dispatch:
 permissions:
   contents: read
@@ -31,21 +35,32 @@ jobs:
         with:
           persist-credentials: false
       - name: Check archive boundaries and offline installer
-        run: python3 scripts/test-release-package.py
+        run: |
+          python3 scripts/test-release-package.py
+          python3 scripts/test-sbom-normalization.py
       - name: Install build prerequisites
         run: |
           rustup toolchain install 1.99.1 --profile minimal --target ${{ matrix.arch }}-unknown-linux-musl
           sudo apt-get update -qq
           sudo apt-get install -y musl-tools cmake
+      - name: Install pinned binary-dependency tools
+        run: |
+          sh scripts/install-sbom-tools.sh '${{ matrix.arch }}' "$RUNNER_TEMP/sbom-tools"
+          echo "$RUNNER_TEMP/sbom-tools" >> "$GITHUB_PATH"
       - name: Build actual static release binaries
-        run: cargo build --locked --release --target ${{ matrix.arch }}-unknown-linux-musl -p treeharbor-service -p treeharbor-runtime --bins
+        run: cargo auditable build --locked --release --target ${{ matrix.arch }}-unknown-linux-musl -p treeharbor-service -p treeharbor-runtime --bins
       - name: Package and test offline installation
         env:
           TH_PACKAGE_DIR: ${{ runner.temp }}/treeharbor-package
+          TH_SBOM_DIR: ${{ runner.temp }}/treeharbor-sbom
         run: |
+          python3 scripts/capture-rust-sbom.py --target ${{ matrix.arch }}-unknown-linux-musl --bin-dir target/${{ matrix.arch }}-unknown-linux-musl/release --syft "$RUNNER_TEMP/sbom-tools/syft" --output-dir "$TH_SBOM_DIR"
           python3 scripts/package-release.py --target ${{ matrix.arch }}-unknown-linux-musl --bin-dir target/${{ matrix.arch }}-unknown-linux-musl/release --output-dir "$TH_PACKAGE_DIR"
+          cp "$TH_SBOM_DIR/"*.json "$TH_PACKAGE_DIR/"
+          cp "$TH_SBOM_DIR/SHA256SUMS" "$TH_PACKAGE_DIR/SBOM-SHA256SUMS"
           cd "$TH_PACKAGE_DIR"
           sha256sum --check --strict *.sha256
+          sha256sum --check --strict SBOM-SHA256SUMS
           cd "$GITHUB_WORKSPACE"
           python3 scripts/test-release-install.py "$TH_PACKAGE_DIR"/*.tar.gz
       - name: Retain tested development packages
@@ -55,6 +70,8 @@ jobs:
           path: |
             ${{ runner.temp }}/treeharbor-package/*.tar.gz
             ${{ runner.temp }}/treeharbor-package/*.sha256
+            ${{ runner.temp }}/treeharbor-package/*.json
+            ${{ runner.temp }}/treeharbor-package/SBOM-SHA256SUMS
           if-no-files-found: error
           retention-days: 7
           compression-level: 0

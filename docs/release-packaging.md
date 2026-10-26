@@ -30,6 +30,10 @@ pin that has not received notice review. This verifies notice inclusion and hash
 it does not establish the compiler used for the supplied binaries or replace a
 target-specific SBOM and signed build provenance.
 
+Package CI also retains [binary-derived Rust dependency reports](binary-dependency-reports.md)
+and observed toolchain input hashes beside its archives. Their coverage is explicit:
+they are not yet the complete native SBOM or provenance required for release.
+
 Once a release has been approved and its archive checksum verified against the
 release's trusted metadata, offline installation will use:
 

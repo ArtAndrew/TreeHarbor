@@ -127,13 +127,19 @@ jobs:
         run: python3 scripts/test-runtime.py
       - name: Exercise Rust runtime control and lost Engine responses
         run: python3 scripts/test-runtime-controller.py
+      - name: Install pinned binary-dependency tools
+        run: |
+          sh scripts/install-sbom-tools.sh '${{ matrix.arch }}' "$RUNNER_TEMP/sbom-tools"
+          echo "$RUNNER_TEMP/sbom-tools" >> "$GITHUB_PATH"
       - name: Install the actual static release package for lifecycle acceptance
         env:
           TH_PACKAGE_DIR: ${{ runner.temp }}/runtime-package
           TH_EXTRACT_DIR: ${{ runner.temp }}/runtime-package-extracted
           TH_INSTALL_PREFIX: ${{ runner.temp }}/runtime-package-installed
+          TH_SBOM_DIR: ${{ runner.temp }}/runtime-sbom
         run: |
-          cargo build --locked --release --target ${{ matrix.arch }}-unknown-linux-musl -p treeharbor-service -p treeharbor-runtime --bins
+          cargo auditable build --locked --release --target ${{ matrix.arch }}-unknown-linux-musl -p treeharbor-service -p treeharbor-runtime --bins
+          python3 scripts/capture-rust-sbom.py --target ${{ matrix.arch }}-unknown-linux-musl --bin-dir target/${{ matrix.arch }}-unknown-linux-musl/release --syft "$RUNNER_TEMP/sbom-tools/syft" --output-dir "$TH_SBOM_DIR"
           git status --short --untracked-files=normal
           python3 scripts/package-release.py --target ${{ matrix.arch }}-unknown-linux-musl --bin-dir target/${{ matrix.arch }}-unknown-linux-musl/release --output-dir "$TH_PACKAGE_DIR"
           cd "$TH_PACKAGE_DIR"
