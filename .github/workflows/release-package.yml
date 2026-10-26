@@ -55,7 +55,7 @@ jobs:
           TH_SBOM_DIR: ${{ runner.temp }}/treeharbor-sbom
         run: |
           python3 scripts/capture-rust-sbom.py --target ${{ matrix.arch }}-unknown-linux-musl --bin-dir target/${{ matrix.arch }}-unknown-linux-musl/release --syft "$RUNNER_TEMP/sbom-tools/syft" --output-dir "$TH_SBOM_DIR"
-          python3 scripts/package-release.py --target ${{ matrix.arch }}-unknown-linux-musl --bin-dir target/${{ matrix.arch }}-unknown-linux-musl/release --output-dir "$TH_PACKAGE_DIR"
+          python3 scripts/package-release.py --target ${{ matrix.arch }}-unknown-linux-musl --bin-dir target/${{ matrix.arch }}-unknown-linux-musl/release --output-dir "$TH_PACKAGE_DIR" --input-observations "$TH_SBOM_DIR/input-observations.json"
           cp "$TH_SBOM_DIR/"*.json "$TH_PACKAGE_DIR/"
           cp "$TH_SBOM_DIR/SHA256SUMS" "$TH_PACKAGE_DIR/SBOM-SHA256SUMS"
           cd "$TH_PACKAGE_DIR"

@@ -4,8 +4,7 @@ Release and installed-runtime CI build static Linux binaries through
 **cargo-auditable 0.7.7**, then read their embedded Cargo dependency sections with
 **Syft 1.55.0**. Tool archives are pinned by SHA-256 in
 `scripts/install-sbom-tools.sh`; installation is into a new build directory,
-without replacing system tools. These tools are build dependencies, not a new
-TreeHarbor runtime or programming language.
+without replacing system tools. These tools run only on builders. TreeHarbor’s runtime remains Rust.
 
 The reports are **Rust dependency coverage, not a complete native SBOM or signed
 build provenance**. Precompiled standard-library internals and native components
@@ -24,6 +23,11 @@ those gates or approves a release.
   `native_link_closure_verified` and `build_provenance_verified` false.
 - `SHA256SUMS`: integrity of both JSON files. In package CI artifacts this is named
   `SBOM-SHA256SUMS`, beside the archives and their checksums.
+
+The package manifest binds the observations file by SHA-256; observations bind
+the report by SHA-256. Packaging compares both binary hashes, target and checkout
+revision, so replacing a binary after capture refuses the package. These hash
+links establish integrity, not a signature or native component completeness.
 
 File hashes must match the supplied binaries. Unknown or ambiguous package
 declarations, unsupported package sources, missing source checksums, foreign

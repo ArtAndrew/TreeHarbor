@@ -141,7 +141,7 @@ jobs:
           cargo auditable build --locked --release --target ${{ matrix.arch }}-unknown-linux-musl -p treeharbor-service -p treeharbor-runtime --bins
           python3 scripts/capture-rust-sbom.py --target ${{ matrix.arch }}-unknown-linux-musl --bin-dir target/${{ matrix.arch }}-unknown-linux-musl/release --syft "$RUNNER_TEMP/sbom-tools/syft" --output-dir "$TH_SBOM_DIR"
           git status --short --untracked-files=normal
-          python3 scripts/package-release.py --target ${{ matrix.arch }}-unknown-linux-musl --bin-dir target/${{ matrix.arch }}-unknown-linux-musl/release --output-dir "$TH_PACKAGE_DIR"
+          python3 scripts/package-release.py --target ${{ matrix.arch }}-unknown-linux-musl --bin-dir target/${{ matrix.arch }}-unknown-linux-musl/release --output-dir "$TH_PACKAGE_DIR" --input-observations "$TH_SBOM_DIR/input-observations.json"
           cd "$TH_PACKAGE_DIR"
           sha256sum --check --strict *.sha256
           mkdir "$TH_EXTRACT_DIR"
