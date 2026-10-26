@@ -1,5 +1,7 @@
 use super::*;
-use treeharbor_github_contract::{host_policy as hp, queue::QueueObservation};
+use treeharbor_github_contract::{
+    host_policy as hp, host_policy_evaluation as he, queue::QueueObservation,
+};
 
 pub(super) async fn validate_report(
     tx: &Transaction<'_>,
@@ -74,7 +76,8 @@ impl Metadata {
             captures.push(
                 json!({"sequence":row.get::<_,i64>("sequence"),"report":report,
                 "capture_digest":p.digest(&t).map_err(|_|Error::SchemaMismatch)?,
-                "capture_reasons":p.capture_reasons(&t).map_err(|_|Error::SchemaMismatch)?}),
+                "capture_reasons":p.capture_reasons(&t).map_err(|_|Error::SchemaMismatch)?,
+                "evaluation":he::evaluate(p, &t).map_err(|_|Error::SchemaMismatch)?}),
             );
         }
         let next = if rows.len() > 1 {

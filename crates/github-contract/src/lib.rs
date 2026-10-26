@@ -6,6 +6,7 @@ pub mod group_attempts;
 pub mod group_checks;
 pub mod groups;
 pub mod host_policy;
+pub mod host_policy_evaluation;
 pub mod publication;
 pub mod queue;
 pub mod workflow_definitions;

@@ -168,6 +168,21 @@ async fn host_policy_is_immutable_scoped_paginated_and_never_replaces_queue_stat
             .await
             .unwrap();
     assert_eq!(first["captures"][0]["report"], json!(r));
+    let evaluated = &first["captures"][0]["evaluation"];
+    assert_eq!(evaluated["version"], 1);
+    assert!(
+        evaluated["reasons"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("legacy/required_signatures/flag_unproven"))
+    );
+    assert!(
+        evaluated["before_digest"]
+            .as_str()
+            .unwrap()
+            .starts_with("sha256:")
+    );
+    assert_eq!(evaluated["before_digest"], evaluated["after_digest"]);
     assert_eq!(
         first["captures"][0]["capture_digest"],
         r.host_policy.as_ref().unwrap().digest(&f.target).unwrap()

@@ -119,6 +119,13 @@ pub(super) async fn exercise(
     assert_eq!(page["captures"].as_array().unwrap().len(), 1);
     assert_eq!(page["captures"][0]["report"], report);
     assert!(page["captures"][0]["capture_digest"].is_string());
+    assert_eq!(page["captures"][0]["evaluation"]["version"], 1);
+    assert!(
+        page["captures"][0]["evaluation"]["reasons"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("legacy/required_signatures/flag_unproven"))
+    );
     assert_eq!(page["host_policy_verified"], false);
     assert_eq!(page["admission_verified"], false);
     assert_eq!(page["merge_verified"], false);
