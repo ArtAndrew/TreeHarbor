@@ -166,6 +166,14 @@ class PackageTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "do not match"):
                 module.package(args)
             self.assertFalse(args.output_dir.exists())
+        path.write_text(json.dumps(observations))
+        replacement = bytearray((self.bins / "treeharbor").read_bytes())
+        replacement[-1] ^= 1  # Still valid ELF; bytes changed after capture.
+        (self.bins / "treeharbor").write_bytes(replacement)
+        args.output_dir = self.base / "replaced-binary"
+        with self.assertRaisesRegex(ValueError, "do not match"):
+            module.package(args)
+        self.assertFalse(args.output_dir.exists())
 
     def test_dirty_sources_and_internal_docs_never_enter_archive(self):
         self.write("operator-private-key.pem", b"private test sentinel")
