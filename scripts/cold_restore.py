@@ -40,6 +40,14 @@ def exercise(h, landed, managed):
         sequences = sql(database, f"SELECT coalesce(jsonb_agg(jsonb_build_array(sequencename,last_value) ORDER BY sequencename),'[]') FROM pg_sequences WHERE schemaname='{h.schema}'")
         return rows, json.loads(sequences)
 
+    def start_service(label):
+        with (h.root / ("restored-server-" + label + ".log")).open("w") as log:
+            h.server = subprocess.Popen([str(h.binary), "serve", "--config", str(h.config)],
+                                        env=h.env, stdout=log, stderr=subprocess.STDOUT)
+        h.children.append(h.server)
+        managed.wait_until(lambda: h.client("repository-info", check=False).returncode == 0 or h.server.poll() is not None)
+        assert h.server.poll() is None, "restored service did not start"
+
     try:
         # Stop every writer before the metadata/object copy. No GC/admin writer
         # runs in this isolated harness. Existing runtime outcomes were collected
@@ -77,12 +85,7 @@ def exercise(h, landed, managed):
         config["database_url"] = h.url.replace("dbname=treeharbor_test", "dbname=" + target)
         config["storage"] = dict(original_config["storage"], root=str(restored_store))
         managed.private_json(h.config, config)
-        with (h.root / "restored-server.log").open("w") as log:
-            h.server = subprocess.Popen([str(h.binary), "serve", "--config", str(h.config)],
-                                        env=h.env, stdout=log, stderr=subprocess.STDOUT)
-        h.children.append(h.server)
-        managed.wait_until(lambda: h.client("repository-info", check=False).returncode == 0 or h.server.poll() is not None)
-        assert h.server.poll() is None, "restored service did not start"
+        start_service("original")
         assert snapshot(target) == before, "startup altered restored metadata"
         h.export_and_restore(landed, "cold-restored")
         changed = h.client("diff", "--authority", "standalone", "--epoch", "1", "change",
@@ -99,12 +102,19 @@ def exercise(h, landed, managed):
                 frame.unlink()
             else:
                 frame.write_bytes(corrupt)
+            # A fresh process cannot mask broken restored storage with cached bytes.
+            h.server.kill()
+            h.server.wait(timeout=10)
+            start_service(label)
             output = h.root / ("rejected-restore-" + label)
             result = h.client("source-export", "--authority", "standalone", "--epoch", "1",
                               "--revision", landed["revision"], "--output", output, check=False)
             assert result.returncode != 0, label
             assert not output.exists(), "failed export exposed a successful output"
             frame.write_bytes(saved)
+        h.server.kill()
+        h.server.wait(timeout=10)
+        start_service("repaired")
         h.export_and_restore(landed, "cold-repaired")
         print("PASS cold restore: missing and corrupt restored objects refuse export; restoring exact bytes recovers the complete Git history", flush=True)
     finally:
