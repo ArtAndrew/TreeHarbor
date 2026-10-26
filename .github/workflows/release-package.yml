@@ -1,0 +1,50 @@
+name: Release package checks
+on:
+  pull_request:
+    paths:
+      - .github/workflows/release-package.yml
+      - scripts/package-release.py
+      - scripts/install-release.sh
+      - scripts/test-release-package.py
+      - scripts/test-release-install.py
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: release-package-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  package:
+    name: Offline package (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            arch: x86_64
+          - os: ubuntu-24.04-arm
+            arch: aarch64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Check archive boundaries and offline installer
+        run: python3 scripts/test-release-package.py
+      - name: Install build prerequisites
+        run: |
+          rustup toolchain install 1.99.1 --profile minimal --target ${{ matrix.arch }}-unknown-linux-musl
+          sudo apt-get update -qq
+          sudo apt-get install -y musl-tools cmake
+      - name: Build actual static release binaries
+        run: cargo build --locked --release --target ${{ matrix.arch }}-unknown-linux-musl -p treeharbor-service -p treeharbor-runtime --bins
+      - name: Package and test offline installation
+        env:
+          TH_PACKAGE_DIR: ${{ runner.temp }}/treeharbor-package
+        run: |
+          python3 scripts/package-release.py --target ${{ matrix.arch }}-unknown-linux-musl --bin-dir target/${{ matrix.arch }}-unknown-linux-musl/release --output-dir "$TH_PACKAGE_DIR"
+          cd "$TH_PACKAGE_DIR"
+          sha256sum --check --strict *.sha256
+          cd "$GITHUB_WORKSPACE"
+          python3 scripts/test-release-install.py "$TH_PACKAGE_DIR"/*.tar.gz
