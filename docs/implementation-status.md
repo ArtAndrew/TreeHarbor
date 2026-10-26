@@ -9,14 +9,26 @@ below retain evidence from individual increments. Their earlier statements about
 unfinished work describe the scope at that time; they are not a replacement for
 the current overview or the full [release gate ledger](#release-gate-ledger).
 
-Last full CI baseline before this increment: [PR77](https://github.com/ArtAndrew/TreeHarbor/pull/77),
-published on 2026-10-26 after all six required checks passed. The
-[CI run](https://github.com/ArtAndrew/TreeHarbor/actions/runs/40324663693) passed
+Last full CI baseline before this increment: [PR78](https://github.com/ArtAndrew/TreeHarbor/pull/78),
+published on 2026-10-26 after all six required checks and both package jobs passed. The
+[CI run](https://github.com/ArtAndrew/TreeHarbor/actions/runs/40327207164) passed
 402 ordinary tests on Linux and 400 on macOS, 328 real PostgreSQL contracts,
 14 static-runtime unit tests and 48 installed-runtime/controller/managed/native
 scenario groups on each of Linux x86-64/ARM64, and 11 webhook TLS/failure groups.
 These correctness checks do not establish complete mode readiness or performance
-superiority. The current static-toolchain notice increment still requires its own package CI.
+superiority. The current binary-dependency increment still requires its own full and package CI.
+
+## Binary-derived Rust dependency reports
+
+The current increment adds pinned cargo-auditable/Syft build tooling, binary-hash
+and declared-license joins, removal of local report paths and target sysroot input
+observations. Installed-runtime CI uses the instrumented static binaries, while
+package CI retains checksummed reports beside archives. Full Linux CI for this
+increment is pending. Local normalization boundaries passed; an actual instrumented
+probe report passed the official CycloneDX 1.7 schema and Syft's SPDX conversion.
+An actual ordinary Linux binary without an embedded graph was refused even with
+full source metadata available. This is Cargo coverage, not complete native SBOM
+or signed provenance. See [report scope](binary-dependency-reports.md).
 
 ## Static toolchain notice inventory
 
@@ -30,7 +42,7 @@ See [the inventory](../third-party/toolchain/README.md).
 
 ## Development installation and restore acceptance
 
-[Package CI](https://github.com/ArtAndrew/TreeHarbor/actions/runs/40305853237)
+[Package CI](https://github.com/ArtAndrew/TreeHarbor/actions/runs/40327207139)
 built static Linux x86-64 and ARM64 archives, verified hashes, installed into fresh
 prefixes and executed the CLI. The [packaging guide](release-packaging.md) describes
 scope and temporary development artifacts. No approved release exists yet.
