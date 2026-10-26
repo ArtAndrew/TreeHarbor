@@ -1090,7 +1090,7 @@ async fn admission_policy_upgrade_preserves_populated_v28_without_implicit_pins(
             .await
             .unwrap()
             .get::<_, i32>(0),
-        30
+        31
     );
     assert_eq!(raw.query_one("SELECT (SELECT count(*) FROM th_github_admission_policies)+(SELECT count(*) FROM th_github_admission_refs)+(SELECT count(*) FROM th_github_queue_admission)+(SELECT count(*) FROM th_github_check_admission)", &[]).await.unwrap().get::<_, i64>(0), 0);
     assert_eq!(

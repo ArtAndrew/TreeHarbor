@@ -9,13 +9,14 @@ below retain evidence from individual increments. Their earlier statements about
 unfinished work describe the scope at that time; they are not a replacement for
 the current overview or the full [release gate ledger](#release-gate-ledger).
 
-Last full CI baseline before this increment: [PR75](https://github.com/ArtAndrew/TreeHarbor/pull/75),
+Last full CI baseline before this increment: [PR76](https://github.com/ArtAndrew/TreeHarbor/pull/76),
 published on 2026-10-26 after all six required checks passed. The
-[CI run](https://github.com/ArtAndrew/TreeHarbor/actions/runs/40305853270) passed
-395 ordinary tests on each of Linux/macOS, 322 real PostgreSQL contracts, 43 actual
-gVisor scenario groups on each of Linux x86-64/ARM64, and 11 webhook TLS/failure
-groups. These correctness checks do not establish complete mode readiness or
-performance superiority.
+[CI run](https://github.com/ArtAndrew/TreeHarbor/actions/runs/40318740436) passed
+398 ordinary tests on Linux and 396 on macOS, 322 real PostgreSQL contracts,
+14 static-runtime unit tests and 48 installed-runtime/controller/managed/native
+scenario groups on each of Linux x86-64/ARM64, and 11 webhook TLS/failure groups.
+These correctness checks do not establish complete mode readiness or performance
+superiority. The current dispatch-policy increment still requires its own full CI.
 
 ## Development installation and restore acceptance
 
@@ -28,12 +29,10 @@ Runtime CI now uses installed service/runtime-init binaries for the managed agen
 and native check workloads. The subsequent [cold restore drill](backup-restore.md)
 uses real PostgreSQL dump/restore and copied objects, then verifies published history,
 accepted changes and failure on missing/corrupt objects with original storage absent.
-Both installed-runtime and cold-restore legs passed on
-[Linux x86-64](https://github.com/ArtAndrew/TreeHarbor/actions/runs/40317254806/job/121553337315)
-and [ARM64](https://github.com/ArtAndrew/TreeHarbor/actions/runs/40317254806/job/121553336736).
-That candidate run still failed the Linux linter's permission-literal rule;
-the explicit-octal correction requires final full CI. These legs do not establish
-Connected host reconciliation or safe resumption of restored workers.
+Both installed-runtime and cold-restore legs passed in the final successful
+[PR76 CI](https://github.com/ArtAndrew/TreeHarbor/actions/runs/40318740436).
+These legs do not establish Connected host reconciliation or safe resumption of
+restored workers.
 
 The installed static workload exposed a real mode-000 teardown failure: passing
 raw filesystem flags through the standard open wrapper lost `O_PATH`. The runtime
@@ -58,6 +57,12 @@ membership and current trust. Supported complete results can report a bounded
 current admission assessment; `merge_verified` remains false and no write grant
 is issued. Unknown review/workflow requirements and multi-member policy coverage
 remain unproven. See [the contract](github-admission-evidence.md).
+
+Schema 31 adds an immutable [check-dispatch policy record](github-check-publications.md#retained-dispatch-policy-record)
+for new successful candidate publications under complete owner policies. It is
+transactional with the one-shot dispatch grant and has a historical read action.
+It is not complete candidate admission or merge authorization; older dispatches
+are not backfilled. Installed-App acceptance of this increment remains open.
 
 Schema 30 retains authenticated report sources. Legacy rows retain their payloads
 with unknown attribution, so a new assessment requires fresh attributable evidence;

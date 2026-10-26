@@ -18,6 +18,13 @@ fn independent_policy_proof_has_stable_bytes_and_no_merge_claim() {
         v["canonical"].as_str().unwrap().as_bytes()
     );
     assert_eq!(p.digest().unwrap(), v["digest"]);
+    let preflight = serde_json::from_value(v["preflight"].clone()).unwrap();
+    assert_eq!(
+        treeharbor_github_contract::check_dispatch::preflight_digest(&preflight).unwrap(),
+        v["preflight_digest"]
+    );
+    assert_eq!(p.preflight_digest, v["preflight_digest"]);
+    assert!(preflight.eligible(&p.target));
     for field in ["admission_verified", "merge_verified", "dispatch_granted"] {
         assert!(v["proof"].get(field).is_none());
         let mut bad = v["proof"].clone();

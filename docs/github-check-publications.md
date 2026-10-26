@@ -99,6 +99,40 @@ Exit zero means the intended delivery was observed. Read the returned
 The `admission_verified`, `host_policy_verified` and `merge_verified` flags remain
 false: a required-context preflight does not certify the complete host policy.
 
+## Retained dispatch policy record
+
+For a successful **queue-candidate** result with an owner-reviewed complete
+AdmissionPolicy v2, dispatch now requires the latest attributable host-policy
+capture after this check's committed collection receipt. The capture must match
+its candidate, current membership, owner configuration and immediate publication
+preflight. Existing report freshness and credential-revocation bounds apply.
+The server checks those facts again before committing the dispatch transaction.
+After collecting the managed check, run the [host-policy collector](github-host-policy.md#collect-and-read)
+for its retained membership before `check-publish`. An absent or mismatched full
+capture refuses dispatch; it never falls back to the legacy required-context test.
+
+An immutable record binds the selected execution, exact publication target,
+collection operation, owner pin and capture/configuration/preflight digests. It
+commits with the one-shot grant, operation receipt and outbox event. No future
+GitHub check receipt or success from another program is required to publish this
+individual result. GitHub still enforces its complete required set and authorizes
+merging. Administrator changes on GitHub cannot be locked by this transaction.
+
+Read the retained record using a `read` credential:
+
+```json
+{"action":"check_dispatch_policy","epoch":1,"publication":"11111111-1111-4111-8111-111111111111"}
+```
+
+Submit this JSON through `treeharbor client ... github --request request.json`.
+The response has `recorded`, `proof` and `digest`; `merge_verified` remains false.
+`recorded:true` describes the former dispatch decision, not present permission to
+send or merge. Recovery retains the original record after cancellation or expiry.
+PR-head checks, non-success conclusions, legacy policy profiles and dispatches
+predating schema 31 have no such record. `recorded:false` is unknown historical
+policy certification, not a fabricated failure or success. Migration does not
+backfill proofs. Existing publication target/report encodings remain unchanged.
+
 ## State and recovery
 
 | State | Meaning | Next action |
@@ -152,6 +186,7 @@ Every mutation has an idempotency `key`. Reusing a key with another payload fail
 | `check_publication_report` | `publication`, `attempt`, `report` | Current assigned Bridge `host.check` |
 | `check_publication_context` | `publication` | Assigned Bridge `host.check` |
 | `check_publication_status` | `publication` | `read` |
+| `check_dispatch_policy` | `publication` | `read` |
 | `check_publication_cancel` | `publication` | Human `host.queue` |
 
 Ordinary callers should use the publisher command for begin/dispatch/report.
