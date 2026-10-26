@@ -28,8 +28,18 @@ Runtime CI now uses installed service/runtime-init binaries for the managed agen
 and native check workloads. The subsequent [cold restore drill](backup-restore.md)
 uses real PostgreSQL dump/restore and copied objects, then verifies published history,
 accepted changes and failure on missing/corrupt objects with original storage absent.
-These additions still need their own Linux CI results. They do not establish
+Both installed-runtime and cold-restore legs passed on
+[Linux x86-64](https://github.com/ArtAndrew/TreeHarbor/actions/runs/40317254806/job/121553337315)
+and [ARM64](https://github.com/ArtAndrew/TreeHarbor/actions/runs/40317254806/job/121553336736).
+That candidate run still failed the Linux linter's permission-literal rule;
+the explicit-octal correction requires final full CI. These legs do not establish
 Connected host reconciliation or safe resumption of restored workers.
+
+The installed static workload exposed a real mode-000 teardown failure: passing
+raw filesystem flags through the standard open wrapper lost `O_PATH`. The runtime
+now uses a typed `rustix` open, retains ownership/type checks, and has Linux/musl
+regressions for unreadable directories, links and foreign ownership. Safe diagnostics
+expose only the error kind, with a test excluding private error text.
 
 ## Connected Preview priority and candidate assessment
 

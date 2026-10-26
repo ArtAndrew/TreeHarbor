@@ -59,3 +59,9 @@ Linux/PostgreSQL/gVisor environment it:
 This is a shared storage recovery test with synthetic agent programs. It exercises
 no live GitHub reconciliation and resumes no task on a restored node. Run it only
 through the disposable runtime CI harness; it is not an operator backup utility.
+
+The drill passed with installed static binaries on
+[Linux x86-64](https://github.com/ArtAndrew/TreeHarbor/actions/runs/40317254806/job/121553337315)
+and [ARM64](https://github.com/ArtAndrew/TreeHarbor/actions/runs/40317254806/job/121553336736)
+on 2026-10-26. These job results cover the stated source-recovery scope; the full
+candidate run still needed its Linux lint correction before merge.
