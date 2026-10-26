@@ -278,7 +278,7 @@ mod tests {
         let path = root.path().join("files");
         fs::create_dir(&path).unwrap();
         let inode = fs::metadata(&path).unwrap().ino();
-        fs::set_permissions(&path, fs::Permissions::from_mode(0)).unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o000)).unwrap();
         let opened = files_directory(&path);
         let mode = fs::metadata(&path).unwrap().mode() & 0o777;
         fs::set_permissions(&path, fs::Permissions::from_mode(0o700)).unwrap();
