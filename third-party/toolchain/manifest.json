@@ -1,0 +1,50 @@
+{
+  "files": [
+    {
+      "component": "rust-stdlib",
+      "path": "third-party/toolchain/rust-1.99.1/COPYRIGHT",
+      "sha256": "172020dbfd5b53a226dfde77616190a48dcff519b0bc0e6deb91a8450782c4af",
+      "source_url": "https://static.rust-lang.org/dist/rust-std-1.99.1-aarch64-apple-darwin.tar.xz"
+    },
+    {
+      "component": "rust-stdlib",
+      "path": "third-party/toolchain/rust-1.99.1/LICENSE-MIT",
+      "sha256": "b71bd43a069ca0641a9ecfe585ca7b3c53b5cc1608f8b68321168698e28b5ea1",
+      "source_url": "https://static.rust-lang.org/dist/rust-std-1.99.1-aarch64-apple-darwin.tar.xz"
+    },
+    {
+      "component": "rust-stdlib",
+      "path": "third-party/toolchain/rust-1.99.1/LICENSE-APACHE",
+      "sha256": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a",
+      "source_url": "https://static.rust-lang.org/dist/rust-std-1.99.1-aarch64-apple-darwin.tar.xz"
+    },
+    {
+      "component": "rust-stdlib",
+      "path": "third-party/toolchain/rust-1.99.1/COPYRIGHT-library.html",
+      "sha256": "5647be074c8edf7339fd863055923a8fc80bc5610a8d4661ec3b767b9d392c27",
+      "source_url": "https://static.rust-lang.org/dist/rustc-1.99.1-aarch64-apple-darwin.tar.xz"
+    },
+    {
+      "component": "compiler-builtins",
+      "path": "third-party/toolchain/compiler-builtins/LICENSE.txt",
+      "sha256": "ab6eec6caf0fa5775e411c7a8bc6a45c4ef2956b0980b157ab74fc5cd62a928b",
+      "source_url": "https://github.com/rust-lang/rust/blob/58cf8f9c35b355199727627d07ae34a4e2846d67/library/compiler-builtins/LICENSE.txt"
+    },
+    {
+      "component": "libm",
+      "path": "third-party/toolchain/libm/LICENSE.txt",
+      "sha256": "3823dda7cf046602f4b4e77ec8e227863dc4736037cc85bb33d9f19febe16bb7",
+      "source_url": "https://github.com/rust-lang/rust/blob/58cf8f9c35b355199727627d07ae34a4e2846d67/library/compiler-builtins/libm/LICENSE.txt"
+    },
+    {
+      "component": "musl",
+      "path": "third-party/toolchain/musl-1.2.5/COPYRIGHT",
+      "sha256": "f9bc4423732350eb0b3f7ed7e91d530298476f8fec0c6c427a1c04ade22655af",
+      "source_url": "https://www.musl-libc.org/releases/musl-1.2.5.tar.gz"
+    }
+  ],
+  "rust_source_revision": "58cf8f9c35b355199727627d07ae34a4e2846d67",
+  "rust_version": "1.99.1",
+  "scope": "Pinned upstream notices; this is not a binary SBOM or build provenance.",
+  "version": 1
+}
