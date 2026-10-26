@@ -107,7 +107,8 @@ Configuration profile version 1 contains repository ID/name, base branch, comple
 legacy protection, applicable rules, source documents and optional queue settings.
 It has no PR prerequisite and can be analyzed by the shared contract library before
 any candidate exists. The configuration-only command below can collect it before
-the first PR. Owner pinning and full admission certification remain incomplete.
+the first PR. Owner pinning is available through [policy version2](github-admission-policy.md#review-and-pin-complete-configuration-version2).
+Current candidate-policy and full admission certification remain incomplete.
 
 Its digest is SHA-256 of `treeharbor-github-host-policy-configuration`, NUL, `v1`,
 NUL, then compact JSON with lexically ordered object keys. Top-level effective rules

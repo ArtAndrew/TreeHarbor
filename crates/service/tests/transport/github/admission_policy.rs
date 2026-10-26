@@ -301,3 +301,105 @@ async fn admission_policy_cli_replays_lost_commit_and_rotates_contexts_without_c
     drop(server);
     f.cleanup().await;
 }
+
+fn reviewed_policy_cli(f: &Fixture, action: &str, definition: &Path, binding: &str) -> Command {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_treeharbor"));
+    command
+        .env("PATH", "/treeharbor-test-no-executables")
+        .args(["github", action, "--socket"])
+        .arg(&f.config.socket)
+        .arg("--credential-file")
+        .arg(&f.credential_path)
+        .args([
+            "--binding",
+            binding,
+            "--base",
+            "main",
+            "--epoch",
+            "1",
+            "--expected-generation",
+            "0",
+            "--definition",
+        ])
+        .arg(definition);
+    command
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires PostgreSQL; actual v2 owner policy CLI/service crash before and after commit; host data are fixtures"]
+async fn reviewed_configuration_policy_survives_lost_reply_without_reapproving_or_losing_v1() {
+    let mut f = Fixture::new_with_authority(Authority::Connected).await;
+    f.importer();
+    f.config.request_timeout_ms = 15000;
+    f.save_config();
+    provision_bridge(&f);
+    let owner = owner(&f);
+    let mut server = f.start().await;
+    let bind: Value = serde_json::from_str(include_str!(
+        "../../../../metadata/tests/fixtures/github-bind-v1.json"
+    ))
+    .unwrap();
+    result(request(&f, &bind));
+    let binding = bind["binding"].clone();
+    f.credential_path = owner;
+    let v: Value = serde_json::from_str(include_str!(
+        "../../../../metadata/tests/fixtures/connected-admission-policy-v2.json"
+    ))
+    .unwrap();
+    let set = json!({"action":"admission_policy_set","key":"reviewed-configuration","epoch":1,"binding":binding,"base_ref":"main","expected_generation":0,"definition":v["policy"]});
+    let read = json!({"action":"admission_policy","epoch":1,"binding":binding,"base_ref":"main"});
+    let saved = f.dir.path().join("configuration-set.json");
+    files::write_private(&saved, &serde_json::to_vec(&set).unwrap()).unwrap();
+    let before = counts(&f).await;
+    let definition = f.dir.path().join("reviewed-policy.json");
+    files::write_private(&definition, &serde_json::to_vec(&v["policy"]).unwrap()).unwrap();
+    let planned = reviewed_policy_cli(&f, "policy-plan", &definition, binding.as_str().unwrap())
+        .output()
+        .unwrap();
+    assert!(
+        planned.status.success(),
+        "{}",
+        String::from_utf8_lossy(&planned.stderr)
+    );
+    let planned: Value = serde_json::from_slice(&planned.stdout).unwrap();
+    assert_eq!(planned["approved"], false);
+    assert_eq!(planned["host_configuration"]["required_matches"], true);
+    assert_eq!(counts(&f).await, before);
+    before_commit(&f, &mut server, &saved).await;
+    assert_eq!(counts(&f).await, before);
+    assert_eq!(result(request(&f, &read))["state"], "unconfigured");
+    let committed = after_commit(&mut f, &mut server, &saved).await;
+    assert_eq!(committed["policy"], v["digest"]);
+    assert_eq!(committed["generation"], 1);
+    let replay = reviewed_policy_cli(&f, "policy-adopt", &definition, binding.as_str().unwrap())
+        .args(["--key", "reviewed-configuration"])
+        .output()
+        .unwrap();
+    assert!(
+        replay.status.success(),
+        "{}",
+        String::from_utf8_lossy(&replay.stderr)
+    );
+    assert_eq!(
+        serde_json::from_slice::<Value>(&replay.stdout).unwrap(),
+        committed
+    );
+    assert_eq!(result(request(&f, &set)), committed);
+    assert_eq!(result(request(&f, &read))["definition"], v["policy"]);
+    let revoke = json!({"action":"admission_policy_set","key":"reviewed-revoke","epoch":1,"binding":binding,"base_ref":"main","expected_generation":1,"definition":null});
+    result(request(&f, &revoke));
+    assert_eq!(result(request(&f, &set)), committed);
+    assert_eq!(result(request(&f, &read))["state"], "revoked");
+    let old: Value = serde_json::from_str(include_str!(
+        "../../../../metadata/tests/fixtures/connected-admission-policy-v1.json"
+    ))
+    .unwrap();
+    let legacy = json!({"action":"admission_policy_set","key":"legacy-explicit","epoch":1,"binding":binding,"base_ref":"main","expected_generation":2,"definition":old["policy"]});
+    let legacy = result(request(&f, &legacy));
+    assert_eq!(legacy["policy"], old["digest"]);
+    assert_eq!(legacy["generation"], 3);
+    assert_eq!(result(request(&f, &read))["definition"], old["policy"]);
+    assert_eq!(counts(&f).await, vec![before[0] + 3, before[1] + 3, 2, 1]);
+    drop(server);
+    f.cleanup().await;
+}

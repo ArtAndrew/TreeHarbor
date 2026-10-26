@@ -5,12 +5,94 @@ epoch and base branch. It lists approved offline programs and their allowed
 validators, plus required GitHub workflow definitions. The service uses this policy
 to fence new queue admission, managed execution and required-check dispatch.
 
-This experimental feature adds database migration29. Upgrade service and CLI
+The original policy feature introduced database migration29. Policy version2
+reuses that schema and adds no migration. Upgrade service and CLI
 together and run migration first. Existing queues, executions, receipts and
 credentials retain their meaning. A repository that has never adopted a policy
 continues using its legacy, unverified path. Adoption does not approve earlier work.
 
-## Prepare and preview
+## Review and pin complete configuration (version2)
+
+Version2 adds a complete host-configuration pin. It binds the numeric upstream
+repository, owner/name, base branch, raw policy profile and explicit visibility
+facts. Unknown, contradictory or incomplete configuration cannot be adopted.
+Candidate review requirements remain requirements; owner policy approval does not
+satisfy them. Current candidate-policy verification is still an open gate below.
+
+Create a private requirements JSON file (version1 describes this input format):
+
+```json
+{
+  "version": 1,
+  "managed": [{
+    "program": {
+      "version": 1,
+      "runtime_profile": "sha256:<your registered runtime profile digest>",
+      "argv": ["/check"]
+    },
+    "validators": ["ci-main"]
+  }],
+  "workflows": []
+}
+```
+
+Use actual registered profile IDs and validator grants. Workflow requirements use
+the same `CheckApproval` shape as below. No rule fingerprint needs to be invented
+or copied by hand. Keep the requirements and reports in a private directory.
+
+```sh
+umask 077
+treeharbor github policy-inspect --config "$APP_CONFIG" --base main \
+  --include-queue-settings > inspection.json
+treeharbor github policy-draft --inspection inspection.json \
+  --requirements requirements.json --output policy-v2.json
+treeharbor github policy-plan --socket "$SOCKET" \
+  --credential-file "$POLICY_OWNER" --binding "$BINDING" --base main \
+  --epoch 1 --expected-generation 0 --definition policy-v2.json
+```
+
+`policy-draft` works offline, recomputes the inspection and rejects drift, incomplete
+configuration or unproven token revocation. It writes a new private file, refuses
+to overwrite existing output and never adopts a policy. It accepts either raw
+Inspection v1 JSON or `policy-inspect` output; derived envelope flags are ignored.
+
+`policy-plan` is an authenticated owner preview. It does not change GitHub or
+store an approval. It returns required App/name pairs and, for version2,
+`host_configuration.required_matches`. This can be false during setup: configure
+the returned contexts in GitHub, collect a fresh inspection, and create a new
+reviewed draft file. Re-run the preview at the same expected generation. If another
+owner changed the policy, refresh the generation and preview again.
+
+After reviewing a matching draft, adopt it explicitly:
+
+```sh
+treeharbor github policy-adopt --socket "$SOCKET" \
+  --credential-file "$POLICY_OWNER" --binding "$BINDING" --base main \
+  --epoch 1 --expected-generation 0 --definition policy-reviewed.json \
+  --key adopt-reviewed-policy-1
+```
+
+The service refuses adoption unless the complete configured App/name set matches
+all proposed requirements at that exact next generation. A wrong repository, base,
+rule fingerprint, missing/extra check or wrong App also fails. Plan and adoption
+use the existing `policy.write` permission; agent/bridge credentials do not gain
+it. Identical adoption retries recover the same receipt. Policy changes invalidate
+existing queues and execution approvals even when required check names are unchanged.
+Restoring the same policy bytes later cannot restore their old generation.
+
+The v2 digest domain is `treeharbor-connected-admission-policy\0v2\0`. It hashes
+compact JSON with lexical object keys, sorted program/workflow requirements and
+the normalized Configuration v1 wrapper. The total policy remains bounded to
+64KiB. Existing policy v1 canonical bytes and receipts stay unchanged. Explicit
+owner adoption of v1 remains available but does not provide a configuration pin.
+
+**The pin records what the owner approved; it does not establish what GitHub is
+currently enforcing.** Fresh candidate-bound visibility/review evidence, workflow
+execution context and complete admission/publication joins remain required. Neither
+`required_matches:true` nor a stored v2 definition sets `host_policy_verified`,
+`admission_verified` or `merge_verified` to true.
+
+## Legacy version1 preparation and preview
 
 Use a Human credential with `policy.write`; reads of stored policy additionally
 need `read`. Register the actual runtime profile and validator grants using the

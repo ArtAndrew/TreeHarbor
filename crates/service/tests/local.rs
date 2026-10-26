@@ -165,3 +165,77 @@ async fn host_configuration_cli_needs_no_pr_and_rejects_exposed_config_before_ne
         Err(Error::UnsafeFile)
     ));
 }
+
+#[tokio::test]
+async fn host_configuration_policy_draft_is_offline_recomputed_and_never_overwrites() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::set_permissions(dir.path(), fs::Permissions::from_mode(0o700)).unwrap();
+    let v: serde_json::Value = serde_json::from_str(include_str!(
+        "../../metadata/tests/fixtures/connected-admission-policy-v2.json"
+    ))
+    .unwrap();
+    let proposal = serde_json::json!({"version":1,"managed":v["policy"]["managed"],"workflows":v["policy"]["workflows"]});
+    let definition = dir.path().join("requirements.json");
+    files::write_private(&definition, &serde_json::to_vec(&proposal).unwrap()).unwrap();
+    let mut r = serde_json::json!({"version":1,"started_at_unix_ms":1792990000000i64,"finished_at_unix_ms":1792990001000i64,
+        "before":v["policy"]["host_configuration"],"after":v["policy"]["host_configuration"],"token_revoked":true});
+    let source = dir.path().join("inspection.json");
+    files::write_private(
+        &source,
+        &serde_json::to_vec(
+            &serde_json::json!({"inspection":r,"approved":true,"digest":"untrusted-derived-field"}),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let output = dir.path().join("policy-v2.json");
+    let args = [
+        "treeharbor",
+        "github",
+        "policy-draft",
+        "--inspection",
+        source.to_str().unwrap(),
+        "--requirements",
+        definition.to_str().unwrap(),
+        "--output",
+        output.to_str().unwrap(),
+    ];
+    assert!(
+        treeharbor_service::cli::run(Cli::try_parse_from(args).unwrap())
+            .await
+            .unwrap()
+    );
+    assert_eq!(
+        files::read_private(&output, 65536).unwrap(),
+        v["canonical"].as_str().unwrap().as_bytes()
+    );
+    assert!(
+        treeharbor_service::cli::run(Cli::try_parse_from(args).unwrap())
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        files::read_private(&output, 65536).unwrap(),
+        v["canonical"].as_str().unwrap().as_bytes()
+    );
+    r["token_revoked"] = serde_json::json!(false);
+    fs::write(&source, serde_json::to_vec(&r).unwrap()).unwrap();
+    let rejected = dir.path().join("must-not-exist.json");
+    let args = [
+        "treeharbor",
+        "github",
+        "policy-draft",
+        "--inspection",
+        source.to_str().unwrap(),
+        "--requirements",
+        definition.to_str().unwrap(),
+        "--output",
+        rejected.to_str().unwrap(),
+    ];
+    assert!(
+        treeharbor_service::cli::run(Cli::try_parse_from(args).unwrap())
+            .await
+            .is_err()
+    );
+    assert!(!rejected.exists());
+}
