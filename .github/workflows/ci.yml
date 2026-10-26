@@ -84,7 +84,9 @@ jobs:
             check: gVisor task supervision (arm64)
             sha256: fd174120b7048ad01c550d1a7cf7336895e8fc986bc1526f636dcaca4791c330
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
+    timeout-minutes: 25
+    env:
+      PYTHONDONTWRITEBYTECODE: 1
     services:
       postgres:
         image: postgres:18.6
@@ -123,8 +125,24 @@ jobs:
         run: python3 scripts/test-runtime.py
       - name: Exercise Rust runtime control and lost Engine responses
         run: python3 scripts/test-runtime-controller.py
-      - name: Build managed service and CLI
-        run: cargo build -p treeharbor-service --locked
+      - name: Install the actual static release package for lifecycle acceptance
+        env:
+          TH_PACKAGE_DIR: ${{ runner.temp }}/runtime-package
+          TH_EXTRACT_DIR: ${{ runner.temp }}/runtime-package-extracted
+          TH_INSTALL_PREFIX: ${{ runner.temp }}/runtime-package-installed
+        run: |
+          cargo build --locked --release --target ${{ matrix.arch }}-unknown-linux-musl -p treeharbor-service -p treeharbor-runtime --bins
+          python3 scripts/package-release.py --target ${{ matrix.arch }}-unknown-linux-musl --bin-dir target/${{ matrix.arch }}-unknown-linux-musl/release --output-dir "$TH_PACKAGE_DIR"
+          cd "$TH_PACKAGE_DIR"
+          sha256sum --check --strict *.sha256
+          mkdir "$TH_EXTRACT_DIR"
+          tar -xzf ./*.tar.gz -C "$TH_EXTRACT_DIR"
+          package_roots=("$TH_EXTRACT_DIR"/*)
+          test "${#package_roots[@]}" -eq 1
+          sh "${package_roots[0]}/install.sh" --prefix "$TH_INSTALL_PREFIX"
+          "$TH_INSTALL_PREFIX/bin/treeharbor" --version
+          printf 'TH_TEST_SERVICE_BINARY=%s/bin/treeharbor\n' "$TH_INSTALL_PREFIX" >> "$GITHUB_ENV"
+          printf 'TH_TEST_RUNTIME_INIT=%s/treeharbor-runtime-init\n' "$(dirname "$(realpath "$TH_INSTALL_PREFIX/bin/treeharbor")")" >> "$GITHUB_ENV"
       - name: Exercise actual managed AgentRun lifecycle
         env:
           TH_RUNTIME_PG_CONTAINER: ${{ job.services.postgres.id }}

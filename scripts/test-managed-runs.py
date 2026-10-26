@@ -50,7 +50,7 @@ class Harness:
             raise RuntimeError("requires an unprivileged disposable Linux runner")
         self.pg = os.environ["TH_RUNTIME_PG_CONTAINER"]
         self.url = os.environ["TH_RUNTIME_DATABASE_URL"]
-        self.binary = Path("target/debug/treeharbor").absolute()
+        self.binary = Path(os.environ.get("TH_TEST_SERVICE_BINARY", "target/debug/treeharbor")).absolute()
         self.root = Path(tempfile.mkdtemp(prefix="th-managed-", dir=os.environ.get("RUNNER_TEMP")))
         self.schema = "th_test_" + uuid.uuid4().hex
         self.repository = str(uuid.uuid4())
@@ -135,7 +135,7 @@ class Harness:
         build = self.root / "image"
         build.mkdir()
         target = runtime_target()
-        shutil.copy2(target / "treeharbor-runtime-init", build / "init")
+        shutil.copy2(Path(os.environ.get("TH_TEST_RUNTIME_INIT", target / "treeharbor-runtime-init")), build / "init")
         shutil.copy2(target / "examples/runtime_probe", build / "probe")
         (build / "Dockerfile").write_text("FROM scratch\nCOPY init /init\nCOPY probe /probe\n")
         self.image = docker("build", "--network=none", "--quiet", build).stdout.strip()
