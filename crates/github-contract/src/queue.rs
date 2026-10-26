@@ -337,6 +337,10 @@ pub struct QueueObservation {
     pub workflow_definition: Option<crate::workflow_definitions::Report>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub publication: Option<crate::publication::Report>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    // Keep the two large snapshots off the stack in legacy report and async
+    // dispatch paths. Boxing changes neither JSON nor canonical evidence bytes.
+    pub host_policy: Option<Box<crate::host_policy::Report>>,
     /// Version 2 positive completion evidence from the sole enqueue invocation.
     /// Version 1 reports remain readable and cannot assert this fact.
     #[serde(default, skip_serializing_if = "is_false")]
@@ -349,7 +353,8 @@ fn is_false(value: &bool) -> bool {
 impl QueueObservation {
     pub fn validate(&self, t: &QueueTarget) -> Result<()> {
         t.validate()?;
-        if !matches!(self.version, 1..=8)
+        if !matches!(self.version, 1..=9)
+            || (self.version == 9) != self.host_policy.is_some()
             || (self.version == 8) != self.publication.is_some()
             || (self.version == 7) != self.workflow_definition.is_some()
             || (self.mutation_not_sent
@@ -362,6 +367,22 @@ impl QueueObservation {
             || self.finished_at_unix_ms - self.started_at_unix_ms > 180_000
         {
             return Err(InvalidEvidence);
+        }
+        if let Some(p) = &self.host_policy {
+            if self.snapshot.is_some()
+                || self.receipt.is_some()
+                || self.async_result.is_some()
+                || self.enqueue_receipt.is_some()
+                || self.group_capture.is_some()
+                || self.group_checks.is_some()
+                || self.group_attempt.is_some()
+                || self.workflow_definition.is_some()
+                || self.publication.is_some()
+                || self.mutation_not_sent
+            {
+                return Err(InvalidEvidence);
+            }
+            p.validate(t)?;
         }
         if let Some(g) = &self.group_capture {
             if self.version != 4

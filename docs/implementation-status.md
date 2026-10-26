@@ -9,13 +9,39 @@ below retain evidence from individual increments. Their earlier statements about
 unfinished work describe the scope at that time; they are not a replacement for
 the current overview or the full [release gate ledger](#release-gate-ledger).
 
-Last full CI baseline before this increment: [PR68](https://github.com/ArtAndrew/TreeHarbor/pull/68),
+Last full CI baseline before this increment: [PR69](https://github.com/ArtAndrew/TreeHarbor/pull/69),
 published on 2026-10-26 after all six required checks passed. The
-[CI run](https://github.com/ArtAndrew/TreeHarbor/actions/runs/40277068996) passed
-336 ordinary tests on each of Linux/macOS, 306 real PostgreSQL contracts, 43 actual
+[CI run](https://github.com/ArtAndrew/TreeHarbor/actions/runs/40280104852) passed
+345 ordinary tests on each of Linux/macOS, 316 real PostgreSQL contracts, 43 actual
 gVisor scenario groups on each of Linux x86-64/ARM64, and 11 webhook TLS/failure
 groups. These correctness checks do not establish complete mode readiness or
 performance superiority.
+
+## Host policy and review observations
+
+The experimental [host-policy collector](github-host-policy.md) reads complete
+bounded policy and review snapshots twice for an exact retained queue membership.
+It keeps raw protection/ruleset documents, source identities and review threads;
+redacted bypass actors and unavailable documents cannot become empty policy.
+Version9 observations are exclusive, preserve old report formats and do not replace
+the latest queue state. The API provides scoped immutable pages and an independently
+specified evidence digest. The CLI uses the existing durable report journal.
+
+Local verification passed 357 ordinary workspace tests and 309 real PostgreSQL,
+materializer/node and service contracts on macOS, plus strict workspace Clippy,
+formatting and the four queue-workload cases. The focused contract/transport suite
+passed 161 tests. The actual CLI/service test kills both processes after the policy
+report commits but before its reply arrives, then recovers the same receipt without
+duplicate effects. It also caught a server stack overflow caused by embedding the
+large payload in all queue reports; boxing that payload preserved the wire format
+and the reproduced recovery scenario now passes. Exact-head CI remains required
+before merging this increment.
+
+Full supported-policy semantics,
+owner-reviewed host-policy pins, workflow execution-context proof, final admission
+and live host-policy acceptance remain open. Empty capture reasons never mean
+permission to merge; all complete verification flags remain false. No App rights
+were changed and no live acceptance credentials were issued for this increment.
 
 ## Candidate check-set evidence
 
@@ -47,8 +73,7 @@ passed 10 PostgreSQL cases and one wire
 case; publication contract and loopback transport suites passed 14 and 13 cases.
 The real CLI/service recovery case exercises both report versions, including a
 committed reply lost to the client, restart and exact replay without duplicate
-receipts or outbox effects. Exact-head CI remains required before publication of
-this increment.
+receipts or outbox effects. Published in PR69 after all six exact-head checks passed.
 
 ## Branch admission policy
 

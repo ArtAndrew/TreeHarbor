@@ -3,7 +3,7 @@
 TreeHarbor can check whether the **exact saved queue candidate** became the PR's
 merge commit and belongs to the observed target branch history. This works when
 later commits have already advanced the branch. It does not certify CI execution,
-reviews, host policy, or the complete admission decision; `merge_verified` remains
+reviews, [host policy](github-host-policy.md), or the complete admission decision; `merge_verified` remains
 false until those separate release gates are implemented and verified.
 
 ## Collect and inspect

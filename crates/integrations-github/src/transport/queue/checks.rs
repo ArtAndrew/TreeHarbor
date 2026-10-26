@@ -224,6 +224,7 @@ impl Connection {
             group_attempt: None,
             workflow_definition: None,
             publication: None,
+            host_policy: None,
             group_checks: Some(gc::GroupCheckReport {
                 target: selected.clone(),
                 checks,

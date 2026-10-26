@@ -11,6 +11,7 @@ pub(crate) enum Capability {
     PullWrite,
     Evidence,
     AttemptEvidence,
+    HostPolicy,
     CheckWrite,
     QueueRead,
     QueueWrite,
@@ -29,6 +30,7 @@ impl Capability {
                     | Self::PullWrite
                     | Self::Evidence
                     | Self::AttemptEvidence
+                    | Self::HostPolicy
                     | Self::CheckWrite
                     | Self::QueueRead => "read",
                     Self::Branch
@@ -47,6 +49,7 @@ impl Capability {
                 | Self::PullWrite
                 | Self::Evidence
                 | Self::AttemptEvidence
+                | Self::HostPolicy
                 | Self::CheckWrite
                 | Self::QueueRead
                 | Self::QueueWrite
@@ -80,6 +83,10 @@ impl Capability {
         }
         if matches!(self, Self::AttemptEvidence) {
             permissions.insert("actions".into(), "read".into());
+        }
+        if matches!(self, Self::HostPolicy) {
+            permissions.insert("administration".into(), "read".into());
+            permissions.insert("merge_queues".into(), "read".into());
         }
         if matches!(
             self,

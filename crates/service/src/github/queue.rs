@@ -13,6 +13,7 @@ pub(super) struct Request {
     pub state: PathBuf,
     pub check: Option<(i64, treeharbor_github_contract::group_checks::Side)>,
     pub publication_group: Option<i64>,
+    pub host_policy_group: Option<i64>,
     pub definition_attempt: Option<i64>,
     pub attempt_check: Option<treeharbor_github_contract::group_attempts::Selection>,
 }
@@ -137,6 +138,7 @@ pub(super) async fn run(r: Request) -> Result<bool> {
 pub(super) async fn collect(r: Request, allow_dispatch: bool) -> Result<Value> {
     if [
         r.publication_group.is_some(),
+        r.host_policy_group.is_some(),
         r.check.is_some(),
         r.attempt_check.is_some(),
         r.definition_attempt.is_some(),
@@ -276,6 +278,31 @@ pub(super) async fn collect(r: Request, allow_dispatch: bool) -> Result<Value> {
     } else {
         None
     };
+    let selected_policy = if let Some(sequence) = r.host_policy_group {
+        if c["attempt"].is_null() {
+            return Err(Error::PublicationState);
+        }
+        let v = s
+            .command(json!({"action":"queue_host_policy_context","membership_sequence":sequence}))
+            .await?;
+        for field in ["version", "queue", "binding", "epoch", "target"] {
+            if v[field] != c[field] {
+                return Err(Error::PublicationState);
+            }
+        }
+        let target: treeharbor_github_contract::publication::Target =
+            serde_json::from_value(v["host_policy_target"].clone())
+                .map_err(|_| Error::PublicationState)?;
+        target
+            .validate(&s.target)
+            .map_err(|_| Error::PublicationState)?;
+        if target.membership_sequence != sequence {
+            return Err(Error::PublicationState);
+        }
+        Some(target)
+    } else {
+        None
+    };
     let (app, config) = load(&r.config)?;
     matches_config(&config, &spec)?;
     let connection = Connection::new(app)?;
@@ -298,7 +325,15 @@ pub(super) async fn collect(r: Request, allow_dispatch: bool) -> Result<Value> {
     } else {
         uuid(&c["attempt"])?
     };
-    let result = if let Some(target) = &selected_publication {
+    let result = if let Some(target) = &selected_policy {
+        connection
+            .observe_host_policy(&config.repository, &s.target, target)
+            .await
+            .map_err(|error| treeharbor_github::MutationFailure {
+                error,
+                mutation_not_sent: false,
+            })
+    } else if let Some(target) = &selected_publication {
         connection
             .observe_publication(&config.repository, &s.target, target)
             .await
@@ -377,6 +412,7 @@ pub(super) async fn collect(r: Request, allow_dispatch: bool) -> Result<Value> {
                     group_attempt: None,
                     workflow_definition: None,
                     publication: None,
+                    host_policy: None,
                     async_result: None,
                     mutation_not_sent: e.mutation_not_sent,
                     token_revoked: false,

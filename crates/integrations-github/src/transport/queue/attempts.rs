@@ -351,6 +351,7 @@ impl Connection {
             group_attempt: Some(report),
             workflow_definition: None,
             publication: None,
+            host_policy: None,
             group_checks: None,
             group_capture: None,
             snapshot: None,
