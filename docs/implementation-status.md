@@ -9,13 +9,27 @@ below retain evidence from individual increments. Their earlier statements about
 unfinished work describe the scope at that time; they are not a replacement for
 the current overview or the full [release gate ledger](#release-gate-ledger).
 
-Last full CI baseline before this increment: [PR73](https://github.com/ArtAndrew/TreeHarbor/pull/73),
+Last full CI baseline before this increment: [PR75](https://github.com/ArtAndrew/TreeHarbor/pull/75),
 published on 2026-10-26 after all six required checks passed. The
-[CI run](https://github.com/ArtAndrew/TreeHarbor/actions/runs/40296092230) passed
-388 ordinary tests on each of Linux/macOS, 319 real PostgreSQL contracts, 43 actual
+[CI run](https://github.com/ArtAndrew/TreeHarbor/actions/runs/40305853270) passed
+395 ordinary tests on each of Linux/macOS, 322 real PostgreSQL contracts, 43 actual
 gVisor scenario groups on each of Linux x86-64/ARM64, and 11 webhook TLS/failure
 groups. These correctness checks do not establish complete mode readiness or
 performance superiority.
+
+## Development installation and restore acceptance
+
+[Package CI](https://github.com/ArtAndrew/TreeHarbor/actions/runs/40305853237)
+built static Linux x86-64 and ARM64 archives, verified hashes, installed into fresh
+prefixes and executed the CLI. The [packaging guide](release-packaging.md) describes
+scope and temporary development artifacts. No approved release exists yet.
+
+Runtime CI now uses installed service/runtime-init binaries for the managed agent
+and native check workloads. The subsequent [cold restore drill](backup-restore.md)
+uses real PostgreSQL dump/restore and copied objects, then verifies published history,
+accepted changes and failure on missing/corrupt objects with original storage absent.
+These additions still need their own Linux CI results. They do not establish
+Connected host reconciliation or safe resumption of restored workers.
 
 ## Connected Preview priority and candidate assessment
 
