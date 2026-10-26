@@ -96,8 +96,9 @@ backups while evaluating the project.
 
 Development archives now pass offline CLI installation on Linux x86-64 and ARM64.
 See [packaging and verification](docs/release-packaging.md). These temporary CI
-artifacts are for technical evaluation; full installed-runtime and Connected
-onboarding acceptance remain in progress.
+artifacts are for technical evaluation. Installed-runtime and source-restore
+workloads have passed on both architectures; full Connected onboarding and
+operational recovery remain in progress.
 
 A workspace provides files; **the external runtime provides the execution sandbox**.
 Agents must not receive publisher credentials. Tests cannot detect every semantic
