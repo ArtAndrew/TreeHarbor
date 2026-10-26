@@ -121,6 +121,8 @@ jobs:
           docker info
       - name: Build trusted init and adversarial fixture
         run: cargo build -p treeharbor-runtime --locked --target ${{ matrix.arch }}-unknown-linux-musl --bins --examples
+      - name: Check static runtime filesystem boundaries
+        run: cargo test -p treeharbor-runtime --locked --target ${{ matrix.arch }}-unknown-linux-musl --lib
       - name: Exercise real runtime, resources and process teardown
         run: python3 scripts/test-runtime.py
       - name: Exercise Rust runtime control and lost Engine responses

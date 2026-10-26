@@ -15,7 +15,7 @@ pub enum Error {
     Unsupported,
     #[error("invalid runtime profile or task")]
     Invalid,
-    #[error("runtime filesystem or transport operation failed")]
+    #[error("runtime filesystem or transport operation failed ({})", .0.kind())]
     Io(#[from] std::io::Error),
     #[error("invalid runtime response or private record")]
     Json(#[from] serde_json::Error),
@@ -31,3 +31,17 @@ pub enum Error {
     EngineStatus(u16),
 }
 pub type Result<T> = std::result::Result<T, Error>;
+
+#[cfg(test)]
+mod error_tests {
+    #[test]
+    fn filesystem_diagnostic_includes_kind_without_private_error_message() {
+        let error = super::Error::Io(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "private-source-or-credential-sentinel",
+        ));
+        let public = error.to_string();
+        assert!(public.contains("permission denied"));
+        assert!(!public.contains("sentinel"));
+    }
+}
