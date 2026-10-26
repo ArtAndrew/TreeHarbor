@@ -134,10 +134,11 @@ fn files_directory(path: &Path) -> Result<File> {
     let flags = OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::NONBLOCK;
     #[cfg(target_os = "linux")]
     let flags = flags | OFlags::PATH;
-    let file = OpenOptions::new()
-        .read(true)
-        .custom_flags(flags.bits() as i32)
-        .open(path)?;
+    // Keep the typed platform flags at the syscall boundary. Passing their raw
+    // bits through std/libc OpenOptions lost O_PATH in the static Linux build.
+    let file: File = rustix::fs::open(path, flags | OFlags::CLOEXEC, rustix::fs::Mode::empty())
+        .map_err(std::io::Error::from)?
+        .into();
     let meta = file.metadata()?;
     if !meta.is_dir() || meta.uid() != rustix::process::geteuid().as_raw() {
         return Err(Error::Mismatch);
@@ -282,7 +283,30 @@ mod tests {
         let mode = fs::metadata(&path).unwrap().mode() & 0o777;
         fs::set_permissions(&path, fs::Permissions::from_mode(0o700)).unwrap();
         assert_eq!(mode, 0);
-        assert_eq!(opened.unwrap().metadata().unwrap().ino(), inode);
+        let opened = opened.unwrap();
+        assert_eq!(opened.metadata().unwrap().ino(), inode);
+        assert!(
+            rustix::fs::fcntl_getfl(&opened)
+                .unwrap()
+                .contains(OFlags::PATH)
+        );
+    }
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn task_directory_open_never_follows_a_link_or_accepts_a_regular_file() {
+        let root = tempfile::tempdir().unwrap();
+        let directory = root.path().join("directory");
+        fs::create_dir(&directory).unwrap();
+        let link = root.path().join("link");
+        std::os::unix::fs::symlink(&directory, &link).unwrap();
+        assert!(files_directory(&link).is_err());
+        let file = root.path().join("file");
+        fs::write(&file, b"keep").unwrap();
+        assert!(files_directory(&file).is_err());
+        assert_eq!(fs::read(file).unwrap(), b"keep");
+        if rustix::process::geteuid().as_raw() != 0 {
+            assert!(files_directory(Path::new("/")).is_err());
+        }
     }
     #[test]
     fn mount_proof_rejects_aliases_shared_and_nested_mounts() {
