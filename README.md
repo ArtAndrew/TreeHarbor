@@ -94,6 +94,11 @@ are no supported release binaries, one-command installation, complete server
 restore procedure or verified unattended lifecycle. Keep ordinary Git and independent
 backups while evaluating the project.
 
+Development archives now pass offline CLI installation on Linux x86-64 and ARM64.
+See [packaging and verification](docs/release-packaging.md). These temporary CI
+artifacts are for technical evaluation; full installed-runtime and Connected
+onboarding acceptance remain in progress.
+
 A workspace provides files; **the external runtime provides the execution sandbox**.
 Agents must not receive publisher credentials. Tests cannot detect every semantic
 incompatibility. See [security boundaries](SECURITY.md).
