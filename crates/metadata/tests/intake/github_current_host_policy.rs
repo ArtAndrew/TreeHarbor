@@ -214,6 +214,7 @@ async fn current_host_policy_never_upgrades_incomplete_or_outdated_admission() {
             let group = source.group_capture.as_mut().unwrap();
             group.before.target.configuration = Some(config.clone());
             group.after.target.configuration = Some(config);
+            source.snapshot = Some(group.after.target.clone());
             c.save_host("changed-membership-settings", &source).await;
         }
         let mut r = if let Some(r) = earlier {
