@@ -1,4 +1,6 @@
 //! Real PostgreSQL boundaries; host and terminal-runtime observations are fixtures.
+#[path = "github_admission_evidence.rs"]
+mod admission_evidence;
 use super::*;
 use treeharbor_metadata::github::{AdmissionPolicy, ManagedRequirement, PolicyPin};
 

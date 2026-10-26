@@ -13,7 +13,7 @@ pub struct CheckPublicationSpec {
 async fn load(tx: &Transaction<'_>, s: &Scope, id: Uuid) -> Result<Row> {
     tx.query_opt("SELECT *,expires_at>clock_timestamp() AS unexpired,(extract(epoch from expires_at)*1000)::bigint AS deadline,(extract(epoch from started_at)*1000)::bigint AS started,(extract(epoch from clock_timestamp())*1000)::bigint AS now_ms FROM th_github_check_publications WHERE tenant=$1 AND repository=$2 AND publication=$3", &[&s.tenant(),&s.repository(),&id]).await?.ok_or(Error::NotFound)
 }
-fn target(r: &Row) -> Result<Target> {
+pub(super) fn target(r: &Row) -> Result<Target> {
     let t: Target = serde_json::from_value(r.get("target")).map_err(|_| Error::SchemaMismatch)?;
     t.validate().map_err(|_| Error::SchemaMismatch)?;
     if t.publication != r.get::<_, Uuid>("publication")
@@ -82,6 +82,40 @@ async fn conditions(tx: &Transaction<'_>, s: &Scope, r: &Row) -> Result<()> {
         admission_policy::publication_preflight(tx, s, r.get("check_run"), &preflight).await?;
     }
     Ok(())
+}
+/// Current trust in a retained publication, distinct from its former one-shot
+/// dispatch deadline. Explicit revocation/cancellation invalidates eligibility;
+/// historical receipts remain readable and credential expiry permits no new calls.
+pub(super) async fn retained_approval_current(
+    tx: &Transaction<'_>,
+    s: &Scope,
+    r: &Row,
+    receipt: &Row,
+) -> Result<bool> {
+    let reporter: String = receipt.get("reporter");
+    let spec = specification(&binding(tx, s, r.get("binding")).await?)?;
+    if reporter != r.get::<_, String>("bridge") || reporter != spec.bridge {
+        return Err(Error::SchemaMismatch);
+    }
+    Ok(!r.get::<_, bool>("cancel_requested")
+        && crate::integration::trusted(
+            tx,
+            s,
+            &r.get::<_, String>("principal"),
+            "human",
+            "host.queue",
+            Some(r.get("token")),
+        )
+        .await?
+        && crate::integration::trusted(
+            tx,
+            s,
+            &reporter,
+            "bridge",
+            "host.check",
+            Some(receipt.get("token")),
+        )
+        .await?)
 }
 async fn fresh(
     tx: &Transaction<'_>,

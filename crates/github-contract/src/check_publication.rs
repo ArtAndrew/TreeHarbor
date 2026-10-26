@@ -277,6 +277,10 @@ impl Preflight {
 #[serde(deny_unknown_fields)]
 pub struct PublishedCheck {
     pub id: u64,
+    /// Opaque GraphQL identity returned alongside `id` by authenticated REST.
+    /// Legacy receipts have no inferred node identity.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub node_id: Option<String>,
     pub app_id: u64,
     pub name: String,
     pub head_revision: String,
@@ -287,6 +291,12 @@ pub struct PublishedCheck {
 impl PublishedCheck {
     pub fn validate(&self, t: &Target) -> Result<()> {
         positive(self.id)?;
+        if let Some(id) = &self.node_id {
+            text(id, 256)?;
+            if !id.is_ascii() || id.bytes().any(|b| b.is_ascii_whitespace()) {
+                return Err(InvalidEvidence);
+            }
+        }
         t.validate()?;
         if self.app_id != t.app_id
             || self.name != t.name()?
@@ -321,7 +331,7 @@ pub struct Report {
 impl Report {
     pub fn validate(&self, t: &Target) -> Result<()> {
         t.validate()?;
-        if self.version != 1
+        if !matches!(self.version, 1 | 2)
             || self.started_at_unix_ms <= 0
             || self.finished_at_unix_ms < self.started_at_unix_ms
             || self.finished_at_unix_ms - self.started_at_unix_ms > 300000
@@ -333,6 +343,9 @@ impl Report {
             p.validate(t)?;
         }
         if let Some(c) = &self.check {
+            if (self.version == 2) != c.node_id.is_some() {
+                return Err(InvalidEvidence);
+            }
             c.validate(t)?;
         }
         if serde_json::to_vec(self).map_err(|_| InvalidEvidence)?.len() > 192 * 1024 {
