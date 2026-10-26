@@ -9,13 +9,35 @@ below retain evidence from individual increments. Their earlier statements about
 unfinished work describe the scope at that time; they are not a replacement for
 the current overview or the full [release gate ledger](#release-gate-ledger).
 
-Last full CI baseline before this increment: [PR70](https://github.com/ArtAndrew/TreeHarbor/pull/70),
+Last full CI baseline before this increment: [PR71](https://github.com/ArtAndrew/TreeHarbor/pull/71),
 published on 2026-10-26 after all six required checks passed. The
-[CI run](https://github.com/ArtAndrew/TreeHarbor/actions/runs/40284681487) passed
-357 ordinary tests on each of Linux/macOS, 317 real PostgreSQL contracts, 43 actual
+[CI run](https://github.com/ArtAndrew/TreeHarbor/actions/runs/40287902976) passed
+370 ordinary tests on each of Linux/macOS, 317 real PostgreSQL contracts, 43 actual
 gVisor scenario groups on each of Linux x86-64/ARM64, and 11 webhook TLS/failure
 groups. These correctness checks do not establish complete mode readiness or
 performance superiority.
+
+## Configuration inspection before the first PR
+
+`github policy-inspect --config <private-app-config> --base <branch>` reads two
+bounded configuration rounds independently of PRs, queue entries and local service
+state. The default token is read-only; `--include-queue-settings` explicitly
+requests Contents-write solely for GitHub's queue configuration read. No implicit
+scope expansion, host mutation, policy approval or admission occurs.
+
+A versioned configuration wrapper binds Profile v1 to explicit ref/repository
+visibility, protection flags and complete bypass lists, without changing earlier
+profile bytes. The report retains drift and revocation outcome. Supplementary
+absence can resolve only specific absent REST fields when the sources agree;
+contradictory, malformed, unknown or redacted data remain unproven.
+
+Seven new contract tests, five network scenario groups and the CLI private-input
+case cover independent encoding vectors, target/identity substitution, incomplete
+or duplicate lists, drift, exact permission requests, revocation and errors.
+These are local synthetic-provider tests, not an installed-App acceptance claim.
+See [configuration inspection](github-host-policy.md#inspect-configuration-before-the-first-pr).
+Owner configuration pinning, current candidate policy/review/workflow proof and
+full admission remain open, along with both modes' remaining release gates.
 
 ## Effective host-policy analysis
 
@@ -38,9 +60,8 @@ replay test and CLI/server process-loss recovery test passed, as did final stric
 workspace Clippy and formatting. Exact-head CI remains required before merge. See [policy analysis](github-host-policy.md#policy-analysis)
 for the encoding, supported interpretation and limits.
 
-Configuration-only network inspection/onboarding, owner profile pinning with
-versioned admission policy, complete review/workflow proof and final current
-admission remain open. A historical diagnostic is not merge authorization. Both
+Owner profile pinning with versioned admission policy, complete review/workflow
+proof and final current admission remain open. A historical diagnostic is not merge authorization. Both
 mode lifecycles, operations, packaging and comparative benchmarks remain required.
 
 ## Host policy and review observations

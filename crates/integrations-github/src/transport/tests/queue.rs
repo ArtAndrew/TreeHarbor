@@ -11,6 +11,8 @@ mod group_attempt_tests;
 mod group_check_tests;
 #[path = "groups.rs"]
 mod group_tests;
+#[path = "host_configuration.rs"]
+mod host_configuration_tests;
 #[path = "host_policy.rs"]
 mod host_policy_tests;
 #[path = "workflow_definitions.rs"]

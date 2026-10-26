@@ -106,8 +106,8 @@ increment exposes historical diagnostics; it does not dispatch or certify a merg
 Configuration profile version 1 contains repository ID/name, base branch, complete
 legacy protection, applicable rules, source documents and optional queue settings.
 It has no PR prerequisite and can be analyzed by the shared contract library before
-any candidate exists. A configuration-only network inspection/onboarding command
-and owner pinning are not implemented yet.
+any candidate exists. The configuration-only command below can collect it before
+the first PR. Owner pinning and full admission certification remain incomplete.
 
 Its digest is SHA-256 of `treeharbor-github-host-policy-configuration`, NUL, `v1`,
 NUL, then compact JSON with lexically ordered object keys. Top-level effective rules
@@ -154,3 +154,58 @@ unseen administrator change between requests. Complete policy support,
 owner-reviewed policy pinning, workflow execution-context proof, final admission
 and live installed-App acceptance remain separate release gates. Local transport
 fixtures and real database/process-recovery tests do not close those gates.
+
+
+## Inspect configuration before the first PR
+
+Use the existing private GitHub App configuration on a trusted machine:
+
+```sh
+treeharbor github policy-inspect \
+  --config /private/treeharbor/github-app.json --base main
+```
+
+This command needs no PR, queue attempt, local service or service credential. It
+reads two complete rounds for the exact branch and numeric repository identity.
+The default temporary token requests only Contents, Metadata, Administration and
+Merge queues **read**, limited to the configured repository. It requests no
+Pull requests, Checks or Actions permissions and never upgrades them automatically.
+
+Queue configuration reads on GitHub can require Contents **write**. To request
+that scope explicitly, add `--include-queue-settings`. The App must already have
+that grant. This option still performs only configuration reads; it cannot change
+App grants, branches, rules or queue entries. Without it, omitted queue settings
+remain `queue_configuration_unproven`. GitHub permission errors fail the read;
+there is no automatic retry with broader privileges.
+
+The JSON result contains the full versioned `inspection`, its `digest`, both
+configuration digests, both analyses and `reasons`. `approved` and
+`admission_verified` are always false. A successful exit means collection finished
+and token revocation succeeded, **not** that the configuration is supported or
+approved. Inspect diagnostics and candidate requirements separately. Provider or
+validation errors produce failure; failed revocation returns the collected report
+with `token_revocation_unproven` and a failing exit status. Tokens and private
+keys are never included in the report. Retrying collects a new observation.
+
+The supplementary GraphQL observation binds the selected ref, owning repository,
+branch-protection rule ID, explicit policy flags and complete bypass connections.
+Explicitly empty bypass lists and disabled push restrictions can resolve specific
+absent REST fields only when overlapping observations agree. Malformed fields,
+contradictions, redacted ruleset bypass lists and unknown rules remain unproven.
+Required deployments remain a separate candidate condition. Personal repositories
+receive `personal_repository_queue_unsupported`; this command does not turn them
+into organization merge queues.
+
+The collector rejects incomplete or duplicate bypass connections (maximum 100
+allowances each), incomplete rule pages, foreign repository/source identities and
+reports over 48KiB. Two rounds are bounded observations, not an atomic transaction
+with GitHub. An unchanged hash is not an owner approval or evidence of current CI.
+
+Configuration wrapper version 1 preserves the existing Profile v1 bytes and adds
+`visibility`. Its digest domain is `treeharbor-github-host-configuration`, NUL,
+`v1`, NUL. Inspection version 1 adds capture times, before/after configurations
+and revocation outcome; its domain is
+`treeharbor-github-host-configuration-inspection`, NUL, `v1`, NUL. Both hash compact
+JSON with lexical object keys. The wrapper retains Profile v1 canonicalization
+and sorts supplementary context/environment/allowance lists. Raw nested REST
+arrays retain their order. Independent fixture bytes fix both encodings.
