@@ -4,6 +4,16 @@ use serde::Deserialize;
 #[derive(Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
 pub enum WireCommand {
+    QueueHostPolicyContext {
+        epoch: i64,
+        queue: String,
+        membership_sequence: i64,
+    },
+    QueueHostPolicies {
+        epoch: i64,
+        queue: String,
+        after: i64,
+    },
     QueueAdmissionEvidence {
         epoch: i64,
         queue: String,
@@ -554,12 +564,13 @@ impl WireCommand {
             | Self::DequeueContext { .. }
             | Self::DequeueDispatchContext { .. } => Permission::HostMerge,
             Self::CheckPolicySet { .. } => Permission::PolicyWrite,
-            Self::CheckPolicy { .. }
+            Self::QueueHostPolicies { .. }
+            | Self::CheckPolicy { .. }
             | Self::QueueDefinitions { .. }
             | Self::QueuePublications { .. } => Permission::Read,
-            Self::QueueDefinitionContext { .. } | Self::QueuePublicationContext { .. } => {
-                Permission::HostMerge
-            }
+            Self::QueueHostPolicyContext { .. }
+            | Self::QueueDefinitionContext { .. }
+            | Self::QueuePublicationContext { .. } => Permission::HostMerge,
             Self::QueueRequest { .. } | Self::QueueCancel { .. } => Permission::HostQueue,
             Self::QueueBegin { .. }
             | Self::QueueReport { .. }
@@ -613,6 +624,22 @@ impl WireCommand {
         backend: Option<&str>,
     ) -> Result<Value> {
         match self {
+            Self::QueueHostPolicyContext {
+                epoch,
+                queue,
+                membership_sequence,
+            } => {
+                db.github_queue_host_policy_context(auth, epoch, id(&queue)?, membership_sequence)
+                    .await
+            }
+            Self::QueueHostPolicies {
+                epoch,
+                queue,
+                after,
+            } => {
+                db.github_queue_host_policies(auth, epoch, id(&queue)?, after)
+                    .await
+            }
             Self::QueueAdmissionEvidence {
                 epoch,
                 queue,

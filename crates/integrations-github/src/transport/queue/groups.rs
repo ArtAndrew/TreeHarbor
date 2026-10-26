@@ -217,6 +217,7 @@ impl Connection {
             group_attempt: None,
             workflow_definition: None,
             publication: None,
+            host_policy: None,
             receipt: None,
             enqueue_receipt: None,
             async_result: None,

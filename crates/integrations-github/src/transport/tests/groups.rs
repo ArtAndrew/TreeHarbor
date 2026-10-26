@@ -75,7 +75,7 @@ async fn required_group_check_targets_candidate_and_stops_on_membership_drift() 
     }
 }
 
-fn groups() -> Value {
+pub(super) fn groups() -> Value {
     let mut g = queued();
     let r = &mut g["data"]["repository"];
     r["ref"] = json!({"target":{"oid":"88".repeat(20),"tree":{"oid":"99".repeat(20)}}});

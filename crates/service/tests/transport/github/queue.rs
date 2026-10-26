@@ -1,3 +1,5 @@
+#[path = "host_policy.rs"]
+mod host_policy;
 #[path = "publication.rs"]
 mod publication_evidence;
 use super::*;
@@ -376,6 +378,7 @@ pub(super) async fn exercise(
     group_checks::exercise(f, server, id, &state, &app, owner).await;
     group_attempts::exercise(f, server, id, &state, &app, owner).await;
     workflow_definitions::exercise(f, server, id, &state, &app, owner).await;
+    host_policy::exercise(f, server, id, &state, &app, owner).await;
     publication_evidence::exercise(f, server, id, &state, &app, owner).await;
     f.credential_path = owner.to_owned();
 }

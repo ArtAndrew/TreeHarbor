@@ -59,7 +59,12 @@ pub(super) async fn exercise(
     );
     let got = tokio::time::timeout(Duration::from_secs(30), received).await;
     assert!(got.is_ok(), "{}", fs::read_to_string(&diagnostic).unwrap());
-    got.unwrap().unwrap();
+    assert!(
+        got.unwrap().is_ok(),
+        "CLI: {}; server: {}",
+        fs::read_to_string(&diagnostic).unwrap(),
+        fs::read_to_string(f.dir.path().join("server.log")).unwrap()
+    );
     f.config.socket = original;
     child.0.kill().unwrap();
     child.0.wait().unwrap();

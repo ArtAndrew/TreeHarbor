@@ -141,6 +141,7 @@ impl Connection {
             finished_at_unix_ms: now()? as i64 * 1000,
             workflow_definition: Some(report),
             publication: None,
+            host_policy: None,
             group_attempt: None,
             group_checks: None,
             group_capture: None,

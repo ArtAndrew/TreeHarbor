@@ -220,6 +220,7 @@ impl Connection {
             started_at_unix_ms: started,
             finished_at_unix_ms: now()? as i64 * 1000,
             publication: Some(result?),
+            host_policy: None,
             snapshot: None,
             receipt: None,
             async_result: None,

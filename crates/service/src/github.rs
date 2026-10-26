@@ -111,6 +111,9 @@ pub enum Action {
         /// Read final candidate/target history for this stable membership; never enqueue.
         #[arg(long,value_parser=clap::value_parser!(i64).range(1..=4096),conflicts_with_all=["group_report","check_report","attempt_report"])]
         publication_group: Option<i64>,
+        /// Capture full host policy/review for retained membership; never enqueue.
+        #[arg(long,value_parser=clap::value_parser!(i64).range(1..=4096),conflicts_with_all=["group_report","check_report","attempt_report","publication_group"])]
+        host_policy_group: Option<i64>,
     },
     /// Capture exact selected PR checks and active rulesets; does not authorize merge.
     Inspect {
@@ -358,6 +361,7 @@ pub async fn run(action: Action) -> Result<bool> {
             check_side,
             attempt_report,
             publication_group,
+            host_policy_group,
         } => {
             queue::run(queue::Request {
                 config,
@@ -367,6 +371,7 @@ pub async fn run(action: Action) -> Result<bool> {
                 epoch,
                 state,
                 publication_group,
+                host_policy_group,
                 definition_attempt: attempt_report,
                 check: group_report.map(|sequence| {
                     (

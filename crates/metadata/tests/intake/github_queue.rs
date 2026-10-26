@@ -1,3 +1,5 @@
+#[path = "github_host_policy.rs"]
+mod host_policy;
 #[path = "github_managed_checks.rs"]
 mod managed_checks;
 #[path = "github_queue_publication.rs"]
@@ -123,6 +125,7 @@ impl QueueFixture {
             group_attempt: None,
             workflow_definition: None,
             publication: None,
+            host_policy: None,
             async_result: None,
             mutation_not_sent: false,
             token_revoked: false,

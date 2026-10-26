@@ -192,6 +192,7 @@ fn queue_and_final_host_facts_never_become_verified_merge() {
         group_attempt: None,
         workflow_definition: None,
         publication: None,
+        host_policy: None,
         async_result: None,
         mutation_not_sent: false,
         token_revoked: true,
