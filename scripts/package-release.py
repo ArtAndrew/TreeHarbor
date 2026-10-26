@@ -16,6 +16,47 @@ import tomllib
 
 ROOT = Path(__file__).resolve().parents[1]
 TARGETS = {"x86_64-unknown-linux-musl": 62, "aarch64-unknown-linux-musl": 183}
+TOOLCHAIN_NOTICES = {
+    "third-party/toolchain/rust-1.99.1/COPYRIGHT": "rust-stdlib",
+    "third-party/toolchain/rust-1.99.1/COPYRIGHT-library.html": "rust-stdlib",
+    "third-party/toolchain/rust-1.99.1/LICENSE-MIT": "rust-stdlib",
+    "third-party/toolchain/rust-1.99.1/LICENSE-APACHE": "rust-stdlib",
+    "third-party/toolchain/compiler-builtins/LICENSE.txt": "compiler-builtins",
+    "third-party/toolchain/libm/LICENSE.txt": "libm",
+    "third-party/toolchain/musl-1.2.5/COPYRIGHT": "musl",
+}
+
+
+def verify_toolchain_notices(tracked):
+    """Check the reviewed notice set, not how the supplied binaries were built."""
+    name = "third-party/toolchain/manifest.json"
+    if name not in tracked:
+        raise ValueError("tracked toolchain notice manifest is required")
+    inventory = json.loads(regular(ROOT / name))
+    if not isinstance(inventory, dict):
+        raise ValueError("invalid toolchain notice inventory")
+    channel = tomllib.loads(regular(ROOT / "rust-toolchain.toml").decode())["toolchain"]["channel"]
+    if (inventory.get("version") != 1 or inventory.get("rust_version") != channel
+            or channel != "1.99.1"
+            or not re.fullmatch(r"[0-9a-f]{40}", inventory.get("rust_source_revision", ""))):
+        raise ValueError("toolchain notices require review for the pinned compiler")
+    records = inventory.get("files")
+    if not isinstance(records, list) or len(records) != len(TOOLCHAIN_NOTICES):
+        raise ValueError("incomplete toolchain notice inventory")
+    seen = set()
+    for record in records:
+        if not isinstance(record, dict):
+            raise ValueError("invalid toolchain notice record")
+        path = record.get("path")
+        if (not isinstance(path, str) or path not in TOOLCHAIN_NOTICES
+                or path not in tracked or path in seen
+                or record.get("component") != TOOLCHAIN_NOTICES[path]):
+            raise ValueError("unexpected or untracked toolchain notice path")
+        seen.add(path)
+        if hashlib.sha256(regular(ROOT / path)).hexdigest() != record.get("sha256"):
+            raise ValueError(f"toolchain notice hash mismatch: {path}")
+    if seen != set(TOOLCHAIN_NOTICES):
+        raise ValueError("incomplete toolchain notice inventory")
 
 
 def regular(path):
@@ -64,6 +105,7 @@ def package(args):
     # Only tracked public documentation/examples/notices are eligible. Never walk
     # the workspace (which can contain operator state, credentials or local ADRs).
     tracked = subprocess.check_output(["git", "ls-files", "-z", "docs", "examples", "third-party"], cwd=ROOT).split(b"\0")
+    verify_toolchain_notices({os.fsdecode(p) for p in tracked if p})
     for raw in sorted(p for p in tracked if p):
         name = os.fsdecode(raw)
         if name.startswith(("docs/adr/", "docs/specs/")):

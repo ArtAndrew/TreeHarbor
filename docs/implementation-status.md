@@ -9,14 +9,24 @@ below retain evidence from individual increments. Their earlier statements about
 unfinished work describe the scope at that time; they are not a replacement for
 the current overview or the full [release gate ledger](#release-gate-ledger).
 
-Last full CI baseline before this increment: [PR76](https://github.com/ArtAndrew/TreeHarbor/pull/76),
+Last full CI baseline before this increment: [PR77](https://github.com/ArtAndrew/TreeHarbor/pull/77),
 published on 2026-10-26 after all six required checks passed. The
-[CI run](https://github.com/ArtAndrew/TreeHarbor/actions/runs/40318740436) passed
-398 ordinary tests on Linux and 396 on macOS, 322 real PostgreSQL contracts,
+[CI run](https://github.com/ArtAndrew/TreeHarbor/actions/runs/40324663693) passed
+402 ordinary tests on Linux and 400 on macOS, 328 real PostgreSQL contracts,
 14 static-runtime unit tests and 48 installed-runtime/controller/managed/native
 scenario groups on each of Linux x86-64/ARM64, and 11 webhook TLS/failure groups.
 These correctness checks do not establish complete mode readiness or performance
-superiority. The current dispatch-policy increment still requires its own full CI.
+superiority. The current static-toolchain notice increment still requires its own package CI.
+
+## Static toolchain notice inventory
+
+The package builder now requires seven unchanged upstream notice files for the
+pinned Rust standard library, compiler-builtins, libm and musl. A tracked manifest
+binds their hashes and compiler version; omission, replacement, an unexpected path
+or an unreviewed compiler pin refuses packaging. These files are third-party legal
+materials, not additional TreeHarbor implementation. This closes a notice-inclusion
+gap; a complete binary SBOM, build-input linkage and signed provenance remain open.
+See [the inventory](../third-party/toolchain/README.md).
 
 ## Development installation and restore acceptance
 

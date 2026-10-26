@@ -24,6 +24,12 @@ built. The archive has deterministic headers for identical inputs, which does no
 claim reproducible compiler output. Never distribute a development package as an
 approved release merely because these checks pass.
 
+The builder also requires the reviewed [static-toolchain notice inventory](../third-party/toolchain/README.md).
+Missing, changed, omitted or untracked notices refuse packaging, as does a compiler
+pin that has not received notice review. This verifies notice inclusion and hashes;
+it does not establish the compiler used for the supplied binaries or replace a
+target-specific SBOM and signed build provenance.
+
 Once a release has been approved and its archive checksum verified against the
 release's trusted metadata, offline installation will use:
 

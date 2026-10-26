@@ -3,6 +3,7 @@
 import contextlib
 import importlib.util
 import io
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -47,6 +48,16 @@ class PackageTests(unittest.TestCase):
         self.write("Cargo.toml", b'[workspace.package]\nversion="0.1.0-alpha.1"\n')
         self.write("docs/start.md", b"public instructions\n")
         self.write("third-party/example/LICENSE", b"dependency license\n")
+        self.write("rust-toolchain.toml", b'[toolchain]\nchannel="1.99.1"\n')
+        notices = []
+        for path, component in module.TOOLCHAIN_NOTICES.items():
+            content = ("synthetic notice fixture: " + path).encode()
+            self.write(path, content)
+            notices.append({"path": path, "component": component,
+                            "sha256": hashlib.sha256(content).hexdigest()})
+        self.write("third-party/toolchain/manifest.json", json.dumps({
+            "version": 1, "rust_version": "1.99.1", "rust_source_revision": "ab" * 20,
+            "files": notices}).encode())
         self.write("scripts/install-release.sh", INSTALLER)
         self.commit()
         self.bins = self.base / "binaries"
@@ -81,17 +92,53 @@ class PackageTests(unittest.TestCase):
             names = archive.getnames()
             prefix = names[0].split("/")[0] + "/"
             self.assertIn(prefix + "third-party/example/LICENSE", names)
+            for path in module.TOOLCHAIN_NOTICES:
+                self.assertIn(prefix + path, names)
             self.assertIn(prefix + "docs/start.md", names)
             self.assertNotIn(prefix + "Cargo.toml", names)
             self.assertEqual(archive.getmember(prefix + "bin/treeharbor").mode, 0o755)
             manifest = json.load(archive.extractfile(prefix + "manifest.json"))
             self.assertEqual(manifest["target"], "x86_64-unknown-linux-musl")
             self.assertEqual(manifest["source_revision"], self.git("rev-parse", "HEAD").decode().strip())
-            import hashlib
             for name, record in manifest["files"].items():
                 self.assertEqual(hashlib.sha256(archive.extractfile(prefix + name).read()).hexdigest(), record["sha256"])
         with self.assertRaises(FileExistsError):
             self.pack()
+
+    def test_committed_missing_or_changed_toolchain_notices_refuse_packaging(self):
+        # Commit each fault: the clean-checkout guard must not hide missing or
+        # changed notices in an otherwise reviewable source revision.
+        path = next(iter(module.TOOLCHAIN_NOTICES))
+        original = (self.root / path).read_bytes()
+        for content in (None, b"changed upstream notice"):
+            if content is None:
+                (self.root / path).unlink()
+            else:
+                self.write(path, content)
+            self.commit()
+            with self.assertRaises((ValueError, OSError)):
+                self.pack()
+            self.write(path, original)
+        self.write("rust-toolchain.toml", b'[toolchain]\nchannel="1.100.0"\n')
+        self.commit()
+        with self.assertRaisesRegex(ValueError, "review"):
+            self.pack()
+
+    def test_notice_inventory_cannot_omit_or_redirect_required_files(self):
+        path = self.root / "third-party/toolchain/manifest.json"
+        original = json.loads(path.read_text())
+        for fault in ("omit", "redirect", "duplicate"):
+            inventory = json.loads(json.dumps(original))
+            if fault == "omit":
+                inventory["files"].pop()
+            elif fault == "redirect":
+                inventory["files"][0]["path"] = "../operator-private-key.pem"
+            else:
+                inventory["files"][0] = inventory["files"][1]
+            path.write_text(json.dumps(inventory))
+            self.commit()
+            with self.assertRaises(ValueError):
+                self.pack()
 
     def test_dirty_sources_and_internal_docs_never_enter_archive(self):
         self.write("operator-private-key.pem", b"private test sentinel")
