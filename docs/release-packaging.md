@@ -55,3 +55,8 @@ boundaries and installer failure paths; they do not exercise a runtime or databa
 Neither suite proves the complete two-agent workflow. Passing package jobs retain development archives as authenticated GitHub Actions
 artifacts for seven days. These are not approved releases. The workflow creates no
 tag or GitHub release, and generates no SBOM/provenance attestation.
+
+The runtime CI also installs a newly built static package and passes its service
+and runtime-init paths to the managed lifecycle tests. Those tests keep their
+adversarial probe as a separate fixture while executing the installed product
+binaries. Full Connected live acceptance remains a separate gate.
