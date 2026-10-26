@@ -225,6 +225,18 @@ pub enum Action {
         #[arg(long,value_parser=clap::value_parser!(i64).range(1..))]
         epoch: i64,
     },
+    /// Read branch configuration before the first PR; never approve or enqueue.
+    PolicyInspect {
+        /// Existing private GitHub App config; key stays in its separate file.
+        #[arg(long)]
+        config: PathBuf,
+        /// Exact existing branch name, without refs/heads/.
+        #[arg(long)]
+        base: String,
+        /// Explicitly request Contents-write to read queue settings. No host write.
+        #[arg(long)]
+        include_queue_settings: bool,
+    },
     /// Verify a selected repository with a temporary read-only App token.
     /// Creates no binding, branch or PR and makes no queue-readiness claim.
     Probe {
@@ -573,6 +585,36 @@ pub async fn run(action: Action) -> Result<bool> {
                 serde_json::to_string_pretty(&result).map_err(|_| Error::Http)?
             );
             Ok(true)
+        }
+        Action::PolicyInspect {
+            config,
+            base,
+            include_queue_settings,
+        } => {
+            let (credentials, config) = load(&config)?;
+            let target = treeharbor_github_contract::host_configuration::Target {
+                repository_id: config.repository.repository_id,
+                repository_name: format!("{}/{}", config.repository.owner, config.repository.name),
+                base_ref: base.clone(),
+            };
+            let report = Connection::new(credentials)?
+                .inspect_host_configuration(&config.repository, &base, include_queue_settings)
+                .await?;
+            let output = json!({
+                "version": 1, "inspection": report,
+                "digest": report.digest(&target).map_err(|_| Error::Http)?,
+                "before_digest": report.before.digest(&target).map_err(|_| Error::Http)?,
+                "after_digest": report.after.digest(&target).map_err(|_| Error::Http)?,
+                "before_analysis": report.before.analyze(&target).map_err(|_| Error::Http)?,
+                "after_analysis": report.after.analyze(&target).map_err(|_| Error::Http)?,
+                "reasons": report.reasons(&target).map_err(|_| Error::Http)?,
+                "approved": false, "admission_verified": false
+            });
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&output).map_err(|_| Error::Http)?
+            );
+            Ok(report.token_revoked)
         }
         Action::Probe { config } => {
             let (credentials, config) = load(&config)?;

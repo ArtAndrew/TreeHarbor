@@ -129,3 +129,39 @@ fn cli_requires_explicit_grants_and_mutation_fences() {
         .is_err()
     );
 }
+
+#[tokio::test]
+async fn host_configuration_cli_needs_no_pr_and_rejects_exposed_config_before_network() {
+    let prefix = [
+        "treeharbor",
+        "github",
+        "policy-inspect",
+        "--config",
+        "config.json",
+        "--base",
+        "main",
+    ];
+    assert!(Cli::try_parse_from(prefix).is_ok());
+    assert!(Cli::try_parse_from(prefix.into_iter().chain(["--include-queue-settings"])).is_ok());
+    assert!(Cli::try_parse_from(&prefix[..5]).is_err());
+    assert!(Cli::try_parse_from(prefix.into_iter().chain(["--approve"])).is_err());
+    let dir = tempfile::tempdir().unwrap();
+    fs::set_permissions(dir.path(), fs::Permissions::from_mode(0o700)).unwrap();
+    let path = dir.path().join("app.json");
+    fs::write(&path, b"synthetic private app configuration").unwrap();
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
+    let cli = Cli::try_parse_from([
+        "treeharbor",
+        "github",
+        "policy-inspect",
+        "--config",
+        path.to_str().unwrap(),
+        "--base",
+        "main",
+    ])
+    .unwrap();
+    assert!(matches!(
+        treeharbor_service::cli::run(cli).await,
+        Err(Error::UnsafeFile)
+    ));
+}

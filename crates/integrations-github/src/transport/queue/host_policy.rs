@@ -71,7 +71,11 @@ struct Graph {
 }
 
 impl Connection {
-    async fn host_document(&self, path: &str, token: &wire::Token) -> Result<hp::Document> {
+    pub(super) async fn host_document(
+        &self,
+        path: &str,
+        token: &wire::Token,
+    ) -> Result<hp::Document> {
         // Do not store provider error bodies or turn inaccessible documents into {}.
         match self
             .json(
@@ -98,13 +102,13 @@ impl Connection {
             Err(e) => Err(e),
         }
     }
-    async fn host_rules(
+    pub(super) async fn host_rules(
         &self,
         b: &RepositoryBinding,
-        t: &QueueTarget,
+        base: &str,
         token: &wire::Token,
     ) -> Result<(Vec<Value>, Vec<hp::Ruleset>)> {
-        let base = t.pull.base_ref.replace('/', "%2F");
+        let base = base.replace('/', "%2F");
         let repository = format!("{}/{}", b.owner, b.name);
         let mut all = Vec::new();
         let mut sources = BTreeMap::new();
@@ -264,7 +268,7 @@ impl Connection {
                 token,
             )
             .await?;
-        let (rules, rulesets) = self.host_rules(b, t, token).await?;
+        let (rules, rulesets) = self.host_rules(b, &t.pull.base_ref, token).await?;
         let review = self.host_review(b, t, token).await?;
         let snapshot = hp::Snapshot {
             group,

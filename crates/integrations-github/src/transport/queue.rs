@@ -5,6 +5,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use treeharbor_github_contract::{PullState, queue::*};
 mod attempts;
 mod checks;
+mod configuration;
 mod definitions;
 mod dequeue;
 mod enqueue;
