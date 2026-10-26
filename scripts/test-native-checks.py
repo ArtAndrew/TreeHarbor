@@ -12,6 +12,7 @@ from pathlib import Path
 import subprocess
 import socket
 import uuid
+import cold_restore
 
 spec = importlib.util.spec_from_file_location("managed", Path(__file__).with_name("test-managed-runs.py"))
 managed = importlib.util.module_from_spec(spec)
@@ -298,6 +299,7 @@ class Checks(managed.Harness):
         self.export_and_restore(landed, "after-cleanup")
         assert self.native("check_status", self.ci, run=passed["check"]) == original_check
         print("PASS cleanup export: removed agent/check files preserve native history, exact check evidence and ordinary Git restoration", flush=True)
+        cold_restore.exercise(self, landed, managed)
 
 
 if __name__ == "__main__":
