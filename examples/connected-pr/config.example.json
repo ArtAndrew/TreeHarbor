@@ -1,0 +1,121 @@
+{
+  "version": 1,
+  "profile": "connected-prepared-agent-pair-v1",
+  "tenant": "<tenant>",
+  "repository": "<repository UUID>",
+  "epoch": 1,
+  "binary": "<absolute resolved installed executable>",
+  "binary_sha256": "<verified archive executable SHA256>",
+  "socket": "<absolute service socket>",
+  "service_config": "<absolute private service config>",
+  "state": "<absolute new private journal directory>",
+  "engine_socket": "<absolute Engine socket>",
+  "baseline": {
+    "revision": "native:sha256:<imported native revision>",
+    "snapshot": "sha256:<imported snapshot>"
+  },
+  "wait": {
+    "attempts": 36,
+    "interval_seconds": 5
+  },
+  "agents": [
+    {
+      "label": "A",
+      "workspace": "<prepared workspace A UUID>",
+      "generation": 1,
+      "run": "<new run A UUID>",
+      "seal": "<new seal A UUID>",
+      "changeset": "<new changeset A UUID>",
+      "credential": "<absolute agent A credential>",
+      "runtime_profile": "sha256:<registered runtime profile>",
+      "argv": [
+        "/agent",
+        "A"
+      ],
+      "node": {
+        "root": "<absolute node A root>",
+        "storage": "<node A storage UUID>",
+        "slot": "<node A slot UUID>",
+        "credential": "<absolute node A credential>"
+      },
+      "prepared": {
+        "path": "<actual prepared files A path>",
+        "manifest": "<actual prepared manifest A path>"
+      },
+      "selection": {
+        "replace": [
+          "src/lib.rs"
+        ],
+        "delete": [],
+        "exclude": []
+      },
+      "keys": {
+        "request": "pair-A-run",
+        "seal": "pair-A-seal",
+        "accept": "pair-A-accept"
+      }
+    },
+    {
+      "label": "B",
+      "workspace": "<prepared workspace B UUID>",
+      "generation": 1,
+      "run": "<new run B UUID>",
+      "seal": "<new seal B UUID>",
+      "changeset": "<new changeset B UUID>",
+      "credential": "<absolute agent B credential>",
+      "runtime_profile": "sha256:<registered runtime profile>",
+      "argv": [
+        "/agent",
+        "B"
+      ],
+      "node": {
+        "root": "<absolute node B root>",
+        "storage": "<node B storage UUID>",
+        "slot": "<node B slot UUID>",
+        "credential": "<absolute node B credential>"
+      },
+      "prepared": {
+        "path": "<actual prepared files B path>",
+        "manifest": "<actual prepared manifest B path>"
+      },
+      "selection": {
+        "replace": [
+          "src/lib.rs"
+        ],
+        "delete": [],
+        "exclude": []
+      },
+      "keys": {
+        "request": "pair-B-run",
+        "seal": "pair-B-seal",
+        "accept": "pair-B-accept"
+      }
+    }
+  ],
+  "capture_worker": {
+    "version": 1,
+    "mode": "selected-seal-v1",
+    "verified_binary_sha256": "<same verified archive executable SHA256>"
+  },
+  "github": {
+    "binding": "<active binding UUID>",
+    "owner_credential": "<absolute Human owner credential>",
+    "publisher_credential": "<absolute assigned Bridge credential>",
+    "app_config": "<absolute private GitHub App config>",
+    "git": "/usr/bin/git",
+    "base": "main",
+    "ttl_seconds": 3600,
+    "pulls": {
+      "A": {
+        "title": "Agent A proposal",
+        "body": "Scripted TreeHarbor trial; no validation or merge approval asserted.",
+        "draft": true
+      },
+      "B": {
+        "title": "Agent B proposal",
+        "body": "Scripted TreeHarbor trial; no validation or merge approval asserted.",
+        "draft": true
+      }
+    }
+  }
+}
