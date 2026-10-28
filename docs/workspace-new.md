@@ -1,6 +1,6 @@
 # Create a workspace without managing its UUID
 
-Available in development builds after `0.1.1-alpha.1`; not in that signed package.
+Available in the signed [0.1.2-alpha.1 preview](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.2-alpha.1).
 `client workspace-new` saves a workspace UUID and operation key before sending the
 existing creation request. Rerun the same command with the same state file after
 a connection failure. It requests file preparation; it does not run an agent,
@@ -16,7 +16,7 @@ credential needs `workspace.write`; no publisher or database credential is neede
 
 Keep the request file in a persistent directory owned by you with mode `0700`.
 The command writes a private `0600` file and refuses overwrite, aliases, changed
-inputs and corrupt state. Set `TH_BIN` to your built executable and use the paths
+inputs and corrupt state. Set `TH_BIN` to your installed executable and use the paths
 and current authority epoch from your own configuration:
 
 ```sh
