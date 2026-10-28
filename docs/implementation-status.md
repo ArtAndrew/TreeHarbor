@@ -1,6 +1,6 @@
 # Implementation status
 
-Updated: 2026-10-26. This file describes implemented behavior and remaining release
+Updated: 2026-10-28. This file describes implemented behavior and remaining release
 gates. A foundation milestone does not complete either mode.
 
 For a concise current overview, see [what works today](../README.md#what-works-today)
@@ -9,12 +9,12 @@ below retain evidence from individual increments. Their earlier statements about
 unfinished work describe the scope at that time; they are not a replacement for
 the current overview or the full [release gate ledger](#release-gate-ledger).
 
-Last full CI baseline before this increment: [PR79](https://github.com/ArtAndrew/TreeHarbor/pull/79),
-published on 2026-10-26 after all six required checks and both package jobs passed.
-The [CI run](https://github.com/ArtAndrew/TreeHarbor/actions/runs/40357750037) passed
-402 ordinary tests on Linux and 400 on macOS, 328 real PostgreSQL contracts,
-14 static-runtime unit tests and 48 installed-runtime/controller/managed/native
-scenario groups on each of Linux x86-64/ARM64, and 11 webhook TLS/failure groups.
+Last full CI baseline before this increment: [PR83](https://github.com/ArtAndrew/TreeHarbor/pull/83),
+published on 2026-10-28 after all six required checks and both package jobs passed.
+The [CI run](https://github.com/ArtAndrew/TreeHarbor/actions/runs/40627803080) passed
+402 ordinary tests on Linux and 400 on macOS, 330 real PostgreSQL contracts,
+14 static-runtime unit tests per Linux architecture, installed runtime/controller/
+managed/native workloads on x86-64 and ARM64, and webhook TLS/failure tests.
 These correctness checks do not establish complete mode readiness or performance
 superiority. The additional restored-node scenario below needs its own CI evidence.
 
