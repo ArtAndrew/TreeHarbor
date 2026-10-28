@@ -324,6 +324,33 @@ impl Metadata {
         worker: Uuid,
         ttl: i32,
     ) -> Result<Option<SealPlan>> {
+        self.claim_workspace_seal_matching(auth, storage, worker, ttl, None)
+            .await
+    }
+    /// Claim only this seal within the ordinary node/storage/lease scope.
+    /// An unavailable selection never falls back to another pending seal.
+    pub async fn claim_workspace_seal_for(
+        &mut self,
+        auth: &Authorization,
+        storage: Uuid,
+        worker: Uuid,
+        ttl: i32,
+        seal: Uuid,
+    ) -> Result<Option<SealPlan>> {
+        if seal.is_nil() {
+            return Err(Error::Invalid("seal"));
+        }
+        self.claim_workspace_seal_matching(auth, storage, worker, ttl, Some(seal))
+            .await
+    }
+    async fn claim_workspace_seal_matching(
+        &mut self,
+        auth: &Authorization,
+        storage: Uuid,
+        worker: Uuid,
+        ttl: i32,
+        seal: Option<Uuid>,
+    ) -> Result<Option<SealPlan>> {
         ttl_valid(ttl)?;
         if worker.is_nil() {
             return Err(Error::Invalid("seal worker"));
@@ -340,12 +367,13 @@ impl Metadata {
             JOIN th_principals a ON a.tenant=c.tenant AND a.principal=c.principal
             JOIN th_repository_access g ON g.tenant=c.tenant AND g.repository=c.repository AND g.principal=c.principal
             WHERE c.tenant=$1 AND c.repository=$2 AND m.node=$3 AND m.storage_instance=$4 AND m.removed
+            AND ($5::uuid IS NULL OR c.seal=$5)
             AND c.expires_at>clock_timestamp() AND (c.state='waiting' OR(c.state='capturing' AND c.lease_until<=clock_timestamp()))
             AND w.state='in_use' AND p.state='prepared' AND w.generation=c.workspace_generation AND w.epoch=c.epoch
             AND repo.state='active' AND repo.epoch=c.epoch AND repo.authority=c.authority
             AND a.enabled AND 'workspace.write'=ANY(g.permissions)
             ORDER BY c.created_at,c.seal LIMIT 1 FOR UPDATE OF c SKIP LOCKED"#,
-            &[&s.tenant(),&s.repository(),&auth.principal(),&storage]).await?;
+            &[&s.tenant(),&s.repository(),&auth.principal(),&storage,&seal]).await?;
         let Some(row) = row else {
             tx.commit().await?;
             return Ok(None);

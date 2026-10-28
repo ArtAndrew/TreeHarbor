@@ -163,9 +163,29 @@ expose only the error kind, with a test excluding private error text.
 
 ## Connected Preview priority and candidate assessment
 
-The next release targets one installable Connected workflow for controlled pilots.
-Standalone remains a later milestone. Neither an alpha tag nor the current tests
-establish production readiness or complete the full two-mode roadmap.
+The node CLI now accepts `seal-once --seal UUID`, selecting only that stopped-file
+capture within the existing node/storage/authorization/lease scope. Unknown,
+unavailable or completed selections return idle without claiming another task;
+unqualified scheduling remains available. Local checks passed 22 PostgreSQL seal
+contracts, 7 node and 18 service unit tests, plus CLI parsing/help. Installed Linux
+acceptance for the new selection is pending; the runtime harness exercises two
+eligible captures on one node and verifies that selecting the later one leaves
+the earlier row and physical artifact untouched.
+
+The next release targets one installed workspace-to-PR workflow for controlled
+pilots: two isolated agents, immutable changes, real GitHub PRs and safe cleanup.
+GitHub's ordinary checks, review and merge process handle the proposed changes.
+Small alpha.1.x patches address pilot blockers; alpha.2 prioritizes repeat use and
+onboarding based on observed feedback. TreeHarbor queue automation and full
+Connected publication disaster recovery follow as separate verified increments.
+Existing queue/candidate components below remain experimental; their complete
+certification no longer blocks the PR-focused first alpha. See the
+[release order](../ROADMAP.md).
+
+Durability, exact identities, runtime/credential separation, no duplicate writes
+on retry, verified installation and signed artifact gates remain. Standalone is
+a later milestone. Neither an alpha tag nor the current tests establish production
+readiness or complete the full two-mode roadmap.
 
 Candidate policy capture now retains complete supplementary visibility in each
 actual provider observation round (Report v2, QueueObservation v10), with the old

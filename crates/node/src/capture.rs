@@ -77,6 +77,19 @@ impl Node {
             .claim_workspace_seal(auth, self.identity().storage(), Uuid::new_v4(), 60)
             .await?)
     }
+    /// Restrict one capture claim without changing physical or recovery fences.
+    pub async fn claim_seal_for(
+        &self,
+        db: &mut Metadata,
+        auth: &Authorization,
+        seal: Uuid,
+    ) -> Result<Option<SealPlan>> {
+        self.check_auth(auth)?;
+        self.storage.verify()?;
+        Ok(db
+            .claim_workspace_seal_for(auth, self.identity().storage(), Uuid::new_v4(), 60, seal)
+            .await?)
+    }
     /// Capture actual stopped managed files under physical slot, volume and
     /// runtime-journal exclusion. No external claim of quiescence is accepted.
     /// A published artifact is reopened verbatim, without reading mutable files.

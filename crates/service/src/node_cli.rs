@@ -58,6 +58,9 @@ pub enum Action {
         node: Arguments,
         #[arg(long)]
         engine_socket: PathBuf,
+        /// Claim only this seal; unavailable work returns idle without fallback.
+        #[arg(long)]
+        seal: Option<Uuid>,
     },
     /// Delete an explicitly drained workspace after proving managed runtime removal.
     CleanupOnce {
@@ -209,8 +212,19 @@ pub async fn run(action: Action) -> Result<bool> {
             );
             return Ok(true);
         }
-        Action::SealOnce { engine_socket, .. } => {
-            let Some(plan) = node.claim_seal(&mut session.metadata, &auth).await? else {
+        Action::SealOnce {
+            engine_socket,
+            seal,
+            ..
+        } => {
+            let plan = match seal {
+                Some(seal) => {
+                    node.claim_seal_for(&mut session.metadata, &auth, seal)
+                        .await?
+                }
+                None => node.claim_seal(&mut session.metadata, &auth).await?,
+            };
+            let Some(plan) = plan else {
                 println!("{}", json!({"state":"idle"}));
                 return Ok(true);
             };

@@ -169,5 +169,16 @@ rejected. The selector does not override stop requests, authorization or leases;
 a failed/idle invocation is not proof that a task passed. Read `run-status` for
 its retained result and use the same run ID for lease recovery.
 
+For a particular stopped-file capture, add `--seal SEAL_UUID` to `node seal-once`.
+Use the seal ID returned by the owner's `seal-request`, rather than the run or
+workspace ID. Selection retains the existing repository, node, storage, owner,
+runtime-removal and lease fences. An unknown, actively claimed, ready or accepted
+seal returns `{"state":"idle"}` without capturing another queued seal; a nil UUID
+is rejected. Omit the selector for ordinary oldest-eligible scheduling. Idle is
+not a completed capture: read the exact owner's `seal-status`, and retain that
+same seal ID when recovering an expired capture lease. The reference two-agent
+workflow requires the selected-seal path; its installed Linux acceptance remains
+required before that workflow is declared ready.
+
 Changing task-directory permissions, including mode `000`, does not prevent cleanup;
 the private mount ancestor and exact physical identity remain checked.

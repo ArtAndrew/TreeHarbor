@@ -1,8 +1,11 @@
 # Development release packaging
 
 There is no published installable release yet. This page describes packaging tools
-for maintainers and their verification scope. Full Connected onboarding, database
-restore, signed provenance and release publication remain gates.
+for maintainers and their verification scope. Packaged two-agent-to-PR onboarding,
+durable receipts and safe publication retries, signed provenance and release
+publication remain alpha.1 gates. TreeHarbor queue integration and full Connected
+publication disaster recovery follow in later releases; the first preview must
+document its actual backup/restore limits.
 
 The package builder needs Python 3.11+, Git and a clean committed checkout. Build
 both binaries for the same native Linux architecture with the pinned Rust toolchain:
@@ -32,7 +35,10 @@ target-specific SBOM and signed build provenance.
 
 Package CI also retains [binary-derived Rust dependency reports](binary-dependency-reports.md)
 and observed toolchain/linker input hashes beside its archives. Their coverage is explicit:
-they are not yet the complete native SBOM or provenance required for release.
+they do not establish complete native component coverage or signed provenance.
+The first preview requires an honestly scoped SBOM, the required notices and
+signed provenance of the exact tested artifacts. Expanding native attribution
+coverage is a separate task; it must not be reported as already complete.
 
 Once a release has been approved and its archive checksum verified against the
 release's trusted metadata, offline installation will use:
