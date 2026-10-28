@@ -7,9 +7,14 @@ immutable proposals, and connects checks to the exact code they tested. It is
 designed to help teams run many automated coding tasks while preserving their
 source history and controlling how changes reach the main branch.
 
-Keep your existing GitHub process with **Connected**, or use TreeHarbor's own
-history, branches and integration queue with **Standalone**. Both use the same
-Rust engine and the same license.
+Start with **Connected**: keep GitHub as the authority for your main branch,
+checks and code review. **Standalone** shares the Rust core and is an experimental
+path toward native history and integration; its full release comes later.
+
+TreeHarbor is inspired by Anthropic's [Redesigning source control at Anthropic](https://www.anthropic.com/research/redesigning-source-control)
+(Scion; published October 13, 2026, updated October 15). The shared idea is to
+separate source data and proposed changes from disposable agent workspaces.
+TreeHarbor is an independent implementation and is not affiliated with Anthropic.
 
 > **[0.1.0-alpha.1 — Connected PR Preview](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.0-alpha.1) is available.**
 > Signed Linux packages and the exact tested scope are in the release notes.
@@ -39,18 +44,39 @@ the comparison baseline.
 
 ## The workflow
 
-```text
-Exact source revision
-  → separate agent workspaces
-  → immutable, versioned change proposals
-  → checks of the exact proposed or combined revision
-  → conflict/failure, or integration into the target branch
-  → retained history, Git export and workspace cleanup
-```
+![TreeHarbor Connected architecture: pinned GitHub source, two externally isolated agent workspaces, immutable changes, ordinary PRs, and separate metadata/object storage](docs/assets/connected-architecture.svg)
+
+In alpha.1, agents run in separate native workspaces, the Rust engine accepts their
+stopped-file captures as immutable changes, and the trusted bridge publishes PRs.
+GitHub handles CI, review, conflicts and merge. Publisher credentials stay outside
+agent workspaces. The runtime supplies process isolation and resource limits.
 
 Each proposal keeps its base revision and agent-run identity. Changing the code
 does not carry a previous revision's passing checks forward. A text merge alone
 does not establish that two changes work together; the combined result needs checks.
+
+## What differs from Scion?
+
+Scion is Anthropic's internal system for an unusually large workload. Our starting
+point is a self-hosted rollout alongside an existing GitHub repository.
+The Scion column summarizes [Anthropic's account](https://www.anthropic.com/research/redesigning-source-control),
+checked October 28, 2026; TreeHarbor's column distinguishes released and experimental scope.
+
+| Decision | Scion as described by Anthropic | TreeHarbor today |
+| --- | --- | --- |
+| Adoption | Migrated monorepo with bespoke review, search and CI | Connected alpha.1 returns ordinary GitHub PRs; existing review/CI/main remain authoritative |
+| Deployment | Spanner, blob storage and tiered regional caches for its fleet | One documented PostgreSQL/local-storage Linux profile; manual setup, no vendor cloud account required |
+| Files | Sparse and virtualized checkouts | Full/sparse materialized files; virtual filesystem is not implemented; alpha.1 uses native workspaces without `.git` |
+| Data model | First-parent file deltas plus derived indexes | Content-addressed snapshots and versioned ChangeSets with explicit base/run lineage |
+| Integration | Emphasis on post-merge and pre-deploy testing at its scale | Alpha.1 delegates checks/review/merge to GitHub; managed queue and Standalone remain experimental |
+| Distribution | Internal deployment described in the article | Signed alpha Linux packages and source under standard ELv2; early controlled evaluation |
+
+The practical benefits to evaluate are **incremental adoption**, **retained agent
+proposals** and **explicit execution/publisher boundaries**. You can try the PR path
+without moving authority away from GitHub, inspect the implementation, and export
+accepted source to ordinary Git. These are architectural choices and scoped trial
+results, not evidence of better throughput, lower cost or stronger security than
+Scion or tuned Git. Performance comparisons and unassisted onboarding remain open.
 
 ## What works today?
 
@@ -86,7 +112,7 @@ fixture boundaries and open gates.
 ## Can I use it now?
 
 **For development and controlled technical evaluation: yes.** Use a published
-preview package when available, or build from source. Expect manual configuration
+[alpha.1 package](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.0-alpha.1), or build from source. Expect manual configuration
 and evolving interfaces. Use disposable repositories
 and dedicated test infrastructure. The local service needs PostgreSQL; managed
 agent execution additionally needs a supported Linux/gVisor setup and bounded volumes.
@@ -193,28 +219,18 @@ Next steps:
 
 ## How the modes fit together
 
-```mermaid
-flowchart LR
-    Agents[Agent clients] --> API[API / CLI / MCP]
-    API --> Core[Rust source and change engine]
-    Core --> Objects[Immutable object storage]
-    API --> DB[PostgreSQL metadata and recovery records]
-    Core --> Files[Private workspace files]
-    Files --> Runtime[External sandbox runtime]
-    API --> Checks[Exact candidates and checks]
-    Checks --> GitHub[Connected: GitHub PRs and merge queue]
-    Checks --> Native[Standalone: native history and refs]
-    Core --> Bridge[Git import and export]
-```
-
-These are responsibility boundaries; the table above describes implementation status.
+The diagram above shows the released Connected PR path. PostgreSQL metadata,
+immutable source objects, workspace files and the external execution runtime have
+separate responsibilities. The bridge has publication access; agents propose
+changes without permission to move main. Experimental MCP/queue/native components
+are not implied to be supported alpha.1 integrations.
 
 | | Connected | Standalone |
 | --- | --- | --- |
 | Authority for published main | GitHub | TreeHarbor |
 | Review and integration | GitHub policies and queue | Native policies and queue |
 | Role of Git | Import/export and host bridge | Optional import/export; absent from the native main path |
-| Current maturity | Partial; development only | Partial; development only |
+| Current maturity | Released alpha.1 PR Preview; full mode incomplete | Experimental; full mode incomplete |
 
 Each repository has one authority. Switching modes is a migration, not two systems
 writing the same main branch. Both modes are self-hosted and share the Rust core.

@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1000" viewBox="0 0 1080 1000" role="img" aria-labelledby="title desc">
+<title id="title">TreeHarbor alpha.1 architecture: exact GitHub source to isolated agents and ordinary PRs</title>
+<desc id="desc">A source commit feeds two private native workspaces in an external gVisor runtime. The Rust control plane retains immutable changes linked to their base and run, and a trusted bridge publishes GitHub PRs. PostgreSQL holds metadata; a separate local object store holds source and accepted proposals. GitHub owns checks, review and main. Standalone is experimental and outside alpha.1.</desc>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10Z" fill="#2c6f5e"/></marker></defs>
+<style>text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;fill:#182d3b}.title{font-size:34px;font-weight:700}.heading{font-size:24px;font-weight:650}.body{font-size:20px}.small{font-size:17px;fill:#4d6271}.white{fill:#fff}.edge{fill:none;stroke:#2c6f5e;stroke-width:2.5;marker-end:url(#arrow)}</style>
+<rect x="0" y="0" width="1080" height="1000" rx="22" fill="#f6f8fa"/>
+
+<text x="32" y="58" class="title">TreeHarbor · Connected PR Preview</text>
+<text x="32" y="94" class="body">Exact source → parallel tasks → durable proposals → your GitHub process</text>
+<rect x="32" y="210" width="214" height="240" rx="14" fill="#fff" stroke="#cbd8df" stroke-width="1.5"/>
+<text x="50" y="247" class="heading">01 · Source</text>
+<text x="50" y="285" class="body">GitHub commit</text>
+<text x="50" y="324" class="small">Pinned revision</text>
+<text x="50" y="353" class="small">Selected repository</text>
+<text x="50" y="402" class="small">GitHub remains</text>
+<text x="50" y="427" class="small">authority for main</text>
+<rect x="280" y="150" width="236" height="370" rx="14" fill="#eaf3ef" stroke="#2c6f5e" stroke-width="1.5" stroke-dasharray="6 5"/>
+<text x="296" y="181" class="body">02 · Agent workspaces</text>
+<text x="296" y="205" class="small">External gVisor runtime</text>
+<rect x="294" y="224" width="208" height="110" rx="14" fill="#fff" stroke="#cbd8df" stroke-width="1.5"/>
+<text x="310" y="255" class="heading">Agent A</text>
+<text x="310" y="283" class="small">Private workspace</text>
+<text x="310" y="309" class="small">Bounded CPU / RAM</text>
+<rect x="294" y="352" width="208" height="110" rx="14" fill="#fff" stroke="#cbd8df" stroke-width="1.5"/>
+<text x="310" y="383" class="heading">Agent B</text>
+<text x="310" y="411" class="small">Private workspace</text>
+<text x="310" y="437" class="small">Bounded CPU / RAM</text>
+<text x="296" y="494" class="small">Native files · no .git</text>
+<text x="296" y="514" class="small">No publisher credentials</text>
+<rect x="550" y="210" width="214" height="240" rx="14" fill="#fff" stroke="#cbd8df" stroke-width="1.5"/>
+<text x="568" y="247" class="heading">03 · Changes</text>
+<text x="568" y="285" class="body">ChangeSet A / B</text>
+<text x="568" y="324" class="small">Immutable versions</text>
+<text x="568" y="353" class="small">Exact base + run</text>
+<text x="568" y="402" class="small">Retained after</text>
+<text x="568" y="427" class="small">workspace cleanup</text>
+<rect x="798" y="135" width="250" height="47" rx="14" fill="#eaf3ef" stroke="#a7c4b8" stroke-width="1.5"/>
+<text x="814" y="165" class="small">Trusted bridge publishes</text>
+<rect x="798" y="210" width="250" height="240" rx="14" fill="#fff" stroke="#cbd8df" stroke-width="1.5"/>
+<text x="816" y="247" class="heading">04 · GitHub PRs</text>
+<text x="816" y="285" class="body">Ordinary draft PRs</text>
+<text x="816" y="324" class="small">Existing CI / review</text>
+<text x="816" y="353" class="small">GitHub controls merge</text>
+<text x="816" y="402" class="small">No TreeHarbor queue</text>
+<text x="816" y="427" class="small">required by alpha.1</text>
+<path d="M246 334 H277" class="edge"/>
+<path d="M516 334 H547" class="edge"/>
+<path d="M764 334 H795" class="edge"/>
+<text x="32" y="126" class="small">Workspace files, process isolation and merge permission are separate responsibilities.</text>
+<rect x="32" y="580" width="1016" height="85" rx="14" fill="#182d3b" stroke="#182d3b" stroke-width="1.5"/>
+<text x="53" y="616" class="heading white">Trusted TreeHarbor control plane · Rust</text>
+<text x="53" y="645" class="body white">Authenticated API / CLI · exact identities · capture after stop · Git import / export</text>
+<path d="M398 580 V523" class="edge"/>
+<path d="M657 580 V453" class="edge"/>
+<rect x="32" y="722" width="474" height="100" rx="14" fill="#fff" stroke="#cbd8df" stroke-width="1.5"/>
+<text x="52" y="758" class="heading">PostgreSQL</text>
+<text x="52" y="790" class="small">Metadata · leases · operation / recovery records</text>
+<rect x="546" y="722" width="502" height="100" rx="14" fill="#fff" stroke="#cbd8df" stroke-width="1.5"/>
+<text x="566" y="758" class="heading">Local immutable object storage</text>
+<text x="566" y="790" class="small">Source objects · snapshots · accepted proposals</text>
+<path d="M270 665 V719" class="edge"/>
+<path d="M797 665 V719" class="edge"/>
+<rect x="32" y="864" width="1016" height="83" rx="14" fill="#f1f3f5" stroke="#b4c0c8" stroke-width="1.5" stroke-dasharray="6 5"/>
+<text x="52" y="897" class="heading">Standalone · later release</text>
+<text x="52" y="927" class="small">Native history / refs / checks / integration share the Rust core; experimental today.</text>
+<text x="32" y="979" class="small">alpha.1: manual Linux setup · operator-assisted scripted trial · not production readiness</text>
+</svg>
