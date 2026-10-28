@@ -28,6 +28,9 @@ jobs:
       - run: cargo test --workspace --locked
       - name: Verify the GitHub queue acceptance workload
         run: python3 scripts/test-github-queue-fixture.py
+      - name: Check Connected agent-pair orchestration boundaries
+        if: matrix.os == 'ubuntu-24.04'
+        run: python3 scripts/test-connected-agent-pair.py
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
   postgres:
     name: PostgreSQL contracts

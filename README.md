@@ -131,6 +131,11 @@ you tried, where you got blocked and whether you would run another task using th
 [pilot feedback template](.github/ISSUE_TEMPLATE/pilot-feedback.md). Do not share
 private source or credentials in a public issue.
 
+An experimental [prepared-agents-to-PR helper](examples/connected-pr/README.md)
+reduces manual orchestration over the existing Rust CLI. It requires an operator
+to prepare the service, runtime, workspaces and scoped credentials first; its
+complete installed live workflow has not yet passed acceptance.
+
 ## What remains before a full release?
 
 1. Complete Connected host-policy and admission certification, automatic
