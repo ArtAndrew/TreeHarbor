@@ -9,10 +9,10 @@ below retain evidence from individual increments. Their earlier statements about
 unfinished work describe the scope at that time; they are not a replacement for
 the current overview or the full [release gate ledger](#release-gate-ledger).
 
-Last full CI baseline before this increment: [PR85](https://github.com/ArtAndrew/TreeHarbor/pull/85),
+Last full CI baseline before this increment: [PR87](https://github.com/ArtAndrew/TreeHarbor/pull/87),
 published on 2026-10-28 after all six required checks and both package jobs passed.
-The [CI run](https://github.com/ArtAndrew/TreeHarbor/actions/runs/40640005848) passed
-414 ordinary tests on Linux and 412 on macOS, 330 real PostgreSQL contracts,
+The [CI run](https://github.com/ArtAndrew/TreeHarbor/actions/runs/40650475574) passed
+414 ordinary tests on Linux and 412 on macOS, 332 real PostgreSQL contracts,
 14 static-runtime unit tests per Linux architecture, installed runtime/controller/
 managed/native workloads on x86-64 and ARM64, and webhook TLS/failure tests.
 These correctness checks do not establish complete mode readiness or performance
@@ -175,10 +175,12 @@ The node CLI now accepts `seal-once --seal UUID`, selecting only that stopped-fi
 capture within the existing node/storage/authorization/lease scope. Unknown,
 unavailable or completed selections return idle without claiming another task;
 unqualified scheduling remains available. Local checks passed 22 PostgreSQL seal
-contracts, 7 node and 18 service unit tests, plus CLI parsing/help. Installed Linux
-acceptance for the new selection is pending; the runtime harness exercises two
-eligible captures on one node and verifies that selecting the later one leaves
-the earlier row and physical artifact untouched.
+contracts, 7 node and 18 service unit tests, plus CLI parsing/help. The
+[PR87 installed-runtime CI](https://github.com/ArtAndrew/TreeHarbor/actions/runs/40650475574)
+subsequently passed on x86-64 and ARM64: two eligible captures on one node, exact
+later selection, idle/refusal without consuming earlier work, and preserved legacy
+scheduling. The retained tested archives and sidecar hash chains were verified;
+this is not signed provenance or complete Connected onboarding.
 
 The next release targets one installed workspace-to-PR workflow for controlled
 pilots: two isolated agents, immutable changes, real GitHub PRs and safe cleanup.
