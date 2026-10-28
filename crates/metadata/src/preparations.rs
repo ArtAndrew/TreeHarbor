@@ -300,6 +300,35 @@ impl Metadata {
         worker: Uuid,
         ttl_seconds: i32,
     ) -> Result<Option<Job>> {
+        self.claim_preparation_matching(auth, storage, worker, ttl_seconds, None)
+            .await
+    }
+
+    /// Claim only this workspace within the ordinary node/storage/lease scope.
+    /// An unavailable selection never falls back to another queued workspace.
+    pub async fn claim_preparation_for(
+        &mut self,
+        auth: &Authorization,
+        storage: Uuid,
+        worker: Uuid,
+        ttl_seconds: i32,
+        workspace: Uuid,
+    ) -> Result<Option<Job>> {
+        if workspace.is_nil() {
+            return Err(Error::Invalid("workspace"));
+        }
+        self.claim_preparation_matching(auth, storage, worker, ttl_seconds, Some(workspace))
+            .await
+    }
+
+    async fn claim_preparation_matching(
+        &mut self,
+        auth: &Authorization,
+        storage: Uuid,
+        worker: Uuid,
+        ttl_seconds: i32,
+        workspace: Option<Uuid>,
+    ) -> Result<Option<Job>> {
         ttl_valid(ttl_seconds)?;
         let tx = self.client.transaction().await?;
         settings(&tx).await?;
@@ -314,6 +343,7 @@ impl Metadata {
             JOIN th_workspaces w ON w.tenant=o.tenant AND w.repository=o.repository AND w.workspace::text=o.payload->>'workspace'
             JOIN th_repositories r ON r.tenant=w.tenant AND r.repository=w.repository
             WHERE o.tenant=$1 AND o.repository=$2 AND o.kind='workspace.prepare'
+              AND ($6::uuid IS NULL OR w.workspace=$6)
               AND ((o.state='pending' AND o.available_at<=clock_timestamp()) OR (o.state='running' AND o.lease_until<=clock_timestamp()))
               AND w.state='requested' AND w.format='native' AND w.resolved_profile IS NOT NULL AND w.runtime IS NULL
               AND (w.node IS NULL OR w.node=$3) AND w.epoch=r.epoch AND r.state='active'
@@ -322,7 +352,7 @@ impl Metadata {
         ) UPDATE th_outbox o SET state='running',worker=$4,generation=generation+1,
             lease_until=clock_timestamp()+($5::integer * interval '1 second')
           FROM selected WHERE o.id=selected.id RETURNING o.id,o.generation,o.kind,o.payload"#,
-            &[&scope.tenant(),&scope.repository(),&auth.principal(),&worker,&ttl_seconds]).await?;
+            &[&scope.tenant(),&scope.repository(),&auth.principal(),&worker,&ttl_seconds,&workspace]).await?;
         let job = row.map(|row| Job {
             id: row.get(0),
             scope: scope.clone(),

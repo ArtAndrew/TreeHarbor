@@ -52,6 +52,21 @@ snapshot, and `runtime: null`. No eligible job returns `idle`. After process los
 a running job becomes reclaimable when its 60-second lease expires; a live worker
 renews every 15 seconds. `idle` does not mean every queued workspace is complete.
 
+To prepare one exact workspace, add `--workspace WORKSPACE_UUID` to
+`node prepare-once`. It can be combined with `--slot SLOT_UUID`; the workspace
+selects the queued job, while the slot selects its bounded placement. A slot by
+itself does not select a workspace. Omitting `--workspace` retains normal
+oldest-eligible scheduling.
+
+The selection remains scoped to the authenticated repository, node and storage.
+Unknown, foreign-scope, assigned-to-another-node, actively leased or already
+prepared work returns `idle` without preparing another workspace. Nil UUIDs are
+rejected. An expired selected lease can be reclaimed on its assigned node with
+the original attempt and slot; an old worker remains fenced. Selection does not
+override authorization, authority epochs, drain or lease checks. Use `prepared`
+below to reopen acknowledged files; selecting a completed preparation does not
+rebuild it or restart a task.
+
 Reopen an already acknowledged workspace in a new process:
 
 ```sh

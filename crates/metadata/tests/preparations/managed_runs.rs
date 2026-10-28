@@ -115,6 +115,127 @@ async fn claim(f: &mut Fixture, node: &Node) -> RunPlan {
 
 #[tokio::test]
 #[ignore = "requires disposable PostgreSQL; no real runtime is executed"]
+async fn selected_preparation_claim_never_falls_back_and_preserves_scope_and_reclaim_fences() {
+    let mut f = Fixture::new().await;
+    let node = f.node("selected-node").await;
+    let other_node = f.node("other-selected-node").await;
+    let first = f.workspace().await;
+    let second = f.workspace().await;
+
+    // The selected UUID cannot escape either the repository or tenant boundary,
+    // even when other eligible work is present in this node's own repository.
+    for tenant in [f.scope.tenant().to_owned(), "other-selected-tenant".into()] {
+        let scope = Scope::new(tenant, Uuid::new_v4()).unwrap();
+        f.db.create_repository(&scope, Authority::Standalone)
+            .await
+            .unwrap();
+        let mut foreign = Fixture::from_db(
+            f.schema.clone(),
+            scope,
+            Metadata::new(connection(&f.schema).await).await.unwrap(),
+        )
+        .await;
+        let workspace = foreign.workspace().await;
+        assert!(
+            f.db.claim_preparation_for(&node.auth, node.storage, Uuid::new_v4(), 60, workspace)
+                .await
+                .unwrap()
+                .is_none()
+        );
+    }
+    assert!(
+        f.db.claim_preparation_for(&node.auth, node.storage, Uuid::new_v4(), 60, Uuid::new_v4())
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        f.db.claim_preparation_for(&node.auth, node.storage, Uuid::new_v4(), 60, Uuid::nil())
+            .await
+            .is_err()
+    );
+    assert!(matches!(
+        f.db.claim_preparation_for(&node.auth, other_node.storage, Uuid::new_v4(), 60, second)
+            .await,
+        Err(Error::Fenced)
+    ));
+
+    let selected =
+        f.db.claim_preparation_for(&node.auth, node.storage, Uuid::new_v4(), 60, second)
+            .await
+            .unwrap()
+            .unwrap();
+    assert_eq!(selected.payload["workspace"], second.to_string());
+    let plan = f.reserve(&node, &selected).await;
+    assert_eq!(plan.workspace(), second);
+    assert!(
+        f.db.claim_preparation_for(&node.auth, node.storage, Uuid::new_v4(), 60, second)
+            .await
+            .unwrap()
+            .is_none()
+    );
+
+    f.expire(&selected).await;
+    assert!(
+        f.db.claim_preparation_for(
+            &other_node.auth,
+            other_node.storage,
+            Uuid::new_v4(),
+            60,
+            second
+        )
+        .await
+        .unwrap()
+        .is_none()
+    );
+    f.db = Metadata::new(connection(&f.schema).await).await.unwrap();
+    let reclaimed =
+        f.db.claim_preparation_for(&node.auth, node.storage, Uuid::new_v4(), 60, second)
+            .await
+            .unwrap()
+            .unwrap();
+    assert_eq!(reclaimed.id, selected.id);
+    assert_eq!(reclaimed.generation, selected.generation + 1);
+    let resumed =
+        f.db.reserve_preparation(&node.auth, &reclaimed, plan.slot())
+            .await
+            .unwrap();
+    assert_eq!(resumed.attempt(), plan.attempt());
+    assert_eq!(resumed.slot(), plan.slot());
+    assert!(matches!(
+        f.db.renew_preparation(&node.auth, &plan, 60).await,
+        Err(Error::StaleLease)
+    ));
+    assert!(matches!(
+        f.db.complete_preparation(&node.auth, &plan, &f.observed())
+            .await,
+        Err(Error::StaleLease)
+    ));
+    f.db.complete_preparation(&node.auth, &resumed, &f.observed())
+        .await
+        .unwrap();
+    assert!(
+        f.db.claim_preparation_for(&node.auth, node.storage, Uuid::new_v4(), 60, second)
+            .await
+            .unwrap()
+            .is_none()
+    );
+
+    // Unqualified scheduling remains unchanged and still gets the untouched first job.
+    assert_eq!(f.claim(&node).await.payload["workspace"], first.to_string());
+    f.db.revoke_repository_token(&f.scope, node.token.id, "operator")
+        .await
+        .unwrap();
+    assert!(
+        f.db.claim_preparation_for(&node.auth, node.storage, Uuid::new_v4(), 60, Uuid::new_v4())
+            .await
+            .is_err()
+    );
+    cleanup(&f.schema).await;
+}
+
+#[tokio::test]
+#[ignore = "requires disposable PostgreSQL; no real runtime is executed"]
 async fn selected_run_claim_never_consumes_other_work_and_preserves_lease_fences() {
     let mut f = Fixture::new().await;
     let owner = owner(&mut f, "owner").await;

@@ -183,14 +183,17 @@ class Harness:
         digest = self.admin("runtime-profile-register", *self.scope, "--file", profile)["profile_digest"]
         return number, assigned, slot, mount, digest
 
-    def case(self, mode, *args, node=0, timeout=10000):
+    def case(self, mode, *args, node=0, timeout=10000, workspace=None, selected=False):
         number, assigned, slot, mount, digest = self.placement_profile(node, timeout)
-        workspace, run = str(uuid.uuid4()), str(uuid.uuid4())
+        run = str(uuid.uuid4())
         credential = self.agents[node]
-        self.client("workspace-create", "--key", f"workspace-{number}", "--authority", "standalone", "--epoch", "1",
-                    "--workspace", workspace, "--base", self.revision, "--profile-digest", self.source_profile,
-                    credential=credential)
-        prepared = self.value(*self.node_args(assigned, "prepare-once"), "--slot", slot)
+        if workspace is None:
+            workspace = str(uuid.uuid4())
+            self.client("workspace-create", "--key", f"workspace-{number}", "--authority", "standalone", "--epoch", "1",
+                        "--workspace", workspace, "--base", self.revision, "--profile-digest", self.source_profile,
+                        credential=credential)
+        selection = ["--workspace", workspace] if selected else []
+        prepared = self.value(*self.node_args(assigned, "prepare-once"), "--slot", slot, *selection)
         assert prepared["workspace"] == workspace and prepared["state"] == "files_ready" and prepared["runtime"] is None
         files = Path(prepared["path"])
         assert (files / "same.txt").read_text() == "base\n"
@@ -478,8 +481,25 @@ class Harness:
         self.cleanup_workspace(successor)
 
     def exercise(self):
-        first = self.case("once")
-        second = self.case("once")
+        earlier = str(uuid.uuid4())
+        self.client("workspace-create", "--key", "selected-preparation-earlier", "--authority", "standalone", "--epoch", "1",
+                    "--workspace", earlier, "--base", self.revision, "--profile-digest", self.source_profile,
+                    credential=self.agents[0])
+        # Two pending workspaces on the same node: prepare the later one first.
+        first = self.case("once", selected=True)
+        for selected in [str(uuid.uuid4()), first["workspace"]]:
+            idle = self.value(*self.node_args(first["node"], "prepare-once"),
+                              "--slot", first["slot"], "--workspace", selected)
+            assert idle == {"state": "idle"}
+        nil = self.cli(*self.node_args(first["node"], "prepare-once"),
+                       "--slot", first["slot"], "--workspace", uuid.UUID(int=0), check=False)
+        assert nil.returncode != 0
+        pending = self.client("workspace-status", "--workspace", earlier, credential=self.agents[0])
+        assert pending["state"] == "requested"
+        assert self.sql(f"SELECT count(*) FROM th_workspace_preparations WHERE workspace='{earlier}'") == "0"
+        second = self.case("once", workspace=earlier, selected=True)
+        assert first["workspace"] != second["workspace"] == earlier
+        print("PASS selected preparation: later pending workspace is prepared exactly; unknown/completed selection never consumes the earlier job", flush=True)
         idle = self.value(*self.node_args(first["node"], "run-once"),
                           "--engine-socket", self.transport / "engine.sock", "--run", uuid.uuid4())
         assert idle == {"state": "idle"}

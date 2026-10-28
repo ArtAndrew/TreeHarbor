@@ -28,6 +28,9 @@ pub enum Action {
         /// Use an operator-registered bounded volume for a future sandbox run.
         #[arg(long)]
         slot: Option<Uuid>,
+        /// Claim only this workspace; unavailable work returns idle without fallback.
+        #[arg(long)]
+        workspace: Option<Uuid>,
     },
     /// Reopen an acknowledged placement without changing agent files.
     Prepared {
@@ -277,6 +280,7 @@ pub async fn run(action: Action) -> Result<bool> {
         Action::PrepareOnce {
             max_workspace_bytes,
             slot,
+            workspace,
             ..
         } => {
             let max_workspace_bytes = if let Some(slot) = slot {
@@ -296,7 +300,10 @@ pub async fn run(action: Action) -> Result<bool> {
             )
             .map_err(|_| Error::Config)?;
             let mut heartbeat = database.connect(true).await?;
-            let claimed = if let Some(slot) = slot {
+            let claimed = if let Some(workspace) = workspace {
+                node.claim_for(&mut session.metadata, &auth, workspace, slot)
+                    .await?
+            } else if let Some(slot) = slot {
                 node.claim_on_slot(&mut session.metadata, &auth, slot)
                     .await?
             } else {
