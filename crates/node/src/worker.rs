@@ -138,7 +138,7 @@ impl Node {
         db: &mut Metadata,
         auth: &Authorization,
     ) -> Result<Option<Preparation>> {
-        self.claim_selected(db, auth, None).await
+        self.claim_selected(db, auth, None, None).await
     }
     pub async fn claim_on_slot(
         &self,
@@ -150,20 +150,43 @@ impl Node {
         if owned.volume.is_none() {
             return Err(Error::Configuration);
         }
-        self.claim_selected(db, auth, Some(slot)).await
+        self.claim_selected(db, auth, Some(slot), None).await
+    }
+    /// Select one exact workspace, optionally using a registered bounded slot.
+    /// Slot selection alone never selects a workspace.
+    pub async fn claim_for(
+        &self,
+        db: &mut Metadata,
+        auth: &Authorization,
+        workspace: Uuid,
+        slot: Option<Uuid>,
+    ) -> Result<Option<Preparation>> {
+        if let Some(slot) = slot {
+            let owned = self.operation(slot).await?;
+            if owned.volume.is_none() {
+                return Err(Error::Configuration);
+            }
+        }
+        self.claim_selected(db, auth, slot, Some(workspace)).await
     }
     async fn claim_selected(
         &self,
         db: &mut Metadata,
         auth: &Authorization,
         selected: Option<Uuid>,
+        workspace: Option<Uuid>,
     ) -> Result<Option<Preparation>> {
         self.check_auth(auth)?;
         self.storage.verify()?;
-        let Some(job) = db
-            .claim_preparation(auth, self.identity().storage(), Uuid::new_v4(), 60)
-            .await?
-        else {
+        let worker = Uuid::new_v4();
+        let job = if let Some(workspace) = workspace {
+            db.claim_preparation_for(auth, self.identity().storage(), worker, 60, workspace)
+                .await?
+        } else {
+            db.claim_preparation(auth, self.identity().storage(), worker, 60)
+                .await?
+        };
+        let Some(job) = job else {
             return Ok(None);
         };
         let workspace = job.payload["workspace"]

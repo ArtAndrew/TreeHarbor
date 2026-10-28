@@ -40,8 +40,22 @@ workflow run/attempt. It is unsigned and covers those runtime tests only; it doe
 not establish complete Connected acceptance, native dependency coverage or build
 provenance. A separate managed-check App template now documents the permissions
 needed for that development workflow without changing the original template.
-Local YAML/Python/JSON and patch checks passed; these additions require current-head
-CI and inspection of its retained artifacts before merge.
+The [PR82 checks](https://github.com/ArtAndrew/TreeHarbor/pull/82) passed on both
+architectures. The retained runtime bundles were independently checked against
+their receipts, all 590 manifest files, binary hashes and dependency-report links.
+The unsigned receipts record the tested merge revision separately from the PR head.
+
+## Selecting one workspace preparation
+
+`node prepare-once --workspace WORKSPACE_UUID` selects an exact queued workspace
+inside the existing repository/node/storage lease scope. An unknown, unavailable
+or already prepared selection never falls back to another workspace. `--slot`
+continues to choose placement independently; omitting the workspace flag keeps
+normal scheduling. Reclaim preserves the attempt/slot and fences the older worker.
+The new real PostgreSQL regression, 81 ordinary affected-package tests, strict
+Clippy, formatting and CLI help passed locally. The installed Linux harness now
+prepares the later of two pending workspaces first and checks unknown/completed
+selection; its current-head runtime CI remains required.
 
 ## Selecting one node execution
 
@@ -51,8 +65,9 @@ runs return idle without consuming another task. Omitting the flag retains norma
 scheduling. Authorization, stop handling and lease-generation fences are unchanged;
 no database or object format changes. The real PostgreSQL regression passed locally
 for out-of-order selection, no fallback, lease reclaim and revoked access. The
-Linux harness now exercises two queued tasks on one node through the actual CLI;
-its new runtime scenario still requires current-head CI.
+Linux harness exercises two queued tasks on one node through the actual CLI.
+That scenario passed on x86-64 and ARM64 in
+[PR81](https://github.com/ArtAndrew/TreeHarbor/pull/81).
 
 ## Replacement-node recovery drill
 
