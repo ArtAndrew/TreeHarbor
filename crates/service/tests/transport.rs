@@ -1652,6 +1652,90 @@ async fn http_boundary_rejects_ambiguous_headers_bodies_and_privilege_injection(
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires disposable PostgreSQL over a Unix socket; runs in database CI"]
+async fn missing_configured_schema_has_actionable_diagnostic_and_no_implicit_creation() {
+    let f = Fixture::new().await;
+    let mut config = f.config.clone();
+    config.schema = format!("th_missing_{}", Uuid::new_v4().simple());
+    let path = f.dir.path().join("missing-schema.json");
+    files::write_private(
+        &path,
+        json!({"database_url":config.database_url,"schema":config.schema,"socket":config.socket})
+            .to_string()
+            .as_bytes(),
+    )
+    .unwrap();
+    assert!(matches!(
+        Database::new(config.clone()).unwrap().connect(false).await,
+        Err(treeharbor_service::Error::SchemaUnavailable)
+    ));
+    for args in [vec!["admin", "migrate"], vec!["serve"]] {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_treeharbor"));
+        command.arg(args[0]).arg("--config").arg(&path);
+        command.args(&args[1..]);
+        let output = command.output().unwrap();
+        assert!(!output.status.success());
+        let diagnostic = String::from_utf8(output.stderr).unwrap();
+        assert!(
+            diagnostic.contains("schema is unavailable"),
+            "unexpected {args:?} diagnostic: {diagnostic}"
+        );
+        assert!(diagnostic.contains("USAGE"));
+        assert!(!diagnostic.contains(&config.database_url));
+        assert!(!diagnostic.contains(&config.schema));
+        assert!(output.stdout.is_empty());
+        assert!(!config.socket.exists());
+    }
+    let absent: bool = f
+        .sql
+        .query_one(
+            "SELECT NOT EXISTS (SELECT FROM pg_catalog.pg_namespace WHERE nspname::text=$1)",
+            &[&config.schema],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    assert!(absent, "failed setup must not create or adopt a schema");
+    f.sql
+        .batch_execute(&format!("CREATE SCHEMA {}", config.schema))
+        .await
+        .unwrap();
+    let session = Database::new(config.clone())
+        .unwrap()
+        .connect(false)
+        .await
+        .unwrap();
+    drop(session);
+    assert!(
+        Database::new(config.clone())
+            .unwrap()
+            .connect(true)
+            .await
+            .is_err(),
+        "namespace existence must not bypass migration validation"
+    );
+    let migrated = Command::new(env!("CARGO_BIN_EXE_treeharbor"))
+        .args(["admin", "--config"])
+        .arg(&path)
+        .arg("migrate")
+        .output()
+        .unwrap();
+    assert!(migrated.status.success());
+    let session = Database::new(config.clone())
+        .unwrap()
+        .connect(true)
+        .await
+        .unwrap();
+    session.metadata.check_schema().await.unwrap();
+    drop(session);
+    f.sql
+        .batch_execute(&format!("DROP SCHEMA {} CASCADE", config.schema))
+        .await
+        .unwrap();
+    f.cleanup().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires disposable PostgreSQL over a Unix socket; runs in database CI"]
 async fn startup_refuses_schema_drift_and_pool_recovers_its_terminated_connection() {
     let f = Fixture::new().await;
     f.sql

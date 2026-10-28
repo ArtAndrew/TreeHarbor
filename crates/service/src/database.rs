@@ -52,11 +52,20 @@ impl Database {
                 )
                 .await
                 .map_err(|_| Error::Database)?;
-            let backend_pid: i32 = client
-                .query_one("SELECT pg_backend_pid()", &[])
+            let context = client
+                .query_one(
+                    "SELECT pg_catalog.pg_backend_pid(), pg_catalog.current_schema()::text",
+                    &[],
+                )
                 .await
-                .map_err(|_| Error::Database)?
-                .get(0);
+                .map_err(|_| Error::Database)?;
+            let resolved_schema: Option<String> = context.get(1);
+            // Setting search_path does not require that its schema exists or is
+            // usable. Refuse an unresolved namespace before any migration writes.
+            if resolved_schema.as_deref() != Some(self.config.schema.as_str()) {
+                return Err(Error::SchemaUnavailable);
+            }
+            let backend_pid: i32 = context.get(0);
             let metadata = Metadata::new(client).await.map_err(|_| Error::Database)?;
             if check_schema {
                 metadata.check_schema().await.map_err(|_| Error::Database)?;
