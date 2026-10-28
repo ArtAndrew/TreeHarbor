@@ -1,11 +1,13 @@
 # Changelog
 
-## Unreleased — 0.1.2-alpha.1
+## 0.1.2-alpha.1 — resumable workspace requests — 2026-10-28
 
 - Add `client workspace-new`: persist a generated workspace ID and request key
   before requesting preparation; reuse the state file after a lost response.
   See [workspace requests](docs/workspace-new.md). Existing permissions and
   explicit node/runtime preparation remain required.
+- Signed Linux x86-64/ARM64 packages exercise the new command and receipt replay
+  in installed managed-runtime CI. No new live GitHub trial is asserted.
 
 ## 0.1.1-alpha.1 — setup fixes — 2026-10-28
 

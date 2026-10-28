@@ -15,6 +15,12 @@ The [0.1.1-alpha.1 setup patch](https://github.com/ArtAndrew/TreeHarbor/releases
 Its source and current setup checks are separate from the historical two-agent
 GitHub trial in alpha.1. Follow the selected release's exact version/digest commands.
 
+The [0.1.2-alpha.1 workspace patch](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.2-alpha.1)
+adds durable generated [workspace requests](workspace-new.md). Its signed packages
+exercise the new command in installed runtime CI on both Linux architectures;
+it does not add a new live GitHub trial. Use its own signed bytes and provenance,
+rather than a prior release's hashes or unsigned PR artifacts.
+
 ## Preparing signed alpha candidates
 
 The manual `release-provenance.yml` workflow is reserved for an existing alpha tag

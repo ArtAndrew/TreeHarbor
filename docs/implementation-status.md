@@ -21,7 +21,7 @@ These correctness checks do not establish complete mode readiness or performance
 superiority. The installed native workload includes deliberate replacement-node
 recovery; live GitHub recovery remains a separate release gate.
 
-## Unreleased workspace request CLI — 0.1.2-alpha.1
+## Released workspace request CLI — 0.1.2-alpha.1
 
 `client workspace-new` generates and durably retains a workspace UUID and request
 key before submitting the existing creation command. Same-file retries and
@@ -40,8 +40,17 @@ two preparation events overall. No Git executable or GitHub access is used.
 These checks preceded the workspace-only version bump; locked metadata is checked
 separately. The existing Linux managed-runtime acceptance now uses the shortcut
 for its first installed workspace and replays its receipt after preparation.
-Current-head CI and signed package/release verification remain pending. No fresh
-GitHub App permissions, live service credentials or host policy changes occurred.
+[Patch release](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.2-alpha.1)
+identifies source `44474218dcba4ce476707fa3a0419812e94615a5`.
+[Main CI](https://github.com/ArtAndrew/TreeHarbor/actions/runs/40738139609) and
+[signed producer](https://github.com/ArtAndrew/TreeHarbor/actions/runs/40739938601),
+both attempt 1, passed. Both signed Linux packages passed installed managed/native
+runtime CI; the managed scenario uses `workspace-new` and replays its saved request
+before and after file preparation. Independent official signature verification
+matched all eight subject names/digests per architecture and the exact producer
+invocation. No fresh live GitHub trial, App permissions, service credentials or
+host policy changes occurred. Standalone authority fixtures test this command;
+they do not certify the complete Standalone release.
 
 ## Released setup patch — 0.1.1-alpha.1
 
