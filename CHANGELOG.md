@@ -1,11 +1,13 @@
 # Changelog
 
-## Connected PR Preview candidate — 0.1.0-alpha.1
+## 0.1.0-alpha.1 — Connected PR Preview — 2026-10-28
 
-Published artifacts, signing and installed-workflow evidence are recorded in
-[GitHub Releases](https://github.com/ArtAndrew/TreeHarbor/releases); this source
-entry describes the candidate scope, not a claim that release gates have passed.
-The candidate supports the documented Linux operator profile: exact-revision
+Signed Linux x86-64/ARM64 packages and installation commands are in
+[the release](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.0-alpha.1). The installed ARM64 two-agent workflow published two
+real draft PRs, retained publication identities on re-entry, cleaned both workspaces
+and exported the retained changes to verified ordinary Git bundles. Temporary
+service access was revoked. See [the scoped report](docs/evidence/connected-pr-preview-20261028.json).
+The preview supports the documented Linux operator profile: exact-revision
 workspaces, two isolated scripted tasks, immutable changes and proposed GitHub
 PRs. GitHub handles checks, review and merge. The helper preserves operation IDs
 and Rust publisher journals across uncertain replies; it does not provision a
@@ -44,4 +46,4 @@ support or measured performance advantage. Standard ELv2 has no workspace limit.
 - Execution-derived required App-check publication with explicit owner/bridge permissions, one-shot dispatch, immutable reports and CLI recovery after lost replies. An uncertain write is not retried; full live Connected admission remains a release gate.
 - Contract tests and product documentation.
 
-There is no installable product release yet.
+Earlier entries describe component increments, not completed mode releases.

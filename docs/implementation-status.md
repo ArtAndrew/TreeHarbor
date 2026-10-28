@@ -21,6 +21,28 @@ These correctness checks do not establish complete mode readiness or performance
 superiority. The installed native workload includes deliberate replacement-node
 recovery; live GitHub recovery remains a separate release gate.
 
+## Connected PR Preview alpha.1 — 2026-10-28
+
+[Alpha.1](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.0-alpha.1) ships unchanged signed archives from source
+`ff82efcedfeedcf3fea063a45c0d71fd4a8ceebc`. [Main CI](https://github.com/ArtAndrew/TreeHarbor/actions/runs/40678308430)
+and [signed package CI](https://github.com/ArtAndrew/TreeHarbor/actions/runs/40679998124)
+passed. Both architectures passed installed runtime/package tests and independent
+signature/digest verification. The additional installed Linux ARM64 trial observed
+two concurrent gVisor tasks, accepted immutable changes and published draft
+[PR4](https://github.com/TreeHarbor/TreeHarbor-acceptance/pull/4) and
+[PR5](https://github.com/TreeHarbor/TreeHarbor-acceptance/pull/5). Re-entry kept the
+original publication attempts; after safe workspace deletion, both changes exported
+to Git and passed strict fsck and expected-byte comparisons. All six temporary
+local principals were disabled, authentication refused, and the test service stopped.
+
+The [operator-recorded report](evidence/connected-pr-preview-20261028.json) is not a
+signed live-execution attestation. It identifies scripted fixtures, manual setup,
+ARM64-only live GitHub scope and the exact checked source. GitHub remains responsible
+for CI/review/merge. No combined-candidate or merge approval was asserted. Standalone,
+full Connected recovery, unassisted onboarding, LLM integration, production readiness,
+customer adoption and performance superiority remain unproven/incomplete. The full
+release ledger below covers broader work and is not the alpha.1 acceptance checklist.
+
 ## Binary-derived Rust dependency reports
 
 Pinned cargo-auditable/Syft tooling now builds and inspects the actual static

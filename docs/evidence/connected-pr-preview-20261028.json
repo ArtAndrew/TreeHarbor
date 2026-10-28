@@ -1,0 +1,235 @@
+{
+  "format": "treeharbor-connected-pr-preview-evidence-v1",
+  "recorded_at": "2026-10-28T12:31:56.171623+00:00",
+  "release": "v0.1.0-alpha.1",
+  "source_commit": "ff82efcedfeedcf3fea063a45c0d71fd4a8ceebc",
+  "main_ci": "https://github.com/ArtAndrew/TreeHarbor/actions/runs/40678308430",
+  "signed_package_ci": "https://github.com/ArtAndrew/TreeHarbor/actions/runs/40679998124",
+  "package_ci_architectures": [
+    "x86_64",
+    "aarch64"
+  ],
+  "archives": [
+    {
+      "architecture": "aarch64",
+      "archive": "treeharbor-0.1.0-alpha.1-aarch64-unknown-linux-musl.tar.gz",
+      "sha256": "273625d9dd116171b3fd1069cab85061f948749a196121616280eeac666e1839",
+      "official_sigstore_verification": true,
+      "exact_eight_subjects_and_producer_invocation_verified": true
+    },
+    {
+      "architecture": "x86_64",
+      "archive": "treeharbor-0.1.0-alpha.1-x86_64-unknown-linux-musl.tar.gz",
+      "sha256": "24715caa50b0be4914c1a5e6c06ed2925cae1773842c3ec47cf802c22d208dc0",
+      "official_sigstore_verification": true,
+      "exact_eight_subjects_and_producer_invocation_verified": true
+    }
+  ],
+  "live_trial": {
+    "architecture": "aarch64",
+    "operator_assisted": true,
+    "agents": "two scripted Rust fixture commands, not LLM agents",
+    "image_sha256": "sha256:90fe56100e6f1b47e1400f940328a9836d4ef3c9bb3ef15172efb0ae47bc8ac1",
+    "installed_binary_sha256": "8ef58c15ec029c7fe2c4ed21f290d673140bd2e069c574b2b28ba6a8a5c32443",
+    "installed_runtime_init_sha256": "435e372473658ec2470ccf99ff0c024e5999123d1236475a7618c3728b54daa2",
+    "baseline_git_commit": "a91d290d47abeaec32867dd21bb7107bec87ef05",
+    "baseline": {
+      "revision": "native:sha256:7a2432f8b121ff5172ddff9bc850af0292ff77f5d717a684e4fd9fe3d4bb6061",
+      "snapshot": "sha256:93331caa4e3fe81b3c1ea239b5fa30d06727f5d2e7569b6017941bd7f64120cd"
+    },
+    "actual_concurrent_running_observed": true,
+    "concurrency_observed_at": "2026-10-28T12:24:29.342814+00:00",
+    "runtime_observations": [
+      {
+        "started_at": "2026-10-28T12:24:28.371959539Z",
+        "running": true,
+        "restart_count": 0,
+        "runtime": "runsc",
+        "network": "none",
+        "memory": 268435456,
+        "nano_cpus": 1000000000
+      },
+      {
+        "started_at": "2026-10-28T12:24:28.380534051Z",
+        "running": true,
+        "restart_count": 0,
+        "runtime": "runsc",
+        "network": "none",
+        "memory": 268435456,
+        "nano_cpus": 1000000000
+      }
+    ],
+    "distinct_workspace_mounts": true,
+    "cases": [
+      {
+        "label": "A",
+        "workspace": "e961bf78-8b52-429b-86d3-986748983897",
+        "run": "f3e9e7e0-5c44-4620-8da4-78bf66932cdf",
+        "seal": "21a3a7f3-018a-4846-a08c-66362d9ee388",
+        "changeset": "431ea0c4-5fce-4e97-9ecc-a46d9a5cd997",
+        "base_revision": "native:sha256:7a2432f8b121ff5172ddff9bc850af0292ff77f5d717a684e4fd9fe3d4bb6061",
+        "base_snapshot": "sha256:93331caa4e3fe81b3c1ea239b5fa30d06727f5d2e7569b6017941bd7f64120cd",
+        "accepted_version": 1,
+        "result_snapshot": "sha256:49e49151d4ebe15649119926deb07c0b54879021e0990f275bfb34cea3acf326",
+        "terminal": {
+          "epoch": 1,
+          "exit_code": 0,
+          "generation": 1,
+          "oom_killed": false,
+          "run": "f3e9e7e0-5c44-4620-8da4-78bf66932cdf",
+          "runtime_removed": true,
+          "state": "succeeded",
+          "stop_requested": false,
+          "workspace": "e961bf78-8b52-429b-86d3-986748983897"
+        },
+        "projection": "980bc95d-7949-4e95-8416-c9181f2df676",
+        "publication": "9e491697-f567-47c3-90c9-49a922617ed8",
+        "pull_request_identity": {
+          "node_id": "PR_kwDOVVko5M8AAAABLQdN8g",
+          "number": 4
+        },
+        "publication_transports": {
+          "publish-branch": {
+            "attempt": "7054ef88-8eff-44a0-8692-a602a68e9f64",
+            "state": "observed",
+            "token_revoked": true,
+            "merge_authorized": false
+          },
+          "publish-pull": {
+            "attempt": "c51b1938-bce3-4d73-843d-e76dccf7235b",
+            "state": "observed",
+            "token_revoked": true,
+            "merge_authorized": false
+          }
+        }
+      },
+      {
+        "label": "B",
+        "workspace": "9fd72098-5de5-44af-bf42-ed97d067df71",
+        "run": "8621a9d7-1592-4905-9159-9cdacf50ad58",
+        "seal": "0e139764-da38-4eac-a369-8782f8e49911",
+        "changeset": "bb8316be-f0c1-47fa-a085-d41c3855ec1e",
+        "base_revision": "native:sha256:7a2432f8b121ff5172ddff9bc850af0292ff77f5d717a684e4fd9fe3d4bb6061",
+        "base_snapshot": "sha256:93331caa4e3fe81b3c1ea239b5fa30d06727f5d2e7569b6017941bd7f64120cd",
+        "accepted_version": 1,
+        "result_snapshot": "sha256:8545c4087873291a0fce67d043d7ec238628d273077f99615941997514d50e08",
+        "terminal": {
+          "epoch": 1,
+          "exit_code": 0,
+          "generation": 1,
+          "oom_killed": false,
+          "run": "8621a9d7-1592-4905-9159-9cdacf50ad58",
+          "runtime_removed": true,
+          "state": "succeeded",
+          "stop_requested": false,
+          "workspace": "9fd72098-5de5-44af-bf42-ed97d067df71"
+        },
+        "projection": "4400d7d2-2470-4b98-bdd0-1bd9c8c922e5",
+        "publication": "30610112-c0fa-49f3-a6b7-bde3971c9e8b",
+        "pull_request_identity": {
+          "node_id": "PR_kwDOVVko5M8AAAABLQdXww",
+          "number": 5
+        },
+        "publication_transports": {
+          "publish-branch": {
+            "attempt": "379d24ae-975f-4444-912a-db8963e5e091",
+            "state": "observed",
+            "token_revoked": true,
+            "merge_authorized": false
+          },
+          "publish-pull": {
+            "attempt": "7240066f-20a3-42d3-98e8-b7a2a09cace3",
+            "state": "observed",
+            "token_revoked": true,
+            "merge_authorized": false
+          }
+        }
+      }
+    ],
+    "cleanup_and_exports": [
+      {
+        "label": "A",
+        "workspace": "e961bf78-8b52-429b-86d3-986748983897",
+        "run": "f3e9e7e0-5c44-4620-8da4-78bf66932cdf",
+        "changeset": "431ea0c4-5fce-4e97-9ecc-a46d9a5cd997",
+        "cleanup_state": "deleted",
+        "placement_empty": true,
+        "export_after_cleanup": true,
+        "git_fsck_strict": true,
+        "git_revision": "8d7cf0dde20470a52e7e37975148ce6c1ac4e79f",
+        "expected_bytes_match": true,
+        "source_sha256": "393e9ebd79ca62ca05df4cabd387dfb172ccf13976f0e0f4fe1d09a84d3d69b2",
+        "pull": {
+          "node_id": "PR_kwDOVVko5M8AAAABLQdN8g",
+          "number": 4
+        }
+      },
+      {
+        "label": "B",
+        "workspace": "9fd72098-5de5-44af-bf42-ed97d067df71",
+        "run": "8621a9d7-1592-4905-9159-9cdacf50ad58",
+        "changeset": "bb8316be-f0c1-47fa-a085-d41c3855ec1e",
+        "cleanup_state": "deleted",
+        "placement_empty": true,
+        "export_after_cleanup": true,
+        "git_fsck_strict": true,
+        "git_revision": "07409ef7c99e75e5c3b4e4926f35cffdb4b24a38",
+        "expected_bytes_match": true,
+        "source_sha256": "e64ed8b7b987258c80d40463a70ffef1a513bcee7499ecba4da7b89d1d65a85f",
+        "pull": {
+          "node_id": "PR_kwDOVVko5M8AAAABLQdXww",
+          "number": 5
+        }
+      }
+    ],
+    "publication_reentry_kept_original_attempts": true,
+    "six_temporary_local_principals_disabled_and_authentication_refused": true,
+    "shutdown": {
+      "new_service_stopped": true,
+      "service_socket_removed": true,
+      "both_cleaned_test_volumes_unmounted": true,
+      "no_fixture_containers_running": true,
+      "all_six_local_principals_disabled": true
+    },
+    "github_observations": {
+      "observed_at": "2026-10-28T12:29:40.135930+00:00",
+      "pulls": [
+        {
+          "number": 4,
+          "node_id": "PR_kwDOVVko5M8AAAABLQdN8g",
+          "url": "https://github.com/TreeHarbor/TreeHarbor-acceptance/pull/4",
+          "state": "open",
+          "draft": true,
+          "merged": false,
+          "head_ref": "treeharbor/a04d344216538775ae0f79c842f9d3bf",
+          "head_sha": "8d7cf0dde20470a52e7e37975148ce6c1ac4e79f",
+          "base_ref": "main",
+          "base_sha": "a91d290d47abeaec32867dd21bb7107bec87ef05"
+        },
+        {
+          "number": 5,
+          "node_id": "PR_kwDOVVko5M8AAAABLQdXww",
+          "url": "https://github.com/TreeHarbor/TreeHarbor-acceptance/pull/5",
+          "state": "open",
+          "draft": true,
+          "merged": false,
+          "head_ref": "treeharbor/bc66de97a4cc8c6f9a554bd818cf85c0",
+          "head_sha": "07409ef7c99e75e5c3b4e4926f35cffdb4b24a38",
+          "base_ref": "main",
+          "base_sha": "a91d290d47abeaec32867dd21bb7107bec87ef05"
+        }
+      ],
+      "main_sha": "a91d290d47abeaec32867dd21bb7107bec87ef05"
+    }
+  },
+  "limits": [
+    "This operator-recorded trial report is not a signed execution attestation; package attestations cover the package-producing CI run.",
+    "Live GitHub end-to-end trial ran only on Linux ARM64; package/runtime CI ran on both listed architectures.",
+    "One manually prepared PostgreSQL/local-storage/Docker/gVisor deployment; not one-command provisioning or unassisted onboarding.",
+    "Native workspace files have no .git directory; Git-dependent agent tools require a separate integration.",
+    "Scripted fixtures do not establish an LLM integration, production readiness, user adoption or performance superiority.",
+    "GitHub checks/review/merge remain authoritative; this trial neither checked a combined candidate nor merged these draft PRs.",
+    "Re-entry retained original publication attempts; this is not a universal exactly-once or full GitHub disaster-recovery guarantee.",
+    "Signed dependency reports have explicit native-component coverage limits; no complete native SBOM, reproducible-build or SLSA-level claim."
+  ]
+}

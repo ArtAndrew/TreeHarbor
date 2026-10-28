@@ -11,8 +11,8 @@ Keep your existing GitHub process with **Connected**, or use TreeHarbor's own
 history, branches and integration queue with **Standalone**. Both use the same
 Rust engine and the same license.
 
-> **Connected PR Preview candidate — early development.** Published builds and
-> their exact verified scope are listed in [Releases](https://github.com/ArtAndrew/TreeHarbor/releases).
+> **[0.1.0-alpha.1 — Connected PR Preview](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.0-alpha.1) is available.**
+> Signed Linux packages and the exact tested scope are in the release notes.
 > Evaluate on disposable pilot repositories. The full Connected and Standalone
 > releases remain incomplete; production use is not supported.
 > [What works](#what-works-today) · [What remains](#what-remains-before-a-full-release) ·
@@ -119,13 +119,13 @@ TreeHarbor-managed merge queues and full recovery of GitHub publication state
 after a disaster follow in separate releases. Their current implementations remain
 experimental and are outside the first alpha's supported workflow.
 
-Before publishing alpha.1, we must verify a clean installation and the complete
-packaged two-agent-to-PR demo, durable proposal receipts, safe retries without
-duplicate publication, credential/runtime separation, cleanup, source export and
-the signed release artifacts. The deployment guide will state backup and recovery
-limits. This preview is intended for controlled pilot repositories. Published
-artifacts, installed-workflow evidence and remaining limitations are recorded in
-[Releases](https://github.com/ArtAndrew/TreeHarbor/releases).
+The [alpha.1 release](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.0-alpha.1) provides signed Linux x86-64 and ARM64 packages.
+Its installed ARM64 workflow passed with two concurrent scripted agents, two real
+draft PRs, preserved publication identities on re-entry, safe cleanup and verified
+Git export after cleanup. All temporary service access was revoked. See the
+[scoped trial report](docs/evidence/connected-pr-preview-20261028.json) for exact identities and limits.
+Both architectures passed installed runtime/package CI; the live GitHub trial ran
+on ARM64. Setup is manual, and this preview is for controlled pilot repositories.
 
 Standalone will follow in a later release. Its existing native components remain
 experimental; both modes continue to share the Rust core and standard ELv2.
@@ -135,9 +135,10 @@ you tried, where you got blocked and whether you would run another task using th
 private source or credentials in a public issue.
 
 An experimental [prepared-agents-to-PR helper](examples/connected-pr/README.md)
-reduces manual orchestration over the existing Rust CLI. It requires an operator
-to prepare the service, runtime, workspaces and scoped credentials first; its
-complete installed live workflow has not yet passed acceptance.
+reduces manual orchestration over the existing Rust CLI. Its installed scripted
+workflow passed the scoped ARM64 trial. An operator must still prepare the service,
+runtime, workspaces and scoped credentials; this is not automatic host provisioning
+or a ready-made LLM connector.
 
 ## What remains before a full release?
 
@@ -161,7 +162,7 @@ track the remaining work.
 
 ## Try the development build
 
-For a published preview, start with [Releases](https://github.com/ArtAndrew/TreeHarbor/releases)
+For the installable preview, start with [alpha.1](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.0-alpha.1)
 and [package verification](docs/release-packaging.md). The commands below build
 from source.
 
