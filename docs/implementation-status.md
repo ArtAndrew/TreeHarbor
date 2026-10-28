@@ -21,6 +21,28 @@ These correctness checks do not establish complete mode readiness or performance
 superiority. The installed native workload includes deliberate replacement-node
 recovery; live GitHub recovery remains a separate release gate.
 
+## Unreleased workspace request CLI — 0.1.2-alpha.1
+
+`client workspace-new` generates and durably retains a workspace UUID and request
+key before submitting the existing creation command. Same-file retries and
+concurrent first writers share that intent. Changed scope/base/profile/authority/
+epoch and malformed state fail without replacement; credentials are not stored.
+It returns the historical `requested` receipt, not current file/runtime readiness.
+See [usage and recovery](workspace-new.md). Existing server authorization,
+idempotency and explicit node/runtime preparation remain unchanged.
+
+Local macOS verification passed two focused journal tests, one real PostgreSQL
+CLI regression exercised in both Connected and Standalone, and strict service
+all-targets Clippy. The regression kills the CLI after a committed response is
+withheld, restarts the server, replays the original intent, and concurrently
+creates a second task with two callers while checking exactly two workspaces and
+two preparation events overall. No Git executable or GitHub access is used.
+These checks preceded the workspace-only version bump; locked metadata is checked
+separately. The existing Linux managed-runtime acceptance now uses the shortcut
+for its first installed workspace and replays its receipt after preparation.
+Current-head CI and signed package/release verification remain pending. No fresh
+GitHub App permissions, live service credentials or host policy changes occurred.
+
 ## Released setup patch — 0.1.1-alpha.1
 
 [Patch release](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.1-alpha.1) identifies source

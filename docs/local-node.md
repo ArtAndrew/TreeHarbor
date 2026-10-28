@@ -15,6 +15,10 @@ authenticated client. The server configuration must include the same `storage`
 root/backend used by source import. Run node commands as a trusted service operator;
 the database configuration and node credential must never be given to agents.
 
+Development builds after `0.1.1-alpha.1` also provide [workspace-new](workspace-new.md)
+to save a generated creation identity before submitting the request. Existing
+packages use `workspace-create` with explicitly retained UUIDs and keys.
+
 The examples reuse `TH_STATE` and `TH_REPOSITORY` from the local guide. Keep the
 state directory private and persistent. Initialize a **new** node root:
 

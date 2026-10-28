@@ -187,14 +187,28 @@ class Harness:
         number, assigned, slot, mount, digest = self.placement_profile(node, timeout)
         run = str(uuid.uuid4())
         credential = self.agents[node]
+        create = None
         if workspace is None:
-            workspace = str(uuid.uuid4())
-            self.client("workspace-create", "--key", f"workspace-{number}", "--authority", "standalone", "--epoch", "1",
-                        "--workspace", workspace, "--base", self.revision, "--profile-digest", self.source_profile,
-                        credential=credential)
+            if number == 0:
+                # Exercise the installed Rust shortcut, then use the exact returned
+                # identity through real file preparation and managed execution.
+                create = ["workspace-new", "--state", self.root / "first-workspace.json",
+                          "--authority", "standalone", "--epoch", "1", "--base", self.revision,
+                          "--profile-digest", self.source_profile]
+                requested = self.client(*create, credential=credential)
+                workspace = requested["workspace"]
+                assert requested["state"] == "requested"
+                assert self.client(*create, credential=credential) == requested
+            else:
+                workspace = str(uuid.uuid4())
+                self.client("workspace-create", "--key", f"workspace-{number}", "--authority", "standalone", "--epoch", "1",
+                            "--workspace", workspace, "--base", self.revision, "--profile-digest", self.source_profile,
+                            credential=credential)
         selection = ["--workspace", workspace] if selected else []
         prepared = self.value(*self.node_args(assigned, "prepare-once"), "--slot", slot, *selection)
         assert prepared["workspace"] == workspace and prepared["state"] == "files_ready" and prepared["runtime"] is None
+        if create is not None:
+            assert self.client(*create, credential=credential) == requested
         files = Path(prepared["path"])
         assert (files / "same.txt").read_text() == "base\n"
         request = ["run-request", "--key", f"run-{number}", "--authority", "standalone", "--epoch", "1",
