@@ -5,11 +5,13 @@ commands concurrently in separate prepared workspaces, captures their stopped
 files through the Rust node, accepts immutable changes, and optionally publishes
 two proposed branches and PRs. GitHub handles CI, review, conflicts and merging.
 
-**The complete installed live path of this helper is not yet verified.** Controlled
-reply tests cover its orchestration and failure boundaries; they do not establish
-GitHub or runtime acceptance. This is not the installable alpha or an automatic
-host installer. Use disposable pilot repositories and retain independent backups.
-The example uses scripted agents; it is not evidence of an LLM integration.
+The installed helper passed the operator-assisted Linux ARM64 trial in
+[alpha.1](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.0-alpha.1): two concurrent scripted agents, two real draft PRs,
+safe cleanup and verified Git export after cleanup. See [the scoped report](../../docs/evidence/connected-pr-preview-20261028.json).
+Both architectures passed package/runtime CI; the live GitHub trial ran on ARM64.
+This helper requires prepared infrastructure and credentials; it is not an automatic
+host installer or evidence of an LLM integration. Use disposable pilot repositories
+and retain independent backups.
 
 ## Prepare the operator environment
 

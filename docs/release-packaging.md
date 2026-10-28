@@ -2,11 +2,13 @@
 
 This page describes packaging and its verification scope. Published assets and
 installed-workflow evidence are listed in [Releases](https://github.com/ArtAndrew/TreeHarbor/releases).
-A source checkout or successful build alone does not establish release readiness. Packaged two-agent-to-PR onboarding,
-durable receipts and safe publication retries, signed provenance and release
-publication remain alpha.1 gates. TreeHarbor queue integration and full Connected
-publication disaster recovery follow in later releases; the first preview must
-document its actual backup/restore limits.
+[Alpha.1](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.0-alpha.1) provides signed Linux x86-64 and ARM64 packages.
+Installed runtime/package CI passed on both architectures; the operator-assisted
+GitHub workflow passed on ARM64 with cleanup/export and access revocation.
+See [the trial report](evidence/connected-pr-preview-20261028.json).
+A source checkout or successful build alone does not establish this acceptance.
+TreeHarbor queue certification and full Connected publication disaster recovery
+remain later work; the preview requires independent backups and manual setup.
 
 ## Preparing signed alpha candidates
 
