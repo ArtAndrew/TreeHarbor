@@ -1,0 +1,290 @@
+name: Prepare signed alpha packages
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Exact tagged commit already validated on main (40 lowercase hex)
+        required: true
+        type: string
+      validation_run:
+        description: Successful main CI workflow run for the same commit
+        required: true
+        type: string
+      validation_attempt:
+        description: Exact successful CI attempt
+        required: true
+        type: string
+permissions: {}
+concurrency:
+  group: signed-alpha-${{ github.ref }}
+  cancel-in-progress: false
+env:
+  PYTHONDONTWRITEBYTECODE: '1'
+  TH_EXPECTED_SOURCE: ${{ inputs.source_sha }}
+  TH_VALIDATION_RUN: ${{ inputs.validation_run }}
+  TH_VALIDATION_ATTEMPT: ${{ inputs.validation_attempt }}
+jobs:
+  preflight:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: read
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Require the exact existing alpha tag and reviewed main source
+        run: |
+          python3 - <<'PYTHON'
+          import os, re, subprocess, tomllib
+          from pathlib import Path
+          def require(ok, message):
+              if not ok:
+                  raise SystemExit(message)
+          require(os.environ['GITHUB_REPOSITORY'] == 'ArtAndrew/TreeHarbor', 'unexpected repository')
+          require(os.environ['GITHUB_EVENT_NAME'] == 'workflow_dispatch', 'manual tagged run required')
+          ref = os.environ['GITHUB_REF']
+          require(re.fullmatch(r'refs/tags/v[0-9]+[.][0-9]+[.][0-9]+-alpha[.][1-9][0-9]*', ref), 'alpha tag ref required')
+          expected = os.environ['TH_EXPECTED_SOURCE']
+          require(re.fullmatch('[0-9a-f]{40}', expected), 'invalid expected source')
+          actual = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
+          tagged = subprocess.check_output(['git', 'rev-parse', ref + '^{commit}'], text=True).strip()
+          require(actual == tagged == expected == os.environ['GITHUB_SHA'] == os.environ['GITHUB_WORKFLOW_SHA'], 'source/tag/workflow mismatch')
+          subprocess.run(['git', 'merge-base', '--is-ancestor', expected, 'origin/main'], check=True)
+          version = tomllib.loads(Path('Cargo.toml').read_text())['workspace']['package']['version']
+          require(ref == 'refs/tags/v' + version, 'tag and packaged version differ')
+          for key in ('TH_VALIDATION_RUN', 'TH_VALIDATION_ATTEMPT'):
+              require(re.fullmatch('[1-9][0-9]*', os.environ[key]), 'invalid validation identity')
+          PYTHON
+      - name: Authenticate the independent successful CI run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$TH_VALIDATION_RUN/attempts/$TH_VALIDATION_ATTEMPT" > "$RUNNER_TEMP/main-ci.json"
+          python3 - <<'PYTHON'
+          import json, os
+          from pathlib import Path
+          value = json.loads((Path(os.environ['RUNNER_TEMP']) / 'main-ci.json').read_text())
+          if not (str(value['id']) == os.environ['TH_VALIDATION_RUN']
+                  and str(value['run_attempt']) == os.environ['TH_VALIDATION_ATTEMPT']
+                  and value['repository']['full_name'] == os.environ['GITHUB_REPOSITORY']
+                  and value['head_sha'] == os.environ['TH_EXPECTED_SOURCE']
+                  and value['head_branch'] == 'main' and value['event'] == 'push'
+                  and value['path'] == '.github/workflows/ci.yml'
+                  and value['status'] == 'completed' and value['conclusion'] == 'success'):
+              raise SystemExit('main CI does not authenticate selected source/run/attempt')
+          PYTHON
+  runtime:
+    needs: preflight
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    name: Signed alpha (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            arch: x86_64
+            check: gVisor task supervision
+            sha256: 180dd277f657c1478f09490e8a9a595f7378257510b43d1d3694a769aef9ed02
+          - os: ubuntu-24.04-arm
+            arch: aarch64
+            check: gVisor task supervision (arm64)
+            sha256: fd174120b7048ad01c550d1a7cf7336895e8fc986bc1526f636dcaca4791c330
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    env:
+      PYTHONDONTWRITEBYTECODE: 1
+    services:
+      postgres:
+        image: postgres:18.6
+        env:
+          POSTGRES_USER: treeharbor_test
+          POSTGRES_PASSWORD: disposable-ci-only
+          POSTGRES_DB: treeharbor_test
+        volumes:
+          - /var/run/treeharbor-runtime-pg:/var/run/postgresql
+        options: >-
+          --health-cmd "pg_isready -U treeharbor_test -d treeharbor_test"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Install static Rust target
+        run: |
+          rustup toolchain install 1.99.1 --profile minimal --target ${{ matrix.arch }}-unknown-linux-musl
+          sudo apt-get update -qq
+          sudo apt-get install -y musl-tools
+      - name: Install pinned gVisor including sidecar binaries
+        working-directory: ${{ runner.temp }}
+        run: |
+          test "$(uname -m)" = '${{ matrix.arch }}'
+          curl --fail --location --retry 3 --output gvisor.tar.bz2 https://github.com/google/gvisor/releases/download/release-20261012.0/gvisor-${{ matrix.arch }}.tar.bz2
+          echo '${{ matrix.sha256 }}  gvisor.tar.bz2' | sha256sum --check --strict
+          sudo tar -xjf gvisor.tar.bz2 -C /usr/local/bin
+          sudo /usr/local/bin/runsc install
+          sudo systemctl restart docker
+          /usr/local/bin/runsc --version
+          docker info
+      - name: Build trusted init and adversarial fixture
+        run: cargo build -p treeharbor-runtime --locked --target ${{ matrix.arch }}-unknown-linux-musl --bins --examples
+      - name: Check static runtime filesystem boundaries
+        run: cargo test -p treeharbor-runtime --locked --target ${{ matrix.arch }}-unknown-linux-musl --lib
+      - name: Exercise real runtime, resources and process teardown
+        run: python3 scripts/test-runtime.py
+      - name: Exercise Rust runtime control and lost Engine responses
+        run: python3 scripts/test-runtime-controller.py
+      - name: Install pinned binary-dependency tools
+        run: |
+          sh scripts/install-sbom-tools.sh '${{ matrix.arch }}' "$RUNNER_TEMP/sbom-tools"
+          echo "$RUNNER_TEMP/sbom-tools" >> "$GITHUB_PATH"
+      - name: Install the actual static release package for lifecycle acceptance
+        env:
+          TH_PACKAGE_DIR: ${{ runner.temp }}/runtime-package
+          TH_EXTRACT_DIR: ${{ runner.temp }}/runtime-package-extracted
+          TH_INSTALL_PREFIX: ${{ runner.temp }}/runtime-package-installed
+          TH_SBOM_DIR: ${{ runner.temp }}/runtime-sbom
+        run: |
+          th_session=$(python3 -c 'import uuid; print(uuid.uuid4())')
+          sh scripts/build-with-link-inputs.sh '${{ matrix.arch }}-unknown-linux-musl' "$RUNNER_TEMP/canonical-build" "$th_session"
+          python3 scripts/capture-rust-sbom.py --target ${{ matrix.arch }}-unknown-linux-musl --bin-dir "$RUNNER_TEMP/canonical-build/target/${{ matrix.arch }}-unknown-linux-musl/release" --syft "$RUNNER_TEMP/sbom-tools/syft" --output-dir "$TH_SBOM_DIR" --native-inputs "$RUNNER_TEMP/canonical-build/native-reports/native-inputs.json" --build-session "$th_session"
+          git status --short --untracked-files=normal
+          python3 scripts/package-release.py --target ${{ matrix.arch }}-unknown-linux-musl --bin-dir "$RUNNER_TEMP/canonical-build/target/${{ matrix.arch }}-unknown-linux-musl/release" --output-dir "$TH_PACKAGE_DIR" --input-observations "$TH_SBOM_DIR/input-observations.json" --native-inputs "$TH_SBOM_DIR/native-inputs.json"
+          cd "$TH_PACKAGE_DIR"
+          sha256sum --check --strict *.sha256
+          mkdir "$TH_EXTRACT_DIR"
+          tar -xzf ./*.tar.gz -C "$TH_EXTRACT_DIR"
+          package_roots=("$TH_EXTRACT_DIR"/*)
+          test "${#package_roots[@]}" -eq 1
+          sh "${package_roots[0]}/install.sh" --prefix "$TH_INSTALL_PREFIX"
+          "$TH_INSTALL_PREFIX/bin/treeharbor" --version
+          printf 'TH_TEST_SERVICE_BINARY=%s/bin/treeharbor\n' "$TH_INSTALL_PREFIX" >> "$GITHUB_ENV"
+          printf 'TH_TEST_RUNTIME_INIT=%s/treeharbor-runtime-init\n' "$(dirname "$(realpath "$TH_INSTALL_PREFIX/bin/treeharbor")")" >> "$GITHUB_ENV"
+      - name: Exercise actual managed AgentRun lifecycle
+        env:
+          TH_RUNTIME_PG_CONTAINER: ${{ job.services.postgres.id }}
+          TH_RUNTIME_DATABASE_URL: host=/var/run/treeharbor-runtime-pg user=treeharbor_test password=disposable-ci-only dbname=treeharbor_test
+        run: python3 scripts/test-managed-runs.py
+      - name: Exercise actual native candidate checks and protected publication
+        env:
+          TH_RUNTIME_PG_CONTAINER: ${{ job.services.postgres.id }}
+          TH_RUNTIME_DATABASE_URL: host=/var/run/treeharbor-runtime-pg user=treeharbor_test password=disposable-ci-only dbname=treeharbor_test
+        run: python3 scripts/test-native-checks.py
+      - name: Identify the exact installed and runtime-tested archive
+        env:
+          TH_PACKAGE_DIR: ${{ runner.temp }}/runtime-package
+          TH_SBOM_DIR: ${{ runner.temp }}/runtime-sbom
+          TH_PACKAGE_ARCH: ${{ matrix.arch }}
+          TH_MATRIX_JOB_NAME: ${{ matrix.check }}
+          TH_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          TH_PR_MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+        run: |
+          python3 - <<'PYTHON'
+          import hashlib, json, os, subprocess, tarfile
+          from pathlib import Path
+
+          def digest(data):
+              return hashlib.sha256(data).hexdigest()
+
+          package = Path(os.environ["TH_PACKAGE_DIR"])
+          sbom = Path(os.environ["TH_SBOM_DIR"])
+          archive, = package.glob("*.tar.gz")
+          archive_sha256 = digest(archive.read_bytes())
+          if archive.with_suffix(archive.suffix + ".sha256").read_text() != f"{archive_sha256}  {archive.name}\n":
+              raise RuntimeError("runtime-tested archive checksum mismatch")
+          observation_bytes = (sbom / "input-observations.json").read_bytes()
+          report_bytes = (sbom / "rust-dependencies.cdx.json").read_bytes()
+          native_bytes = (sbom / "native-inputs.json").read_bytes()
+          observations = json.loads(observation_bytes)
+          native = json.loads(native_bytes)
+          with tarfile.open(archive) as contents:
+              prefix = archive.name.removesuffix(".tar.gz") + "/"
+              manifest = json.load(contents.extractfile(prefix + "manifest.json"))
+              binary_hashes = {name: digest(contents.extractfile(prefix + "bin/" + name).read())
+                               for name in ("treeharbor", "treeharbor-runtime-init")}
+          revision = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+          target = os.environ["TH_PACKAGE_ARCH"] + "-unknown-linux-musl"
+          if (manifest["source_revision"] != revision or revision != os.environ["GITHUB_SHA"]
+                  or manifest["target"] != target or observations["target"] != target
+                  or observations["packaging_source_revision"] != revision
+                  or manifest["rust_dependency_observations_sha256"] != digest(observation_bytes)
+                  or observations["rust_sbom_sha256"] != digest(report_bytes)
+                  or observations["native_inputs_sha256"] != digest(native_bytes)
+                  or native["build_source"] != revision or native["target"] != target
+                  or native["build_session"] != observations["build_session"]
+                  or native["binary_sha256"] != binary_hashes
+                  or observations["binary_sha256"] != binary_hashes):
+              raise RuntimeError("runtime-tested archive/observations/source mismatch")
+          installed = {"treeharbor": Path(os.environ["TH_TEST_SERVICE_BINARY"]),
+                       "treeharbor-runtime-init": Path(os.environ["TH_TEST_RUNTIME_INIT"])}
+          if {name: digest(path.read_bytes()) for name, path in installed.items()} != binary_hashes:
+              raise RuntimeError("installed test executables differ from the retained archive")
+          for name, data in (("input-observations.json", observation_bytes),
+                             ("rust-dependencies.cdx.json", report_bytes),
+                             ("native-inputs.json", native_bytes),
+                             ("SBOM-SHA256SUMS", (sbom / "SHA256SUMS").read_bytes())):
+              with (package / name).open("xb") as output:
+                  output.write(data)
+          receipt = {"version": 2, "scope": "installed managed/native runtime tests",
+                     "build_session": observations["build_session"],
+                     "source_revision": revision, "github_sha": os.environ["GITHUB_SHA"],
+                     "github_ref": os.environ["GITHUB_REF"], "event": os.environ["GITHUB_EVENT_NAME"],
+                     "pr_head_sha": os.environ["TH_PR_HEAD_SHA"] or None,
+                     "pr_merge_sha": os.environ["TH_PR_MERGE_SHA"] or None,
+                     "repository": os.environ["GITHUB_REPOSITORY"],
+                     "workflow_ref": os.environ["GITHUB_WORKFLOW_REF"],
+                     "run_id": os.environ["GITHUB_RUN_ID"], "run_attempt": os.environ["GITHUB_RUN_ATTEMPT"],
+                     "job": os.environ["GITHUB_JOB"], "matrix_job_name": os.environ["TH_MATRIX_JOB_NAME"],
+                     "architecture": os.environ["TH_PACKAGE_ARCH"], "target": target,
+                     "product_version": manifest["product_version"],
+                     "archive": {"name": archive.name, "sha256": archive_sha256},
+                     "binary_sha256": binary_hashes,
+                     "sidecar_sha256": {name: digest((package / name).read_bytes()) for name in
+                                        ("input-observations.json", "rust-dependencies.cdx.json", "native-inputs.json", "SBOM-SHA256SUMS")},
+                     "completed_test_commands": ["python3 scripts/test-managed-runs.py",
+                                                 "python3 scripts/test-native-checks.py"]}
+          with (package / "tested-runtime-artifacts.json").open("x") as output:
+              json.dump(receipt, output, sort_keys=True, indent=2)
+              output.write("\n")
+          PYTHON
+          cd "$TH_PACKAGE_DIR"
+          sha256sum --check --strict *.tar.gz.sha256
+          sha256sum --check --strict SBOM-SHA256SUMS
+      - name: Attest the exact archive and sidecars after installed runtime tests
+        id: provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: ${{ runner.temp }}/runtime-package/*
+          push-to-registry: false
+          create-storage-record: false
+      - name: Verify signed bytes against the exact source and workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TH_ATTESTATION_BUNDLE: ${{ steps.provenance.outputs.bundle-path }}
+        run: |
+          set -eu
+          for th_subject in "$RUNNER_TEMP/runtime-package/"*; do
+            gh attestation verify "$th_subject" --bundle "$TH_ATTESTATION_BUNDLE" \
+              --repo "$GITHUB_REPOSITORY" \
+              --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release-provenance.yml" \
+              --signer-digest "$GITHUB_SHA" --source-digest "$GITHUB_SHA" \
+              --source-ref "$GITHUB_REF" --deny-self-hosted-runners
+          done
+          cp -- "$TH_ATTESTATION_BUNDLE" "$RUNNER_TEMP/runtime-package/provenance.sigstore.json"
+          cd "$RUNNER_TEMP/runtime-package"
+          sha256sum --check --strict *.tar.gz.sha256
+          sha256sum --check --strict SBOM-SHA256SUMS
+      - name: Retain signed alpha candidates for operator review
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: treeharbor-alpha-signed-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}-${{ github.sha }}
+          path: ${{ runner.temp }}/runtime-package/*
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7

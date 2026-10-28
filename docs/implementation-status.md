@@ -163,6 +163,14 @@ expose only the error kind, with a test excluding private error text.
 
 ## Connected Preview priority and candidate assessment
 
+A separate tag-only signed-package workflow is prepared. It checks the exact
+tag/source/workflow and an independent successful main CI attempt, then builds,
+installs, runtime-tests and attests the same bytes in each producer job. It uses
+the standard pinned GitHub action/CLI and retains candidates without publishing a
+release or creating tags. Signing and the tagged execution remain unverified;
+adding the workflow alone does not close the release gate. See
+[packaging](release-packaging.md#preparing-signed-alpha-candidates).
+
 The node CLI now accepts `seal-once --seal UUID`, selecting only that stopped-file
 capture within the existing node/storage/authorization/lease scope. Unknown,
 unavailable or completed selections return idle without claiming another task;
