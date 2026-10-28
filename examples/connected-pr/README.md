@@ -13,6 +13,9 @@ This helper requires prepared infrastructure and credentials; it is not an autom
 host installer or evidence of an LLM integration. Use disposable pilot repositories
 and retain independent backups.
 
+Start with the [PR Preview setup path](../../docs/connected-pr-preview.md) for the
+minimal App permissions, separate local roles and database preparation.
+
 ## Prepare the operator environment
 
 Use one trusted Linux operator/bridge host with Python 3.11+, PostgreSQL, Git,
@@ -35,7 +38,7 @@ this helper does not implement another source engine.
 4. Supply separate current service credentials: each Agent needs `read`,
    `workspace.write`, `change.write`; each Node needs `runtime.control`; the Human
    owner needs `read`, `repository.write`; the binding's assigned Bridge needs
-   `host.publish`. The App needs Contents-write, Pull requests-write and implicit
+   `host.read` for verification/import and `host.publish` for PR delivery. The App needs Contents-write, Pull requests-write and implicit
    Metadata-read on the selected repository for branch/PR delivery. Queue, Checks,
    Actions and Administration grants are not required for this helper.
 
