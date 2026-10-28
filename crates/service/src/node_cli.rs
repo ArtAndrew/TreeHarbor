@@ -72,6 +72,9 @@ pub enum Action {
         node: Arguments,
         #[arg(long)]
         engine_socket: PathBuf,
+        /// Claim only this execution; unavailable work returns idle without fallback.
+        #[arg(long)]
+        run: Option<Uuid>,
     },
 }
 #[derive(Args)]
@@ -234,8 +237,17 @@ pub async fn run(action: Action) -> Result<bool> {
             println!("{result}");
             return Ok(true);
         }
-        Action::RunOnce { engine_socket, .. } => {
-            let Some(plan) = node.claim_run(&mut session.metadata, &auth).await? else {
+        Action::RunOnce {
+            engine_socket, run, ..
+        } => {
+            let plan = match run {
+                Some(run) => {
+                    node.claim_run_for(&mut session.metadata, &auth, run)
+                        .await?
+                }
+                None => node.claim_run(&mut session.metadata, &auth).await?,
+            };
+            let Some(plan) = plan else {
                 println!("{}", json!({"state":"idle"}));
                 return Ok(true);
             };

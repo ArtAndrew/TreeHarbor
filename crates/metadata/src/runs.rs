@@ -582,6 +582,33 @@ impl Metadata {
         worker: Uuid,
         ttl: i32,
     ) -> Result<Option<RunPlan>> {
+        self.claim_run_matching(auth, storage, worker, ttl, None)
+            .await
+    }
+    /// Claim only this execution on the authenticated node. An unavailable run
+    /// never falls back to another queued job. This does not grant new access.
+    pub async fn claim_run_for(
+        &mut self,
+        auth: &Authorization,
+        storage: Uuid,
+        worker: Uuid,
+        ttl: i32,
+        run: Uuid,
+    ) -> Result<Option<RunPlan>> {
+        if run.is_nil() {
+            return Err(Error::Invalid("run"));
+        }
+        self.claim_run_matching(auth, storage, worker, ttl, Some(run))
+            .await
+    }
+    async fn claim_run_matching(
+        &mut self,
+        auth: &Authorization,
+        storage: Uuid,
+        worker: Uuid,
+        ttl: i32,
+        run: Option<Uuid>,
+    ) -> Result<Option<RunPlan>> {
         ttl_valid(ttl)?;
         if worker.is_nil() {
             return Err(Error::Invalid("worker"));
@@ -594,11 +621,12 @@ impl Metadata {
         let row=tx.query_opt(r#"WITH selected AS(SELECT o.id FROM th_outbox o JOIN th_managed_runs m
             ON m.tenant=o.tenant AND m.repository=o.repository AND m.run::text=o.payload->>'run'
             WHERE o.tenant=$1 AND o.repository=$2 AND o.kind='run.execute' AND m.node=$3 AND m.storage_instance=$4
+            AND ($7::uuid IS NULL OR m.run=$7)
             AND NOT m.removed AND ((o.state='pending' AND o.available_at<=clock_timestamp()) OR (o.state='running' AND o.lease_until<=clock_timestamp()))
             ORDER BY o.id LIMIT 1 FOR UPDATE OF o SKIP LOCKED)
             UPDATE th_outbox o SET state='running',worker=$5,generation=generation+1,lease_until=clock_timestamp()+($6::integer*interval '1 second')
             FROM selected WHERE o.id=selected.id RETURNING o.id,o.generation,o.kind,o.payload"#,
-            &[&s.tenant(),&s.repository(),&auth.principal(),&storage,&worker,&ttl]).await?;
+            &[&s.tenant(),&s.repository(),&auth.principal(),&storage,&worker,&ttl,&run]).await?;
         let result = if let Some(row) = row {
             let job = Job {
                 id: row.get(0),

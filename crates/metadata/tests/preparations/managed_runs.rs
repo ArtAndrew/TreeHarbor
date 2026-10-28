@@ -112,6 +112,70 @@ async fn claim(f: &mut Fixture, node: &Node) -> RunPlan {
         .unwrap()
         .unwrap()
 }
+
+#[tokio::test]
+#[ignore = "requires disposable PostgreSQL; no real runtime is executed"]
+async fn selected_run_claim_never_consumes_other_work_and_preserves_lease_fences() {
+    let mut f = Fixture::new().await;
+    let owner = owner(&mut f, "owner").await;
+    let node = f.node("node").await;
+    let first = prepared(&mut f, &node).await;
+    let second = prepared(&mut f, &node).await;
+    for (key, request) in [("first", &first), ("second", &second)] {
+        f.db.request_run(&ctx(&owner, key), request).await.unwrap();
+    }
+    let foreign = f.node("other-node").await;
+    for run in [Uuid::new_v4(), second.run] {
+        let assigned = if run == second.run { &foreign } else { &node };
+        assert!(
+            f.db.claim_run_for(&assigned.auth, assigned.storage, Uuid::new_v4(), 60, run)
+                .await
+                .unwrap()
+                .is_none()
+        );
+    }
+    assert!(
+        f.db.claim_run_for(&node.auth, node.storage, Uuid::new_v4(), 60, Uuid::nil())
+            .await
+            .is_err()
+    );
+    let selected =
+        f.db.claim_run_for(&node.auth, node.storage, Uuid::new_v4(), 60, second.run)
+            .await
+            .unwrap()
+            .unwrap();
+    assert_eq!(selected.run(), second.run);
+    // An active selected lease cannot cause an implicit fallback to first.
+    assert!(
+        f.db.claim_run_for(&node.auth, node.storage, Uuid::new_v4(), 60, second.run)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(claim(&mut f, &node).await.run(), first.run);
+    let raw = connection(&f.schema).await;
+    raw.execute("UPDATE th_outbox SET lease_until=clock_timestamp()-interval '1 second' WHERE kind='run.execute' AND payload->>'run'=$1", &[&second.run.to_string()]).await.unwrap();
+    let reclaimed =
+        f.db.claim_run_for(&node.auth, node.storage, Uuid::new_v4(), 60, second.run)
+            .await
+            .unwrap()
+            .unwrap();
+    assert_eq!(reclaimed.run(), second.run);
+    assert_eq!(reclaimed.attempt(), selected.attempt());
+    assert!(matches!(
+        f.db.renew_run(&node.auth, &selected, 60).await,
+        Err(Error::StaleLease)
+    ));
+    f.db.revoke_repository_token(&f.scope, node.token.id, "operator")
+        .await
+        .unwrap();
+    assert!(
+        f.db.claim_run_for(&node.auth, node.storage, Uuid::new_v4(), 60, Uuid::new_v4())
+            .await
+            .is_err()
+    );
+    cleanup(&f.schema).await;
+}
 fn wire(f: &Fixture, command: serde_json::Value) -> Vec<u8> {
     serde_json::to_vec(&json!({"version":1,"tenant":f.scope.tenant(),"repository":f.scope.repository().to_string(),"command":command})).unwrap()
 }

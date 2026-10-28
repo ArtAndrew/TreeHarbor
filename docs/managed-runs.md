@@ -160,5 +160,14 @@ After killing a worker the fixture explicitly expires its database lease to exer
 reclaim without waiting a full minute. This is disclosed fault injection, not a
 production lease-bypass feature. Different node roots enable CLI concurrency;
 `run-once` is a single-job worker, and two processes cannot own the same node root.
+For a bounded operator flow that must execute a particular task, add
+`--run RUN_UUID` to `node run-once`. Selection stays within the authenticated
+repository, node and storage identity. An unknown, foreign-node, actively leased
+or completed run returns `{"state":"idle"}` and never falls back to another queued
+run. Omit the selector for normal oldest-available scheduling. A nil UUID is
+rejected. The selector does not override stop requests, authorization or leases;
+a failed/idle invocation is not proof that a task passed. Read `run-status` for
+its retained result and use the same run ID for lease recovery.
+
 Changing task-directory permissions, including mode `000`, does not prevent cleanup;
 the private mount ancestor and exact physical identity remain checked.

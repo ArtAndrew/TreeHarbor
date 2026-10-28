@@ -18,6 +18,19 @@ impl Node {
             .claim_run(auth, self.identity().storage(), Uuid::new_v4(), 60)
             .await?)
     }
+    /// Restrict a single-job invocation without changing lease/recovery rules.
+    pub async fn claim_run_for(
+        &self,
+        db: &mut Metadata,
+        auth: &Authorization,
+        run: Uuid,
+    ) -> Result<Option<RunPlan>> {
+        self.check_auth(auth)?;
+        self.storage.verify()?;
+        Ok(db
+            .claim_run_for(auth, self.identity().storage(), Uuid::new_v4(), 60, run)
+            .await?)
+    }
     /// Execute a persisted request using only the registered placement/profile.
     /// The second connection renews ownership while an Engine RPC is outstanding.
     /// A lost caller does not repeat execution; the supervisor still owns deadline.
