@@ -185,6 +185,39 @@ class PackageTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "internal documentation"):
             self.pack()
 
+    def test_native_input_references_cannot_be_silently_omitted_or_replaced(self):
+        report = self.base / "native-inputs.json"
+        report.write_text('{}\n')  # Deliberately invalid evidence, not a success fixture.
+        observations = {"version": 1, "target": "x86_64-unknown-linux-musl",
+                        "packaging_source_revision": self.git("rev-parse", "HEAD").decode().strip(),
+                        "binary_sha256": {n: hashlib.sha256((self.bins / n).read_bytes()).hexdigest()
+                                          for n in ("treeharbor", "treeharbor-runtime-init")},
+                        "rust_sbom_sha256": "ef" * 32, "native_link_closure_verified": False,
+                        "build_provenance_verified": False,
+                        "native_inputs_sha256": hashlib.sha256(report.read_bytes()).hexdigest(),
+                        "build_session": "12345678-1234-4234-8234-123456789abc"}
+        path = self.base / "observations.json"
+        path.write_text(json.dumps(observations))
+        args = SimpleNamespace(target="x86_64-unknown-linux-musl", bin_dir=self.bins,
+                               output_dir=self.base / "native", input_observations=path,
+                               native_inputs=None)
+        with self.assertRaisesRegex(ValueError, "must be supplied"):
+            module.package(args)
+        self.assertFalse(args.output_dir.exists())
+        args.native_inputs = report
+        report.write_text('{"changed":true}\n')
+        with self.assertRaisesRegex(ValueError, "differs from"):
+            module.package(args)
+        self.assertFalse(args.output_dir.exists())
+        observations.pop("native_inputs_sha256")
+        path.write_text(json.dumps(observations))
+        with self.assertRaisesRegex(ValueError, "not bound"):
+            module.package(args)
+        args.input_observations = None
+        with self.assertRaisesRegex(ValueError, "require hash-bound"):
+            module.package(args)
+        self.assertFalse(args.output_dir.exists())
+
     def test_symlink_wrong_architecture_and_dynamic_interpreter_are_rejected(self):
         p = self.bins / "treeharbor"
         for data in (elf(183), elf(interpreter=True), b"not an ELF"):

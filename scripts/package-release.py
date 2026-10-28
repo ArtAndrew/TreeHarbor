@@ -4,6 +4,7 @@ import argparse
 import gzip
 import hashlib
 import io
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -11,8 +12,11 @@ import re
 import stat
 import struct
 import subprocess
+import sys
 import tarfile
 import tomllib
+
+sys.dont_write_bytecode = True
 
 ROOT = Path(__file__).resolve().parents[1]
 TARGETS = {"x86_64-unknown-linux-musl": 62, "aarch64-unknown-linux-musl": 183}
@@ -25,6 +29,28 @@ TOOLCHAIN_NOTICES = {
     "third-party/toolchain/libm/LICENSE.txt": "libm",
     "third-party/toolchain/musl-1.2.5/COPYRIGHT": "musl",
 }
+
+
+def json_document(data):
+    def unique(items):
+        result = {}
+        for key, value in items:
+            if key in result:
+                raise ValueError("duplicate JSON key in dependency evidence")
+            result[key] = value
+        return result
+    return json.loads(data, object_pairs_hook=unique)
+
+
+def validate_native_inputs(data, *, source, target, session, binaries):
+    filename = Path(__file__).with_name("capture-native-inputs.py")
+    spec = importlib.util.spec_from_file_location("treeharbor_native_input_report", filename)
+    helper = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = helper
+    spec.loader.exec_module(helper)
+    return helper.validate_report(json_document(data), expected_source=source,
+                                  expected_target=target, expected_session=session,
+                                  binary_sha256=binaries)
 
 
 def verify_toolchain_notices(tracked):
@@ -102,9 +128,12 @@ def package(args):
         add("bin/" + name, binary(args.bin_dir / name, TARGETS[args.target]), 0o755)
     observations_digest = None
     observations_path = getattr(args, "input_observations", None)
+    native_path = getattr(args, "native_inputs", None)
+    if native_path is not None and observations_path is None:
+        raise ValueError("native inputs require hash-bound dependency observations")
     if observations_path is not None:
         data = regular(observations_path)
-        observations = json.loads(data)
+        observations = json_document(data)
         expected = {name: hashlib.sha256(files["bin/" + name][0]).hexdigest()
                     for name in ("treeharbor", "treeharbor-runtime-init")}
         if (not isinstance(observations, dict) or observations.get("version") != 1
@@ -116,6 +145,18 @@ def package(args):
                 or not isinstance(observations.get("rust_sbom_sha256"), str)
                 or not re.fullmatch(r"[0-9a-f]{64}", observations.get("rust_sbom_sha256", ""))):
             raise ValueError("dependency observations do not match packaged binary bytes/source/target")
+        if "native_inputs_sha256" in observations:
+            expected_native = observations["native_inputs_sha256"]
+            if (native_path is None or not isinstance(expected_native, str)
+                    or not re.fullmatch(r"[0-9a-f]{64}", expected_native)):
+                raise ValueError("referenced native inputs must be supplied for packaging")
+            native_data = regular(native_path)
+            if hashlib.sha256(native_data).hexdigest() != expected_native:
+                raise ValueError("native input report differs from dependency observations")
+            validate_native_inputs(native_data, source=revision, target=args.target,
+                                   session=observations.get("build_session"), binaries=expected)
+        elif native_path is not None:
+            raise ValueError("native inputs are not bound by dependency observations")
         observations_digest = hashlib.sha256(data).hexdigest()
     for name in ("LICENSE", "NOTICE", "THIRD_PARTY_NOTICES.md", "README.md", "SECURITY.md", "Cargo.lock"):
         add(name, regular(ROOT / name))
@@ -162,6 +203,7 @@ def main():
     parser.add_argument("--bin-dir", required=True, type=Path)
     parser.add_argument("--output-dir", required=True, type=Path)
     parser.add_argument("--input-observations", type=Path)
+    parser.add_argument("--native-inputs", type=Path)
     try:
         package(parser.parse_args())
     except (OSError, ValueError, subprocess.CalledProcessError) as error:

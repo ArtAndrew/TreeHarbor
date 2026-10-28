@@ -31,7 +31,7 @@ it does not establish the compiler used for the supplied binaries or replace a
 target-specific SBOM and signed build provenance.
 
 Package CI also retains [binary-derived Rust dependency reports](binary-dependency-reports.md)
-and observed toolchain input hashes beside its archives. Their coverage is explicit:
+and observed toolchain/linker input hashes beside its archives. Their coverage is explicit:
 they are not yet the complete native SBOM or provenance required for release.
 
 Once a release has been approved and its archive checksum verified against the
@@ -78,6 +78,9 @@ dependency reports before upload. No rebuild or repackaging occurs at this step.
 `tested-runtime-artifacts.json` records the archive digest, sidecar digests,
 actual checkout revision, workflow run/attempt and completed test commands.
 The receipt is unsigned; it is not build provenance or approval for release.
+Receipt version 2 additionally binds the native-input sidecar and build session.
+Earlier version-1 receipts cover their original Cargo-only sidecar set; do not
+backfill them with inputs observed during a later rebuild.
 
 The separate offline-package job still produces its own development archive.
 Do not substitute it for the runtime-tested archive based on a matching source

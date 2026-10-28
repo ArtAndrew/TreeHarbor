@@ -138,10 +138,11 @@ jobs:
           TH_INSTALL_PREFIX: ${{ runner.temp }}/runtime-package-installed
           TH_SBOM_DIR: ${{ runner.temp }}/runtime-sbom
         run: |
-          cargo auditable build --locked --release --target ${{ matrix.arch }}-unknown-linux-musl -p treeharbor-service -p treeharbor-runtime --bins
-          python3 scripts/capture-rust-sbom.py --target ${{ matrix.arch }}-unknown-linux-musl --bin-dir target/${{ matrix.arch }}-unknown-linux-musl/release --syft "$RUNNER_TEMP/sbom-tools/syft" --output-dir "$TH_SBOM_DIR"
+          th_session=$(python3 -c 'import uuid; print(uuid.uuid4())')
+          sh scripts/build-with-link-inputs.sh '${{ matrix.arch }}-unknown-linux-musl' "$RUNNER_TEMP/canonical-build" "$th_session"
+          python3 scripts/capture-rust-sbom.py --target ${{ matrix.arch }}-unknown-linux-musl --bin-dir "$RUNNER_TEMP/canonical-build/target/${{ matrix.arch }}-unknown-linux-musl/release" --syft "$RUNNER_TEMP/sbom-tools/syft" --output-dir "$TH_SBOM_DIR" --native-inputs "$RUNNER_TEMP/canonical-build/native-reports/native-inputs.json" --build-session "$th_session"
           git status --short --untracked-files=normal
-          python3 scripts/package-release.py --target ${{ matrix.arch }}-unknown-linux-musl --bin-dir target/${{ matrix.arch }}-unknown-linux-musl/release --output-dir "$TH_PACKAGE_DIR" --input-observations "$TH_SBOM_DIR/input-observations.json"
+          python3 scripts/package-release.py --target ${{ matrix.arch }}-unknown-linux-musl --bin-dir "$RUNNER_TEMP/canonical-build/target/${{ matrix.arch }}-unknown-linux-musl/release" --output-dir "$TH_PACKAGE_DIR" --input-observations "$TH_SBOM_DIR/input-observations.json" --native-inputs "$TH_SBOM_DIR/native-inputs.json"
           cd "$TH_PACKAGE_DIR"
           sha256sum --check --strict *.sha256
           mkdir "$TH_EXTRACT_DIR"
@@ -186,7 +187,9 @@ jobs:
               raise RuntimeError("runtime-tested archive checksum mismatch")
           observation_bytes = (sbom / "input-observations.json").read_bytes()
           report_bytes = (sbom / "rust-dependencies.cdx.json").read_bytes()
+          native_bytes = (sbom / "native-inputs.json").read_bytes()
           observations = json.loads(observation_bytes)
+          native = json.loads(native_bytes)
           with tarfile.open(archive) as contents:
               prefix = archive.name.removesuffix(".tar.gz") + "/"
               manifest = json.load(contents.extractfile(prefix + "manifest.json"))
@@ -199,6 +202,10 @@ jobs:
                   or observations["packaging_source_revision"] != revision
                   or manifest["rust_dependency_observations_sha256"] != digest(observation_bytes)
                   or observations["rust_sbom_sha256"] != digest(report_bytes)
+                  or observations["native_inputs_sha256"] != digest(native_bytes)
+                  or native["build_source"] != revision or native["target"] != target
+                  or native["build_session"] != observations["build_session"]
+                  or native["binary_sha256"] != binary_hashes
                   or observations["binary_sha256"] != binary_hashes):
               raise RuntimeError("runtime-tested archive/observations/source mismatch")
           installed = {"treeharbor": Path(os.environ["TH_TEST_SERVICE_BINARY"]),
@@ -207,10 +214,12 @@ jobs:
               raise RuntimeError("installed test executables differ from the retained archive")
           for name, data in (("input-observations.json", observation_bytes),
                              ("rust-dependencies.cdx.json", report_bytes),
+                             ("native-inputs.json", native_bytes),
                              ("SBOM-SHA256SUMS", (sbom / "SHA256SUMS").read_bytes())):
               with (package / name).open("xb") as output:
                   output.write(data)
-          receipt = {"version": 1, "scope": "installed managed/native runtime tests",
+          receipt = {"version": 2, "scope": "installed managed/native runtime tests",
+                     "build_session": observations["build_session"],
                      "source_revision": revision, "github_sha": os.environ["GITHUB_SHA"],
                      "github_ref": os.environ["GITHUB_REF"], "event": os.environ["GITHUB_EVENT_NAME"],
                      "pr_head_sha": os.environ["TH_PR_HEAD_SHA"] or None,
@@ -224,7 +233,7 @@ jobs:
                      "archive": {"name": archive.name, "sha256": archive_sha256},
                      "binary_sha256": binary_hashes,
                      "sidecar_sha256": {name: digest((package / name).read_bytes()) for name in
-                                        ("input-observations.json", "rust-dependencies.cdx.json", "SBOM-SHA256SUMS")},
+                                        ("input-observations.json", "rust-dependencies.cdx.json", "native-inputs.json", "SBOM-SHA256SUMS")},
                      "completed_test_commands": ["python3 scripts/test-managed-runs.py",
                                                  "python3 scripts/test-native-checks.py"]}
           with (package / "tested-runtime-artifacts.json").open("x") as output:
@@ -243,6 +252,7 @@ jobs:
             ${{ runner.temp }}/runtime-package/*.tar.gz.sha256
             ${{ runner.temp }}/runtime-package/input-observations.json
             ${{ runner.temp }}/runtime-package/rust-dependencies.cdx.json
+            ${{ runner.temp }}/runtime-package/native-inputs.json
             ${{ runner.temp }}/runtime-package/SBOM-SHA256SUMS
             ${{ runner.temp }}/runtime-package/tested-runtime-artifacts.json
           if-no-files-found: error
