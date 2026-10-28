@@ -1,6 +1,19 @@
 # Changelog
 
-## Unreleased
+## Connected PR Preview candidate — 0.1.0-alpha.1
+
+Not released yet. Signing and the complete installed live workflow remain gates.
+The candidate supports the documented Linux operator profile: exact-revision
+workspaces, two isolated scripted tasks, immutable changes and proposed GitHub
+PRs. GitHub handles checks, review and merge. The helper preserves operation IDs
+and Rust publisher journals across uncertain replies; it does not provision a
+host, issue credentials or operate a merge queue.
+
+Standalone, full Connected publication disaster recovery, remote workers, S3,
+VFS and structural merge remain outside this first preview. There is no production
+support or measured performance advantage. Standard ELv2 has no workspace limit.
+
+## Unreleased component history
 
 - Versioned canonical objects, immutable directory trees and exact change preconditions.
 - Local immutable object storage with digest checks and no-clobber publication.
