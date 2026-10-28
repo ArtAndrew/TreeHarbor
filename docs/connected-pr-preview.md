@@ -1,6 +1,6 @@
 # Start the Connected PR Preview
 
-Use this path for [alpha.1](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.0-alpha.1):
+Use this path for [the Connected PR Preview](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.1-alpha.1):
 **exact GitHub commit → two isolated tasks → immutable changes → draft PRs**.
 GitHub handles checks, review and merge. TreeHarbor queue setup is not part of this path.
 This is an operator-assisted Linux evaluation with manual infrastructure setup,
@@ -27,7 +27,7 @@ a fresh prefix. No local Rust build is needed for the product binaries. Resolve
 the executable for the prepared-agent helper:
 
 ```sh
-TH_BIN=$(realpath "$HOME/.local/treeharbor-alpha1/bin/treeharbor")
+TH_BIN=$(realpath "$HOME/.local/treeharbor-preview-patch/bin/treeharbor")
 "$TH_BIN" --version
 ```
 

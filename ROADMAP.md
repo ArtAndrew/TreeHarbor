@@ -1,8 +1,9 @@
 # Roadmap
 
-The next milestone is a useful pilot installation, not the complete source-control
-platform. Dates are not release guarantees. Existing components and synthetic
-acceptance tests are not evidence of adoption or production readiness.
+The Connected PR Preview is available. The next milestones improve first use and
+repeat tasks while the full source-control platform remains unfinished. Dates are
+not release guarantees. Existing components and synthetic acceptance tests are not
+evidence of adoption or production readiness.
 
 | Release | User outcome | Release boundary |
 | --- | --- | --- |
@@ -11,6 +12,9 @@ acceptance tests are not evidence of adoption or production readiness.
 | **alpha.2 — repeatable use** | Run another real task without repeating assisted setup | Address pilot-reported friction in configuration, task status and diagnostics. Verify one agent integration if pilots need it. Choose the exact scope from feedback. |
 | **Later Connected releases — integration and recovery** | Automate a demonstrated integration bottleneck, then recover the advertised deployment | First certify one TreeHarbor-managed queue/check profile if users need it; ship full Connected publication/queue disaster recovery as a separately verified increment. Neither blocks the PR Preview. |
 | **Standalone S2** | Own native history, review, checks and integration without Git/GitHub on the native path | Complete the native lifecycle and fenced migration on the shared Rust core, under the same ELv2. Prioritize after the first Connected usage evidence. |
+
+Current setup patch: [0.1.1-alpha.1](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.1-alpha.1).
+Start with the [operator setup path](docs/connected-pr-preview.md).
 
 ## First preview acceptance
 

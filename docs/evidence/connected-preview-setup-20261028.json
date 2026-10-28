@@ -1,0 +1,79 @@
+{
+  "format": "treeharbor-preview-setup-patch-evidence-v1",
+  "recorded_at": "2026-10-28T15:29:52.692572+00:00",
+  "release": "v0.1.1-alpha.1",
+  "source_commit": "5c8a7d176e79ff20cc67ae1e0b25e0fd4c0852ed",
+  "main_ci": "https://github.com/ArtAndrew/TreeHarbor/actions/runs/40712058332",
+  "main_ci_attempt": 1,
+  "signed_package_ci": "https://github.com/ArtAndrew/TreeHarbor/actions/runs/40713915691",
+  "signed_package_attempt": 1,
+  "signed_runtime_ci_architectures": [
+    "x86_64",
+    "aarch64"
+  ],
+  "archives": [
+    {
+      "architecture": "aarch64",
+      "archive": "treeharbor-0.1.1-alpha.1-aarch64-unknown-linux-musl.tar.gz",
+      "sha256": "6d998dfb1d4ebc137843e6c9a69629374d493e569b342d460c0fdc5afaa22960",
+      "official_online_and_bundle_signatures_verified": true,
+      "exact_eight_subjects_and_producer_invocation_verified": true
+    },
+    {
+      "architecture": "x86_64",
+      "archive": "treeharbor-0.1.1-alpha.1-x86_64-unknown-linux-musl.tar.gz",
+      "sha256": "839e69b54e87990deed49ba0dadc735056f4fc622af55213d2ee864b745b6ee2",
+      "official_online_and_bundle_signatures_verified": true,
+      "exact_eight_subjects_and_producer_invocation_verified": true
+    }
+  ],
+  "installed_operator_trial": {
+    "architecture": "aarch64",
+    "archive_sha256": "6d998dfb1d4ebc137843e6c9a69629374d493e569b342d460c0fdc5afaa22960",
+    "runtime_init_sha256": "d3f5717fa004ddd85bc6b3982192993c4b548574290c747b7e146339e15ca524",
+    "version": 1,
+    "scope": "installed operator schema setup only; no agent/PR execution",
+    "binary_sha256": "807b612aca82a7e7d5998e0eeb985e85d0d294d50872853938a60e3437acd151",
+    "package_version": "0.1.1-alpha.1",
+    "stage": "verified",
+    "service_credentials_issued": false,
+    "app_permissions_changed": false,
+    "failures": [
+      {
+        "command": "admin",
+        "exit_code": 1,
+        "diagnostic": "configured PostgreSQL schema is unavailable; ensure it exists and the database role has USAGE before migration or startup",
+        "no_implicit_schema": true,
+        "no_listening_socket": true
+      },
+      {
+        "command": "serve",
+        "exit_code": 1,
+        "diagnostic": "configured PostgreSQL schema is unavailable; ensure it exists and the database role has USAGE before migration or startup",
+        "no_implicit_schema": true,
+        "no_listening_socket": true
+      }
+    ],
+    "version_output": "treeharbor 0.1.1-alpha.1",
+    "explicit_schema_then_migration_succeeded": true,
+    "server_health_after_migration": true,
+    "graceful_stop_exit": 0,
+    "socket_removed": true,
+    "test_schema_removed": true,
+    "connected_github_live_trial_claimed": false
+  },
+  "historical_two_agent_github_trial": {
+    "release": "v0.1.0-alpha.1",
+    "source": "ff82efcedfeedcf3fea063a45c0d71fd4a8ceebc",
+    "url": "https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.0-alpha.1",
+    "is_current_patch_live_attestation": false
+  },
+  "limits": [
+    "This operator-recorded setup report is not a signed execution attestation; package signatures authenticate the producing CI run and its exact subjects.",
+    "Installed schema failure/create/migrate/start/stop was exercised on ARM64; signed installed managed/native runtime CI passed on both architectures.",
+    "No new GitHub PR or merge trial was performed on this patch; historical two-agent evidence identifies its original source separately.",
+    "Manual Linux provisioning, native workspaces without .git and scripted reference agents; no ready-made LLM integration, production readiness or measured performance superiority.",
+    "Full Connected publication disaster recovery and Standalone release remain incomplete.",
+    "Dependency report/native attribution coverage remains scoped; no complete native SBOM, reproducible-build or SLSA-level claim."
+  ]
+}

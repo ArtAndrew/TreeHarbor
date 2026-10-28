@@ -1,10 +1,13 @@
 # Changelog
 
-## Unreleased — 0.1.1-alpha.1
+## 0.1.1-alpha.1 — setup fixes — 2026-10-28
 
 - Report an actionable, redacted error when the configured PostgreSQL schema
   cannot be resolved before migration or startup. Schema creation remains an
   explicit operator action; existing migration and durability checks still apply.
+- Publish signed Linux x86-64/ARM64 packages and an [installed ARM64 setup report](docs/evidence/connected-preview-setup-20261028.json).
+- Add one [Connected setup path](docs/connected-pr-preview.md) covering the installed
+  binary, schema, Connected authority and minimal App/local permissions.
 
 ## 0.1.0-alpha.1 — Connected PR Preview — 2026-10-28
 

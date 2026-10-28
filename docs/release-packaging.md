@@ -10,6 +10,11 @@ A source checkout or successful build alone does not establish this acceptance.
 TreeHarbor queue certification and full Connected publication disaster recovery
 remain later work; the preview requires independent backups and manual setup.
 
+The [0.1.1-alpha.1 setup patch](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.1-alpha.1) has its own signed artifacts and
+[installed ARM64 setup evidence](evidence/connected-preview-setup-20261028.json).
+Its source and current setup checks are separate from the historical two-agent
+GitHub trial in alpha.1. Follow the selected release's exact version/digest commands.
+
 ## Preparing signed alpha candidates
 
 The manual `release-provenance.yml` workflow is reserved for an existing alpha tag
