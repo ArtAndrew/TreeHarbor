@@ -50,6 +50,34 @@ fn nullable<T: serde::de::DeserializeOwned>(value: &Value, key: &str) -> Result<
     serde_json::from_value(value.get(key).ok_or(Error::Evidence)?.clone())
         .map_err(|_| Error::Evidence)
 }
+fn anchored_queue_timeout(
+    queue: Option<QueueConfiguration>,
+    rules: &[Value],
+) -> Result<Option<QueueConfiguration>> {
+    let Some(mut queue) = queue else {
+        return Ok(None);
+    };
+    let mut applicable = rules.iter().filter(|r| r["type"] == "merge_queue");
+    let rule = applicable.next().ok_or(Error::Evidence)?;
+    if applicable.next().is_some() {
+        return Err(Error::Evidence);
+    }
+    let minutes = rule["parameters"]["check_response_timeout_minutes"]
+        .as_u64()
+        .and_then(|v| u32::try_from(v).ok())
+        .filter(|v| (1..=1440).contains(v))
+        .ok_or(Error::Evidence)?;
+    // The documented GraphQL unit is minutes, but provider responses can expose
+    // seconds. Interpret neither by magnitude: require one exact applicable REST
+    // rule as the independent minute-valued anchor. Never round or rewrite rules.
+    let seconds = minutes.checked_mul(60).ok_or(Error::Evidence)?;
+    if queue.check_timeout_minutes != minutes && queue.check_timeout_minutes != seconds {
+        return Err(Error::Evidence);
+    }
+    queue.check_timeout_minutes = minutes;
+    queue.validate().map_err(|_| Error::Evidence)?;
+    Ok(Some(queue))
+}
 fn decode(
     v: Value,
     b: &RepositoryBinding,
@@ -165,6 +193,7 @@ impl Connection {
             )
             .await?;
         let (rules, rulesets) = self.host_rules(b, &t.base_ref, token).await?;
+        let queue = anchored_queue_timeout(queue, &rules)?;
         let c = hc::Configuration {
             version: 1,
             visibility,
@@ -235,5 +264,76 @@ impl Connection {
         };
         report.validate(&t).map_err(|_| Error::Evidence)?;
         Ok(report)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn queue(timeout: u32) -> QueueConfiguration {
+        QueueConfiguration {
+            id: "MQ_units".into(),
+            merge_method: "MERGE".into(),
+            merging_strategy: "ALLGREEN".into(),
+            maximum_entries_to_build: 2,
+            maximum_entries_to_merge: 1,
+            minimum_entries_to_merge: 1,
+            minimum_entries_wait_minutes: 3,
+            check_timeout_minutes: timeout,
+        }
+    }
+
+    fn rule(timeout: Value) -> Value {
+        json!({"type":"merge_queue","parameters":{"check_response_timeout_minutes":timeout}})
+    }
+
+    #[test]
+    fn timeout_units_require_one_exact_rest_anchor_without_rounding() {
+        for (raw, minutes) in [
+            (10, 10),
+            (600, 10),
+            (601, 601),
+            (600, 600),
+            (1, 1),
+            (60, 1),
+            (86400, 1440),
+        ] {
+            let rules = vec![rule(json!(minutes))];
+            let original = rules.clone();
+            let normalized = anchored_queue_timeout(Some(queue(raw)), &rules)
+                .unwrap()
+                .unwrap();
+            assert_eq!(normalized, queue(minutes), "{raw}/{minutes}");
+            assert_eq!(rules, original);
+        }
+        for raw in [0, 1, 599, 601, 1200, 86401, u32::MAX] {
+            assert!(
+                anchored_queue_timeout(Some(queue(raw)), &[rule(json!(10))]).is_err(),
+                "{raw}"
+            );
+        }
+    }
+
+    #[test]
+    fn missing_invalid_or_ambiguous_timeout_anchor_is_not_guessed() {
+        let valid = rule(json!(10));
+        let mut missing = valid.clone();
+        missing["parameters"].as_object_mut().unwrap().clear();
+        for rules in [
+            vec![],
+            vec![missing],
+            vec![rule(Value::Null)],
+            vec![rule(json!("10"))],
+            vec![rule(json!(-1))],
+            vec![rule(json!(0))],
+            vec![rule(json!(1441))],
+            vec![rule(json!(u64::MAX))],
+            vec![valid.clone(), valid.clone()],
+            vec![valid, rule(json!(600))],
+        ] {
+            assert!(anchored_queue_timeout(Some(queue(600)), &rules).is_err());
+        }
+        assert!(anchored_queue_timeout(None, &[]).unwrap().is_none());
     }
 }

@@ -112,6 +112,73 @@ async fn configuration_inspection_is_pr_independent_and_never_implicitly_upgrade
     }
 }
 #[tokio::test]
+async fn timeout_compatibility_is_anchored_to_the_same_rest_capture() {
+    for raw in [10, 600] {
+        let mut c = fixture();
+        let q = c.profile.queue.as_mut().unwrap();
+        q.check_timeout_minutes = 10;
+        q.minimum_entries_wait_minutes = 3;
+        c.profile.rules[0]["parameters"]["check_response_timeout_minutes"] = json!(10);
+        c.profile.rules[0]["parameters"]["min_entries_to_merge_wait_minutes"] = json!(3);
+        c.profile.rulesets[0].document.value.as_mut().unwrap()["rules"][0]["parameters"] =
+            c.profile.rules[0]["parameters"].clone();
+        let mut g = graph(&c, true);
+        g["data"]["repository"]["mergeQueue"]["configuration"]["checkResponseTimeout"] = json!(raw);
+        let mut replies = access(true);
+        replies.extend(round(&c, g.clone()));
+        replies.extend(round(&c, g.clone()));
+        replies.push(revoked());
+        let (connection, h) = host(replies).await;
+        let report = connection
+            .inspect_host_configuration(&binding(), "main", true)
+            .await
+            .unwrap();
+        let req = h.await.unwrap();
+        assert_eq!(*report.before, c);
+        assert_eq!(*report.after, c);
+        assert!(report.reasons(&c.visibility.target).unwrap().is_empty());
+        assert_eq!(
+            g["data"]["repository"]["mergeQueue"]["configuration"]["checkResponseTimeout"],
+            json!(raw)
+        );
+        assert_eq!(req.len(), 13);
+        assert!(report.token_revoked);
+        assert!(!req.iter().any(|r| request_text(r).contains("mutation ")));
+    }
+}
+#[tokio::test]
+async fn unmatched_or_malformed_timeout_revokes_without_guessing_units() {
+    for (raw, malformed) in [
+        (json!(601), false),
+        (json!(0), false),
+        (json!(-1), true),
+        (json!(u64::from(u32::MAX) + 1), true),
+        (Value::Null, true),
+        (json!("600"), true),
+    ] {
+        let c = fixture();
+        let mut g = graph(&c, true);
+        g["data"]["repository"]["mergeQueue"]["configuration"]["checkResponseTimeout"] =
+            raw.clone();
+        let mut replies = access(true);
+        if malformed {
+            replies.push(response(200, g));
+        } else {
+            replies.extend(round(&c, g));
+        }
+        replies.push(revoked());
+        let (connection, h) = host(replies).await;
+        let result = connection
+            .inspect_host_configuration(&binding(), "main", true)
+            .await;
+        let req = h.await.unwrap();
+        assert!(matches!(result, Err(Error::Evidence)), "{raw}");
+        assert_eq!(req.len(), if malformed { 6 } else { 9 });
+        assert!(request_text(req.last().unwrap()).starts_with("DELETE /installation/token "));
+        assert!(!req.iter().any(|r| request_text(r).contains("mutation ")));
+    }
+}
+#[tokio::test]
 async fn malformed_graph_identity_or_visibility_revokes_before_any_rest_round() {
     for case in [
         "repository",

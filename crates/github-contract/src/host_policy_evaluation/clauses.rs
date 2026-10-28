@@ -147,7 +147,15 @@ fn review(v: &Value, path: &str, threads: bool, teams: bool, a: &mut Analysis) {
         required_teams: teams,
     });
 }
-pub(super) fn review_rule(v: &Value, path: &str, a: &mut Analysis) {
+pub(super) fn approval_counts_zero(v: &Value, code_owner_field: &str) -> bool {
+    v["required_approving_review_count"].as_u64() == Some(0)
+        && v[code_owner_field].as_bool() == Some(false)
+        && v["require_last_push_approval"].as_bool() == Some(false)
+        && v.get("required_reviewers")
+            .is_none_or(|r| r.as_array().is_some_and(Vec::is_empty))
+}
+
+pub(super) fn review_rule(v: &Value, path: &str, all_approval_counts_zero: bool, a: &mut Analysis) {
     fields(
         v,
         &[
@@ -155,6 +163,7 @@ pub(super) fn review_rule(v: &Value, path: &str, a: &mut Analysis) {
             "dismiss_stale_reviews_on_push",
             "dismissal_restriction",
             "require_code_owner_review",
+            "require_extra_approval_for_unattributed_changes",
             "require_last_push_approval",
             "required_approving_review_count",
             "required_review_thread_resolution",
@@ -163,6 +172,20 @@ pub(super) fn review_rule(v: &Value, path: &str, a: &mut Analysis) {
         path,
         a,
     );
+    if let Some(extra) = v.get("require_extra_approval_for_unattributed_changes") {
+        match extra.as_bool() {
+            Some(true) if !all_approval_counts_zero => {
+                // Copilot/human-collaborator attribution and the extra distinct
+                // approval need candidate evidence; APPROVED cannot prove them.
+                a.candidate_requirements
+                    .insert(format!("{path}/extra_approval_for_unattributed_changes"));
+            }
+            Some(_) => (),
+            None => a.reason(&format!(
+                "{path}/require_extra_approval_for_unattributed_changes/boolean_unproven"
+            )),
+        }
+    }
     let threads = bool_field(v, "required_review_thread_resolution", path, a).unwrap_or(false);
     // Extra actor/team rules remain visible and unproven until their full
     // identity/approval evidence is collected; an APPROVED enum cannot satisfy them.

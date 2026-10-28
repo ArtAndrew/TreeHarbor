@@ -320,6 +320,35 @@ impl Configuration {
         // Only explicitly observed absence can discharge these specific missing
         // fields. Present malformed data and unrelated/unknown clauses stay blocked.
         if !mismatch {
+            let reviews_absent = p.get("required_pull_request_reviews").is_none()
+                && !l.flags["requiresApprovingReviews"]
+                && !l.flags["requiresCodeOwnerReviews"]
+                && !l.flags["requireLastPushApproval"]
+                && !l.flags["dismissesStaleReviews"]
+                && !l.flags["restrictsReviewDismissals"]
+                && l.approving_reviews.is_none_or(|count| count == 0)
+                && l.bypass_pull_requests.total_count == 0;
+            if reviews_absent {
+                reasons.remove("legacy/reviews/unavailable");
+                a.reviews
+                    .push(crate::host_policy_evaluation::ReviewRequirement {
+                        source: "legacy/reviews".into(),
+                        approvals: 0,
+                        code_owners: false,
+                        last_push: false,
+                        dismiss_stale: false,
+                        resolve_threads: l.flags["requiresConversationResolution"],
+                        required_teams: false,
+                    });
+                a.reviews.sort_by(|a, b| a.source.cmp(&b.source));
+                // Supplementary absence is usable only here. Profile-only
+                // analysis still treats the missing REST field as unknown.
+                if self.profile.all_approval_counts_zero(true) {
+                    a.candidate_requirements.retain(|condition| {
+                        !condition.ends_with("/extra_approval_for_unattributed_changes")
+                    });
+                }
+            }
             if p.get("restrictions").is_none() && !l.flags["restrictsPushes"] {
                 reasons.remove("legacy/restrictions_unavailable");
             }
