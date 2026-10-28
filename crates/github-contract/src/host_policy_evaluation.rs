@@ -86,6 +86,44 @@ impl Profile {
         h.update(self.canonical()?);
         Ok(treeharbor_core::ObjectId::from_bytes(h.finalize().into()).to_string())
     }
+    fn source_rules_match(&self, source_id: u64, actual: &[Value]) -> bool {
+        let expected: Vec<_> = self
+            .rules
+            .iter()
+            .filter(|r| r["ruleset_id"] == source_id)
+            .collect();
+        actual.len() == expected.len()
+            && expected.iter().all(|r| {
+                actual
+                    .iter()
+                    .any(|v| v["type"] == r["type"] && v["parameters"] == r["parameters"])
+            })
+    }
+    /// A caller may supply a separately verified absence only for a missing
+    /// legacy review key. Present values and unavailable documents stay binding.
+    pub(crate) fn all_approval_counts_zero(&self, missing_legacy_reviews_absent: bool) -> bool {
+        let legacy_zero = match self.protection.value.as_ref() {
+            Some(p) => match p.get("required_pull_request_reviews") {
+                Some(Value::Null) => true,
+                Some(r) => approval_counts_zero(r, "require_code_owner_reviews"),
+                None => missing_legacy_reviews_absent,
+            },
+            None => false,
+        };
+        legacy_zero
+            && self
+                .rules
+                .iter()
+                .filter(|r| r["type"] == "pull_request")
+                .all(|r| approval_counts_zero(&r["parameters"], "require_code_owner_review"))
+            && self.rulesets.iter().all(|rs| {
+                rs.document
+                    .value
+                    .as_ref()
+                    .and_then(|v| v["rules"].as_array())
+                    .is_some_and(|actual| self.source_rules_match(rs.source.id, actual))
+            })
+    }
     pub fn analyze(&self) -> Result<Analysis> {
         self.validate()?;
         let mut a = Analysis::default();
@@ -94,6 +132,9 @@ impl Profile {
         } else {
             a.reason("legacy_protection_unavailable");
         }
+        // The extra Copilot approval depends on the effective approval policy,
+        // including legacy protection and inherited rules, not just its own rule.
+        let all_approval_counts_zero = self.all_approval_counts_zero(false);
         for rs in &self.rulesets {
             let source = format!("ruleset/{}", rs.source.id);
             let Some(v) = &rs.document.value else {
@@ -110,6 +151,7 @@ impl Profile {
                     "source",
                     "enforcement",
                     "bypass_actors",
+                    "current_user_can_bypass",
                     "conditions",
                     "rules",
                     "node_id",
@@ -128,22 +170,20 @@ impl Profile {
                 Some(_) => a.reason(&format!("{source}/bypass_present")),
                 None => a.reason(&format!("{source}/bypass_redacted")),
             }
+            if let Some(bypass) = v.get("current_user_can_bypass") {
+                match bypass.as_str() {
+                    Some("never") => (),
+                    Some("always" | "pull_requests_only") => {
+                        a.reason(&format!("{source}/current_actor_bypass_present"));
+                    }
+                    _ => a.reason(&format!("{source}/current_actor_bypass_unproven")),
+                }
+            }
             // Applicability is supplied by the provider's effective branch-rules
             // endpoint, not a local reimplementation of GitHub pattern matching.
             conditions(&v["conditions"], &format!("{source}/conditions"), &mut a);
             let actual = v["rules"].as_array().ok_or(InvalidEvidence)?;
-            let expected: Vec<_> = self
-                .rules
-                .iter()
-                .filter(|r| r["ruleset_id"] == rs.source.id)
-                .collect();
-            if actual.len() != expected.len()
-                || expected.iter().any(|r| {
-                    !actual
-                        .iter()
-                        .any(|v| v["type"] == r["type"] && v["parameters"] == r["parameters"])
-                })
-            {
+            if !self.source_rules_match(rs.source.id, actual) {
                 a.reason(&format!("{source}/rules_changed"));
             }
             for r in actual {
@@ -180,7 +220,9 @@ impl Profile {
                     }
                 }
                 "required_status_checks" => status_rule(&r["parameters"], &path, &mut a),
-                "pull_request" => review_rule(&r["parameters"], &path, &mut a),
+                "pull_request" => {
+                    review_rule(&r["parameters"], &path, all_approval_counts_zero, &mut a)
+                }
                 "non_fast_forward"
                 | "deletion"
                 | "creation"

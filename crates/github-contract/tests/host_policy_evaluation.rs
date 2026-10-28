@@ -48,6 +48,99 @@ fn review_params() -> Value {
 }
 
 #[test]
+fn current_actor_bypass_metadata_remains_bound_and_cannot_replace_the_actor_list() {
+    let (mut p, _) = fixture();
+    let previous = p.digest().unwrap();
+    p.rulesets[0].document.value.as_mut().unwrap()["current_user_can_bypass"] = json!("never");
+    let bytes = p.canonical().unwrap();
+    assert_ne!(p.digest().unwrap(), previous);
+    assert!(p.analyze().unwrap().configuration_reasons.is_empty());
+    assert_eq!(p.canonical().unwrap(), bytes);
+
+    p.rulesets[0]
+        .document
+        .value
+        .as_mut()
+        .unwrap()
+        .as_object_mut()
+        .unwrap()
+        .remove("bypass_actors");
+    assert!(
+        p.analyze()
+            .unwrap()
+            .configuration_reasons
+            .contains("ruleset/42/bypass_redacted")
+    );
+    p.rulesets[0].document.value.as_mut().unwrap()["bypass_actors"] = json!([{"actor_id":1}]);
+    assert!(
+        p.analyze()
+            .unwrap()
+            .configuration_reasons
+            .contains("ruleset/42/bypass_present")
+    );
+}
+
+#[test]
+fn current_actor_bypass_presence_and_unknown_values_remain_unproven() {
+    let (p, _) = fixture();
+    for value in [
+        json!("always"),
+        json!("pull_requests_only"),
+        json!("future"),
+        json!(true),
+        Value::Null,
+        json!([]),
+    ] {
+        let mut changed = p.clone();
+        changed.rulesets[0].document.value.as_mut().unwrap()["current_user_can_bypass"] =
+            value.clone();
+        let suffix = if matches!(value.as_str(), Some("always" | "pull_requests_only")) {
+            "current_actor_bypass_present"
+        } else {
+            "current_actor_bypass_unproven"
+        };
+        assert!(
+            changed
+                .analyze()
+                .unwrap()
+                .configuration_reasons
+                .contains(&format!("ruleset/42/{suffix}")),
+            "{value}"
+        );
+    }
+}
+fn legacy_review_params() -> Value {
+    json!({"required_approving_review_count":0,"require_code_owner_reviews":false,
+        "require_last_push_approval":false,"dismiss_stale_reviews":false,
+        "bypass_pull_request_allowances":{"users":[],"teams":[],"apps":[]}})
+}
+fn add_review_ruleset(p: &mut Profile, parameters: Value, inherited: bool) {
+    let (kind, name) = if inherited {
+        ("Organization", "example")
+    } else {
+        ("Repository", "example/repo")
+    };
+    let rule = json!({"type":"pull_request","parameters":parameters});
+    let mut effective = rule.clone();
+    effective["ruleset_id"] = json!(43);
+    effective["ruleset_source_type"] = json!(kind);
+    effective["ruleset_source"] = json!(name);
+    p.rules.push(effective);
+    let mut source = p.rulesets[0].clone();
+    source.source = hp::RuleSource {
+        id: 43,
+        kind: kind.into(),
+        name: name.into(),
+    };
+    let v = source.document.value.as_mut().unwrap();
+    v["id"] = json!(43);
+    v["source_type"] = json!(kind);
+    v["source"] = json!(name);
+    v["rules"] = json!([rule]);
+    p.rulesets.push(source);
+}
+
+#[test]
 fn independent_python_hashlib_vector_and_pr_independent_identity() {
     let (p, v) = fixture();
     assert_eq!(
@@ -386,6 +479,236 @@ fn review_requirements_never_infer_counts_code_owners_or_teams_from_approved() {
             !bad.analyze().unwrap().configuration_reasons.is_empty(),
             "{key}"
         );
+    }
+}
+
+#[test]
+fn optional_extra_approval_preserves_legacy_analysis_and_raw_configuration_identity() {
+    let (p, _) = fixture();
+    for count in [0, 2] {
+        let mut absent = p.clone();
+        let mut params = review_params();
+        params["required_approving_review_count"] = json!(count);
+        add_rule(&mut absent, "pull_request", Some(params.clone()));
+        let original = absent.analyze().unwrap();
+        assert!(original.configuration_reasons.is_empty());
+        assert!(original.candidate_requirements.is_empty());
+        let mut digests = std::collections::BTreeSet::from([absent.digest().unwrap()]);
+        for extra in [false, true] {
+            if extra && count != 0 {
+                continue;
+            }
+            let mut changed = p.clone();
+            params["require_extra_approval_for_unattributed_changes"] = json!(extra);
+            add_rule(&mut changed, "pull_request", Some(params.clone()));
+            assert_eq!(changed.analyze().unwrap(), original, "{count}/{extra}");
+            assert!(digests.insert(changed.digest().unwrap()));
+            assert_ne!(changed.canonical().unwrap(), absent.canonical().unwrap());
+            let roundtrip: Profile = serde_json::from_value(json!(changed)).unwrap();
+            assert_eq!(roundtrip, changed);
+            assert_eq!(
+                roundtrip.rules[1]["parameters"]["require_extra_approval_for_unattributed_changes"],
+                extra
+            );
+            if count == 0 {
+                let (mut t, r) = report(&changed);
+                t.expected_rules = hp::rules_fingerprint(&changed.rules).unwrap();
+                assert!(evaluate(&r, &t).unwrap().reasons.is_empty());
+            }
+        }
+    }
+
+    let mut all_zero = p;
+    legacy(&mut all_zero)["required_pull_request_reviews"] = legacy_review_params();
+    legacy(&mut all_zero)["required_pull_request_reviews"]["dismiss_stale_reviews"] = json!(true);
+    let mut params = review_params();
+    params["require_extra_approval_for_unattributed_changes"] = json!(true);
+    params["dismiss_stale_reviews_on_push"] = json!(true);
+    add_rule(&mut all_zero, "pull_request", Some(params));
+    add_review_ruleset(&mut all_zero, review_params(), true);
+    let a = all_zero.analyze().unwrap();
+    assert!(a.configuration_reasons.is_empty(), "{a:?}");
+    assert!(a.candidate_requirements.is_empty(), "{a:?}");
+    let (mut t, r) = report(&all_zero);
+    t.expected_rules = hp::rules_fingerprint(&all_zero.rules).unwrap();
+    assert!(evaluate(&r, &t).unwrap().reasons.is_empty());
+}
+
+#[test]
+fn malformed_optional_extra_approval_is_explicitly_unproven() {
+    let (p, _) = fixture();
+    let reason =
+        "ruleset/42/pull_request/require_extra_approval_for_unattributed_changes/boolean_unproven";
+    for value in [json!(null), json!(0), json!("true"), json!([]), json!({})] {
+        let mut changed = p.clone();
+        let mut params = review_params();
+        params["require_extra_approval_for_unattributed_changes"] = value.clone();
+        add_rule(&mut changed, "pull_request", Some(params));
+        let a = changed.analyze().unwrap();
+        assert_eq!(
+            a.configuration_reasons,
+            [reason.to_owned()].into(),
+            "{value}"
+        );
+        let (mut t, mut r) = report(&changed);
+        t.expected_rules = hp::rules_fingerprint(&changed.rules).unwrap();
+        r.before.review.decision = Some("APPROVED".into());
+        r.after = r.before.clone();
+        assert!(evaluate(&r, &t).unwrap().reasons.contains(reason));
+    }
+}
+
+#[test]
+fn extra_approval_needs_candidate_evidence_unless_every_effective_count_is_proven_zero() {
+    let (p, _) = fixture();
+    let requirement = "ruleset/42/pull_request/extra_approval_for_unattributed_changes";
+    for case in [
+        "own_positive",
+        "legacy_positive",
+        "other_repository_positive",
+        "inherited_positive",
+        "own_missing",
+        "legacy_missing_count",
+        "legacy_missing_reviews",
+        "inherited_missing",
+        "legacy_unavailable",
+        "ruleset_unavailable",
+        "source_changed",
+        "required_team",
+        "code_owner",
+        "last_push",
+        "missing_code_owner",
+        "missing_last_push",
+        "legacy_code_owner",
+        "legacy_missing_last_push",
+        "inherited_code_owner",
+    ] {
+        let mut changed = p.clone();
+        let mut params = review_params();
+        params["require_extra_approval_for_unattributed_changes"] = json!(true);
+        match case {
+            "own_positive" => params["required_approving_review_count"] = json!(1),
+            "own_missing" => {
+                params
+                    .as_object_mut()
+                    .unwrap()
+                    .remove("required_approving_review_count");
+            }
+            "legacy_positive"
+            | "legacy_missing_count"
+            | "legacy_code_owner"
+            | "legacy_missing_last_push" => {
+                let mut reviews = legacy_review_params();
+                match case {
+                    "legacy_positive" => reviews["required_approving_review_count"] = json!(1),
+                    "legacy_code_owner" => reviews["require_code_owner_reviews"] = json!(true),
+                    "legacy_missing_last_push" => {
+                        reviews
+                            .as_object_mut()
+                            .unwrap()
+                            .remove("require_last_push_approval");
+                    }
+                    _ => {
+                        reviews
+                            .as_object_mut()
+                            .unwrap()
+                            .remove("required_approving_review_count");
+                    }
+                }
+                legacy(&mut changed)["required_pull_request_reviews"] = reviews;
+            }
+            "legacy_missing_reviews" => {
+                legacy(&mut changed)
+                    .as_object_mut()
+                    .unwrap()
+                    .remove("required_pull_request_reviews");
+            }
+            "legacy_unavailable" => {
+                changed.protection = hp::Document {
+                    status: 403,
+                    value: None,
+                };
+            }
+            "required_team" => {
+                params["required_reviewers"] = json!([{"reviewer":{"type":"Team","id":10},
+                    "minimum_approvals":1,"file_patterns":["**"]}]);
+            }
+            "code_owner" => params["require_code_owner_review"] = json!(true),
+            "last_push" => params["require_last_push_approval"] = json!(true),
+            "missing_code_owner" | "missing_last_push" => {
+                params
+                    .as_object_mut()
+                    .unwrap()
+                    .remove(if case == "missing_code_owner" {
+                        "require_code_owner_review"
+                    } else {
+                        "require_last_push_approval"
+                    });
+            }
+            _ => (),
+        }
+        add_rule(&mut changed, "pull_request", Some(params));
+        match case {
+            "other_repository_positive"
+            | "inherited_positive"
+            | "inherited_missing"
+            | "inherited_code_owner" => {
+                let mut other = review_params();
+                match case {
+                    "inherited_missing" => {
+                        other
+                            .as_object_mut()
+                            .unwrap()
+                            .remove("required_approving_review_count");
+                    }
+                    "inherited_code_owner" => other["require_code_owner_review"] = json!(true),
+                    _ => other["required_approving_review_count"] = json!(1),
+                }
+                add_review_ruleset(&mut changed, other, case != "other_repository_positive");
+            }
+            "ruleset_unavailable" => {
+                changed.rulesets[0].document = hp::Document {
+                    status: 403,
+                    value: None,
+                };
+            }
+            "source_changed" => {
+                changed.rulesets[0].document.value.as_mut().unwrap()["rules"][1]["parameters"]["required_approving_review_count"] =
+                    json!(1);
+            }
+            _ => (),
+        }
+        let a = changed.analyze().unwrap();
+        assert!(
+            a.candidate_requirements.contains(requirement),
+            "{case}: {a:?}"
+        );
+        let (mut t, mut r) = report(&changed);
+        t.expected_rules = hp::rules_fingerprint(&changed.rules).unwrap();
+        r.before.review.decision = Some("APPROVED".into());
+        r.after = r.before.clone();
+        let e = evaluate(&r, &t).unwrap();
+        assert!(
+            e.reasons.contains(&format!("{requirement}_unproven")),
+            "{case}: {e:?}"
+        );
+        changed.rules.reverse();
+        changed.rulesets.reverse();
+        assert_eq!(changed.analyze().unwrap(), a, "{case}");
+    }
+    for count in [json!(null), json!(-1), json!("0"), json!(101)] {
+        let mut changed = p.clone();
+        let mut params = review_params();
+        params["require_extra_approval_for_unattributed_changes"] = json!(true);
+        params["required_approving_review_count"] = count.clone();
+        add_rule(&mut changed, "pull_request", Some(params));
+        let a = changed.analyze().unwrap();
+        assert!(
+            a.configuration_reasons
+                .contains("ruleset/42/pull_request/approval_count_unproven"),
+            "{count}"
+        );
+        assert!(a.candidate_requirements.contains(requirement), "{count}");
     }
 }
 

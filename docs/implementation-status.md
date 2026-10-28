@@ -31,6 +31,27 @@ checksums are joined without claiming they identify compiled native inputs.
 This is Cargo coverage, not a complete native SBOM or signed provenance.
 See [report scope](binary-dependency-reports.md).
 
+## Current GitHub configuration observations
+
+The analyzer recognizes the optional extra-approval rule and caller-bypass
+indicator conservatively. Zero-approval interpretation requires the whole
+effective/source policy to agree; missing legacy-review settings need explicit
+supplementary absence. Positive, malformed, incomplete or contradictory evidence
+remains unproven, and conversation requirements remain visible. Raw identities and
+existing encoding vectors are preserved.
+
+The configuration collector also reconciles check timeouts with one explicit REST
+minute-valued rule, accepting direct equality or an exact sixtyfold observed
+GraphQL value. Other/ambiguous values refuse collection. This does not change
+ordinary queue decoding or establish merge authority. See
+[host-policy scope](github-host-policy.md).
+
+Local combined contract/transport tests passed 207 cases, including actual
+loopback provider fixtures, and strict Clippy/formatting passed. Local analysis
+of saved provider observations found no remaining unknown configuration fields;
+this is not a fresh installed-App report. Current-head CI and full Connected
+acceptance remain required.
+
 ## Retaining runtime-tested development archives
 
 Runtime CI now preserves the exact archive installed for its managed/native
@@ -53,9 +74,10 @@ or already prepared selection never falls back to another workspace. `--slot`
 continues to choose placement independently; omitting the workspace flag keeps
 normal scheduling. Reclaim preserves the attempt/slot and fences the older worker.
 The new real PostgreSQL regression, 81 ordinary affected-package tests, strict
-Clippy, formatting and CLI help passed locally. The installed Linux harness now
+Clippy, formatting and CLI help passed locally. The installed Linux harness
 prepares the later of two pending workspaces first and checks unknown/completed
-selection; its current-head runtime CI remains required.
+selection. That scenario passed on x86-64 and ARM64 in
+[PR83](https://github.com/ArtAndrew/TreeHarbor/pull/83).
 
 ## Selecting one node execution
 

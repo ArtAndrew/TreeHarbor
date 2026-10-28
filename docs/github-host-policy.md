@@ -98,6 +98,19 @@ outdated. Signature, linear-history, HEADGREEN and non-MERGE publication conditi
 remain explicit candidate-evidence requirements; they cannot inherit the simpler
 MERGE/ALLGREEN proof. Deployment, workflow-rule and other unsupported clauses
 remain unproven rather than disappearing from the policy.
+
+The optional pull-request parameter
+`require_extra_approval_for_unattributed_changes` is supported when absent or
+`false`. GitHub applies it to Copilot pull requests without a human collaborator
+when a nonzero approval count is required. A `true` value adds no candidate condition
+only when legacy protection and every applicable ruleset prove zero required
+approval counts and no code-owner, last-push or unresolved required-team approval
+constraint. A positive or unknown count or approval constraint retains an explicit
+extra-approval candidate requirement; `APPROVED` does not
+prove attribution or the additional approval. A malformed boolean remains
+unproven. The raw field remains part of configuration identity even when inactive.
+See [GitHub's pull-request rule parameters](https://docs.github.com/en/rest/repos/rules).
+
 Groups with multiple members also need policy/review evidence for the other
 members; evaluating the selected PR does not certify the whole group.
 
@@ -206,9 +219,31 @@ branch-protection rule ID, explicit policy flags and complete bypass connections
 Explicitly empty bypass lists and disabled push restrictions can resolve specific
 absent REST fields only when overlapping observations agree. Malformed fields,
 contradictions, redacted ruleset bypass lists and unknown rules remain unproven.
+An omitted legacy-review field can also be resolved by complete supplementary
+visibility proving that review, code-owner, last-push and dismissal requirements
+are disabled, the approval count is absent or zero, and PR bypasses are empty.
+The derived analysis retains conversation-resolution requirements. Raw REST data
+and its configuration identity remain intact. The extra-approval condition can
+then be inactive only if every other effective/source rule also proves zero
+approval requirements; profile-only analysis still treats the omission as unknown.
+An optional `current_user_can_bypass` value of `never` is compatible with the
+configuration. Positive bypass values or an unknown/malformed value remain
+unproven. This caller-specific indicator does not replace the complete
+`bypass_actors` list, and stays bound in the raw configuration identity. The values
+are also described by [GitHub's client model](https://github.com/desktop/desktop/blob/development/app/src/lib/api.ts).
 Required deployments remain a separate candidate condition. Personal repositories
 receive `personal_repository_queue_unsupported`; this command does not turn them
 into organization merge queues.
+
+The configuration collector reconciles the queue check timeout against exactly
+one applicable REST merge-queue rule, whose field explicitly uses minutes.
+It accepts the GraphQL value when equal to that minute count, or to exactly sixty
+times that count to handle observed provider responses. No rounding or size-based
+guess is used. Missing, invalid, duplicate or mismatching anchors refuse collection.
+Other queue settings retain their documented units. This applies to configuration
+inspection and host-policy settings collection; ordinary queue observations keep
+their existing decoding. GitHub's [GraphQL reference](https://docs.github.com/en/graphql/reference/pulls#mergequeueconfiguration)
+describes the field in minutes, so a universal seconds conversion is not assumed.
 
 The collector rejects incomplete or duplicate bypass connections (maximum 100
 allowances each), incomplete rule pages, foreign repository/source identities and

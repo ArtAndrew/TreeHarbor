@@ -262,3 +262,185 @@ fn combined_report_bound_is_not_two_independent_profile_budgets() {
     protection(&mut r.before)["url"] = json!("x".repeat(MAX_BYTES));
     assert!(r.before.validate(&t).is_err());
 }
+
+fn missing_reviews_with_extra_rule() -> (Target, Configuration) {
+    let (t, r, _) = fixture();
+    let mut c = *r.before;
+    protection(&mut c)
+        .as_object_mut()
+        .unwrap()
+        .remove("required_pull_request_reviews");
+    legacy(&mut c).approving_reviews = None;
+    let rule = json!({"type":"pull_request","parameters":{
+        "required_approving_review_count":0,"require_code_owner_review":false,
+        "require_last_push_approval":false,"dismiss_stale_reviews_on_push":true,
+        "required_review_thread_resolution":false,"required_reviewers":[],
+        "require_extra_approval_for_unattributed_changes":true}});
+    let mut effective = rule.clone();
+    effective["ruleset_id"] = json!(42);
+    effective["ruleset_source"] = json!("example/repo");
+    effective["ruleset_source_type"] = json!("Repository");
+    c.profile.rules.push(effective);
+    c.profile.rulesets[0].document.value.as_mut().unwrap()["rules"]
+        .as_array_mut()
+        .unwrap()
+        .push(rule);
+    (t, c)
+}
+
+#[test]
+fn explicit_supplementary_review_absence_preserves_raw_identity_and_thread_requirement() {
+    let (t, mut c) = missing_reviews_with_extra_rule();
+    protection(&mut c)["required_conversation_resolution"]["enabled"] = json!(true);
+    legacy(&mut c)
+        .flags
+        .insert("requiresConversationResolution".into(), true);
+    let bytes = c.canonical(&t).unwrap();
+    let digest = c.digest(&t).unwrap();
+    let profile = c.profile.analyze().unwrap();
+    assert!(
+        profile
+            .configuration_reasons
+            .contains("legacy/reviews/unavailable")
+    );
+    assert!(
+        profile
+            .candidate_requirements
+            .iter()
+            .any(|r| r.ends_with("/extra_approval_for_unattributed_changes"))
+    );
+    let a = c.analyze(&t).unwrap();
+    assert!(a.configuration_reasons.is_empty(), "{a:?}");
+    assert!(a.candidate_requirements.is_empty(), "{a:?}");
+    assert!(
+        a.reviews
+            .iter()
+            .any(|r| r.source == "legacy/reviews" && r.approvals == 0 && r.resolve_threads)
+    );
+    assert_eq!(c.canonical(&t).unwrap(), bytes);
+    assert_eq!(c.digest(&t).unwrap(), digest);
+    assert!(
+        protection(&mut c)
+            .get("required_pull_request_reviews")
+            .is_none()
+    );
+}
+
+#[test]
+fn supplementary_review_absence_does_not_override_constraints_or_disagreement() {
+    let (t, baseline) = missing_reviews_with_extra_rule();
+    for case in [
+        "approvals",
+        "count",
+        "code-owner",
+        "last-push",
+        "stale",
+        "dismissal",
+        "bypass",
+        "other-field",
+    ] {
+        let mut c = baseline.clone();
+        match case {
+            "approvals" => {
+                legacy(&mut c)
+                    .flags
+                    .insert("requiresApprovingReviews".into(), true);
+            }
+            "count" => legacy(&mut c).approving_reviews = Some(1),
+            "code-owner" => {
+                legacy(&mut c)
+                    .flags
+                    .insert("requiresCodeOwnerReviews".into(), true);
+            }
+            "last-push" => {
+                legacy(&mut c)
+                    .flags
+                    .insert("requireLastPushApproval".into(), true);
+            }
+            "stale" => {
+                legacy(&mut c)
+                    .flags
+                    .insert("dismissesStaleReviews".into(), true);
+            }
+            "dismissal" => {
+                legacy(&mut c)
+                    .flags
+                    .insert("restrictsReviewDismissals".into(), true);
+            }
+            "bypass" => {
+                legacy(&mut c).bypass_pull_requests.total_count = 1;
+                legacy(&mut c).bypass_pull_requests.nodes = vec!["Allowance_one".into()];
+            }
+            _ => {
+                legacy(&mut c).flags.insert("allowsDeletions".into(), true);
+            }
+        }
+        let a = c.analyze(&t).unwrap();
+        assert!(
+            a.configuration_reasons
+                .contains("legacy/reviews/unavailable"),
+            "{case}: {a:?}"
+        );
+        assert!(
+            a.candidate_requirements
+                .iter()
+                .any(|r| r.ends_with("/extra_approval_for_unattributed_changes")),
+            "{case}: {a:?}"
+        );
+    }
+}
+
+#[test]
+fn supplementary_absence_never_replaces_malformed_rest_or_unknown_source_approvals() {
+    let (t, baseline) = missing_reviews_with_extra_rule();
+    for value in [
+        json!(false),
+        json!({}),
+        json!({"required_approving_review_count":null}),
+    ] {
+        let mut c = baseline.clone();
+        protection(&mut c)["required_pull_request_reviews"] = value;
+        let a = c.analyze(&t).unwrap();
+        assert!(!a.configuration_reasons.is_empty());
+        assert!(
+            a.candidate_requirements
+                .iter()
+                .any(|r| r.ends_with("/extra_approval_for_unattributed_changes"))
+        );
+    }
+    for case in ["positive", "missing", "source-unavailable"] {
+        let mut c = baseline.clone();
+        match case {
+            "positive" => {
+                c.profile.rules[1]["parameters"]["required_approving_review_count"] = json!(1);
+                c.profile.rulesets[0].document.value.as_mut().unwrap()["rules"][1]["parameters"]
+                    ["required_approving_review_count"] = json!(1);
+            }
+            "missing" => {
+                c.profile.rules[1]["parameters"]
+                    .as_object_mut()
+                    .unwrap()
+                    .remove("required_approving_review_count");
+                c.profile.rulesets[0].document.value.as_mut().unwrap()["rules"][1]["parameters"]
+                    .as_object_mut()
+                    .unwrap()
+                    .remove("required_approving_review_count");
+            }
+            _ => {
+                c.profile.rulesets[0].document.status = 404;
+                c.profile.rulesets[0].document.value = None;
+            }
+        }
+        let a = c.analyze(&t).unwrap();
+        assert!(
+            !a.configuration_reasons
+                .contains("legacy/reviews/unavailable")
+        );
+        assert!(
+            a.candidate_requirements
+                .iter()
+                .any(|r| r.ends_with("/extra_approval_for_unattributed_changes")),
+            "{case}: {a:?}"
+        );
+    }
+}
