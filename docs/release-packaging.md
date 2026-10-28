@@ -7,6 +7,50 @@ publication remain alpha.1 gates. TreeHarbor queue integration and full Connecte
 publication disaster recovery follow in later releases; the first preview must
 document its actual backup/restore limits.
 
+## Preparing signed alpha candidates
+
+The manual `release-provenance.yml` workflow is reserved for an existing alpha tag
+whose version matches Cargo.toml. It requires the exact source commit and an
+independent successful main-push CI run/attempt for that commit. It refuses branch
+dispatches, source/workflow mismatches and commits outside main. Ordinary PR CI
+keeps read-only permissions.
+
+Each Linux architecture builds, packages and installs once, runs the existing
+managed/native runtime tests with the installed binaries, records their exact
+hashes, then attests that same archive and its sidecars in the producing job.
+The pinned [GitHub attestation action](https://github.com/actions/attest/tree/1e69f48acb82d1966a394da916b4c1698aa569d6)
+uses a short-lived GitHub signing identity; no stored signing key is required.
+The workflow verifies all signed subjects with the official CLI, constraining the
+repository, workflow, source commit and tag before retaining them for review.
+
+This workflow has not yet produced a signed release. It does not create or move
+tags, create GitHub releases or publish assets. Its seven-day Actions artifacts
+are candidates, not permanent distribution. Maintainers must inspect the selected
+run/attempt, verify the downloaded bytes and signatures, complete the documented
+Connected onboarding gates, and attach the unchanged files to a prerelease.
+Retain both architectures' sidecars and signature bundles with distinct names.
+Do not rebuild or overwrite assets during publication; inspect any uncertain
+upload before retrying.
+
+For an archive and its signature bundle downloaded from the same reviewed job,
+use the [official verifier](https://cli.github.com/manual/gh_attestation_verify):
+
+```sh
+gh attestation verify "$archive" --bundle "$bundle" \
+  --repo ArtAndrew/TreeHarbor \
+  --signer-workflow ArtAndrew/TreeHarbor/.github/workflows/release-provenance.yml \
+  --signer-digest "$source_commit" --source-digest "$source_commit" \
+  --source-ref "refs/tags/$tag" --deny-self-hosted-runners
+```
+
+Obtain the expected commit/tag from the reviewed release record. A successful
+signature check authenticates the stated build identity and digest; it does not
+prove full native component coverage, reproducible builds, production readiness
+or completed Connected onboarding. Keep the runtime receipt and CI run identity
+when recording acceptance evidence.
+
+## Building development packages
+
 The package builder needs Python 3.11+, Git and a clean committed checkout. Build
 both binaries for the same native Linux architecture with the pinned Rust toolchain:
 
