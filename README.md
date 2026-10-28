@@ -134,6 +134,9 @@ incompatibility. See [security boundaries](SECURITY.md).
 
 ## Connected PR Preview workflow
 
+Start with the [operator setup path](docs/connected-pr-preview.md): package,
+database, minimal App permissions, local roles and the two-agent example.
+
 The first installable alpha focuses on one reproducible workflow:
 **connect a repository → prepare two isolated workspaces → run two agents → save
 immutable changes → publish GitHub PRs → clean up.** GitHub's existing checks,

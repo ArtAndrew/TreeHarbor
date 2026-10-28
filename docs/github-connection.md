@@ -4,11 +4,18 @@ Development commands for an operator preparing a Connected installation. The
 standalone `github probe` verifies the App installation, selected repository access
 and stable numeric identities. A server binding can retain that configuration and
 observations from its assigned bridge. Neither path imports source, publishes a
-branch/PR, inspects branch rules or enqueues a change. Connected is not released.
+branch/PR, inspects branch rules or enqueues a change. The released
+[Connected PR Preview](connected-pr-preview.md) combines these commands with exact
+source import and branch/PR delivery; the full Connected mode remains incomplete.
 
 ## Prepare an App
 
-For the complete Connected acceptance workflow, the
+For alpha.1 PR delivery, use the [PR Preview permission table](connected-pr-preview.md#4-use-pr-permissions-not-queue-permissions):
+Contents-write, Pull requests-write and Metadata-read on the selected repository.
+No webhook or queue setup is needed. The read-only probe recipe below intentionally
+has fewer permissions; it cannot publish branches/PRs.
+
+For later experimental queue/managed-check acceptance, the
 [queue acceptance kit](../examples/github-queue/README.md) provides a synthetic
 repository, exact conflicting edits, a `merge_group` workflow and a reviewable
 App permission template. The following minimal read-only setup is for the probe

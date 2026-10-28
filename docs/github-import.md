@@ -5,12 +5,14 @@ history into a Connected repository. An owner requests the import; the assigned
 trusted bridge downloads, verifies and uploads it. Completion pins a native source
 base with the original Git identity. It does not publish a branch, approve checks,
 move main or establish that GitHub's main still points to the imported commit.
-Connected is not yet released.
+This is part of the released [Connected PR Preview](connected-pr-preview.md);
+full Connected queue/recovery readiness remains separate.
 
 ## Prerequisites
 
-- A running [local service](local-service.md) with object storage and schema 16.
-  Migration preserves existing bindings, credentials, observations and Human uploads.
+- A running [local service](local-service.md) with object storage, migrated using
+  the same installed CLI version. A custom schema must already exist before
+  migration; see [service preparation](connected-pr-preview.md#3-prepare-the-service-storage-and-authority).
 - An active [GitHub App binding](github-connection.md), a Human owner credential
   with `repository.write`, and its assigned Bridge credential with `host.read`.
 - An App installed on that repository with Contents read-only, plus the existing

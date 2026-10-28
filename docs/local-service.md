@@ -2,10 +2,18 @@
 
 This development transport works on Linux/macOS. It exposes the existing
 authenticated commands over HTTP/1.1 on an owner-private Unix socket. It does not
-bind a TCP port. Neither Connected nor Standalone is an end-to-end release yet.
-There is no packaged installer or remote command TLS connector. The experimental
+bind a TCP port. The [Connected PR Preview](connected-pr-preview.md) provides
+signed Linux packages and one operator-assisted workflow; the full Connected and
+Standalone releases remain incomplete. A remote command TLS connector is not
+implemented. The experimental
 [MCP stdio adapter](mcp.md) uses this same scoped local service. A separate
 experimental [managed-run worker](managed-runs.md) supports Linux/gVisor execution.
+
+For an installed package, use its resolved `treeharbor` executable in place of
+`./target/debug/treeharbor` below; compiling from source is optional. The example
+below creates a metadata-only **Standalone** repository. For the Connected PR path,
+create it with `--authority connected` and follow the [setup path](connected-pr-preview.md).
+An authority mismatch is not fixed by changing a helper config.
 
 ## Build and exercise repository access
 
@@ -180,7 +188,7 @@ not a database readiness or durability check. Responses use `Cache-Control: no-s
 
 Optional config keys are `schema` (default `public`), `pool_size`,
 `max_connections` and `request_timeout_ms`. Schema names are restricted identifiers;
-the schema must already exist. Serving requires the exact migration checksum/version;
+the schema must already exist (see [creation before migration](connected-pr-preview.md#3-prepare-the-service-storage-and-authority)). Serving requires the exact migration checksum/version;
 startup never migrates implicitly. Database TCP/fallback hosts and custom connection
 options are rejected. Remote deployment needs a future verified transport.
 
