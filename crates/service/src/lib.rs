@@ -60,6 +60,10 @@ pub enum Error {
     AlreadyRunning,
     #[error("database connection, schema or durability check failed")]
     Database,
+    #[error(
+        "configured PostgreSQL schema is unavailable; ensure it exists and the database role has USAGE before migration or startup"
+    )]
+    SchemaUnavailable,
     #[error("credential file is invalid")]
     Credential,
     #[error("invalid source profile; use full selection or bounded repository-relative paths")]

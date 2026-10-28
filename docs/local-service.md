@@ -192,6 +192,13 @@ the schema must already exist (see [creation before migration](connected-pr-prev
 startup never migrates implicitly. Database TCP/fallback hosts and custom connection
 options are rejected. Remote deployment needs a future verified transport.
 
+Development builds after alpha.1 check that the configured search path resolves
+to that exact schema before migration or startup. An unavailable schema produces
+a bounded hint to create it or grant the database role USAGE; connection strings
+and schema names are not printed. Creating the namespace does not install the
+metadata schema: explicitly run `admin migrate` before serving. These changes
+do not alter the already published alpha.1 package.
+
 HTTP mappings: malformed requests 400, missing/invalid credentials 401, forbidden
 scope/permission 403, absent resources 404, conflicting/fenced commands 409, oversized
 body 413, unsupported content type 415, unavailable pool 503, request deadline 504.

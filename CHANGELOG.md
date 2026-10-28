@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased — 0.1.1-alpha.1
+
+- Report an actionable, redacted error when the configured PostgreSQL schema
+  cannot be resolved before migration or startup. Schema creation remains an
+  explicit operator action; existing migration and durability checks still apply.
+
 ## 0.1.0-alpha.1 — Connected PR Preview — 2026-10-28
 
 Signed Linux x86-64/ARM64 packages and installation commands are in

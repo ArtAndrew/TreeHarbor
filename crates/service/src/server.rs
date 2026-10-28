@@ -1,6 +1,6 @@
 use crate::{Error, Result, config::Config, database::Database, files};
 use bytes::Bytes;
-use deadpool::managed::Pool;
+use deadpool::managed::{Pool, PoolError};
 use http_body_util::{BodyExt, Full, Limited};
 use hyper::{Request, Response, StatusCode, body::Incoming, header, service::service_fn};
 use hyper_util::rt::{TokioIo, TokioTimer};
@@ -97,7 +97,10 @@ impl Server {
         let database = Database::new(config.clone())?;
         let pool = database.pool()?;
         // Fail before publishing a listening socket if schema or DB is unavailable.
-        drop(pool.get().await.map_err(|_| Error::Database)?);
+        drop(pool.get().await.map_err(|error| match error {
+            PoolError::Backend(Error::SchemaUnavailable) => Error::SchemaUnavailable,
+            _ => Error::Database,
+        })?);
         let backend = match config.storage.clone() {
             Some(storage) => Some(crate::source::Backend::open(storage, &pool).await?),
             None => None,

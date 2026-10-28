@@ -21,6 +21,25 @@ These correctness checks do not establish complete mode readiness or performance
 superiority. The installed native workload includes deliberate replacement-node
 recovery; live GitHub recovery remains a separate release gate.
 
+## Unreleased setup diagnostic — 0.1.1-alpha.1 candidate
+
+A configured PostgreSQL search path must now resolve to that exact schema before
+migration or startup. Missing/unusable namespaces return a bounded operator hint;
+no connection string or schema identifier is printed. The startup pool preserves
+this specific diagnostic while other connection failures remain redacted. Schema
+creation stays explicit, and existence does not bypass migration/durability checks.
+The namespace check shares the existing backend-PID query rather than adding a
+new startup round trip.
+
+One real PostgreSQL regression passed locally: actual migrate/serve CLI failures,
+no implicit schema creation or listening socket, then explicit schema creation,
+refusal before migration and successful migration/validation. Five local service
+boundary tests, formatting and strict affected-package Clippy passed. The first
+run exposed the pool swallowing the new error; its corrected regression passed.
+Only workspace version metadata changed afterward; locked/offline metadata agrees
+across fourteen packages with unchanged external dependencies. Required CI and
+signed patch publication remain pending; published alpha.1 artifacts are unchanged.
+
 ## Connected PR Preview alpha.1 — 2026-10-28
 
 [Alpha.1](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.0-alpha.1) ships unchanged signed archives from source
