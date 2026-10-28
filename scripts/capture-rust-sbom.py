@@ -17,6 +17,7 @@ sys.dont_write_bytecode = True
 def load(name, filename):
     spec = importlib.util.spec_from_file_location(name, Path(__file__).with_name(filename))
     module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
     spec.loader.exec_module(module)
     return module
 
@@ -77,6 +78,14 @@ def capture(args):
             data = package.binary(args.bin_dir / name, package.TARGETS[args.target])
             (stage / name).write_bytes(data)
             hashes[name] = hashlib.sha256(data).hexdigest()
+        native_data = None
+        if args.native_inputs is not None:
+            native_data = package.regular(args.native_inputs)
+            native = package.validate_native_inputs(
+                native_data, source=revision, target=args.target,
+                session=args.build_session, binaries=hashes)
+        elif args.build_session is not None:
+            raise ValueError("a build session requires native input evidence")
         config = temporary / "syft.yaml"
         config.write_text('check-for-app-update: false\ncache:\n  dir: ""\n  ttl: 0s\n')
         report = json.loads(run(args.syft, "scan", "dir:.", "--config", config,
@@ -103,9 +112,15 @@ def capture(args):
                     "observed_tool_sha256": tool_hashes,
                     "coverage": sbom.COVERAGE, "native_link_closure_verified": False,
                     "build_provenance_verified": False}
+    if native_data is not None:
+        observations["native_inputs_sha256"] = hashlib.sha256(native_data).hexdigest()
+        observations["build_session"] = native["build_session"]
     sums = []
     observation_data = (json.dumps(observations, sort_keys=True, indent=2, ensure_ascii=False) + "\n").encode()
-    for name, data in (("rust-dependencies.cdx.json", report_data), ("input-observations.json", observation_data)):
+    reports = [("rust-dependencies.cdx.json", report_data), ("input-observations.json", observation_data)]
+    if native_data is not None:
+        reports.append(("native-inputs.json", native_data))
+    for name, data in reports:
         with (args.output_dir / name).open("xb") as output:
             output.write(data)
         sums.append(f"{hashlib.sha256(data).hexdigest()}  {name}\n")
@@ -121,6 +136,8 @@ def main():
     parser.add_argument("--bin-dir", required=True, type=Path)
     parser.add_argument("--syft", required=True, type=Path)
     parser.add_argument("--output-dir", required=True, type=Path)
+    parser.add_argument("--native-inputs", type=Path)
+    parser.add_argument("--build-session")
     args = parser.parse_args()
     args.bin_dir = args.bin_dir.absolute()
     args.syft = args.syft.absolute()

@@ -9,10 +9,10 @@ below retain evidence from individual increments. Their earlier statements about
 unfinished work describe the scope at that time; they are not a replacement for
 the current overview or the full [release gate ledger](#release-gate-ledger).
 
-Last full CI baseline before this increment: [PR83](https://github.com/ArtAndrew/TreeHarbor/pull/83),
+Last full CI baseline before this increment: [PR84](https://github.com/ArtAndrew/TreeHarbor/pull/84),
 published on 2026-10-28 after all six required checks and both package jobs passed.
-The [CI run](https://github.com/ArtAndrew/TreeHarbor/actions/runs/40627803080) passed
-402 ordinary tests on Linux and 400 on macOS, 330 real PostgreSQL contracts,
+The [CI run](https://github.com/ArtAndrew/TreeHarbor/actions/runs/40629998102) passed
+414 ordinary tests on Linux and 412 on macOS, 330 real PostgreSQL contracts,
 14 static-runtime unit tests per Linux architecture, installed runtime/controller/
 managed/native workloads on x86-64 and ARM64, and webhook TLS/failure tests.
 These correctness checks do not establish complete mode readiness or performance
@@ -31,6 +31,23 @@ checksums are joined without claiming they identify compiled native inputs.
 This is Cargo coverage, not a complete native SBOM or signed provenance.
 See [report scope](binary-dependency-reports.md).
 
+## Canonical linked-input observations
+
+The canonical package build now uses fresh target/capture directories and a
+target-specific GNU linker wrapper. The collector selects unique records by
+actual executable hashes and observed source/session/target, then emits only
+root-relative input inventories and tool hashes. Rust dependency observations and
+packaging bind the native sidecar, and runtime-test receipt v2 retains it with the
+tested archive. See [dependency-report coverage](binary-dependency-reports.md).
+
+Local helper/regression suites exercised 41 cases (two Linux-only cases skipped
+on macOS). A tiny native Linux Cargo thin-LTO/debuginfo build passed through the
+wrapper and its recorded hash matched the final executable. That exposed Cargo's
+library-path environment; only reviewed sysroot/target paths are accepted and
+cleared for GNU child tools. Actual canonical TreeHarbor builds and installed
+runtime artifacts still need verification. Native component/member completeness
+and source/build provenance remain unproven.
+
 ## Current GitHub configuration observations
 
 The analyzer recognizes the optional extra-approval rule and caller-bypass
@@ -47,10 +64,11 @@ ordinary queue decoding or establish merge authority. See
 [host-policy scope](github-host-policy.md).
 
 Local combined contract/transport tests passed 207 cases, including actual
-loopback provider fixtures, and strict Clippy/formatting passed. Local analysis
-of saved provider observations found no remaining unknown configuration fields;
-this is not a fresh installed-App report. Current-head CI and full Connected
-acceptance remain required.
+loopback provider fixtures, and strict Clippy/formatting passed. The
+[PR84 checks](https://github.com/ArtAndrew/TreeHarbor/pull/84) subsequently passed.
+Local analysis of saved provider observations found no remaining unknown
+configuration fields; this is not a fresh installed-App report. Full Connected
+acceptance remains required.
 
 ## Retaining runtime-tested development archives
 

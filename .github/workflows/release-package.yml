@@ -11,6 +11,11 @@ on:
       - scripts/capture-rust-sbom.py
       - scripts/install-sbom-tools.sh
       - scripts/test-sbom-normalization.py
+      - scripts/build-with-link-inputs.sh
+      - scripts/capture-link-inputs.py
+      - scripts/test-capture-link-inputs.py
+      - scripts/capture-native-inputs.py
+      - scripts/test-native-inputs.py
   workflow_dispatch:
 permissions:
   contents: read
@@ -38,6 +43,8 @@ jobs:
         run: |
           python3 scripts/test-release-package.py
           python3 scripts/test-sbom-normalization.py
+          python3 scripts/test-capture-link-inputs.py
+          python3 scripts/test-native-inputs.py
       - name: Install build prerequisites
         run: |
           rustup toolchain install 1.99.1 --profile minimal --target ${{ matrix.arch }}-unknown-linux-musl
@@ -48,14 +55,17 @@ jobs:
           sh scripts/install-sbom-tools.sh '${{ matrix.arch }}' "$RUNNER_TEMP/sbom-tools"
           echo "$RUNNER_TEMP/sbom-tools" >> "$GITHUB_PATH"
       - name: Build actual static release binaries
-        run: cargo auditable build --locked --release --target ${{ matrix.arch }}-unknown-linux-musl -p treeharbor-service -p treeharbor-runtime --bins
+        run: |
+          th_session=$(python3 -c 'import uuid; print(uuid.uuid4())')
+          sh scripts/build-with-link-inputs.sh '${{ matrix.arch }}-unknown-linux-musl' "$RUNNER_TEMP/canonical-build" "$th_session"
+          echo "TH_LINK_BUILD_SESSION=$th_session" >> "$GITHUB_ENV"
       - name: Package and test offline installation
         env:
           TH_PACKAGE_DIR: ${{ runner.temp }}/treeharbor-package
           TH_SBOM_DIR: ${{ runner.temp }}/treeharbor-sbom
         run: |
-          python3 scripts/capture-rust-sbom.py --target ${{ matrix.arch }}-unknown-linux-musl --bin-dir target/${{ matrix.arch }}-unknown-linux-musl/release --syft "$RUNNER_TEMP/sbom-tools/syft" --output-dir "$TH_SBOM_DIR"
-          python3 scripts/package-release.py --target ${{ matrix.arch }}-unknown-linux-musl --bin-dir target/${{ matrix.arch }}-unknown-linux-musl/release --output-dir "$TH_PACKAGE_DIR" --input-observations "$TH_SBOM_DIR/input-observations.json"
+          python3 scripts/capture-rust-sbom.py --target ${{ matrix.arch }}-unknown-linux-musl --bin-dir "$RUNNER_TEMP/canonical-build/target/${{ matrix.arch }}-unknown-linux-musl/release" --syft "$RUNNER_TEMP/sbom-tools/syft" --output-dir "$TH_SBOM_DIR" --native-inputs "$RUNNER_TEMP/canonical-build/native-reports/native-inputs.json" --build-session "$TH_LINK_BUILD_SESSION"
+          python3 scripts/package-release.py --target ${{ matrix.arch }}-unknown-linux-musl --bin-dir "$RUNNER_TEMP/canonical-build/target/${{ matrix.arch }}-unknown-linux-musl/release" --output-dir "$TH_PACKAGE_DIR" --input-observations "$TH_SBOM_DIR/input-observations.json" --native-inputs "$TH_SBOM_DIR/native-inputs.json"
           cp "$TH_SBOM_DIR/"*.json "$TH_PACKAGE_DIR/"
           cp "$TH_SBOM_DIR/SHA256SUMS" "$TH_PACKAGE_DIR/SBOM-SHA256SUMS"
           cd "$TH_PACKAGE_DIR"
