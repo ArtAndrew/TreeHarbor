@@ -1,7 +1,8 @@
 # Development release packaging
 
-There is no published installable release yet. This page describes packaging tools
-for maintainers and their verification scope. Packaged two-agent-to-PR onboarding,
+This page describes packaging and its verification scope. Published assets and
+installed-workflow evidence are listed in [Releases](https://github.com/ArtAndrew/TreeHarbor/releases).
+A source checkout or successful build alone does not establish release readiness. Packaged two-agent-to-PR onboarding,
 durable receipts and safe publication retries, signed provenance and release
 publication remain alpha.1 gates. TreeHarbor queue integration and full Connected
 publication disaster recovery follow in later releases; the first preview must
@@ -23,12 +24,17 @@ uses a short-lived GitHub signing identity; no stored signing key is required.
 The workflow verifies all signed subjects with the official CLI, constraining the
 repository, workflow, source commit and tag before retaining them for review.
 
-This workflow has not yet produced a signed release. It does not create or move
-tags, create GitHub releases or publish assets. Its seven-day Actions artifacts
+A workflow definition does not establish signing or installed acceptance: inspect
+the selected run and release record. It does not create or move tags, create
+GitHub releases or publish assets. Its seven-day Actions artifacts
 are candidates, not permanent distribution. Maintainers must inspect the selected
 run/attempt, verify the downloaded bytes and signatures, complete the documented
 Connected onboarding gates, and attach the unchanged files to a prerelease.
-Retain both architectures' sidecars and signature bundles with distinct names.
+Each architecture has a distinct archive, `.metadata.zip` and
+`.provenance.sigstore.json`. The metadata ZIP keeps the original sidecar filenames
+and checksums together, so the two architectures do not collide in a release.
+The producer signs the ZIP too, without changing the runtime-tested archive.
+Attach both architectures' archive/checksum, metadata ZIP and signature bundle.
 Do not rebuild or overwrite assets during publication; inspect any uncertain
 upload before retrying.
 
@@ -48,6 +54,12 @@ signature check authenticates the stated build identity and digest; it does not
 prove full native component coverage, reproducible builds, production readiness
 or completed Connected onboarding. Keep the runtime receipt and CI run identity
 when recording acceptance evidence.
+
+For installation, download the archive and matching provenance bundle. Verify the
+archive before extracting or running its installer. The metadata ZIP is optional
+for ordinary installation; to inspect its reports, first verify that ZIP using
+the same command and bundle, then unpack it into a separate directory for that
+architecture. Its retained original filenames allow `SBOM-SHA256SUMS` checks.
 
 ## Building development packages
 

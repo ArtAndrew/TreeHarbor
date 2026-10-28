@@ -2,7 +2,9 @@
 
 ## Connected PR Preview candidate — 0.1.0-alpha.1
 
-Not released yet. Signing and the complete installed live workflow remain gates.
+Published artifacts, signing and installed-workflow evidence are recorded in
+[GitHub Releases](https://github.com/ArtAndrew/TreeHarbor/releases); this source
+entry describes the candidate scope, not a claim that release gates have passed.
 The candidate supports the documented Linux operator profile: exact-revision
 workspaces, two isolated scripted tasks, immutable changes and proposed GitHub
 PRs. GitHub handles checks, review and merge. The helper preserves operation IDs

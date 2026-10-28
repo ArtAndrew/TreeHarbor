@@ -11,9 +11,10 @@ Keep your existing GitHub process with **Connected**, or use TreeHarbor's own
 history, branches and integration queue with **Standalone**. Both use the same
 Rust engine and the same license.
 
-> **Early development — no installable release yet.** You can build and evaluate
-> the current components on disposable test repositories. Both modes are partially
-> implemented; neither has passed all release gates. Production use is not supported.
+> **Connected PR Preview candidate — early development.** Published builds and
+> their exact verified scope are listed in [Releases](https://github.com/ArtAndrew/TreeHarbor/releases).
+> Evaluate on disposable pilot repositories. The full Connected and Standalone
+> releases remain incomplete; production use is not supported.
 > [What works](#what-works-today) · [What remains](#what-remains-before-a-full-release) ·
 > [Try the development build](#try-the-development-build) · [Detailed evidence](docs/implementation-status.md)
 
@@ -84,14 +85,15 @@ fixture boundaries and open gates.
 
 ## Can I use it now?
 
-**For development and controlled technical evaluation: yes.** Expect a source
-build, manual configuration and evolving interfaces. Use disposable repositories
+**For development and controlled technical evaluation: yes.** Use a published
+preview package when available, or build from source. Expect manual configuration
+and evolving interfaces. Use disposable repositories
 and dedicated test infrastructure. The local service needs PostgreSQL; managed
 agent execution additionally needs a supported Linux/gVisor setup and bounded volumes.
 
 **For production or as your only copy of important source code: not yet.** There
-are no supported release binaries, one-command installation, complete server
-restore procedure or verified unattended lifecycle. Keep ordinary Git and independent
+is no verified unattended lifecycle, complete server restore procedure or
+one-command host provisioning. Keep ordinary Git and independent
 backups while evaluating the project.
 
 Development archives now pass offline CLI installation on Linux x86-64 and ARM64.
@@ -104,9 +106,9 @@ A workspace provides files; **the external runtime provides the execution sandbo
 Agents must not receive publisher credentials. Tests cannot detect every semantic
 incompatibility. See [security boundaries](SECURITY.md).
 
-## Next release: Connected Preview
+## Connected PR Preview workflow
 
-The first installable alpha will focus on one reproducible workflow:
+The first installable alpha focuses on one reproducible workflow:
 **connect a repository → prepare two isolated workspaces → run two agents → save
 immutable changes → publish GitHub PRs → clean up.** GitHub's existing checks,
 review and merge process handle the proposed code, including overlapping changes.
@@ -121,8 +123,9 @@ Before publishing alpha.1, we must verify a clean installation and the complete
 packaged two-agent-to-PR demo, durable proposal receipts, safe retries without
 duplicate publication, credential/runtime separation, cleanup, source export and
 the signed release artifacts. The deployment guide will state backup and recovery
-limits. This preview is intended for controlled pilot repositories; it is not
-available yet.
+limits. This preview is intended for controlled pilot repositories. Published
+artifacts, installed-workflow evidence and remaining limitations are recorded in
+[Releases](https://github.com/ArtAndrew/TreeHarbor/releases).
 
 Standalone will follow in a later release. Its existing native components remain
 experimental; both modes continue to share the Rust core and standard ELv2.
@@ -151,12 +154,16 @@ complete installed live workflow has not yet passed acceptance.
 
 The first, PR-focused alpha needs tested installation artifacts, one documented
 workspace-to-PR workflow, recovery/export instructions, and explicit
-known limitations. Those packaging gates are still open. It will not imply
-production readiness or completion of both modes. The
+known limitations. Installation and signing evidence is tracked per preview
+release. A preview does not imply production readiness or completion of both modes. The
 [roadmap](ROADMAP.md) and [release gates](docs/implementation-status.md#release-gate-ledger)
 track the remaining work.
 
 ## Try the development build
+
+For a published preview, start with [Releases](https://github.com/ArtAndrew/TreeHarbor/releases)
+and [package verification](docs/release-packaging.md). The commands below build
+from source.
 
 Prerequisites: Git, a C compiler, CMake, OpenSSL for signature tests, and
 [Rust via rustup](https://rustup.rs/). The toolchain is pinned in
