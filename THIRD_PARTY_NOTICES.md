@@ -5,8 +5,9 @@ retain their own licenses. They are fetched from the versions in `Cargo.lock`;
 this repository does not relicense them under ELv2.
 
 Static Linux packages also require notices for the Rust standard library,
-compiler-builtins, libm and musl. Their unchanged texts and pinned source/hash
-inventory are in [static-toolchain notices](third-party/toolchain/README.md).
+compiler-builtins, libm, musl, compiler-rt CRT and LLVM libunwind. Their unchanged
+texts and pinned source/hash inventory are in
+[static-toolchain notices](third-party/toolchain/README.md).
 Cargo.lock alone does not describe these precompiled toolchain components.
 
 The native merge increment uses these unmodified dependencies:

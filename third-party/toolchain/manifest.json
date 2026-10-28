@@ -41,6 +41,24 @@
       "path": "third-party/toolchain/musl-1.2.5/COPYRIGHT",
       "sha256": "f9bc4423732350eb0b3f7ed7e91d530298476f8fec0c6c427a1c04ade22655af",
       "source_url": "https://www.musl-libc.org/releases/musl-1.2.5.tar.gz"
+    },
+    {
+      "component": "compiler-rt",
+      "path": "third-party/toolchain/compiler-rt/LICENSE.TXT",
+      "sha256": "1a8f1058753f1ba890de984e48f0242a3a5c29a6a8f2ed9fd813f36985387e8d",
+      "source_url": "https://github.com/rust-lang/llvm-project/blob/1b9c0d5ff9bbe7634aead059efe6b11a7eeba145/compiler-rt/LICENSE.TXT"
+    },
+    {
+      "component": "compiler-rt",
+      "path": "third-party/toolchain/compiler-rt/CREDITS.TXT",
+      "sha256": "a9901f47a089da41e4690682d00ce4cedaa2baf41fedbe79beee366d43ac2461",
+      "source_url": "https://github.com/rust-lang/llvm-project/blob/1b9c0d5ff9bbe7634aead059efe6b11a7eeba145/compiler-rt/CREDITS.TXT"
+    },
+    {
+      "component": "llvm-libunwind",
+      "path": "third-party/toolchain/llvm-libunwind/LICENSE.TXT",
+      "sha256": "b5efebcaca80879234098e52d1725e6d9eb8fb96a19fce625d39184b705f7b6d",
+      "source_url": "https://github.com/rust-lang/llvm-project/blob/1b9c0d5ff9bbe7634aead059efe6b11a7eeba145/libunwind/LICENSE.TXT"
     }
   ],
   "rust_source_revision": "58cf8f9c35b355199727627d07ae34a4e2846d67",
