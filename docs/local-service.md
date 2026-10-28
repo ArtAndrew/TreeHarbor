@@ -192,7 +192,7 @@ the schema must already exist (see [creation before migration](connected-pr-prev
 startup never migrates implicitly. Database TCP/fallback hosts and custom connection
 options are rejected. Remote deployment needs a future verified transport.
 
-Development builds after alpha.1 check that the configured search path resolves
+From 0.1.1-alpha.1, the configured search path must resolve
 to that exact schema before migration or startup. An unavailable schema produces
 a bounded hint to create it or grant the database role USAGE; connection strings
 and schema names are not printed. Creating the namespace does not install the

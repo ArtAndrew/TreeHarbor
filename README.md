@@ -16,7 +16,7 @@ TreeHarbor is inspired by Anthropic's [Redesigning source control at Anthropic](
 separate source data and proposed changes from disposable agent workspaces.
 TreeHarbor is an independent implementation and is not affiliated with Anthropic.
 
-> **[0.1.0-alpha.1 — Connected PR Preview](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.0-alpha.1) is available.**
+> **[0.1.1-alpha.1 — Connected PR Preview](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.1-alpha.1) is available.**
 > Signed Linux packages and the exact tested scope are in the release notes.
 > Evaluate on disposable pilot repositories. The full Connected and Standalone
 > releases remain incomplete; production use is not supported.
@@ -112,7 +112,7 @@ fixture boundaries and open gates.
 ## Can I use it now?
 
 **For development and controlled technical evaluation: yes.** Use a published
-[alpha.1 package](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.0-alpha.1), or build from source. Expect manual configuration
+[current preview package](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.1-alpha.1), or build from source. Expect manual configuration
 and evolving interfaces. Use disposable repositories
 and dedicated test infrastructure. The local service needs PostgreSQL; managed
 agent execution additionally needs a supported Linux/gVisor setup and bounded volumes.
@@ -169,6 +169,13 @@ workflow passed the scoped ARM64 trial. An operator must still prepare the servi
 runtime, workspaces and scoped credentials; this is not automatic host provisioning
 or a ready-made LLM connector.
 
+The [0.1.1-alpha.1 setup patch](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.1-alpha.1) adds an actionable PostgreSQL
+schema diagnostic and the [operator setup path](docs/connected-pr-preview.md).
+Its installed ARM64 package passed missing-schema refusal, explicit migration,
+healthy startup and graceful shutdown; signed runtime/package CI passed on both
+architectures. See [the setup report](docs/evidence/connected-preview-setup-20261028.json). The two-agent GitHub trial
+above remains evidence for its original alpha.1 source, not a new patch trial.
+
 ## What remains before a full release?
 
 1. Complete Connected host-policy and admission certification, automatic
@@ -191,7 +198,7 @@ track the remaining work.
 
 ## Try the development build
 
-For the installable preview, start with [alpha.1](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.0-alpha.1)
+For the installable preview, start with [the current release](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.1-alpha.1)
 and [package verification](docs/release-packaging.md). The commands below build
 from source.
 
@@ -233,7 +240,7 @@ are not implied to be supported alpha.1 integrations.
 | Authority for published main | GitHub | TreeHarbor |
 | Review and integration | GitHub policies and queue | Native policies and queue |
 | Role of Git | Import/export and host bridge | Optional import/export; absent from the native main path |
-| Current maturity | Released alpha.1 PR Preview; full mode incomplete | Experimental; full mode incomplete |
+| Current maturity | Released PR Preview; full mode incomplete | Experimental; full mode incomplete |
 
 Each repository has one authority. Switching modes is a migration, not two systems
 writing the same main branch. Both modes are self-hosted and share the Rust core.

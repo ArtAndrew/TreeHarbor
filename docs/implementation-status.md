@@ -9,7 +9,7 @@ below retain evidence from individual increments. Their earlier statements about
 unfinished work describe the scope at that time; they are not a replacement for
 the current overview or the full [release gate ledger](#release-gate-ledger).
 
-Last full CI baseline before this increment: [PR89](https://github.com/ArtAndrew/TreeHarbor/pull/89),
+Earlier full CI baseline: [PR89](https://github.com/ArtAndrew/TreeHarbor/pull/89),
 published on 2026-10-28 after all six required checks passed. Both Linux runtime
 jobs built, installed and tested the actual packages; their retained archive and
 sidecar hash chains were verified without a duplicate offline package build.
@@ -21,7 +21,25 @@ These correctness checks do not establish complete mode readiness or performance
 superiority. The installed native workload includes deliberate replacement-node
 recovery; live GitHub recovery remains a separate release gate.
 
-## Unreleased setup diagnostic — 0.1.1-alpha.1 candidate
+## Released setup patch — 0.1.1-alpha.1
+
+[Patch release](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.1-alpha.1) identifies source
+`5c8a7d176e79ff20cc67ae1e0b25e0fd4c0852ed`. [Main CI](https://github.com/ArtAndrew/TreeHarbor/actions/runs/40712058332)
+and [signed producer](https://github.com/ArtAndrew/TreeHarbor/actions/runs/40713915691),
+both attempt 1, passed. Independent official verification matched the source/tag,
+eight subjects per architecture and exact producer invocation. Both signed packages
+passed installed managed/native runtime CI before attestation.
+
+The additional installed ARM64 trial checked actual migrate/serve failures for a
+missing namespace, no implicit schema/socket, explicit creation and migration,
+healthy startup, graceful shutdown and cleanup of its own test namespace. It issued
+no service credentials and made no App/PR changes. The [operator setup report](evidence/connected-preview-setup-20261028.json)
+is not a signed execution attestation. Historical two-agent GitHub evidence below
+identifies its original alpha.1 source separately. Manual provisioning, real LLM
+integration, full Connected/Standalone readiness, recovery and performance remain
+separate work. Old alpha.1 assets and tag were not changed.
+
+## Setup diagnostic implementation — 0.1.1-alpha.1
 
 A configured PostgreSQL search path must now resolve to that exact schema before
 migration or startup. Missing/unusable namespaces return a bounded operator hint;
@@ -37,8 +55,9 @@ refusal before migration and successful migration/validation. Five local service
 boundary tests, formatting and strict affected-package Clippy passed. The first
 run exposed the pool swallowing the new error; its corrected regression passed.
 Only workspace version metadata changed afterward; locked/offline metadata agrees
-across fourteen packages with unchanged external dependencies. Required CI and
-signed patch publication remain pending; published alpha.1 artifacts are unchanged.
+across fourteen packages with unchanged external dependencies. These were the
+pre-CI implementation checks; the released source/build/setup evidence is above.
+Published alpha.1 artifacts are unchanged.
 
 ## Connected PR Preview alpha.1 — 2026-10-28
 
