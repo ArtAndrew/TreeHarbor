@@ -256,6 +256,23 @@ jobs:
           cd "$TH_PACKAGE_DIR"
           sha256sum --check --strict *.tar.gz.sha256
           sha256sum --check --strict SBOM-SHA256SUMS
+      - name: Group metadata with original filenames for each architecture
+        run: |
+          python3 - <<'PYTHON'
+          import os, zipfile
+          from pathlib import Path
+          package = Path(os.environ['RUNNER_TEMP']) / 'runtime-package'
+          archive, = package.glob('*.tar.gz')
+          names = {archive.name, archive.name + '.sha256', 'input-observations.json',
+                   'rust-dependencies.cdx.json', 'native-inputs.json',
+                   'SBOM-SHA256SUMS', 'tested-runtime-artifacts.json'}
+          if {p.name for p in package.iterdir()} != names:
+              raise SystemExit('unexpected package subject set')
+          metadata = package / (archive.name.removesuffix('.tar.gz') + '.metadata.zip')
+          with zipfile.ZipFile(metadata, 'x', compression=zipfile.ZIP_DEFLATED) as output:
+              for name in sorted(names - {archive.name}):
+                  output.write(package / name, arcname=name)
+          PYTHON
       - name: Attest the exact archive and sidecars after installed runtime tests
         id: provenance
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
@@ -276,7 +293,11 @@ jobs:
               --signer-digest "$GITHUB_SHA" --source-digest "$GITHUB_SHA" \
               --source-ref "$GITHUB_REF" --deny-self-hosted-runners
           done
-          cp -- "$TH_ATTESTATION_BUNDLE" "$RUNNER_TEMP/runtime-package/provenance.sigstore.json"
+          set -- "$RUNNER_TEMP/runtime-package/"*.tar.gz
+          test "$#" -eq 1
+          th_stem=${1##*/}
+          th_stem=${th_stem%.tar.gz}
+          cp -- "$TH_ATTESTATION_BUNDLE" "$RUNNER_TEMP/runtime-package/$th_stem.provenance.sigstore.json"
           cd "$RUNNER_TEMP/runtime-package"
           sha256sum --check --strict *.tar.gz.sha256
           sha256sum --check --strict SBOM-SHA256SUMS
