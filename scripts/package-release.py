@@ -28,6 +28,9 @@ TOOLCHAIN_NOTICES = {
     "third-party/toolchain/compiler-builtins/LICENSE.txt": "compiler-builtins",
     "third-party/toolchain/libm/LICENSE.txt": "libm",
     "third-party/toolchain/musl-1.2.5/COPYRIGHT": "musl",
+    "third-party/toolchain/compiler-rt/LICENSE.TXT": "compiler-rt",
+    "third-party/toolchain/compiler-rt/CREDITS.TXT": "compiler-rt",
+    "third-party/toolchain/llvm-libunwind/LICENSE.TXT": "llvm-libunwind",
 }
 
 

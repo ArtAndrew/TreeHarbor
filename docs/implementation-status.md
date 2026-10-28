@@ -9,14 +9,15 @@ below retain evidence from individual increments. Their earlier statements about
 unfinished work describe the scope at that time; they are not a replacement for
 the current overview or the full [release gate ledger](#release-gate-ledger).
 
-Last full CI baseline before this increment: [PR84](https://github.com/ArtAndrew/TreeHarbor/pull/84),
+Last full CI baseline before this increment: [PR85](https://github.com/ArtAndrew/TreeHarbor/pull/85),
 published on 2026-10-28 after all six required checks and both package jobs passed.
-The [CI run](https://github.com/ArtAndrew/TreeHarbor/actions/runs/40629998102) passed
+The [CI run](https://github.com/ArtAndrew/TreeHarbor/actions/runs/40640005848) passed
 414 ordinary tests on Linux and 412 on macOS, 330 real PostgreSQL contracts,
 14 static-runtime unit tests per Linux architecture, installed runtime/controller/
 managed/native workloads on x86-64 and ARM64, and webhook TLS/failure tests.
 These correctness checks do not establish complete mode readiness or performance
-superiority. The additional restored-node scenario below needs its own CI evidence.
+superiority. The installed native workload includes deliberate replacement-node
+recovery; live GitHub recovery remains a separate release gate.
 
 ## Binary-derived Rust dependency reports
 
@@ -44,9 +45,12 @@ Local helper/regression suites exercised 41 cases (two Linux-only cases skipped
 on macOS). A tiny native Linux Cargo thin-LTO/debuginfo build passed through the
 wrapper and its recorded hash matched the final executable. That exposed Cargo's
 library-path environment; only reviewed sysroot/target paths are accepted and
-cleared for GNU child tools. Actual canonical TreeHarbor builds and installed
-runtime artifacts still need verification. Native component/member completeness
-and source/build provenance remain unproven.
+cleared for GNU child tools. The [PR85 checks](https://github.com/ArtAndrew/TreeHarbor/pull/85)
+subsequently passed actual canonical builds and installed runtime workloads on
+Linux x86-64 and ARM64. Both retained version-2 runtime bundles passed independent
+archive, manifest, binary, Rust-report and native-report consistency checks. Their
+source is the tested PR merge revision, distinct from its feature head. Native
+component/member completeness and signed source/build provenance remain unproven.
 
 ## Current GitHub configuration observations
 
