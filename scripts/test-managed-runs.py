@@ -212,7 +212,8 @@ class Harness:
 
     def start(self, case):
         child = subprocess.Popen([str(self.binary), *self.node_args(case["node"], "run-once"),
-                                  "--engine-socket", str(self.transport / "engine.sock")],
+                                  "--engine-socket", str(self.transport / "engine.sock"),
+                                  "--run", case["run"]],
                                  env=self.env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         self.children.append(child)
         return child
@@ -477,6 +478,22 @@ class Harness:
         self.cleanup_workspace(successor)
 
     def exercise(self):
+        first = self.case("once")
+        second = self.case("once")
+        idle = self.value(*self.node_args(first["node"], "run-once"),
+                          "--engine-socket", self.transport / "engine.sock", "--run", uuid.uuid4())
+        assert idle == {"state": "idle"}
+        assert not (first["files"] / "executions").exists()
+        assert not (second["files"] / "executions").exists()
+        self.finish(second, self.start(second))
+        assert self.status(first)["state"] == "requested"
+        assert not (first["files"] / "executions").exists()
+        replay = self.value(*self.node_args(first["node"], "run-once"),
+                            "--engine-socket", self.transport / "engine.sock", "--run", second["run"])
+        assert replay == {"state": "idle"}
+        assert self.status(first)["state"] == "requested"
+        self.finish(first, self.start(first))
+        print("PASS selected execution: unknown or completed run never starts another task; later queued run executes before earlier work on the same node", flush=True)
         a = self.case("isolation", "agent-a", self.secret, "2000")
         b = self.case("isolation", "agent-b", self.secret, "2000", node=1)
         workers = [self.start(a), self.start(b)]

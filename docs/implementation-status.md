@@ -31,6 +31,17 @@ checksums are joined without claiming they identify compiled native inputs.
 This is Cargo coverage, not a complete native SBOM or signed provenance.
 See [report scope](binary-dependency-reports.md).
 
+## Selecting one node execution
+
+`node run-once --run RUN_UUID` restricts the existing node/storage-scoped lease
+claim to that execution. Unknown, foreign-node, actively leased and completed
+runs return idle without consuming another task. Omitting the flag retains normal
+scheduling. Authorization, stop handling and lease-generation fences are unchanged;
+no database or object format changes. The real PostgreSQL regression passed locally
+for out-of-order selection, no fallback, lease reclaim and revoked access. The
+Linux harness now exercises two queued tasks on one node through the actual CLI;
+its new runtime scenario still requires current-head CI.
+
 ## Replacement-node recovery drill
 
 The cold restore workload now also retains a requested but unexecuted check.
