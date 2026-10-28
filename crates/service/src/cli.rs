@@ -746,6 +746,19 @@ enum Agent {
         #[arg(long)]
         profile_digest: String,
     },
+    /// Save a generated workspace identity before requesting preparation; reuse --state on retry.
+    WorkspaceNew {
+        #[arg(long)]
+        state: PathBuf,
+        #[arg(long, value_enum)]
+        authority: Mode,
+        #[arg(long, value_parser=clap::value_parser!(i64).range(1..))]
+        epoch: i64,
+        #[arg(long)]
+        base: String,
+        #[arg(long)]
+        profile_digest: String,
+    },
     /// Enqueue preparation from a registered native base; does not imply READY.
     WorkspaceCreate {
         #[command(flatten)]
@@ -923,7 +936,8 @@ impl Agent {
             Self::SourceStatus { upload } => {
                 json!({"method":"source_status","upload":upload.to_string()})
             }
-            Self::SourcePut { .. }
+            Self::WorkspaceNew { .. }
+            | Self::SourcePut { .. }
             | Self::SourceImport { .. }
             | Self::SourceFile { .. }
             | Self::SourceList { .. } => return Err(Error::Config), // separate data path below
@@ -1126,6 +1140,27 @@ pub async fn run(cli: Cli) -> Result<bool> {
         } => {
             let credential = Credential::load(&credential_file)?;
             let action = match action {
+                Agent::WorkspaceNew {
+                    state,
+                    authority,
+                    epoch,
+                    base,
+                    profile_digest,
+                } => {
+                    let reply = crate::workspace_new::send(crate::workspace_new::Request {
+                        state: &state,
+                        socket: &socket,
+                        credential: &credential,
+                        authority: authority.into(),
+                        epoch,
+                        base: &base,
+                        profile_digest: &profile_digest,
+                        timeout: Duration::from_millis(timeout_ms),
+                    })
+                    .await?;
+                    println!("{}", reply.body);
+                    return Ok(reply.status.is_success());
+                }
                 Agent::Diff {
                     authority,
                     epoch,

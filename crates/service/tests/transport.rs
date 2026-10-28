@@ -13,6 +13,8 @@ mod native;
 mod proposals;
 #[path = "transport/review.rs"]
 mod review;
+#[path = "transport/workspace_new.rs"]
+mod workspace_new;
 use serde_json::{Value, json};
 use std::{
     fs,
@@ -1362,6 +1364,9 @@ impl Fixture {
         bytes
     }
     async fn seed(&self) -> RevisionRef {
+        self.seed_with_authority(Authority::Standalone).await
+    }
+    async fn seed_with_authority(&self, authority: Authority) -> RevisionRef {
         let objects = self.dir.path().join("objects");
         fs::create_dir(&objects).unwrap();
         fs::set_permissions(&objects, fs::Permissions::from_mode(0o700)).unwrap();
@@ -1413,7 +1418,7 @@ impl Fixture {
                 self.scope.clone(),
                 "seed".into(),
                 "fixture".into(),
-                Authority::Standalone,
+                authority,
                 1,
             ),
             &commit,

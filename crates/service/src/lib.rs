@@ -23,9 +23,14 @@ mod source;
 mod source_export;
 mod source_read;
 mod webhooks;
+mod workspace_new;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    #[error(
+        "workspace request requires an exact native base, profile digest and matching private state; preserve the original state and inputs on retry"
+    )]
+    WorkspaceState,
     #[error(
         "policy draft requires valid requirements and a complete, stable configuration inspection"
     )]
