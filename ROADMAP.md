@@ -1,37 +1,52 @@
 # Roadmap
 
-Dates are not release guarantees. Each stage must pass its correctness gates
-before performance claims or production readiness are published.
+The next milestone is a useful pilot installation, not the complete source-control
+platform. Dates are not release guarantees. Existing components and synthetic
+acceptance tests are not evidence of adoption or production readiness.
 
-1. **First installable release — Connected Preview:** one complete GitHub workflow,
-   from two parallel agent workspaces through immutable proposals, exact candidate
-   checks, failure/repair and protected integration. Package a reference deployment,
-   verify a clean installation, restart/retry, backup/restore, export and cleanup.
-   Publish the supported policy/runtime matrix and reproducible demo. This is a
-   development preview for controlled pilots, not production support.
-2. **Pilot hardening:** fix observed onboarding and operational problems; improve
-   automatic reconciliation, monitoring and workload performance. Publish raw
-   cold/warm benchmarks and infrastructure costs before making speed claims.
-3. **Broader Connected deployments:** expand supported host policies, storage and
-   remote-worker configurations, with recovery and upgrade tests for each.
-4. **Standalone S2 release:** finish the native history/review/check/queue lifecycle
-   and fenced migration, with no Git process or GitHub credentials on the native
-   path. Reuse the shared Rust core and the same ELv2 license.
-5. **Production readiness:** complete the relevant operational fault campaigns,
-   backup/restore and capacity evidence, supported installation/update procedures,
-   and acceptance with pilot teams for each advertised deployment.
+| Release | User outcome | Release boundary |
+| --- | --- | --- |
+| **v0.1.0-alpha.1 — Connected PR Preview** | Install one documented deployment, run two isolated agents from an exact revision, retain immutable changes and publish real GitHub PRs | One supported Linux/runtime/deployment profile; exact PR identities, safe cleanup/export, tested signed packages and explicit operational limits. GitHub handles checks, review and merge. |
+| **alpha.1.x — pilot fixes** | Complete the same workflow with fewer setup failures and manual interventions | Small patches for observed installation, documentation and workflow defects; do not wait for a new feature milestone to ship a fix. |
+| **alpha.2 — repeatable use** | Run another real task without repeating assisted setup | Address pilot-reported friction in configuration, task status and diagnostics. Verify one agent integration if pilots need it. Choose the exact scope from feedback. |
+| **Later Connected releases — integration and recovery** | Automate a demonstrated integration bottleneck, then recover the advertised deployment | First certify one TreeHarbor-managed queue/check profile if users need it; ship full Connected publication/queue disaster recovery as a separately verified increment. Neither blocks the PR Preview. |
+| **Standalone S2** | Own native history, review, checks and integration without Git/GitHub on the native path | Complete the native lifecycle and fenced migration on the shared Rust core, under the same ELv2. Prioritize after the first Connected usage evidence. |
 
-Standalone is a later release milestone and does not block the first Connected
-Preview. Its existing components remain experimental. The complete two-mode
-product still requires the [full release gates](docs/implementation-status.md#release-gate-ledger).
-Dates and performance targets are not promises.
+## First preview acceptance
 
-The experimental MCP stdio adapter is implemented; full host/onboarding acceptance
-remains open. VFS, structural merge and distributed SQL require experiments and
-are not prerequisites for the first pilot.
+Verify a clean installation and the complete packaged two-agent-to-PR demo,
+including overlapping edits. Retain durable proposal receipts, bounded retries
+without duplicate publication, credential/runtime separation, safe stopped-file
+capture and cleanup, source export, and exact-tested-artifact signed provenance.
+Document backup instructions and the unsupported disaster-recovery cases.
+This preview is for controlled pilot repositories, not unattended production.
 
-Performance targets are hypotheses: at least 2x better p95 preparation **or** 30%
-lower full infrastructure cost than the best applicable tuned-Git baseline, with
-time to useful work no worse. We will not claim these targets have been met
-without reproducible data. Scion's internal deployment is not available as a
-controlled comparison.
+## Let pilot use determine expansion
+
+First record installation-to-first-PR time, operator interventions, successful
+tasks and whether teams return for another task. Assisted trials are useful, but
+must be distinguished from unassisted onboarding. Issue counts, stars and our
+scripted demos do not establish product demand.
+
+Share an [onboarding report](.github/ISSUE_TEMPLATE/pilot-feedback.md) or a concrete
+[workload proposal](.github/ISSUE_TEMPLATE/workload.md). Keep private source,
+credentials and security reports out of public issues; use [SECURITY](SECURITY.md)
+for vulnerability reporting.
+
+## Deferred expansion and production readiness
+
+Standalone remains part of the full product goal. S3, remote worker fleets, broader
+host policies, HA, VFS, structural merge and distributed SQL do not block the first
+pilot. The experimental MCP adapter exists; actual host/onboarding acceptance is
+still open. Avoid expanding these components before a concrete workload needs them.
+
+Production readiness requires operational fault campaigns, backup/restore,
+upgrades, capacity evidence and pilot acceptance for each supported deployment.
+See the [full release gates](docs/implementation-status.md#release-gate-ledger).
+
+Performance targets remain hypotheses: at least 2x better p95 preparation **or**
+30% lower full infrastructure cost than the best applicable tuned-Git baseline,
+with time to useful work no worse. Start with a pilot's real workload; publish raw
+cold/warm data and full costs before claiming an advantage. The broader benchmark
+matrix follows evidence of a useful workflow. Scion's internal deployment is not
+available as a controlled comparison.

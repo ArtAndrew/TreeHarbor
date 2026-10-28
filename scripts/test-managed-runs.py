@@ -309,9 +309,10 @@ class Harness:
         assert first["state"] == "waiting"
         return seal
 
-    def start_seal(self, case):
+    def start_seal(self, case, seal=None):
+        selection = ["--seal", str(seal)] if seal is not None else []
         child = subprocess.Popen([str(self.binary), *self.node_args(case["node"], "seal-once"),
-                                  "--engine-socket", str(self.transport / "engine.sock")],
+                                  "--engine-socket", str(self.transport / "engine.sock"), *selection],
                                  env=self.env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         self.children.append(child)
         return child
@@ -665,6 +666,48 @@ class Harness:
                                "--changeset", change["changeset"], "--version", "2", credential=credential)
             assert diff["after_snapshot"] == change["result_snapshot"]
         print("PASS workspace cleanup retention: accepted overlapping agent changes remain inspectable after physical deletion", flush=True)
+
+        # The initial two real executions used separate slots on the same node.
+        # Keep both pending before selecting the later stopped-file capture.
+        assert first["node"] == second["node"] and first["slot"] != second["slot"]
+        earlier_seal = self.request_seal(first)
+        later_seal = self.request_seal(second)
+        earlier_row = self.sql(f"SELECT to_jsonb(c) FROM th_workspace_seals c WHERE seal='{earlier_seal}'")
+
+        def earlier_untouched():
+            assert self.sql(f"SELECT to_jsonb(c) FROM th_workspace_seals c WHERE seal='{earlier_seal}'") == earlier_row
+            assert self.client("seal-status", "--seal", earlier_seal, credential=first["credential"])["state"] == "waiting"
+            assert not (first["node"]["root"] / "seals" / earlier_seal).exists()
+            assert self.sql(f"SELECT count(*) FROM th_seal_artifacts WHERE seal='{earlier_seal}'") == "0"
+
+        selected = self.start_seal(second, later_seal)
+        out, err = selected.communicate(timeout=45)
+        assert selected.returncode == 0, (out, err)
+        ready = json.loads(out)
+        assert ready["state"] == "ready" and ready["seal"] == later_seal and ready["run"] == second["run"], ready
+        earlier_untouched()
+        for selection in (uuid.uuid4(), later_seal):
+            idle = self.start_seal(first, selection)
+            out, err = idle.communicate(timeout=45)
+            assert idle.returncode == 0, (out, err)
+            assert json.loads(out) == {"state": "idle"}
+            earlier_untouched()
+        nil = self.start_seal(first, uuid.UUID(int=0))
+        out, err = nil.communicate(timeout=45)
+        assert nil.returncode != 0, (out, err)
+        earlier_untouched()
+        self.accept_seal(second, later_seal, (second["files"] / "same.txt").read_bytes())
+        replay = self.start_seal(first, later_seal)
+        out, err = replay.communicate(timeout=45)
+        assert replay.returncode == 0 and json.loads(out) == {"state": "idle"}, (out, err)
+        earlier_untouched()
+        legacy = self.start_seal(first)
+        out, err = legacy.communicate(timeout=45)
+        assert legacy.returncode == 0, (out, err)
+        ready = json.loads(out)
+        assert ready["state"] == "ready" and ready["seal"] == earlier_seal and ready["run"] == first["run"], ready
+        self.accept_seal(first, earlier_seal, (first["files"] / "same.txt").read_bytes())
+        print("PASS selected seal: later stopped capture is exact; unknown/ready/accepted selections never consume earlier work; unqualified capture remains available", flush=True)
 
     def diagnostics(self):
         # Fixture identifiers/state only; no credential files, source bytes or

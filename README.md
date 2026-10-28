@@ -53,7 +53,7 @@ does not establish that two changes work together; the combined result needs che
 
 ## What works today?
 
-Status as of **2026-10-26**. “Implemented” describes the stated component and its
+Status as of **2026-10-28**. “Implemented” describes the stated component and its
 tests, not completion of the entire product.
 
 | Area | Implemented and tested | Still incomplete |
@@ -106,18 +106,30 @@ incompatibility. See [security boundaries](SECURITY.md).
 
 ## Next release: Connected Preview
 
-The first installable release will focus on one complete GitHub workflow:
-**connect a repository → run two agents → submit changes → check the exact combined
-candidate → repair a conflict or failure → integrate through GitHub → clean up.**
+The first installable alpha will focus on one reproducible workflow:
+**connect a repository → prepare two isolated workspaces → run two agents → save
+immutable changes → publish GitHub PRs → clean up.** GitHub's existing checks,
+review and merge process handle the proposed code, including overlapping changes.
 
-Before publishing it, we must verify installation in a clean environment, the
-end-to-end demo, restart/retry and backup/restore, export/disconnection, and the
-release artifacts. The supported runtime and GitHub-policy limits will be explicit.
-This preview is intended for controlled pilot repositories; it is not available yet.
+Small alpha.1.x patches will address installation and workflow problems found by
+pilots. Alpha.2 will focus on repeat use, with its exact scope chosen from feedback.
+TreeHarbor-managed merge queues and full recovery of GitHub publication state
+after a disaster follow in separate releases. Their current implementations remain
+experimental and are outside the first alpha's supported workflow.
+
+Before publishing alpha.1, we must verify a clean installation and the complete
+packaged two-agent-to-PR demo, durable proposal receipts, safe retries without
+duplicate publication, credential/runtime separation, cleanup, source export and
+the signed release artifacts. The deployment guide will state backup and recovery
+limits. This preview is intended for controlled pilot repositories; it is not
+available yet.
 
 Standalone will follow in a later release. Its existing native components remain
 experimental; both modes continue to share the Rust core and standard ELv2.
-See the [release order](ROADMAP.md).
+See the [release order](ROADMAP.md). Evaluating a development build? Tell us what
+you tried, where you got blocked and whether you would run another task using the
+[pilot feedback template](.github/ISSUE_TEMPLATE/pilot-feedback.md). Do not share
+private source or credentials in a public issue.
 
 ## What remains before a full release?
 
@@ -132,8 +144,8 @@ See the [release order](ROADMAP.md).
 5. Publish raw comparisons with tuned Git and available alternatives, including
    cold/warm caches, useful-action latency, server costs and cleanup.
 
-An earlier, limited alpha needs tested installation artifacts, one documented
-workflow that users can reproduce, recovery/export instructions, and explicit
+The first, PR-focused alpha needs tested installation artifacts, one documented
+workspace-to-PR workflow, recovery/export instructions, and explicit
 known limitations. Those packaging gates are still open. It will not imply
 production readiness or completion of both modes. The
 [roadmap](ROADMAP.md) and [release gates](docs/implementation-status.md#release-gate-ledger)

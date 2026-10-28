@@ -42,6 +42,307 @@ async fn claim_seal(f: &mut Fixture, node: &Node) -> treeharbor_metadata::seals:
         .unwrap()
         .unwrap()
 }
+async fn queued_seal(
+    f: &mut Fixture,
+    owner: &Owner,
+    node: &Node,
+    key: &str,
+) -> (RunRequest, SealRequest) {
+    let run = prepared(f, node).await;
+    f.db.request_run(&ctx(owner, &format!("run-{key}")), &run)
+        .await
+        .unwrap();
+    let input = request(run.run);
+    f.db.request_workspace_seal(&ctx(owner, &format!("seal-{key}")), &input)
+        .await
+        .unwrap();
+    // Trusted removal metadata; the real runtime harness proves quiescence.
+    removed(f, node).await;
+    (run, input)
+}
+async fn seal_row(raw: &tokio_postgres::Client, scope: &Scope, seal: Uuid) -> serde_json::Value {
+    raw.query_one(
+        "SELECT to_jsonb(c) FROM th_workspace_seals c WHERE tenant=$1 AND repository=$2 AND seal=$3",
+        &[&scope.tenant(), &scope.repository(), &seal],
+    )
+    .await
+    .unwrap()
+    .get(0)
+}
+#[tokio::test]
+#[ignore = "requires disposable PostgreSQL; removal observations are trusted test input"]
+async fn selected_seal_never_falls_back_and_preserves_real_scope_and_authorization() {
+    let mut f = Fixture::new().await;
+    let owner = owner(&mut f, "owner").await;
+    let node = f.node("node").await;
+    let (_, first) = queued_seal(&mut f, &owner, &node, "first").await;
+    let (run, second) = queued_seal(&mut f, &owner, &node, "second").await;
+    let raw = connection(&f.schema).await;
+    let untouched = seal_row(&raw, &f.scope, first.seal).await;
+    assert_eq!(untouched["state"], "waiting");
+
+    // Real foreign rows, including another repository in this same tenant.
+    for tenant in [f.scope.tenant().to_owned(), "foreign-seal-tenant".into()] {
+        let scope = Scope::new(tenant, Uuid::new_v4()).unwrap();
+        f.db.create_repository(&scope, Authority::Standalone)
+            .await
+            .unwrap();
+        let mut foreign = Fixture::from_db(
+            f.schema.clone(),
+            scope,
+            Metadata::new(connection(&f.schema).await).await.unwrap(),
+        )
+        .await;
+        let foreign_owner = super::owner(&mut foreign, "owner").await;
+        let foreign_node = if foreign.scope.tenant() == f.scope.tenant() {
+            let (token, auth) = foreign.token("node", K::Node, P::RuntimeControl).await;
+            Node {
+                token,
+                auth,
+                storage: node.storage,
+            }
+        } else {
+            foreign.node("node").await
+        };
+        let (_, input) = queued_seal(&mut foreign, &foreign_owner, &foreign_node, "foreign").await;
+        let before = seal_row(&raw, &foreign.scope, input.seal).await;
+        assert!(
+            f.db.claim_workspace_seal_for(&node.auth, node.storage, Uuid::new_v4(), 60, input.seal)
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(before, seal_row(&raw, &foreign.scope, input.seal).await);
+        assert_eq!(untouched, seal_row(&raw, &f.scope, first.seal).await);
+    }
+    let other = f.node("other-node").await;
+    for (auth, storage, seal) in [
+        (&node.auth, node.storage, Uuid::new_v4()),
+        (&other.auth, other.storage, second.seal),
+    ] {
+        assert!(
+            f.db.claim_workspace_seal_for(auth, storage, Uuid::new_v4(), 60, seal)
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(untouched, seal_row(&raw, &f.scope, first.seal).await);
+    }
+    for (storage, worker, ttl, seal) in [
+        (node.storage, Uuid::new_v4(), 60, Uuid::nil()),
+        (node.storage, Uuid::nil(), 60, second.seal),
+        (node.storage, Uuid::new_v4(), 0, second.seal),
+    ] {
+        assert!(matches!(
+            f.db.claim_workspace_seal_for(&node.auth, storage, worker, ttl, seal)
+                .await,
+            Err(Error::Invalid(_))
+        ));
+    }
+    assert!(matches!(
+        f.db.claim_workspace_seal_for(&node.auth, other.storage, Uuid::new_v4(), 60, second.seal)
+            .await,
+        Err(Error::Fenced)
+    ));
+    assert!(
+        f.db.claim_workspace_seal_for(&owner.write, node.storage, Uuid::new_v4(), 60, second.seal)
+            .await
+            .is_err()
+    );
+    let active = prepared(&mut f, &node).await;
+    f.db.request_run(&ctx(&owner, "run-not-removed"), &active)
+        .await
+        .unwrap();
+    let waiting = request(active.run);
+    f.db.request_workspace_seal(&ctx(&owner, "seal-not-removed"), &waiting)
+        .await
+        .unwrap();
+    assert!(
+        f.db.claim_workspace_seal_for(&node.auth, node.storage, Uuid::new_v4(), 60, waiting.seal)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(untouched, seal_row(&raw, &f.scope, first.seal).await);
+    let selected =
+        f.db.claim_workspace_seal_for(&node.auth, node.storage, Uuid::new_v4(), 60, second.seal)
+            .await
+            .unwrap()
+            .unwrap();
+    assert_eq!(selected.id(), second.seal);
+    assert_eq!(selected.context().run(), run.run);
+    assert_eq!(selected.context().prepared().workspace, run.workspace);
+    assert_eq!(selected.selection().encode(), second.selection.encode());
+    assert!(
+        f.db.claim_workspace_seal_for(&node.auth, node.storage, Uuid::new_v4(), 60, second.seal)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    f.db.cancel_workspace_seal(&ctx(&owner, "cancel-selected"), second.seal)
+        .await
+        .unwrap();
+    assert!(
+        f.db.claim_workspace_seal_for(&node.auth, node.storage, Uuid::new_v4(), 60, second.seal)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(untouched, seal_row(&raw, &f.scope, first.seal).await);
+    assert_eq!(
+        raw.query_one("SELECT count(*) FROM th_seal_artifacts", &[])
+            .await
+            .unwrap()
+            .get::<_, i64>(0),
+        0
+    );
+    // Legacy scheduling still claims the untouched oldest eligible seal.
+    assert_eq!(claim_seal(&mut f, &node).await.id(), first.seal);
+    for revoked in [false, true] {
+        if revoked {
+            f.db.set_repository_access(&f.scope, "node", &[P::RuntimeControl], "operator")
+                .await
+                .unwrap();
+            f.db.revoke_repository_token(&f.scope, node.token.id, "operator")
+                .await
+                .unwrap();
+        } else {
+            f.db.set_repository_access(&f.scope, "node", &[P::Read], "operator")
+                .await
+                .unwrap();
+        }
+        let before = seal_row(&raw, &f.scope, first.seal).await;
+        assert!(
+            f.db.claim_workspace_seal_for(
+                &node.auth,
+                node.storage,
+                Uuid::new_v4(),
+                60,
+                Uuid::new_v4()
+            )
+            .await
+            .is_err(),
+            "authorization must precede an unknown selected seal"
+        );
+        assert_eq!(before, seal_row(&raw, &f.scope, first.seal).await);
+    }
+    cleanup(&f.schema).await;
+}
+#[tokio::test]
+#[ignore = "requires disposable PostgreSQL; removal observations are trusted test input"]
+async fn selected_seal_concurrent_claim_and_reclaim_never_consume_earlier_work() {
+    let mut f = Fixture::new().await;
+    let owner = owner(&mut f, "owner").await;
+    let node = f.node("node").await;
+    let (_, first) = queued_seal(&mut f, &owner, &node, "first").await;
+    let (run, second) = queued_seal(&mut f, &owner, &node, "second").await;
+    let raw = connection(&f.schema).await;
+    let untouched = seal_row(&raw, &f.scope, first.seal).await;
+    let mut peer = Metadata::new(connection(&f.schema).await).await.unwrap();
+    let (a, b) = tokio::join!(
+        f.db.claim_workspace_seal_for(&node.auth, node.storage, Uuid::new_v4(), 60, second.seal),
+        peer.claim_workspace_seal_for(&node.auth, node.storage, Uuid::new_v4(), 60, second.seal)
+    );
+    let old = match (a.unwrap(), b.unwrap()) {
+        (Some(plan), None) | (None, Some(plan)) => plan,
+        _ => panic!("exactly one selected claimant must win"),
+    };
+    assert_eq!(old.id(), second.seal);
+    assert_eq!(untouched, seal_row(&raw, &f.scope, first.seal).await);
+    use treeharbor_core::{ChangeOperation, EntryMode, EntryRef};
+    let blob = Object::Blob(b"trusted captured fixture bytes".to_vec());
+    let changes = Changes::with_subtrees(vec![ChangeOperation {
+        path: RepoPath::new(b"src".to_vec()).unwrap(),
+        expected: None,
+        replacement: Some(EntryRef {
+            mode: EntryMode::File,
+            target: blob.id().unwrap(),
+        }),
+    }])
+    .unwrap();
+    let items = [blob, Object::ChangeOperations(changes.clone())];
+    let publication = treeharbor_metadata::seals::SealPublication::new(
+        [50; 32],
+        changes,
+        items.iter().map(|object| object.id().unwrap()).collect(),
+        std::collections::BTreeMap::new(),
+        items
+            .iter()
+            .map(|object| object.encode().unwrap().len() as u64)
+            .sum(),
+    )
+    .unwrap();
+    let store = ManagedStore::open(
+        f._objects.path(),
+        TenantId::new(f.scope.tenant()).unwrap(),
+        "preparation-tests",
+    )
+    .unwrap();
+    f.db.begin_seal_publication(&node.auth, &old, &store, &publication)
+        .await
+        .unwrap();
+    let artifact: serde_json::Value = raw
+        .query_one(
+            "SELECT to_jsonb(a) FROM th_seal_artifacts a WHERE seal=$1",
+            &[&second.seal],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    let before = seal_row(&raw, &f.scope, second.seal).await;
+    raw.execute("UPDATE th_workspace_seals SET lease_until=clock_timestamp()-interval '1 second' WHERE seal=$1", &[&second.seal]).await.unwrap();
+    f.db = Metadata::new(connection(&f.schema).await).await.unwrap();
+    let current =
+        f.db.claim_workspace_seal_for(&node.auth, node.storage, Uuid::new_v4(), 60, second.seal)
+            .await
+            .unwrap()
+            .unwrap();
+    assert_eq!(current.id(), second.seal);
+    assert_eq!(current.context().run(), run.run);
+    assert_eq!(current.context().attempt(), old.context().attempt());
+    assert_eq!(
+        current.context().prepared().attempt,
+        old.context().prepared().attempt
+    );
+    assert_eq!(current.binding(), old.binding());
+    assert_eq!(current.context().binding(), old.context().binding());
+    assert_eq!(current.selection().encode(), old.selection().encode());
+    let after = seal_row(&raw, &f.scope, second.seal).await;
+    assert_eq!(
+        after["claim_generation"].as_i64(),
+        before["claim_generation"].as_i64().map(|n| n + 1)
+    );
+    assert_eq!(after["expires_at"], before["expires_at"]);
+    assert_ne!(after["worker"], before["worker"]);
+    assert!(matches!(
+        f.db.renew_workspace_seal(&node.auth, &old, 60).await,
+        Err(Error::StaleLease)
+    ));
+    assert!(matches!(
+        f.db.finish_seal_publication(&node.auth, &old, [50; 32])
+            .await,
+        Err(Error::StaleLease)
+    ));
+    f.db.begin_seal_publication(&node.auth, &current, &store, &publication)
+        .await
+        .unwrap();
+    assert_eq!(
+        artifact,
+        raw.query_one(
+            "SELECT to_jsonb(a) FROM th_seal_artifacts a WHERE seal=$1",
+            &[&second.seal]
+        )
+        .await
+        .unwrap()
+        .get::<_, serde_json::Value>(0)
+    );
+    f.db.renew_workspace_seal(&node.auth, &current, 60)
+        .await
+        .unwrap();
+    assert_eq!(untouched, seal_row(&raw, &f.scope, first.seal).await);
+    assert_eq!(claim_seal(&mut f, &node).await.id(), first.seal);
+    cleanup(&f.schema).await;
+}
 #[tokio::test]
 #[ignore = "requires disposable PostgreSQL; not a physical quiescence proof"]
 async fn seal_waits_for_removed_run_and_replays_exact_owner_request() {
@@ -357,6 +658,12 @@ async fn expired_seal_does_not_get_new_deadline_on_retry_or_claim() {
             .unwrap()
             .is_none()
     );
+    assert!(
+        f.db.claim_workspace_seal_for(&node.auth, node.storage, Uuid::new_v4(), 60, input.seal)
+            .await
+            .unwrap()
+            .is_none()
+    );
     assert_eq!(
         f.db.request_workspace_seal(&context, &input).await.unwrap(),
         first
@@ -535,7 +842,7 @@ async fn populated_v12_upgrade_preserves_managed_run_and_source_pins_for_seal() 
 #[tokio::test]
 #[ignore = "requires disposable PostgreSQL; exercises deadline during transaction"]
 async fn seal_deadline_expiring_inside_claim_or_renewal_rolls_back() {
-    for renewal in [false, true] {
+    for (renewal, selected) in [(false, false), (false, true), (true, false)] {
         let (mut f, owner, node, run) = live().await;
         let mut input = request(run.run);
         input.limits.ttl_seconds = 2;
@@ -561,6 +868,18 @@ async fn seal_deadline_expiring_inside_claim_or_renewal_rolls_back() {
         if let Some(plan) = old {
             assert!(matches!(
                 f.db.renew_workspace_seal(&node.auth, &plan, 60).await,
+                Err(Error::StaleLease)
+            ));
+        } else if selected {
+            assert!(matches!(
+                f.db.claim_workspace_seal_for(
+                    &node.auth,
+                    node.storage,
+                    Uuid::new_v4(),
+                    60,
+                    input.seal
+                )
+                .await,
                 Err(Error::StaleLease)
             ));
         } else {
