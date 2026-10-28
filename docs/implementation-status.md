@@ -9,11 +9,11 @@ below retain evidence from individual increments. Their earlier statements about
 unfinished work describe the scope at that time; they are not a replacement for
 the current overview or the full [release gate ledger](#release-gate-ledger).
 
-Last full CI baseline before this increment: [PR88](https://github.com/ArtAndrew/TreeHarbor/pull/88),
+Last full CI baseline before this increment: [PR89](https://github.com/ArtAndrew/TreeHarbor/pull/89),
 published on 2026-10-28 after all six required checks passed. Both Linux runtime
 jobs built, installed and tested the actual packages; their retained archive and
 sidecar hash chains were verified without a duplicate offline package build.
-The [CI run](https://github.com/ArtAndrew/TreeHarbor/actions/runs/40653073714) passed
+The [CI run](https://github.com/ArtAndrew/TreeHarbor/actions/runs/40657685319) passed
 414 ordinary tests on Linux and 412 on macOS, 332 real PostgreSQL contracts,
 14 static-runtime unit tests per Linux architecture, installed runtime/controller/
 managed/native workloads on x86-64 and ARM64, and webhook TLS/failure tests.
@@ -165,11 +165,15 @@ expose only the error kind, with a test excluding private error text.
 
 ## Connected Preview priority and candidate assessment
 
+The 0.1.0-alpha.1 version is a build candidate, not a published release. A reviewed
+scripted fixture and scratch-image recipe are included for the installed live
+trial. Signed tagged artifacts and that complete trial remain unverified.
+
 The experimental [agent-pair helper](../examples/connected-pr/README.md) uses the
 installed Rust CLI for two prepared runs, stopped-file capture and optional
 operator-controlled GitHub branch/PR publication. It preserves exact IDs, private
 write-ahead requests and Rust publisher state directories on retry. Eighteen local
-controlled-reply cases passed, including concurrent dispatch, lost replies,
+controlled-reply cases and the PR89 CI suite passed, including concurrent dispatch, lost replies,
 snapshot mismatch and operator-file separation. These are orchestration tests;
 the helper's complete installed GitHub/runtime workflow remains unverified. It
 does not provision a host, issue credentials, operate a queue or authorize merges.

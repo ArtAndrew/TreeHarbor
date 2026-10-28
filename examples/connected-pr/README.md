@@ -72,6 +72,45 @@ operator action. Initializing the journal saves distinct projection/publication/
 pull identities before any external write. It creates no remote resources.
 Omit this block to evaluate run/capture only.
 
+## Build the reviewed scripted fixture image
+
+This optional example needs the pinned Rust compiler with the native Linux musl
+static target/linker. The product CLI is installed from its package; compiling a
+fixture is not a requirement to use your own approved agent image.
+
+For a disposable repository, use the existing
+[small Cargo fixture](../github-queue/seed/) with `src/lib.rs` replaced by
+[fixture/baseline.rs](fixture/baseline.rs), then import its exact commit. The
+scripted program refuses any other file bytes before writing. The project trial
+uses that same source at acceptance-repository commit
+`a91d290d47abeaec32867dd21bb7107bec87ef05`.
+
+On the trusted Linux host, set `TH_BIN` to the verified resolved package executable
+and `TH_EXAMPLE` to this example directory. Build only this reviewed fixture:
+
+```sh
+TH_TARGET="$(uname -m)-unknown-linux-musl"
+TH_IMAGE_DIR=$(mktemp -d)
+rustc --edition 2024 --target "$TH_TARGET" -O \
+  "$TH_EXAMPLE/fixture/agent.rs" -o "$TH_IMAGE_DIR/agent"
+cp "$(dirname "$TH_BIN")/treeharbor-runtime-init" "$TH_IMAGE_DIR/init"
+docker build --network none --pull=false \
+  --iidfile "$TH_IMAGE_DIR/image-id" \
+  -f "$TH_EXAMPLE/fixture/Dockerfile" "$TH_IMAGE_DIR"
+```
+
+Pin the resulting `sha256:...` image ID in the registered runtime profile; do not
+use a mutable tag. Register the supported resource/user limits from the runtime
+guide. Each run's argv is `/agent A` or `/agent B`. No network or credentials are
+needed inside these tasks. Keep untrusted repository build scripts inside their
+external runtime; this host compilation example is for the reviewed fixture only.
+
+Both agents edit `src/lib.rs`. A doubles per-worker memory and the budget; B
+doubles workers and the budget. Each proposal fits the budget by itself, while
+the combination exceeds it. This is an intended scenario, not a claim of an
+executed combined-candidate check. The helper publishes proposals and leaves
+validation/review/merge to the ordinary GitHub process.
+
 ## Execute and publish
 
 Run from this directory, replacing the config path with your private file:
