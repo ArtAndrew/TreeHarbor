@@ -31,6 +31,18 @@ checksums are joined without claiming they identify compiled native inputs.
 This is Cargo coverage, not a complete native SBOM or signed provenance.
 See [report scope](binary-dependency-reports.md).
 
+## Retaining runtime-tested development archives
+
+Runtime CI now preserves the exact archive installed for its managed/native
+lifecycle tests, after comparing the installed binary hashes with the archive and
+dependency sidecars. The receipt distinguishes the actual checkout, PR head and
+workflow run/attempt. It is unsigned and covers those runtime tests only; it does
+not establish complete Connected acceptance, native dependency coverage or build
+provenance. A separate managed-check App template now documents the permissions
+needed for that development workflow without changing the original template.
+Local YAML/Python/JSON and patch checks passed; these additions require current-head
+CI and inspection of its retained artifacts before merge.
+
 ## Selecting one node execution
 
 `node run-once --run RUN_UUID` restricts the existing node/storage-scoped lease

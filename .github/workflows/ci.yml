@@ -162,3 +162,89 @@ jobs:
           TH_RUNTIME_PG_CONTAINER: ${{ job.services.postgres.id }}
           TH_RUNTIME_DATABASE_URL: host=/var/run/treeharbor-runtime-pg user=treeharbor_test password=disposable-ci-only dbname=treeharbor_test
         run: python3 scripts/test-native-checks.py
+      - name: Identify the exact installed and runtime-tested archive
+        env:
+          TH_PACKAGE_DIR: ${{ runner.temp }}/runtime-package
+          TH_SBOM_DIR: ${{ runner.temp }}/runtime-sbom
+          TH_PACKAGE_ARCH: ${{ matrix.arch }}
+          TH_MATRIX_JOB_NAME: ${{ matrix.check }}
+          TH_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          TH_PR_MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+        run: |
+          python3 - <<'PYTHON'
+          import hashlib, json, os, subprocess, tarfile
+          from pathlib import Path
+
+          def digest(data):
+              return hashlib.sha256(data).hexdigest()
+
+          package = Path(os.environ["TH_PACKAGE_DIR"])
+          sbom = Path(os.environ["TH_SBOM_DIR"])
+          archive, = package.glob("*.tar.gz")
+          archive_sha256 = digest(archive.read_bytes())
+          if archive.with_suffix(archive.suffix + ".sha256").read_text() != f"{archive_sha256}  {archive.name}\n":
+              raise RuntimeError("runtime-tested archive checksum mismatch")
+          observation_bytes = (sbom / "input-observations.json").read_bytes()
+          report_bytes = (sbom / "rust-dependencies.cdx.json").read_bytes()
+          observations = json.loads(observation_bytes)
+          with tarfile.open(archive) as contents:
+              prefix = archive.name.removesuffix(".tar.gz") + "/"
+              manifest = json.load(contents.extractfile(prefix + "manifest.json"))
+              binary_hashes = {name: digest(contents.extractfile(prefix + "bin/" + name).read())
+                               for name in ("treeharbor", "treeharbor-runtime-init")}
+          revision = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+          target = os.environ["TH_PACKAGE_ARCH"] + "-unknown-linux-musl"
+          if (manifest["source_revision"] != revision or revision != os.environ["GITHUB_SHA"]
+                  or manifest["target"] != target or observations["target"] != target
+                  or observations["packaging_source_revision"] != revision
+                  or manifest["rust_dependency_observations_sha256"] != digest(observation_bytes)
+                  or observations["rust_sbom_sha256"] != digest(report_bytes)
+                  or observations["binary_sha256"] != binary_hashes):
+              raise RuntimeError("runtime-tested archive/observations/source mismatch")
+          installed = {"treeharbor": Path(os.environ["TH_TEST_SERVICE_BINARY"]),
+                       "treeharbor-runtime-init": Path(os.environ["TH_TEST_RUNTIME_INIT"])}
+          if {name: digest(path.read_bytes()) for name, path in installed.items()} != binary_hashes:
+              raise RuntimeError("installed test executables differ from the retained archive")
+          for name, data in (("input-observations.json", observation_bytes),
+                             ("rust-dependencies.cdx.json", report_bytes),
+                             ("SBOM-SHA256SUMS", (sbom / "SHA256SUMS").read_bytes())):
+              with (package / name).open("xb") as output:
+                  output.write(data)
+          receipt = {"version": 1, "scope": "installed managed/native runtime tests",
+                     "source_revision": revision, "github_sha": os.environ["GITHUB_SHA"],
+                     "github_ref": os.environ["GITHUB_REF"], "event": os.environ["GITHUB_EVENT_NAME"],
+                     "pr_head_sha": os.environ["TH_PR_HEAD_SHA"] or None,
+                     "pr_merge_sha": os.environ["TH_PR_MERGE_SHA"] or None,
+                     "repository": os.environ["GITHUB_REPOSITORY"],
+                     "workflow_ref": os.environ["GITHUB_WORKFLOW_REF"],
+                     "run_id": os.environ["GITHUB_RUN_ID"], "run_attempt": os.environ["GITHUB_RUN_ATTEMPT"],
+                     "job": os.environ["GITHUB_JOB"], "matrix_job_name": os.environ["TH_MATRIX_JOB_NAME"],
+                     "architecture": os.environ["TH_PACKAGE_ARCH"], "target": target,
+                     "product_version": manifest["product_version"],
+                     "archive": {"name": archive.name, "sha256": archive_sha256},
+                     "binary_sha256": binary_hashes,
+                     "sidecar_sha256": {name: digest((package / name).read_bytes()) for name in
+                                        ("input-observations.json", "rust-dependencies.cdx.json", "SBOM-SHA256SUMS")},
+                     "completed_test_commands": ["python3 scripts/test-managed-runs.py",
+                                                 "python3 scripts/test-native-checks.py"]}
+          with (package / "tested-runtime-artifacts.json").open("x") as output:
+              json.dump(receipt, output, sort_keys=True, indent=2)
+              output.write("\n")
+          PYTHON
+          cd "$TH_PACKAGE_DIR"
+          sha256sum --check --strict *.tar.gz.sha256
+          sha256sum --check --strict SBOM-SHA256SUMS
+      - name: Retain exact archives after installed runtime acceptance
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: treeharbor-runtime-tested-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/runtime-package/*.tar.gz
+            ${{ runner.temp }}/runtime-package/*.tar.gz.sha256
+            ${{ runner.temp }}/runtime-package/input-observations.json
+            ${{ runner.temp }}/runtime-package/rust-dependencies.cdx.json
+            ${{ runner.temp }}/runtime-package/SBOM-SHA256SUMS
+            ${{ runner.temp }}/runtime-package/tested-runtime-artifacts.json
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0

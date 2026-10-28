@@ -1,0 +1,20 @@
+{
+  "name": "TreeHarbor Managed Acceptance",
+  "url": "https://github.com/ArtAndrew/TreeHarbor",
+  "description": "Operator-owned App for TreeHarbor managed required checks on one synthetic repository.",
+  "public": false,
+  "hook_attributes": {
+    "url": "https://REPLACE_WITH_CALLBACK_HOST/github/events",
+    "active": false
+  },
+  "default_permissions": {
+    "contents": "write",
+    "metadata": "read",
+    "pull_requests": "write",
+    "checks": "write",
+    "merge_queues": "write",
+    "administration": "read"
+  },
+  "default_events": [],
+  "request_oauth_on_install": false
+}

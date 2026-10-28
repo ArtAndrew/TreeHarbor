@@ -25,8 +25,11 @@ Do not copy product history, internal planning files, local configuration or key
 Keep the fixture limited to the reviewed synthetic workloads. Do not accept or
 enqueue external contributions without the project's contribution-rights process.
 
-Register a private App owned by the operator's organization. The manifest template
-is a reviewable permission list, not a ready registration command. Choose a unique
+Register a private App owned by the operator's organization. The original
+[manifest template](app-manifest.template.json) is for the Actions check-observation
+profile below. Use the separate [managed-check profile](#managed-required-check-profile-development)
+when TreeHarbor will publish required checks. Both are reviewable permission lists,
+not ready registration commands. Choose a unique
 App name and replace the callback host with the operator's HTTPS endpoint. For
 the manifest handshake, add a controlled `redirect_url`, validate an unpredictable
 `state`, and exchange the returned code without logging it or credentials. Follow
@@ -45,14 +48,52 @@ owner identity, not the App or an agent credential.
 Configure main to require PRs, the observed GitHub Actions App's `Queue fixture`
 check, a merge queue, and no force pushes/deletions/bypass. Start with MERGE,
 ALLGREEN, build concurrency 2 and a maximum merge batch of 1. Record the actual
-host configuration. Repeat the mapping acceptance for SQUASH and REBASE; passing
-MERGE does not prove the other methods. Fixture rules must never replace or weaken
+host configuration. Other merge methods require separate mapping acceptance;
+passing MERGE does not prove them. Fixture rules must never replace or weaken
 TreeHarbor's product-repository protection.
 
 The dedicated [webhook receiver](../../docs/github-events.md) needs public TLS
 ingress to `/github/events`, with its original request body/signature preserved.
 Do not expose the command socket. Retain successful callback events and explicitly
 recover missed deliveries; GitHub does not automatically retry failures.
+
+## Managed required-check profile (development)
+
+For TreeHarbor's [managed checks](../../docs/github-managed-checks.md), review the
+separate [managed-check manifest](app-manifest.managed-checks.template.json).
+The original template keeps Checks:read and cannot publish a managed check.
+The new profile covers branch/PR delivery, queue operations, required-check
+publication and host-policy reads on the selected fixture repository:
+
+| Repository permission | Purpose |
+| --- | --- |
+| Contents:write | Branch publication and explicitly requested queue-settings/result reads |
+| Pull requests:write | Create or update the selected PR |
+| Checks:write | Publish the exact collected managed result |
+| Merge queues:write | Enqueue or explicitly remove a PR |
+| Administration:read | Read protection and host configuration; no rule mutation |
+| Metadata:read | Verify the pinned repository identity |
+
+These are installation grants; TreeHarbor still narrows each temporary token to
+one numeric repository and the permissions needed for that operation. In particular,
+queue-settings reads request Contents:write only with the documented explicit option.
+Actions:read is omitted. Add it explicitly only when using the separate
+[workflow-attempt collector](../../docs/github-group-attempts.md) (`--check-report`);
+managed execution and ordinary group-check capture do not need it.
+
+The managed template leaves webhooks inactive. Configure its placeholder callback
+URL for registration; enable `merge_group` delivery and TLS ingress separately if
+using signed callbacks. A polling-only managed-check run does not require ingress.
+For a fresh managed-only fixture policy, use the exact contexts returned by the
+[owner policy plan](../../docs/github-admission-policy.md), rather than substituting
+the Actions `Queue fixture` requirement above. Do not remove existing requirements
+to fit this profile; unsupported workflow/review context remains unproven.
+
+App registration, private credentials, runtime setup, exact candidate execution,
+queue polling/recovery and [final-publication verification](../../docs/github-publication-proof.md)
+remain separate steps. This template is not a complete installation or workflow,
+and grants no check approval or merge authorization. Follow the separate
+[managed publisher](../../docs/github-check-publications.md) lifecycle.
 
 ## Evidence to collect
 
