@@ -70,3 +70,17 @@ The runtime CI also installs a newly built static package and passes its service
 and runtime-init paths to the managed lifecycle tests. Those tests keep their
 adversarial probe as a separate fixture while executing the installed product
 binaries. Full Connected live acceptance remains a separate gate.
+
+After the managed and native lifecycle tests succeed, runtime CI now retains
+that exact archive as `treeharbor-runtime-tested-RUN-ATTEMPT-ARCH-SHA`. It compares
+the installed executables with the archived bytes and checks their links to the
+dependency reports before upload. No rebuild or repackaging occurs at this step.
+`tested-runtime-artifacts.json` records the archive digest, sidecar digests,
+actual checkout revision, workflow run/attempt and completed test commands.
+The receipt is unsigned; it is not build provenance or approval for release.
+
+The separate offline-package job still produces its own development archive.
+Do not substitute it for the runtime-tested archive based on a matching source
+SHA. Pull-request runs may test a synthetic merge revision; the receipt records
+the checkout, PR head and merge context separately. A release must verify its
+selected source, exact archive bytes, remaining acceptance and signed provenance.
