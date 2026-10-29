@@ -28,7 +28,21 @@ fn entry(name: &[u8], mode: EntryMode, object: &Object) -> Entry {
 #[ignore = "requires disposable PostgreSQL; actual CLI/HTTP/storage, trusted runtime fixture"]
 async fn immutable_change_cli_computes_tree_preserves_omitted_files_and_replays_after_server_death()
 {
-    let mut f = Fixture::new().await;
+    proposal_roundtrip(Authority::Standalone, false).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires PostgreSQL; actual API/CLI, no Git or runtime executables"]
+async fn external_api_proposal_survives_process_loss_and_close_in_standalone() {
+    proposal_roundtrip(Authority::Standalone, true).await;
+}
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires PostgreSQL; actual API/CLI in Connected, no new GitHub credentials"]
+async fn external_api_proposal_survives_process_loss_and_close_in_connected() {
+    proposal_roundtrip(Authority::Connected, true).await;
+}
+async fn proposal_roundtrip(authority: Authority, external: bool) {
+    let mut f = Fixture::new_with_authority(authority).await;
     f.importer();
     f.config.request_timeout_ms = 15000;
     f.config.pool_size = 3;
@@ -72,7 +86,7 @@ async fn immutable_change_cli_computes_tree_preserves_omitted_files_and_replays_
         "--state",
         f.dir.path().join("proposal-import.json").to_str().unwrap(),
         "--authority",
-        "standalone",
+        authority.as_str(),
         "--epoch",
         "1",
     ]));
@@ -81,7 +95,7 @@ async fn immutable_change_cli_computes_tree_preserves_omitted_files_and_replays_
         "--key",
         "proposal-profile",
         "--authority",
-        "standalone",
+        authority.as_str(),
         "--epoch",
         "1",
         "--full",
@@ -121,25 +135,75 @@ async fn immutable_change_cli_computes_tree_preserves_omitted_files_and_replays_
     ]);
     let workspace = Uuid::new_v4();
     let run = Uuid::new_v4();
-    ok(f.cli(&[
-        "workspace-create",
-        "--key",
-        "proposal-workspace",
-        "--authority",
-        "standalone",
-        "--epoch",
-        "1",
-        "--workspace",
-        &workspace.to_string(),
-        "--base",
-        imported["revision"].as_str().unwrap(),
-        "--profile-digest",
-        profile["profile_digest"].as_str().unwrap(),
-    ]));
-    // Transport fixture only. Actual managed execution/removal is tested by the
-    // separate disposable Linux gVisor harness, not fabricated by this test.
-    f.sql.execute("UPDATE th_workspaces SET state='in_use',runtime='fixture',node='fixture' WHERE workspace=$1",&[&workspace]).await.unwrap();
-    f.sql.execute("INSERT INTO th_agent_runs(tenant,repository,run,workspace,workspace_generation,epoch,principal,agent,task,runtime,state) SELECT tenant,repository,$1,workspace,generation,epoch,principal,'fixture','fixture',runtime,'running' FROM th_workspaces WHERE workspace=$2",&[&run,&workspace]).await.unwrap();
+    if external {
+        let args = [
+            "api-run-create",
+            "--key",
+            "proposal-workspace",
+            "--authority",
+            authority.as_str(),
+            "--epoch",
+            "1",
+            "--workspace",
+            &workspace.to_string(),
+            "--run",
+            &run.to_string(),
+            "--base",
+            imported["revision"].as_str().unwrap(),
+            "--profile-digest",
+            profile["profile_digest"].as_str().unwrap(),
+            "--agent",
+            "controller/1",
+            "--task",
+            "edit-source",
+        ];
+        let created = ok(f.cli(&args));
+        assert_eq!(created, ok(f.cli(&args)));
+        assert_eq!(created["execution_observed"], false);
+        assert_eq!(created["workspace_state"], "source_ready");
+        let mut forged = json!({"method":"api_run_create","key":"forged","authority":authority.as_str(),"epoch":1,
+            "workspace":Uuid::new_v4().to_string(),"run":Uuid::new_v4().to_string(),"base":imported["revision"],
+            "profile_digest":profile["profile_digest"],"agent":"controller/1","task":"edit-source"});
+        forged["runtime"] = json!("pretend-safe");
+        assert_eq!(f.send(forged).await.status.as_u16(), 400);
+        let download = f.dir.path().join("api-baseline.txt");
+        ok(f.cli(&[
+            "source-file",
+            "--workspace",
+            &workspace.to_string(),
+            "--generation",
+            "1",
+            "--authority",
+            authority.as_str(),
+            "--epoch",
+            "1",
+            "--path",
+            "src/same.txt",
+            "--output",
+            download.to_str().unwrap(),
+        ]));
+        assert_eq!(fs::read(download).unwrap(), b"before");
+    } else {
+        ok(f.cli(&[
+            "workspace-create",
+            "--key",
+            "proposal-workspace",
+            "--authority",
+            authority.as_str(),
+            "--epoch",
+            "1",
+            "--workspace",
+            &workspace.to_string(),
+            "--base",
+            imported["revision"].as_str().unwrap(),
+            "--profile-digest",
+            profile["profile_digest"].as_str().unwrap(),
+        ]));
+        // Transport fixture only. Actual managed execution/removal is tested by the
+        // separate disposable Linux gVisor harness, not fabricated by this test.
+        f.sql.execute("UPDATE th_workspaces SET state='in_use',runtime='fixture',node='fixture' WHERE workspace=$1",&[&workspace]).await.unwrap();
+        f.sql.execute("INSERT INTO th_agent_runs(tenant,repository,run,workspace,workspace_generation,epoch,principal,agent,task,runtime,state) SELECT tenant,repository,$1,workspace,generation,epoch,principal,'fixture','fixture',runtime,'running' FROM th_workspaces WHERE workspace=$2",&[&run,&workspace]).await.unwrap();
+    }
     let upload = Uuid::new_v4();
     let changeset = Uuid::new_v4();
     let begin = [
@@ -147,7 +211,7 @@ async fn immutable_change_cli_computes_tree_preserves_omitted_files_and_replays_
         "--key",
         "proposal-begin",
         "--authority",
-        "standalone",
+        authority.as_str(),
         "--epoch",
         "1",
         "--upload",
@@ -188,7 +252,7 @@ async fn immutable_change_cli_computes_tree_preserves_omitted_files_and_replays_
     ]);
     let manifest = f.dir.path().join("proposal-operations.json");
     files::write_private(&manifest, operations.to_string().as_bytes()).unwrap();
-    let body = json!({"version":1,"tenant":f.scope.tenant(),"repository":f.scope.repository().to_string(),"key":"proposal-submit","authority":"standalone","epoch":1,"upload":upload.to_string(),"changeset":changeset.to_string(),"previous_version":0,"operations":operations});
+    let body = json!({"version":1,"tenant":f.scope.tenant(),"repository":f.scope.repository().to_string(),"key":"proposal-submit","authority":authority.as_str(),"epoch":1,"upload":upload.to_string(),"changeset":changeset.to_string(),"previous_version":0,"operations":operations});
     let credential = f.credential();
     let mut invalid = body.clone();
     invalid["operations"][0]["expected"]["object"] = json!(gone.id().unwrap().to_string());
@@ -304,7 +368,7 @@ async fn immutable_change_cli_computes_tree_preserves_omitted_files_and_replays_
         "--key",
         "proposal-submit",
         "--authority",
-        "standalone",
+        authority.as_str(),
         "--epoch",
         "1",
         "--upload",
@@ -317,6 +381,11 @@ async fn immutable_change_cli_computes_tree_preserves_omitted_files_and_replays_
     let accepted = ok(f.cli(&submit));
     assert_eq!(accepted["state"], "accepted");
     assert_eq!(accepted["run"], run.to_string());
+    if external {
+        assert_eq!(accepted["run_origin"], "external_api");
+        assert_eq!(accepted["execution_observed"], false);
+    }
+
     // Independently construct the expected full result. Unmentioned keep.bin
     // survives, deletion is explicit, and executable mode is preserved.
     let src = Object::Directory(
@@ -368,7 +437,7 @@ async fn immutable_change_cli_computes_tree_preserves_omitted_files_and_replays_
         "--key",
         "proposal-drain",
         "--authority",
-        "standalone",
+        authority.as_str(),
         "--epoch",
         "1",
         "--workspace",
@@ -376,6 +445,26 @@ async fn immutable_change_cli_computes_tree_preserves_omitted_files_and_replays_
         "--generation",
         "1",
     ]));
+    if external {
+        let status = ok(f.cli(&["api-run-status", "--run", &run.to_string()]));
+        assert_eq!(status["state"], "closed");
+        assert_eq!(status["workspace_state"], "deleted");
+        assert_eq!(status["workspace_generation"], 2);
+        assert!(status.get("runtime_removed").is_none());
+        let late = json!({"method":"change_begin","key":"late-upload","authority":authority.as_str(),"epoch":1,
+            "upload":Uuid::new_v4().to_string(),"run":run.to_string(),"generation":1,
+            "max_objects":3,"max_bytes":1024,"ttl_seconds":60});
+        assert_eq!(f.send(late).await.status.as_u16(), 409);
+        assert_eq!(f.sql.query_one("SELECT count(*) FROM th_outbox WHERE kind IN ('workspace.prepare','workspace.drain','run.execute')",&[]).await.unwrap().get::<_,i64>(0),0);
+        assert_eq!(
+            f.sql
+                .query_one("SELECT count(*) FROM th_managed_runs", &[])
+                .await
+                .unwrap()
+                .get::<_, i64>(0),
+            0
+        );
+    }
     assert_eq!(ok(f.cli(&submit)), accepted);
     let status = ok(f.cli(&["operation-status", "--key", "proposal-submit"]));
     assert_eq!(status["result"], accepted);

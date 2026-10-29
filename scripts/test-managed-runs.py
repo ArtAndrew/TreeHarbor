@@ -731,6 +731,57 @@ class Harness:
         assert ready["state"] == "ready" and ready["seal"] == earlier_seal and ready["run"] == first["run"], ready
         self.accept_seal(first, earlier_seal, (first["files"] / "same.txt").read_bytes())
         print("PASS selected seal: later stopped capture is exact; unknown/ready/accepted selections never consume earlier work; unqualified capture remains available", flush=True)
+        self.external_api_contexts()
+
+    def external_api_contexts(self):
+        # Exercise the installed Rust API path without node/runtime commands.
+        before = self.sql("SELECT count(*) FROM th_outbox WHERE kind IN ('workspace.prepare','run.execute','workspace.drain')")
+        changes = []
+        for index, credential in enumerate(self.agents):
+            workspace, run, upload, change = [str(uuid.uuid4()) for _ in range(4)]
+            create = ["api-run-create", "--key", "api-create-" + run, "--authority", "standalone", "--epoch", "1",
+                      "--workspace", workspace, "--run", run, "--base", self.revision,
+                      "--profile-digest", self.source_profile, "--agent", "external-controller/1", "--task", "api-edit"]
+            receipt = self.client(*create, credential=credential)
+            assert receipt == self.client(*create, credential=credential)
+            assert receipt["state"] == "recorded" and receipt["workspace_state"] == "source_ready"
+            assert receipt["execution_observed"] is False
+            downloaded = self.root / ("api-source-" + run)
+            self.client("source-file", "--workspace", workspace, "--generation", "1", "--authority", "standalone",
+                        "--epoch", "1", "--path", "same.txt", "--output", downloaded, credential=credential)
+            assert downloaded.read_bytes() == b"base\n"
+            other = self.agents[1 - index]
+            assert self.client("api-run-status", "--run", run, credential=other, check=False).returncode != 0
+            self.client("change-begin", "--key", "api-begin-" + run, "--authority", "standalone", "--epoch", "1",
+                        "--upload", upload, "--run", run, "--generation", "1", credential=credential)
+            content = self.root / ("api-content-" + run)
+            content.write_bytes(("api-agent-" + str(index)).encode())
+            content.chmod(0o600)
+            blob = self.client("change-put", "--upload", upload, "--file", content, credential=credential)["object"]
+            old = sha256(b"treeharbor\0" + (1).to_bytes(2, "big") + bytes([1]) + (5).to_bytes(8, "big") + b"base\n").hexdigest()
+            operations = self.root / ("api-operations-" + run + ".json")
+            private_json(operations, [{"path_hex": b"same.txt".hex(),
+                                      "expected": {"mode": 0o100644, "object": "sha256:" + old},
+                                      "replacement": {"mode": 0o100644, "object": blob}}])
+            submit = ["change-submit", "--key", "api-submit-" + run, "--authority", "standalone", "--epoch", "1",
+                      "--upload", upload, "--changeset", change, "--operations", operations]
+            accepted = self.client(*submit, credential=credential)
+            assert accepted["run_origin"] == "external_api" and accepted["execution_observed"] is False
+            close = ["api-run-close", "--key", "api-close-" + run, "--authority", "standalone", "--epoch", "1",
+                     "--run", run, "--generation", "1"]
+            closed = self.client(*close, credential=credential)
+            assert closed == self.client(*close, credential=credential)
+            assert closed["state"] == "deleted" and closed["run_state"] == "closed"
+            assert "runtime_removed" not in closed
+            assert self.client(*submit, credential=credential) == accepted
+            retained = self.client("diff", "--authority", "standalone", "--epoch", "1", "change",
+                                   "--changeset", change, "--version", "1", credential=credential)
+            assert retained["after_snapshot"] == accepted["result_snapshot"]
+            changes.append(accepted)
+        assert changes[0]["base_snapshot"] == changes[1]["base_snapshot"]
+        assert changes[0]["result_snapshot"] != changes[1]["result_snapshot"]
+        assert self.sql("SELECT count(*) FROM th_outbox WHERE kind IN ('workspace.prepare','run.execute','workspace.drain')") == before
+        print("PASS installed external API: two scoped contexts read exact source, propose overlapping immutable edits and close without runtime observations; retained diffs and retries remain valid", flush=True)
 
     def diagnostics(self):
         # Fixture identifiers/state only; no credential files, source bytes or

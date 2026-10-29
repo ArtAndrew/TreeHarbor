@@ -356,7 +356,7 @@ impl Metadata {
             Begin::Fresh(tx) => tx,
         };
         let s = &ctx.scope;
-        let row=tx.tx.query_opt("SELECT state FROM th_agent_runs WHERE tenant=$1 AND repository=$2 AND run=$3 AND principal=$4 AND epoch=$5",&[&s.tenant(),&s.repository(),&run,&ctx.principal,&ctx.epoch]).await?.ok_or(Error::NotFound)?;
+        let row=tx.tx.query_opt("SELECT state FROM th_agent_runs WHERE tenant=$1 AND repository=$2 AND run=$3 AND principal=$4 AND epoch=$5 AND origin='control_plane'",&[&s.tenant(),&s.repository(),&run,&ctx.principal,&ctx.epoch]).await?.ok_or(Error::NotFound)?;
         let state: String = row.get(0);
         let active = matches!(
             state.as_str(),

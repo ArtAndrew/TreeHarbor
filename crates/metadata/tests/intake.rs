@@ -1,3 +1,5 @@
+#[path = "intake/api_runs.rs"]
+mod api_runs;
 mod common;
 #[path = "intake/github_projection.rs"]
 mod github_projection;

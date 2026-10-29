@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.1.4-alpha.1 — external agent API contexts — unreleased
+
+- Add `api-run-create/status/close`: pin an exact source and accept immutable
+  proposals from a controller with its own execution environment. Explicit API
+  delivery and external provenance do not assert runtime isolation or test success.
+- Retain accepted changes after logical close; fence new writes and preserve
+  idempotent receipts. Managed runtime preparation/capture remain separate.
+- Add schema 032; stop services/workers, back up, explicitly migrate and update all
+  binaries together. See [the API workflow and upgrade contract](docs/external-api-runs.md).
+- Installation/runtime CI and signed release publication are pending.
+
+## 0.1.3-alpha.1 — local service diagnostics — 2026-10-29
+
+- Add `doctor --config` for redacted local configuration, path, database and schema
+  diagnostics without implicit provisioning. See [scope and repairs](docs/doctor.md).
+- Publish signed Linux x86-64/ARM64 packages tested through installed runtime CI.
+  This does not certify full deployment health or a fresh live GitHub/LLM trial.
+
 ## 0.1.2-alpha.1 — resumable workspace requests — 2026-10-28
 
 - Add `client workspace-new`: persist a generated workspace ID and request key

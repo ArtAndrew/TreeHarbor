@@ -706,7 +706,7 @@ async fn cleanup_v13_upgrade_preserves_existing_workspace_and_run_records() {
     f.db.request_run(&ctx(&owner, "run"), &run).await.unwrap();
     let before = upgrade_snapshot(&raw).await;
     let workspace_before: serde_json::Value = raw
-        .query_one("SELECT to_jsonb(w) FROM th_workspaces w", &[])
+        .query_one("SELECT to_jsonb(w)-'delivery' FROM th_workspaces w", &[])
         .await
         .unwrap()
         .get(0);
@@ -719,7 +719,7 @@ async fn cleanup_v13_upgrade_preserves_existing_workspace_and_run_records() {
     f.db.check_schema().await.unwrap();
     assert_eq!(upgrade_snapshot(&raw).await, before);
     assert_eq!(
-        raw.query_one("SELECT to_jsonb(w) FROM th_workspaces w", &[])
+        raw.query_one("SELECT to_jsonb(w)-'delivery' FROM th_workspaces w", &[])
             .await
             .unwrap()
             .get::<_, serde_json::Value>(0),
@@ -730,7 +730,7 @@ async fn cleanup_v13_upgrade_preserves_existing_workspace_and_run_records() {
             .await
             .unwrap()
             .get::<_, i32>(0),
-        31
+        32
     );
     drain(&mut f, run.workspace).await;
     let stopped = claim(&mut f, &node).await;

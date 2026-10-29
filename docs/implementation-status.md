@@ -21,6 +21,33 @@ These correctness checks do not establish complete mode readiness or performance
 superiority. The installed native workload includes deliberate replacement-node
 recovery; live GitHub recovery remains a separate release gate.
 
+## External API contexts — 0.1.4-alpha.1 development candidate
+
+The Rust service/CLI now exposes `api-run-create/status/close`. Atomic creation
+pins an exact base/profile and records caller-declared task lineage; it schedules
+no preparation or execution. API delivery uses `source_ready`, not physical
+readiness. External runs use `recorded/closed`, not observed execution outcomes.
+Proposal acceptance adds explicit external provenance and still computes trees
+from exact expected-before operations. Closing releases only the workspace pin,
+fences new reads/writes and preserves accepted versions and saved receipts.
+See [protocol v1 and upgrade requirements](external-api-runs.md).
+
+Local verification passed three real PostgreSQL/object-store contracts covering
+two overlapping proposals, owner/generation fencing, schema constraints, atomic
+creation rollback, accept/close concurrency, pin retention after holds expire and
+populated schema-31 upgrade with old receipt replay. Two actual CLI/HTTP scenarios
+in Connected/Standalone passed with Git/runtime executables absent, including
+server loss before object publication and after accepted commit. A separate
+actual Connected projection test passed export to ordinary Git after API context
+close, including interrupted projection preparation and exact parent preservation.
+Two v1 vector/claim-rejection unit tests passed; 28 existing upgrade regressions
+passed. The final versioned candidate passed both v1 tests, all three metadata contracts,
+the three external CLI/HTTP paths and an existing MCP transport regression.
+Strict all-targets metadata/service Clippy passed. Required CI,
+installed package verification and signed publication are pending; published
+0.1.3 packages do not include these commands. No live App grants or new GitHub
+credentials were used. This does not certify either full mode or performance.
+
 ## Released local service doctor — 0.1.3-alpha.1
 
 `doctor --config` inspects private configuration, source/socket directory rules,

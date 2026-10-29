@@ -20,6 +20,7 @@ pub(crate) struct RunSource {
     pub revision: RevisionRef,
     pub snapshot: ObjectId,
     pub pin: String,
+    pub external_api: bool,
 }
 pub(crate) async fn run_source_in(
     tx: &Transaction<'_>,
@@ -32,16 +33,20 @@ pub(crate) async fn run_source_in(
     if generation <= 0 {
         return Err(Error::Invalid("workspace generation"));
     }
-    let row=tx.query_opt(r#"SELECT w.base_revision,b.snapshot,w.pin_holder FROM th_agent_runs r
+    let row=tx.query_opt(r#"SELECT w.base_revision,b.snapshot,w.pin_holder,r.origin FROM th_agent_runs r
         JOIN th_workspaces w USING (tenant,repository,workspace)
         JOIN th_bases b ON b.tenant=w.tenant AND b.repository=w.repository AND b.revision=w.base_revision
         WHERE r.tenant=$1 AND r.repository=$2 AND r.run=$3 AND r.principal=$4 AND w.principal=$4
-        AND w.state='in_use' AND r.epoch=$5 AND w.epoch=$5
+        AND r.epoch=$5 AND w.epoch=$5
         AND r.workspace_generation=$6 AND w.generation=$6 AND w.resolved_profile IS NOT NULL
-        AND ((r.state='running' AND r.runtime=w.runtime) OR
-             (r.state IN ('succeeded','failed','cancelled','lost') AND EXISTS
-              (SELECT 1 FROM th_managed_runs m WHERE m.tenant=r.tenant AND m.repository=r.repository
-               AND m.run=r.run AND m.removed)))"#,
+        AND ((r.origin='control_plane' AND w.delivery='files' AND w.state='in_use' AND
+             ((r.state='running' AND r.runtime=w.runtime) OR
+              (r.state IN ('succeeded','failed','cancelled','lost') AND EXISTS
+               (SELECT 1 FROM th_managed_runs m WHERE m.tenant=r.tenant AND m.repository=r.repository
+                AND m.run=r.run AND m.removed))))
+          OR (r.origin='external_api' AND w.delivery='api' AND w.state='source_ready'
+              AND r.state='recorded' AND r.runtime IS NULL AND r.started_at IS NULL
+              AND w.node IS NULL AND w.runtime IS NULL))"#,
         &[&scope.tenant,&scope.repository,&run,&principal,&epoch,&generation]).await?.ok_or(Error::ExecutionState)?;
     Ok(RunSource {
         revision: row.get::<_, String>(0).parse()?,
@@ -51,6 +56,7 @@ pub(crate) async fn run_source_in(
                 .map_err(|_| Error::SchemaMismatch)?,
         ),
         pin: row.get(2),
+        external_api: row.get::<_, String>(3) == "external_api",
     })
 }
 

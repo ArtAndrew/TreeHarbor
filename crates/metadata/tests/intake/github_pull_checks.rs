@@ -420,7 +420,7 @@ async fn pull_check_upgrade_preserves_collected_group_evidence_bytes() {
             .await
             .unwrap()
             .get::<_, i32>(0),
-        31
+        32
     );
     assert_eq!(
         bytes,

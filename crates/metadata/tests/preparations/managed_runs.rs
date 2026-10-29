@@ -849,7 +849,7 @@ async fn populated_v7_upgrade_preserves_legacy_run_and_reserved_preparation() {
 }
 
 async fn upgrade_snapshot(raw: &tokio_postgres::Client) -> serde_json::Value {
-    raw.query_one("SELECT jsonb_build_object('runs',(SELECT jsonb_agg(to_jsonb(r) ORDER BY run) FROM th_agent_runs r),'preparations',(SELECT jsonb_agg(to_jsonb(p) ORDER BY attempt) FROM th_workspace_preparations p),'operations',(SELECT jsonb_agg(to_jsonb(o) ORDER BY key) FROM th_operations o),'pins',(SELECT jsonb_agg(to_jsonb(p) ORDER BY holder) FROM th_object_pins p))", &[]).await.unwrap().get(0)
+    raw.query_one("SELECT jsonb_build_object('runs',(SELECT jsonb_agg(to_jsonb(r)-'origin' ORDER BY run) FROM th_agent_runs r),'preparations',(SELECT jsonb_agg(to_jsonb(p) ORDER BY attempt) FROM th_workspace_preparations p),'operations',(SELECT jsonb_agg(to_jsonb(o) ORDER BY key) FROM th_operations o),'pins',(SELECT jsonb_agg(to_jsonb(p) ORDER BY holder) FROM th_object_pins p))", &[]).await.unwrap().get(0)
 }
 
 #[tokio::test]

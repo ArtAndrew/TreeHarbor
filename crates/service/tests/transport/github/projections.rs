@@ -21,8 +21,8 @@ fn raw_prepare(f: &Fixture, id: Uuid) -> Vec<u8> {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-#[ignore = "requires PostgreSQL; actual Connected CLI/export/Git, server kills, trusted run fixture (no live App)"]
-async fn accepted_projection_recovers_before_and_after_commit_and_exports_exact_git_parent() {
+#[ignore = "requires PostgreSQL; actual Connected CLI/export/Git, server kills, external API run (no live App)"]
+async fn external_api_projection_recovers_after_context_close_and_exports_exact_git_parent() {
     let mut f = Fixture::new_with_authority(Authority::Connected).await;
     f.importer();
     f.config.request_timeout_ms = 15000;
@@ -126,7 +126,7 @@ async fn accepted_projection_recovers_before_and_after_commit_and_exports_exact_
     let workspace = Uuid::new_v4();
     let run = Uuid::new_v4();
     result(f.cli(&[
-        "workspace-create",
+        "api-run-create",
         "--key",
         "workspace",
         "--authority",
@@ -135,14 +135,17 @@ async fn accepted_projection_recovers_before_and_after_commit_and_exports_exact_
         "1",
         "--workspace",
         &workspace.to_string(),
+        "--run",
+        &run.to_string(),
+        "--agent",
+        "external-controller/1",
+        "--task",
+        "edit-main",
         "--base",
         imported["revision"].as_str().unwrap(),
         "--profile-digest",
         profile["profile_digest"].as_str().unwrap(),
     ]));
-    // This supplies lineage, not proof of execution; the actual runtime has its own CI harness.
-    f.sql.execute("UPDATE th_workspaces SET state='in_use',runtime='fixture',node='fixture' WHERE workspace=$1",&[&workspace]).await.unwrap();
-    f.sql.execute("INSERT INTO th_agent_runs(tenant,repository,run,workspace,workspace_generation,epoch,principal,agent,task,runtime,state) SELECT tenant,repository,$1,workspace,generation,epoch,principal,'fixture','fixture',runtime,'running' FROM th_workspaces WHERE workspace=$2",&[&run,&workspace]).await.unwrap();
     let upload = Uuid::new_v4();
     let changeset = Uuid::new_v4();
     result(f.cli(&[
@@ -188,6 +191,22 @@ async fn accepted_projection_recovers_before_and_after_commit_and_exports_exact_
         "--operations",
         operations.to_str().unwrap(),
     ]));
+    assert_eq!(accepted["run_origin"], "external_api");
+    let closed = result(f.cli(&[
+        "api-run-close",
+        "--key",
+        "close-api",
+        "--authority",
+        "connected",
+        "--epoch",
+        "1",
+        "--run",
+        &run.to_string(),
+        "--generation",
+        "1",
+    ]));
+    assert_eq!(closed["run_state"], "closed");
+    assert_eq!(closed["state"], "deleted");
     let projection = Uuid::new_v4();
     let requested = json!({"action":"projection_request","key":"projection","epoch":1,"projection":projection.to_string(),"binding":bind["binding"],"specification":{"changeset":changeset.to_string(),"version":1,"title":"Update main","ttl_seconds":3600}});
     assert!(!request(&f, &requested).status.success());
