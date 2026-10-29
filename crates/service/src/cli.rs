@@ -521,6 +521,15 @@ enum Agent {
         #[arg(long)]
         output: PathBuf,
     },
+    /// Journal and resume preparation of one pending native queue entry.
+    NativeAdvance {
+        #[arg(long)]
+        state: PathBuf,
+        #[arg(long)]
+        target: String,
+        #[arg(long,value_parser=clap::value_parser!(i64).range(1..))]
+        epoch: i64,
+    },
     /// Compute a durable merge candidate from server-owned, immutable inputs.
     NativePrepare {
         #[arg(long)]
@@ -924,6 +933,7 @@ impl Agent {
             Self::SourceExport { .. }
             | Self::History { .. }
             | Self::Diff { .. }
+            | Self::NativeAdvance { .. }
             | Self::NativePrepare { .. }
             | Self::RebasePrepare { .. }
             | Self::SealAccept { .. }
@@ -1201,6 +1211,23 @@ pub async fn run(cli: Cli) -> Result<bool> {
         } => {
             let credential = Credential::load(&credential_file)?;
             let action = match action {
+                Agent::NativeAdvance {
+                    state,
+                    target,
+                    epoch,
+                } => {
+                    let reply = crate::native_advance::send(crate::native_advance::Request {
+                        state: &state,
+                        socket: &socket,
+                        credential: &credential,
+                        target: &target,
+                        epoch,
+                        timeout: Duration::from_millis(timeout_ms),
+                    })
+                    .await?;
+                    println!("{}", reply.body);
+                    return Ok(reply.status.is_success());
+                }
                 Agent::WorkspaceNew {
                     state,
                     authority,

@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Add `native-advance` to journal and resume preparation of one pending native
+  candidate; checks, review and integration remain separate authorized actions.
+
 - Add native `queue_pending` for bounded discovery of pending entries without
   saved entry IDs. Pages are repository-scoped live reads, not integration claims.
 

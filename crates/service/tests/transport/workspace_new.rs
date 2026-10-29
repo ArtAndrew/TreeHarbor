@@ -27,7 +27,7 @@ fn new_command(f: &Fixture, socket: &Path, state: &Path, base: &str, mode: &str)
 }
 
 // Read one bounded HTTP request/response from the actual CLI/service connection.
-async fn message(stream: &mut UnixStream) -> Vec<u8> {
+pub(super) async fn message(stream: &mut UnixStream) -> Vec<u8> {
     let mut bytes = Vec::new();
     loop {
         let mut chunk = [0; 8192];

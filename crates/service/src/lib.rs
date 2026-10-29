@@ -13,6 +13,7 @@ mod history;
 pub mod import;
 mod mcp;
 mod native;
+mod native_advance;
 mod node_cli;
 pub mod pack;
 mod proposals;
@@ -32,6 +33,8 @@ pub enum Error {
         "workspace request requires an exact native base, profile digest and matching private state; preserve the original state and inputs on retry"
     )]
     WorkspaceState,
+    #[error("invalid or changed native preparation intent")]
+    NativeAdvanceState,
     #[error(
         "policy draft requires valid requirements and a complete, stable configuration inspection"
     )]
