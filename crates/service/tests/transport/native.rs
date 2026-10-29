@@ -425,8 +425,75 @@ async fn native_queue_cli_merges_agents_fences_green_and_recovers_fsync_and_comm
     let landed = ok(native(&f, land.clone()));
     assert_eq!(landed["state"], "landed");
     assert_eq!(ok(native(&f, land)), landed);
-    let b = start(&f, second);
-    let prepared_b = ok(f.cli(&prepare_args(&b.to_string())));
+    let advance_state = f.dir.path().join("advance-b.json");
+    let advance_args = [
+        "native-advance",
+        "--state",
+        advance_state.to_str().unwrap(),
+        "--target",
+        "main",
+        "--epoch",
+        "1",
+    ];
+    let upstream_socket = f.config.socket.clone();
+    let proxy_socket = f.dir.path().join("advance-drop.sock");
+    let listener = tokio::net::UnixListener::bind(&proxy_socket).unwrap();
+    fs::set_permissions(&proxy_socket, fs::Permissions::from_mode(0o600)).unwrap();
+    let upstream = upstream_socket.clone();
+    let proxy = tokio::spawn(async move {
+        loop {
+            let (mut downstream, _) = listener.accept().await.unwrap();
+            let request = super::workspace_new::message(&mut downstream).await;
+            let body_start = request.windows(4).position(|w| w == b"\r\n\r\n").unwrap() + 4;
+            let body: Value = serde_json::from_slice(&request[body_start..]).unwrap();
+            let mut server = UnixStream::connect(&upstream).await.unwrap();
+            server.write_all(&request).await.unwrap();
+            let reply = super::workspace_new::message(&mut server).await;
+            if body["command"]["request"]["action"] == "candidate_start" {
+                assert!(String::from_utf8_lossy(&reply).starts_with("HTTP/1.1 200"));
+                break; // The actual start committed; discard its reply.
+            }
+            downstream.write_all(&reply).await.unwrap();
+        }
+    });
+    f.config.socket = proxy_socket;
+    assert!(!f.cli(&advance_args).status.success());
+    proxy.await.unwrap();
+    f.config.socket = upstream_socket;
+    let saved_before_restart = fs::read(&advance_state).unwrap();
+    server.0.kill().unwrap();
+    server.0.wait().unwrap();
+    drop(server);
+    let mut server = f.start().await;
+    let prepared_b = ok(f.cli(&advance_args));
+    assert_eq!(fs::read(&advance_state).unwrap(), saved_before_restart);
+    let b: Uuid = prepared_b["candidate"].as_str().unwrap().parse().unwrap();
+    assert_eq!(prepared_b["entry"], second.to_string());
+    let intent_bytes = fs::read(&advance_state).unwrap();
+    assert_eq!(ok(f.cli(&advance_args)), prepared_b);
+    assert_eq!(fs::read(&advance_state).unwrap(), intent_bytes);
+    assert_eq!(
+        f.sql
+            .query_one(
+                "SELECT count(*) FROM th_native_candidates WHERE entry=$1",
+                &[&second]
+            )
+            .await
+            .unwrap()
+            .get::<_, i64>(0),
+        1
+    );
+    let changed = f.cli(&[
+        "native-advance",
+        "--state",
+        advance_state.to_str().unwrap(),
+        "--target",
+        "different",
+        "--epoch",
+        "1",
+    ]);
+    assert!(!changed.status.success());
+    assert_eq!(fs::read(&advance_state).unwrap(), intent_bytes);
     assert_eq!(prepared_b["state"], "checking");
     assert_eq!(prepared_b["expected_head"], landed["revision"]);
     f.credential_path = observer.clone();
