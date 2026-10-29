@@ -58,6 +58,7 @@ epoch and idempotency key as the corresponding HTTP operation.
 | `workspace_create`, `workspace_status` | Request exact registered revision/profile and inspect lifecycle |
 | `workspace_delete` | Request drain of the exact generation; physical deletion waits for runtime/node proof |
 | `workspace_read_files` | One verified baseline file or bounded directory page, with exact source context |
+| `api_run_create`, `api_run_status`, `api_run_close` (unreleased) | Register, inspect and close your own external task context; no process execution or observation |
 | `run_status` | Inspect an already authorized run |
 | `change_begin`, `change_put`, `changeset_submit` | Reserve upload, upload explicit bytes, then accept explicit immutable operations |
 | `changeset_status`, `change_abort` | Inspect/abort proposal upload by upload ID; acceptance is distinct from upload |
@@ -68,11 +69,37 @@ epoch and idempotency key as the corresponding HTTP operation.
 | `operation_status` | Recover a mutation by its original idempotency key |
 
 No tool provides arbitrary HTTP forwarding, filesystem paths, shell/SQL execution,
-run creation, trusted validation reporting, approval, policy updates or forced
+managed runtime launch, trusted validation reporting, approval, policy updates or forced
 publication. MCP annotations are hints, not the authorization mechanism. The
 server applies the same owner/run/generation/epoch, retention and policy checks
 as for direct CLI/API calls. Registered source and runtime/run preparation are
 operator workflows; a workspace record alone is not a ready sandbox.
+
+### Start a task using your own execution environment (unreleased)
+
+The three `api_run_*` MCP tools are a development addition after 0.1.5; earlier
+packages expose these operations through the CLI/API only. A controller that
+already provides execution and isolation can register an
+[external API context](external-api-runs.md) without a TreeHarbor runtime node:
+
+1. Obtain a registered exact base and source profile from the operator, or use
+   `source_profile_put` to register a selection of that existing source.
+2. Save a fresh workspace UUID, run UUID and idempotency key before calling
+   `api_run_create` with `key`, `authority`, `epoch`, `workspace`, `run`, `base`,
+   `profile_digest`, `agent` and `task`. Retry with those same arguments.
+3. Read source with `workspace_read_files`, then use the existing
+   `change_begin`, `change_put` and `changeset_submit` proposal tools.
+4. Inspect `api_run_status`, then close with `api_run_close` using `key`,
+   `authority`, `epoch`, `run` and the exact run generation. Save the close key
+   before calling. Accepted changes remain available after close.
+
+Creation and close require `workspace.write`; reads require `read` and proposal
+submission requires `change.write`. Each agent owns its own context. These tools
+grant no validation or integration authority. The source workspace is
+`source_ready`, the task is `recorded`, and `execution_observed` is always false.
+Closing prevents future API reads/proposals; it does not stop the external
+process or remove its files. Use the existing managed workflow when TreeHarbor
+must supervise execution. Neither mode's full onboarding is certified here.
 
 For example, after obtaining an exact registered base and profile:
 
@@ -156,9 +183,10 @@ recovery and protocol-only stdout. The PostgreSQL integration test starts two re
 MCP child clients, one for each supported revision. It verifies API-equivalent
 results, overlapping immutable proposals, idempotency, server/client restart,
 foreign workspace and stale generation refusal, history/diff reads, native queue
-request/replay/cancel without changing main, access revocation and drain.
-Runtime state in that test is explicitly a fixture; it does not establish sandbox
-execution. The real gVisor tests remain mandatory.
+request/replay/cancel without changing main, access revocation and logical close.
+The updated scenario creates external task contexts through MCP rather than
+inserting runtime facts into PostgreSQL. It does not establish process execution
+or isolation. The real gVisor tests remain mandatory and separate.
 
 Full two-mode MCP onboarding, managed runtime execution through a real host,
 complete queue-to-publication evidence and clean packaged installation remain

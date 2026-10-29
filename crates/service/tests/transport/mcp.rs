@@ -104,7 +104,7 @@ fn agent(f: &Fixture, name: &str) -> PathBuf {
     path
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "requires PostgreSQL: two actual MCP child clients, HTTP/server restart and immutable proposals; runtime state is an explicit fixture"]
+#[ignore = "requires PostgreSQL: two actual MCP child clients, external API contexts, HTTP/server restart and immutable proposals"]
 async fn mcp_two_clients_share_api_authority_and_preserve_exact_proposals_after_restart() {
     let mut f = Fixture::new().await;
     f.importer();
@@ -167,7 +167,7 @@ async fn mcp_two_clients_share_api_authority_and_preserve_exact_proposals_after_
     let a = connect(&f, &a_path, true).await;
     let b = connect(&f, &b_path, false).await;
     let tools = a.list_all_tools().await.unwrap();
-    assert_eq!(tools.len(), 20);
+    assert_eq!(tools.len(), 23);
     for name in [
         "validation_report",
         "land",
@@ -218,15 +218,17 @@ async fn mcp_two_clients_share_api_authority_and_preserve_exact_proposals_after_
         let w = Uuid::new_v4();
         let run = Uuid::new_v4();
         let upload = Uuid::new_v4();
-        let create = json!({"key":format!("mcp-w-{i}"),"authority":"standalone","epoch":1,"workspace":w,"base":base["result"]["revision"],"profile_digest":profile["profile_digest"]});
-        let created = good(m, "workspace_create", create.clone()).await;
-        assert_eq!(created, good(m, "workspace_create", create).await);
+        let create = json!({"key":format!("mcp-w-{i}"),"authority":"standalone","epoch":1,"workspace":w,"run":run,"agent":"mcp-controller","task":format!("task-{i}"),"base":base["result"]["revision"],"profile_digest":profile["profile_digest"]});
+        let created = good(m, "api_run_create", create.clone()).await;
+        assert_eq!(created, good(m, "api_run_create", create).await);
         let file=call(m,"workspace_read_files",json!({"workspace":w,"generation":1,"authority":"standalone","epoch":1,"operation":{"kind":"file","path_hex":"73616d652e747874"}})).await;
         assert_eq!(file["response"]["content_hex"], "6265666f7265");
-        // Only the transport test supplies runtime facts. Actual isolation and execution
-        // remain separate mandatory gVisor acceptance, not claimed by this fixture.
-        f.sql.execute("UPDATE th_workspaces SET state='in_use',runtime='fixture',node='fixture' WHERE workspace=$1",&[&w]).await.unwrap();
-        f.sql.execute("INSERT INTO th_agent_runs(tenant,repository,run,workspace,workspace_generation,epoch,principal,agent,task,runtime,state) SELECT tenant,repository,$1,workspace,generation,epoch,principal,'fixture','fixture',runtime,'running' FROM th_workspaces WHERE workspace=$2",&[&run,&w]).await.unwrap();
+        assert_eq!(created["state"], "recorded");
+        assert_eq!(created["workspace_state"], "source_ready");
+        assert_eq!(created["execution_observed"], false);
+        let status = good(m, "api_run_status", json!({"run":run})).await;
+        assert_eq!(status["origin"], "external_api");
+        assert_eq!(status["execution_observed"], false);
         let begin = json!({"key":format!("mcp-b-{i}"),"authority":"standalone","epoch":1,"upload":upload,"run":run,"generation":1,"max_objects":4,"max_bytes":4096,"ttl_seconds":600});
         good(m, "change_begin", begin).await;
         let blob = good(
@@ -238,6 +240,8 @@ async fn mcp_two_clients_share_api_authority_and_preserve_exact_proposals_after_
         let submit = json!({"key":format!("mcp-s-{i}"),"authority":"standalone","epoch":1,"upload":upload,"changeset":Uuid::new_v4(),"previous_version":0,"operations":[{"path_hex":"73616d652e747874","expected":{"mode":33188,"object":old},"replacement":{"mode":33188,"object":blob["object"]}}]});
         let accepted = good(m, "changeset_submit", submit.clone()).await;
         assert_eq!(accepted, good(m, "changeset_submit", submit.clone()).await);
+        assert_eq!(accepted["run_origin"], "external_api");
+        assert_eq!(accepted["execution_observed"], false);
         let entry = Uuid::new_v4();
         let enqueue = json!({"key":format!("mcp-q-{i}"),"epoch":1,"entry":entry,"target":"main","changeset":submit["changeset"],"version":1});
         let queued = good(m, "queue_request", enqueue.clone()).await;
@@ -279,6 +283,12 @@ async fn mcp_two_clients_share_api_authority_and_preserve_exact_proposals_after_
     assert!(other["http_status"].as_u64().unwrap() >= 400);
     let stale=call(&a,"workspace_read_files",json!({"workspace":workspaces[0],"generation":2,"authority":"standalone","epoch":1,"operation":{"kind":"file","path_hex":"73616d652e747874"}})).await;
     assert!(stale["http_status"].as_u64().unwrap() >= 400);
+    let foreign = call(&a, "api_run_status", json!({"run":runs[1]})).await;
+    assert!(foreign["http_status"].as_u64().unwrap() >= 400);
+    let foreign = call(&a, "api_run_close", json!({"key":"foreign-close","authority":"standalone","epoch":1,"run":runs[1],"generation":1})).await;
+    assert!(foreign["http_status"].as_u64().unwrap() >= 400);
+    let stale = call(&a, "api_run_close", json!({"key":"stale-close","authority":"standalone","epoch":1,"run":runs[0],"generation":2})).await;
+    assert!(stale["http_status"].as_u64().unwrap() >= 400);
     let before = good(&a, "operation_status", json!({"key":"mcp-s-0"})).await;
     a.cancel().await.unwrap();
     server.0.kill().unwrap();
@@ -291,16 +301,15 @@ async fn mcp_two_clients_share_api_authority_and_preserve_exact_proposals_after_
         good(&a, "operation_status", json!({"key":"mcp-s-0"})).await
     );
     for (i, m) in [&a, &b].iter().enumerate() {
-        good(m,"workspace_delete",json!({"key":format!("mcp-delete-{i}"),"authority":"standalone","epoch":1,"workspace":workspaces[i],"generation":1})).await;
-        let row = f
-            .sql
-            .query_one(
-                "SELECT state FROM th_workspaces WHERE workspace=$1",
-                &[&workspaces[i]],
-            )
-            .await
-            .unwrap();
-        assert_eq!(row.get::<_, String>(0), "draining");
+        let close = json!({"key":format!("mcp-close-{i}"),"authority":"standalone","epoch":1,"run":runs[i],"generation":1});
+        let closed = good(m, "api_run_close", close.clone()).await;
+        assert_eq!(closed, good(m, "api_run_close", close).await);
+        assert_eq!(closed["state"], "deleted");
+        assert_eq!(closed["run_state"], "closed");
+        assert_eq!(closed["execution_observed"], false);
+        let status = good(m, "api_run_status", json!({"run":runs[i]})).await;
+        assert_eq!(status["state"], "closed");
+        assert_eq!(status["workspace_generation"], 2);
         let refused=call(m,"change_begin",json!({"key":format!("mcp-stale-{i}"),"authority":"standalone","epoch":1,"upload":Uuid::new_v4(),"run":runs[i],"generation":1,"max_objects":4,"max_bytes":4096,"ttl_seconds":600})).await;
         assert!(refused["http_status"].as_u64().unwrap() >= 400);
         good(m, "changeset_status", json!({"upload":uploads[i]})).await;
