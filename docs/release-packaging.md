@@ -21,6 +21,13 @@ exercise the new command in installed runtime CI on both Linux architectures;
 it does not add a new live GitHub trial. Use its own signed bytes and provenance,
 rather than a prior release's hashes or unsigned PR artifacts.
 
+The [0.1.3-alpha.1 diagnostic patch](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.3-alpha.1)
+adds [local service diagnosis](doctor.md). Both signed Linux packages exercised
+doctor around explicit database migration, followed by the managed/native runtime
+workflows. Independent signature and data checks matched the original archives,
+all eight subjects per architecture and the exact producer invocation. This does
+not add a fresh live GitHub or LLM trial.
+
 ## Preparing signed alpha candidates
 
 The manual `release-provenance.yml` workflow is reserved for an existing alpha tag

@@ -1,6 +1,6 @@
 # Start the Connected PR Preview
 
-Use this path for [the Connected PR Preview](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.2-alpha.1):
+Use this path for [the Connected PR Preview](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.3-alpha.1):
 **exact GitHub commit → two isolated tasks → immutable changes → draft PRs**.
 GitHub handles checks, review and merge. TreeHarbor queue setup is not part of this path.
 This is an operator-assisted Linux evaluation with manual infrastructure setup,
@@ -27,7 +27,7 @@ a fresh prefix. No local Rust build is needed for the product binaries. Resolve
 the executable for the prepared-agent helper:
 
 ```sh
-TH_BIN=$(realpath "$HOME/.local/treeharbor-preview-0.1.2/bin/treeharbor")
+TH_BIN=$(realpath "$HOME/.local/treeharbor-preview-0.1.3/bin/treeharbor")
 "$TH_BIN" --version
 ```
 
@@ -60,6 +60,17 @@ operator inspection of ownership and contents; do not silently adopt it with
 `IF NOT EXISTS`. The default `public` schema does not need creation if it already
 exists and is appropriate for that dedicated database. Serving never migrates
 implicitly. [PostgreSQL CREATE SCHEMA](https://www.postgresql.org/docs/18/sql-createschema.html).
+
+After explicit database preparation, inspect local service prerequisites:
+
+```sh
+"$TH_BIN" doctor --config /your/private/service.json
+```
+
+A failed prerequisite returns a nonzero status and a redacted repair hint.
+Doctor never applies migrations or changes permissions. Passing covers only
+its listed configuration/directory and database checks; continue with the
+runtime, credential and host setup below. See [diagnostic scope](doctor.md).
 
 ## 4. Use PR permissions, not queue permissions
 

@@ -1,8 +1,8 @@
 # Diagnose local service setup
 
-Planned for 0.1.3-alpha.1 and available from current development source. It is not
-included in the published 0.1.2-alpha.1 package. Use the verified package's command
-once a release containing this feature is published.
+Available in the signed [0.1.3-alpha.1 preview](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.3-alpha.1).
+Follow that release's source, signature and checksum instructions before running
+the package. Earlier preview packages do not include this command.
 
 Before starting the source service, run as the trusted operator:
 
