@@ -21,6 +21,22 @@ These correctness checks do not establish complete mode readiness or performance
 superiority. The installed native workload includes deliberate replacement-node
 recovery; live GitHub recovery remains a separate release gate.
 
+## Unreleased native preparation helper
+
+[`native-advance`](native-advance.md) discovers one pending native entry and saves
+its identity before requesting candidate preparation. Repeating the command uses
+the same private journal and reads current candidate status; it does not run
+checks, grant review or publish code. The real CLI/service/PostgreSQL transport
+test drops the response after candidate creation commits, restarts the service,
+and resumes one candidate from the unchanged journal. Its execution evidence is
+explicitly a trusted fixture, separate from actual runtime acceptance.
+
+The installed Linux acceptance scenario now uses this helper before actual
+gVisor checks, review, publication and Git export. It also repeats the command
+after publication to require current `landed` status rather than the saved start
+receipt. Verification of this updated installed scenario is pending CI; it is
+not evidence of a released feature or an automatic queue controller.
+
 ## Released external API contexts — 0.1.4-alpha.1
 
 The Rust service/CLI now exposes `api-run-create/status/close`. Atomic creation

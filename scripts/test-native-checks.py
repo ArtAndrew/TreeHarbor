@@ -20,6 +20,10 @@ spec.loader.exec_module(managed)
 
 
 class Checks(managed.Harness):
+    def advance(self, target, state):
+        return self.client("native-advance", "--target", target, "--epoch", "1",
+                           "--state", state, credential=self.integrator)
+
     def native(self, action, credential, key=None, check=True, **fields):
         request = dict(action=action, **fields)
         if action not in ("check_status", "candidate_status", "queue_status", "ref_resolve"):
@@ -35,13 +39,17 @@ class Checks(managed.Harness):
         policy_id = self.native("policy_put", self.policy_admin, policy=policy)["policy"]
         target = "main-" + str(uuid.uuid4())
         self.native("ref_create", self.policy_admin, name=target, head=self.revision, policy=policy_id)
-        entry, candidate, check = [str(uuid.uuid4()) for _ in range(3)]
+        entry, check = [str(uuid.uuid4()) for _ in range(2)]
         self.native("enqueue", self.agents[0], entry=entry, target=target,
                     changeset=self.change["changeset"], version=self.change.get("version", 1))
-        self.native("candidate_start", self.integrator, entry=entry, candidate=candidate)
-        result = self.client("native-prepare", "--key", "prepare-" + candidate, "--epoch", "1",
-                             "--candidate", candidate, credential=self.integrator)
-        assert result["state"] == "checking"
+        state = self.root / ("advance-" + entry + ".json")
+        result = self.advance(target, state)
+        candidate = result["candidate"]
+        assert result["state"] == "checking" and result["entry"] == entry
+        assert result["target"] == target
+        journal = state.read_bytes()
+        assert self.advance(target, state) == result
+        assert state.read_bytes() == journal
         self.native("check_assign", self.integrator, candidate=candidate, name="tests", run=check, validator="ci")
         # The reviewer reads an immutable agent proposal through the same
         # service, without the agent credential or its workspace directory.
@@ -75,7 +83,8 @@ class Checks(managed.Harness):
         assert integration["after_snapshot"] == result["snapshot"]
         assert integration["changes"] == diff["changes"]
         self.native("review", self.reviewer, candidate=candidate, review=str(uuid.uuid4()), decision="approve")
-        return dict(candidate=candidate, check=check, entry=entry, target=target, policy=policy_id, candidate_snapshot=result["snapshot"])
+        return dict(candidate=candidate, check=check, entry=entry, target=target, policy=policy_id,
+                    candidate_snapshot=result["snapshot"], advance_state=state, advance_journal=journal)
 
     def check_case(self, expected="candidate\n", delay=0, tamper=False, node=0, timeout=15000):
         number, node, slot, mount, profile = self.placement_profile(node=node, timeout=timeout)
@@ -196,6 +205,11 @@ class Checks(managed.Harness):
         assert self.native("check_release", self.ci, run=passed["check"])["state"] == "deleted"
         landed = self.native("land", self.integrator, candidate=passed["candidate"])
         assert landed["state"] == "landed"
+        resumed = self.advance(passed["target"], passed["advance_state"])
+        assert resumed["state"] == "landed" and resumed["candidate"] == passed["candidate"]
+        assert resumed["revision"] == landed["revision"]
+        assert passed["advance_state"].read_bytes() == passed["advance_journal"]
+        print("PASS native advance: journaled preparation reaches actual checks and replay reads landed state", flush=True)
         assert self.native("ref_resolve", self.policy_admin, name=passed["target"])["head"] == landed["revision"]
         self.export_and_restore(landed, "before-cleanup")
         print("PASS native CI cleanup: collected evidence survives workspace release and still permits exact publication", flush=True)
