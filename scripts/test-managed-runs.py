@@ -104,7 +104,16 @@ class Harness:
         store.mkdir(mode=0o700)
         private_json(self.config, {"database_url": self.url, "schema": self.schema,
                                   "socket": str(self.socket), "storage": {"root": str(store), "backend": "managed-ci"}})
+        diagnosis = self.cli("doctor", "--config", self.config, check=False)
+        before = json.loads(diagnosis.stdout)
+        assert diagnosis.returncode != 0 and before["passed"] is False
+        assert any(c["code"] == "schema_unverified" for c in before["checks"])
+        assert not self.socket.exists() and not list(store.iterdir())
         self.admin("migrate")
+        after = self.value("doctor", "--config", self.config)
+        assert after["passed"] is True
+        assert self.sql("SELECT count(*) FROM th_storage_backends") == "0"
+        assert not self.socket.exists() and not list(store.iterdir())
         self.admin("repository-create", *self.scope, "--authority", "standalone")
         self.owner = self.principal("owner", "human", ["read", "workspace.write", "repository.write"])
         self.agents = [self.principal(name, "agent", ["read", "workspace.write", "change.write", "queue.request"])

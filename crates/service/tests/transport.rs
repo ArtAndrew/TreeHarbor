@@ -1,4 +1,6 @@
 #![cfg(unix)]
+#[path = "transport/doctor.rs"]
+mod doctor;
 #[path = "support/git.rs"]
 mod git_reference;
 #[path = "transport/github.rs"]

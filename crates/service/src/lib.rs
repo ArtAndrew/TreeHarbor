@@ -5,6 +5,7 @@ pub mod cli;
 pub mod client;
 pub mod config;
 pub mod database;
+mod doctor;
 pub mod download;
 pub mod files;
 mod github;

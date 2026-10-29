@@ -68,6 +68,11 @@ use, choose a short owner-private directory that survives reboots.
 
 ## Credentials and administration
 
+The development-source [`doctor` command](doctor.md) checks local configuration,
+directory rules and PostgreSQL/schema prerequisites before startup. It does not
+change setup or certify runtime/GitHub readiness, and is not in the published
+0.1.2-alpha.1 package.
+
 `admin` is a trusted local operator interface using database privileges directly;
 it is not available through HTTP. It provides migrate, repository-create,
 principal-create, access-set, token-issue, token-revoke, principal-disable and node-register.

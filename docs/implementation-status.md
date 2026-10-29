@@ -1,6 +1,6 @@
 # Implementation status
 
-Updated: 2026-10-28. This file describes implemented behavior and remaining release
+Updated: 2026-10-29. This file describes implemented behavior and remaining release
 gates. A foundation milestone does not complete either mode.
 
 For a concise current overview, see [what works today](../README.md#what-works-today)
@@ -20,6 +20,26 @@ managed/native workloads on x86-64 and ARM64, and webhook TLS/failure tests.
 These correctness checks do not establish complete mode readiness or performance
 superiority. The installed native workload includes deliberate replacement-node
 recovery; live GitHub recovery remains a separate release gate.
+
+## Development source — local service doctor
+
+`doctor --config` inspects private configuration, source/socket directory rules,
+the socket path, PostgreSQL namespace resolution and durability settings, and the
+installed schema version/digest. Its JSON output uses fixed redacted diagnostics;
+failure returns a nonzero exit status. It does not create a namespace, migrate,
+adopt a storage backend, alter permissions, or bind/remove a socket. Passing
+means only that the listed prerequisites passed: runtime, host permissions,
+storage identity/integrity, actual writes/capacity and restore remain unchecked.
+See [scope and repairs](doctor.md). This command is absent from the published
+0.1.2-alpha.1 package.
+
+Targeted local verification passed the actual CLI failure/redaction/no-clobber
+test, five existing local configuration/permission tests, and one real PostgreSQL
+CLI test covering absent namespace, existing unmigrated namespace and current
+schema, with no implicit table/storage/socket creation. Strict all-targets service
+Clippy passed. The existing installed managed-runtime scenario now checks doctor
+before and after explicit migration; Linux x86-64/ARM64 execution remains pending
+the candidate's required CI. No new App rights or live service credentials.
 
 ## Released workspace request CLI — 0.1.2-alpha.1
 
