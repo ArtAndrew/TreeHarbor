@@ -16,7 +16,7 @@ TreeHarbor is inspired by Anthropic's [Redesigning source control at Anthropic](
 separate source data and proposed changes from disposable agent workspaces.
 TreeHarbor is an independent implementation and is not affiliated with Anthropic.
 
-> **[0.1.2-alpha.1 — Connected PR Preview](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.2-alpha.1) is available.**
+> **[0.1.3-alpha.1 — Connected PR Preview](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.3-alpha.1) is available.**
 > Signed Linux packages and the exact tested scope are in the release notes.
 > Evaluate on disposable pilot repositories. The full Connected and Standalone
 > releases remain incomplete; production use is not supported.
@@ -112,7 +112,7 @@ fixture boundaries and open gates.
 ## Can I use it now?
 
 **For development and controlled technical evaluation: yes.** Use a published
-[current preview package](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.2-alpha.1), or build from source. Expect manual configuration
+[current preview package](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.3-alpha.1), or build from source. Expect manual configuration
 and evolving interfaces. Use disposable repositories
 and dedicated test infrastructure. The local service needs PostgreSQL; managed
 agent execution additionally needs a supported Linux/gVisor setup and bounded volumes.
@@ -183,6 +183,13 @@ response. It removes manual creation IDs; file preparation and runtime setup
 remain explicit. Both signed Linux packages passed installed runtime CI with the
 new command. The patch does not repeat the historical live GitHub trial.
 
+The [0.1.3-alpha.1 diagnostic patch](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.3-alpha.1)
+adds [`doctor --config`](docs/doctor.md): check private configuration, local
+directories/socket path and PostgreSQL/schema prerequisites before startup, with
+redacted repair hints. It does not change setup or certify runtime/GitHub
+readiness. Both signed Linux packages passed the installed diagnostic and runtime
+scenarios. Use the [operator setup path](docs/connected-pr-preview.md).
+
 ## What remains before a full release?
 
 1. Complete Connected host-policy and admission certification, automatic
@@ -205,7 +212,7 @@ track the remaining work.
 
 ## Try the development build
 
-For the installable preview, start with [the current release](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.2-alpha.1)
+For the installable preview, start with [the current release](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.3-alpha.1)
 and [package verification](docs/release-packaging.md). The commands below build
 from source.
 

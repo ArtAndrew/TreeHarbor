@@ -21,7 +21,7 @@ These correctness checks do not establish complete mode readiness or performance
 superiority. The installed native workload includes deliberate replacement-node
 recovery; live GitHub recovery remains a separate release gate.
 
-## Development source — local service doctor
+## Released local service doctor — 0.1.3-alpha.1
 
 `doctor --config` inspects private configuration, source/socket directory rules,
 the socket path, PostgreSQL namespace resolution and durability settings, and the
@@ -30,8 +30,8 @@ failure returns a nonzero exit status. It does not create a namespace, migrate,
 adopt a storage backend, alter permissions, or bind/remove a socket. Passing
 means only that the listed prerequisites passed: runtime, host permissions,
 storage identity/integrity, actual writes/capacity and restore remain unchecked.
-See [scope and repairs](doctor.md). This command is absent from the published
-0.1.2-alpha.1 package.
+See [scope and repairs](doctor.md). Earlier preview packages do not include this
+command.
 
 Targeted local verification passed the actual CLI failure/redaction/no-clobber
 test, five existing local configuration/permission tests, and one real PostgreSQL
@@ -42,9 +42,20 @@ passed all five jobs, with the separate required contribution-rights check also
 successful. Both installed Linux x86-64/ARM64 managed-runtime scenarios checked
 doctor before/after explicit migration and absence of implicit storage/socket
 writes. The implementation merged through the protected branch in
-[PR97](https://github.com/ArtAndrew/TreeHarbor/pull/97). Version 0.1.3-alpha.1 is
-being prepared; no signed release of this command is claimed yet. No new App
-rights or live service credentials.
+[PR97](https://github.com/ArtAndrew/TreeHarbor/pull/97). The release version merged
+after all six required checks in [PR98](https://github.com/ArtAndrew/TreeHarbor/pull/98).
+
+[Release 0.1.3-alpha.1](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.3-alpha.1)
+identifies source `159a5b3c9f9a0a1fd44f810385b737e8a39242c8`.
+[Main CI](https://github.com/ArtAndrew/TreeHarbor/actions/runs/40846950270) and
+[signed producer](https://github.com/ArtAndrew/TreeHarbor/actions/runs/40850358952),
+both attempt 1, passed all jobs. Independent official online and bundled
+verification matched all eight signed subjects per architecture and the exact
+producer invocation; metadata/data audits matched unchanged downloaded bytes.
+Public readback verified all eight asset names, sizes and SHA-256 digests and the
+exact release notes. Prior 0.1.2 assets/tag remained unchanged. No new App rights,
+live service credentials or fresh live GitHub/LLM trial were used. The full
+Connected/Standalone, recovery and benchmark goals remain incomplete.
 
 ## Released workspace request CLI — 0.1.2-alpha.1
 

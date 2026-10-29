@@ -3,7 +3,7 @@
 These are proposed acceptance targets, not measurements. Benchmark the whole
 first-use journey; an installer alone is not differentiation.
 
-The development-source [doctor command](doctor.md) implements the local
+The released [doctor command](doctor.md) implements the local
 configuration/directory and database/schema subset of diagnosis. Runtime, Git,
 GitHub permissions and actual storage writes remain unchecked; the complete
 diagnosis target below is not yet met.
