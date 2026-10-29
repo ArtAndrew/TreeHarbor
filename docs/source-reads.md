@@ -10,9 +10,9 @@ Supply its current generation, repository authority and epoch. They are explicit
 fences: a request for a previous generation or authority epoch fails instead of
 silently reading a different context. Requested, ready and in-use workspaces may
 serve their baseline; draining, deleted and legacy unresolved workspaces cannot.
-The development [external API context](external-api-runs.md) uses the distinct
+The [external API context](external-api-runs.md) uses the distinct
 `source_ready` state and serves its exact baseline without materialized files.
-This addition requires schema 032 and is not in published 0.1.3 packages.
+This path is available from 0.1.4-alpha.1 and requires schema 032.
 
 ```sh
 treeharbor client --socket "$TH_SOCKET" --credential-file "$TH_CREDENTIAL" \

@@ -1,15 +1,17 @@
 # Changelog
 
-## 0.1.4-alpha.1 — external agent API contexts — unreleased
+## 0.1.4-alpha.1 — external agent API contexts — 2026-10-29
 
 - Add `api-run-create/status/close`: pin an exact source and accept immutable
   proposals from a controller with its own execution environment. Explicit API
   delivery and external provenance do not assert runtime isolation or test success.
 - Retain accepted changes after logical close; fence new writes and preserve
   idempotent receipts. Managed runtime preparation/capture remain separate.
-- Add schema 032; stop services/workers, back up, explicitly migrate and update all
-  binaries together. See [the API workflow and upgrade contract](docs/external-api-runs.md).
-- Installation/runtime CI and signed release publication are pending.
+- Add schema 032; stop services/workers, back up, install the new binaries and
+  explicitly migrate with the new CLI before restarting together. See [the API workflow and upgrade contract](docs/external-api-runs.md).
+- Publish [signed Linux x86-64/ARM64 packages](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.4-alpha.1);
+  installed API and managed/native runtime scenarios passed before signing.
+  Independent verification matched source, subjects, invocation and metadata hashes.
 
 ## 0.1.3-alpha.1 — local service diagnostics — 2026-10-29
 

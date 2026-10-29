@@ -13,10 +13,11 @@ evidence of adoption or production readiness.
 | **Later Connected releases — integration and recovery** | Automate a demonstrated integration bottleneck, then recover the advertised deployment | First certify one TreeHarbor-managed queue/check profile if users need it; ship full Connected publication/queue disaster recovery as a separately verified increment. Neither blocks the PR Preview. |
 | **Standalone S2** | Own native history, review, checks and integration without Git/GitHub on the native path | Complete the native lifecycle and fenced migration on the shared Rust core, under the same ELv2. Prioritize after the first Connected usage evidence. |
 
-Current preview patch: [0.1.3-alpha.1](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.3-alpha.1),
-adding [local service diagnostics](docs/doctor.md), alongside the earlier
-[saved workspace requests](docs/workspace-new.md). Infrastructure setup
-and the complete two-agent helper are still operator-assisted.
+Current preview: [0.1.4-alpha.1](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.4-alpha.1), adding
+[external API task contexts](docs/external-api-runs.md) for controllers that already
+provide execution. Earlier [local diagnostics](docs/doctor.md) and
+[saved workspace requests](docs/workspace-new.md) remain available. Infrastructure
+setup and the complete two-agent helper are still operator-assisted.
 Start with the [operator setup path](docs/connected-pr-preview.md).
 
 ## First preview acceptance

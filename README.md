@@ -16,7 +16,7 @@ TreeHarbor is inspired by Anthropic's [Redesigning source control at Anthropic](
 separate source data and proposed changes from disposable agent workspaces.
 TreeHarbor is an independent implementation and is not affiliated with Anthropic.
 
-> **[0.1.3-alpha.1 — Connected PR Preview](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.3-alpha.1) is available.**
+> **[0.1.4-alpha.1 — Connected PR Preview](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.4-alpha.1) is available.**
 > Signed Linux packages and the exact tested scope are in the release notes.
 > Evaluate on disposable pilot repositories. The full Connected and Standalone
 > releases remain incomplete; production use is not supported.
@@ -51,10 +51,11 @@ stopped-file captures as immutable changes, and the trusted bridge publishes PRs
 GitHub handles CI, review, conflicts and merge. Publisher credentials stay outside
 agent workspaces. The runtime supplies process isolation and resource limits.
 
-The development candidate also adds [external agent API contexts](docs/external-api-runs.md):
-use your own execution environment, read an exact base and submit immutable changes
-without TreeHarbor-managed execution. This addition is not in the published 0.1.3
-packages and does not provide process isolation or execution attestations.
+The [0.1.4-alpha.1 preview](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.4-alpha.1)
+also supports [external agent API contexts](docs/external-api-runs.md): use your own
+execution environment, read an exact base and submit immutable changes without
+TreeHarbor-managed execution. The client supplies execution isolation; registering
+an external task does not attest that it ran or passed tests.
 
 Each proposal keeps its base revision and agent-run identity. Changing the code
 does not carry a previous revision's passing checks forward. A text merge alone
@@ -85,7 +86,7 @@ Scion or tuned Git. Performance comparisons and unassisted onboarding remain ope
 
 ## What works today?
 
-Status as of **2026-10-28**. “Implemented” describes the stated component and its
+Status as of **2026-10-29**. “Implemented” describes the stated component and its
 tests, not completion of the entire product.
 
 | Area | Implemented and tested | Still incomplete |
@@ -93,7 +94,7 @@ tests, not completion of the entire product.
 | Rust source engine | Immutable objects, snapshots, history, versioned changes and exact revision identities | Larger-repository performance and compatibility coverage |
 | Workspaces | Full/sparse file preparation, expansion preserving edits, explicit drain/cleanup and recovery | Optimized caching, automatic scheduling and Git-compatible workspace format |
 | Agent execution | Managed Linux tasks through external gVisor, resource limits, capture after runtime removal and process-loss recovery | Automated runtime provisioning and node replacement |
-| Developer interfaces | Local authenticated API and CLI; experimental MCP stdio adapter | Packaged onboarding and remote service transport |
+| Developer interfaces | Local authenticated API/CLI, external task contexts and an experimental MCP stdio adapter | Packaged onboarding and remote service transport |
 | Connected | Real GitHub import, branch/PR publication, managed required checks, versioned branch-policy fences, queue requests, candidate/final-history evidence and signed events | Complete host-policy/admission certification and unattended operation |
 | Standalone | Native refs/history, candidate checks/reviews, merge, single-ChangeSet rebase and publication without Git/GitHub on the native path | Full lifecycle, broader history rewriting and fenced migration between modes |
 | Data recovery and interop | Durable transaction/retry paths, object retention and full-history Git import/export for supported inputs | Full server backup/restore, automatic GC/reconciliation and S3 backend |
@@ -117,7 +118,7 @@ fixture boundaries and open gates.
 ## Can I use it now?
 
 **For development and controlled technical evaluation: yes.** Use a published
-[current preview package](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.3-alpha.1), or build from source. Expect manual configuration
+[current preview package](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.4-alpha.1), or build from source. Expect manual configuration
 and evolving interfaces. Use disposable repositories
 and dedicated test infrastructure. The local service needs PostgreSQL; managed
 agent execution additionally needs a supported Linux/gVisor setup and bounded volumes.
@@ -217,7 +218,7 @@ track the remaining work.
 
 ## Try the development build
 
-For the installable preview, start with [the current release](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.3-alpha.1)
+For the installable preview, start with [the current release](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.4-alpha.1)
 and [package verification](docs/release-packaging.md). The commands below build
 from source.
 
