@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "source_revision": "12f37d95aeef167887a88789b06dd8facbac56a9",
+  "binary_sha256": "be31a4ee310e86356fa521e8b1cd628ad6eaa670ad4e557cca1f140c56df61e2",
+  "platform": "macOS-27.0.1-arm64-arm-64bit",
+  "git_version": "git version 2.54.0 (Apple Git-157)",
+  "tracked_files": 1131,
+  "pack_seconds": 10.34628054103814,
+  "import_seconds": 18.44496520899702,
+  "completed_replay_seconds": 0.0506196659989655,
+  "exact_completed_receipt_replayed": true,
+  "pack": {
+    "commit": "sha256:2cb37bb0fa3052f57f4bdbc940351709ed2db5bf5ed9301e8e03df98beceea1d",
+    "encoded_bytes": 8125924,
+    "filesystem_entries": 1409,
+    "objects": 1036,
+    "snapshot": "sha256:b0e1dd7c8f69910e1d3d2a3495c5849cca65912ccf06efaa690ed93be19e5ffb"
+  },
+  "limitations": [
+    "one local optimized CLI/service observation",
+    "snapshot import, not full Git history",
+    "no cloud/network/LLM",
+    "temporary isolated schema/credentials removed after run"
+  ]
+}
