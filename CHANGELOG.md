@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Add native `queue_pending` for bounded discovery of pending entries without
+  saved entry IDs. Pages are repository-scoped live reads, not integration claims.
+
 - Synchronize newly materialized files in bounded batches (up to 32 open files and
   four workers per active preparation). Every file still completes synchronization
   before the manifest and parent directories are synchronized and the workspace

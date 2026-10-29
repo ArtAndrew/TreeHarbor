@@ -90,6 +90,7 @@ object/policy digests are `sha256:<64 lowercase hex>` and revisions are
 | `ref_policy` | `name`, `generation` (expected current), `policy` | `policy.write` |
 | `ref_resolve` | `name` | `read` |
 | `enqueue` | `entry` UUID, `target`, `changeset` UUID, `version` | `queue.request`, proposal owner |
+| `queue_pending` | `target`, `after` (nonnegative position), `limit` (1–100) | `read` |
 | `queue_status` | `entry` UUID | `read` |
 | `cancel` | `entry` UUID | `queue.request`, entry owner |
 | `candidate_start` | `entry` UUID, new `candidate` UUID | `integration.control` |
@@ -101,6 +102,29 @@ object/policy digests are `sha256:<64 lowercase hex>` and revisions are
 | `review` | `candidate`, `review` UUID, `decision` | allowed human reviewer |
 | `review_revoke` | `review` UUID | original reviewer |
 | `land` | `candidate` UUID | `integration.control` |
+
+### Discover pending work
+
+The unreleased `queue_pending` read action lists `queued`, `preparing` and
+`checking` entries for one target in queue position order. It does not start a
+candidate or grant permission to integrate it. For example, save this request
+with owner-only permissions and use the existing `client native --request` command:
+
+```json
+{"action":"queue_pending","target":"main","after":0,"limit":50}
+```
+
+The response contains `target`, `entries` and `next_after`. Each entry contains
+`entry`, `position`, `epoch`, `changeset`, `version`, `state` and `candidate`.
+Use a non-null `next_after` as the next request's `after`; null means no further
+pending entries were observed. The target must exist in the credential's
+repository. Current read permission is checked within each transaction.
+
+This is a live view, not an immutable event log or a reservation. Entries can
+finish or new entries can commit between pages. Restart at `after: 0` for each
+polling sweep so newly visible work is not skipped. Use `queue_status` for a known
+terminal entry; use the existing candidate-start command, with its concurrency
+and ordering checks, to claim work. Positions are cursors, not counts.
 
 Validation outcomes are `passed`, `failed`, `error`, `cancelled`; review decisions
 are `approve` and `reject`. A proposal author cannot approve their own candidate.

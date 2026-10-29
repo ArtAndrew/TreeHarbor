@@ -79,6 +79,11 @@ pub enum WireCommand {
         changeset: String,
         version: i64,
     },
+    QueuePending {
+        target: String,
+        after: i64,
+        limit: i64,
+    },
     QueueStatus {
         entry: String,
     },
@@ -289,6 +294,11 @@ impl WireCommand {
                 )
                 .await
             }
+            Self::QueuePending {
+                target,
+                after,
+                limit,
+            } => db.native_queue_pending(auth, &target, after, limit).await,
             Self::QueueStatus { entry } => db.native_queue_status(auth, uuid(&entry)?).await,
             Self::Cancel { key, epoch, entry } => {
                 db.cancel_native_entry(auth, &Command { key, epoch }, uuid(&entry)?)
