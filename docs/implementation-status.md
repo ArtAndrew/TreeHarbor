@@ -21,7 +21,7 @@ These correctness checks do not establish complete mode readiness or performance
 superiority. The installed native workload includes deliberate replacement-node
 recovery; live GitHub recovery remains a separate release gate.
 
-## External API contexts — 0.1.4-alpha.1 development candidate
+## Released external API contexts — 0.1.4-alpha.1
 
 The Rust service/CLI now exposes `api-run-create/status/close`. Atomic creation
 pins an exact base/profile and records caller-declared task lineage; it schedules
@@ -43,15 +43,24 @@ close, including interrupted projection preparation and exact parent preservatio
 Two v1 vector/claim-rejection unit tests passed; 28 existing upgrade regressions
 passed. The final versioned candidate passed both v1 tests, all three metadata contracts,
 the three external CLI/HTTP paths and an existing MCP transport regression.
-Strict all-targets metadata/service Clippy passed. Initial candidate CI passed both
-Rust jobs and both installed Linux runtime jobs, including the new API pair. Its
-PostgreSQL job exposed four historical-schema fixture failures. Test-only fixes
-populate old intake records using their published shape and remove newer schema
-extensions before reconstructed migrations; current admission predicates are
-unchanged. All six focused migration cases then passed locally. Required CI,
-installed package verification and signed publication are pending; published
-0.1.3 packages do not include these commands. No live App grants or new GitHub
-credentials were used. This does not certify either full mode or performance.
+Strict all-targets metadata/service Clippy passed. The final
+[PR100 CI](https://github.com/ArtAndrew/TreeHarbor/actions/runs/40865102668) and all
+six required checks passed before protected merge.
+
+[Release 0.1.4-alpha.1](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.4-alpha.1)
+identifies source `6f095bc123abba186f8cfe06b73fe3cf35893663`.
+[Main CI](https://github.com/ArtAndrew/TreeHarbor/actions/runs/40866514507) and
+[signed producer](https://github.com/ArtAndrew/TreeHarbor/actions/runs/40867813404),
+both attempt 1, passed all jobs. Both installed Linux architectures exercised two
+scoped API contexts, overlapping proposals, close/replay and retained diffs,
+alongside the existing managed/native acceptance. Independent official online and
+bundled signature verification matched all eight subjects per architecture, the
+exact source/tag/workflow and producer invocation, and unchanged metadata/data
+hashes. Public readback verified the release body and all eight asset names,
+sizes and SHA-256 digests; the previous 0.1.3 release/tag remained unchanged.
+No new live App permissions, service credentials or fresh GitHub/LLM trial were
+used. This release does not certify either full mode or performance.
+
 
 ## Released local service doctor — 0.1.3-alpha.1
 

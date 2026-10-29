@@ -1,6 +1,6 @@
 # External agent API contexts — protocol v1
 
-Development candidate; not included in the published 0.1.3-alpha.1 packages.
+Available in [0.1.4-alpha.1](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.4-alpha.1). Earlier packages do not include these commands.
 
 Use this path when your agent platform already provides execution, files and
 isolation. TreeHarbor pins an exact source revision and accepts immutable changes
@@ -126,8 +126,9 @@ Close returns workspace/run IDs, new `generation`, `state: deleted`,
 `run_state: closed`, delivery/origin and `execution_observed: false`.
 
 Schema migration 032 is additive. Stop the service and workers, take a consistent
-[backup](backup-restore.md) using the documented procedure, migrate explicitly, and update all
-binaries together. Existing workspaces become `delivery: files`; existing runs
+[backup](backup-restore.md) using the documented procedure, install the new binaries,
+then run `admin migrate` with the new CLI before restarting the updated service and
+workers together. Existing workspaces become `delivery: files`; existing runs
 become `origin: control_plane`, which includes legacy trusted coordinator records
 and does not falsely assert a managed runtime. Existing object formats, request
 digests and saved receipts remain unchanged. Mixed-version/rolling upgrades and
