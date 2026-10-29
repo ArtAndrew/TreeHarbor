@@ -1028,3 +1028,70 @@ async fn previous_merge_profile_cannot_recompute_pending_candidate_after_upgrade
     );
     cleanup(&f.schema).await;
 }
+
+#[tokio::test]
+#[ignore = "requires disposable PostgreSQL"]
+async fn pending_queue_pages_preserve_order_filter_terminal_and_recheck_access() {
+    use treeharbor_metadata::integration::WireCommand;
+    let mut f = Fixture::new().await;
+    let actors = controls(&mut f).await;
+    let first = proposal(&mut f, &actors, "pending-a", b"a").await;
+    let second = proposal(&mut f, &actors, "pending-b", b"b").await;
+    let third = proposal(&mut f, &actors, "pending-c", b"c").await;
+    let reader = auth(&mut f, &actors.admin, P::Read).await;
+    let request: WireCommand = serde_json::from_value(json!({
+        "action":"queue_pending", "target":"main", "after":0, "limit":1
+    }))
+    .unwrap();
+    assert_eq!(request.permission(), P::Read);
+    let page = request.execute(&mut f.db, &reader).await.unwrap();
+    assert_eq!(page["entries"][0]["entry"], first.to_string());
+    let cursor = page["next_after"].as_i64().unwrap();
+    let owner = auth(&mut f, &actors.owner, P::QueueRequest).await;
+    f.db.cancel_native_entry(&owner, &cmd("pending-cancel"), second)
+        .await
+        .unwrap();
+    let next =
+        f.db.native_queue_pending(&reader, "main", cursor, 1)
+            .await
+            .unwrap();
+    assert_eq!(next["entries"][0]["entry"], third.to_string());
+    assert!(next["next_after"].is_null());
+    let all =
+        f.db.native_queue_pending(&reader, "main", 0, 100)
+            .await
+            .unwrap();
+    assert_eq!(all["entries"].as_array().unwrap().len(), 2);
+    assert!(all["next_after"].is_null());
+    let empty =
+        f.db.native_queue_pending(&reader, "main", i64::MAX, 1)
+            .await
+            .unwrap();
+    assert!(empty["entries"].as_array().unwrap().is_empty());
+    for (after, limit) in [(-1, 1), (0, 0), (0, 101), (0, i64::MAX)] {
+        assert!(matches!(
+            f.db.native_queue_pending(&reader, "main", after, limit)
+                .await,
+            Err(MetaError::Invalid(_))
+        ));
+    }
+    assert!(matches!(
+        f.db.native_queue_pending(&reader, "missing", 0, 1).await,
+        Err(MetaError::NotFound)
+    ));
+    assert!(
+        serde_json::from_value::<WireCommand>(json!({"action":"queue_pending",
+        "target":"main", "after":0, "limit":1, "include_other_tenants":true}))
+        .is_err()
+    );
+    f.db.revoke_repository_token(&f.scope, actors.admin.id, "operator")
+        .await
+        .unwrap();
+    assert!(
+        f.db.native_queue_pending(&reader, "main", 0, 1)
+            .await
+            .is_err()
+    );
+    drop(f.db);
+    cleanup(&f.schema).await;
+}

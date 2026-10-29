@@ -8,6 +8,53 @@ async fn queue_status(tx: &Transaction<'_>, s: &Scope, entry: Uuid) -> Result<Va
 }
 
 impl Metadata {
+    /// Live pending view, not an immutable log. Restart from zero when polling.
+    pub async fn native_queue_pending(
+        &mut self,
+        auth: &Authorization,
+        name: &str,
+        after: i64,
+        limit: i64,
+    ) -> Result<Value> {
+        ref_name(name)?;
+        if after < 0 || !(1..=100).contains(&limit) {
+            return Err(Error::Invalid("native queue page"));
+        }
+        let tx = self.client.transaction().await?;
+        settings(&tx).await?;
+        read_authorized(&tx, auth).await?;
+        let s = auth.scope();
+        // Confirm the target exists in this scope; never leak another repository.
+        target(&tx, s, name).await?;
+        let rows = tx.query(
+            "SELECT entry,position,epoch,changeset,version,state,candidate FROM th_native_queue \
+             WHERE tenant=$1 AND repository=$2 AND target=$3 AND position>$4 \
+             AND state IN ('queued','preparing','checking') ORDER BY position LIMIT $5",
+            &[&s.tenant, &s.repository, &name, &after, &(limit + 1)],
+        ).await?;
+        let more = rows.len() > limit as usize;
+        let entries: Vec<_> = rows
+            .iter()
+            .take(limit as usize)
+            .map(|row| {
+                json!({
+                    "entry": row.get::<_,Uuid>(0).to_string(), "position": row.get::<_,i64>(1),
+                    "epoch": row.get::<_,i64>(2), "changeset": row.get::<_,Uuid>(3).to_string(),
+                    "version": row.get::<_,i64>(4), "state": row.get::<_,String>(5),
+                    "candidate": row.get::<_,Option<Uuid>>(6).map(|v| v.to_string())
+                })
+            })
+            .collect();
+        let next = if more {
+            entries.last().and_then(|v| v["position"].as_i64())
+        } else {
+            None
+        };
+        read_authorized(&tx, auth).await?;
+        tx.commit().await?;
+        Ok(json!({"target":name,"entries":entries,"next_after":next}))
+    }
+
     pub async fn enqueue_native_change(
         &mut self,
         auth: &Authorization,
