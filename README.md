@@ -51,6 +51,11 @@ stopped-file captures as immutable changes, and the trusted bridge publishes PRs
 GitHub handles CI, review, conflicts and merge. Publisher credentials stay outside
 agent workspaces. The runtime supplies process isolation and resource limits.
 
+The development candidate also adds [external agent API contexts](docs/external-api-runs.md):
+use your own execution environment, read an exact base and submit immutable changes
+without TreeHarbor-managed execution. This addition is not in the published 0.1.3
+packages and does not provide process isolation or execution attestations.
+
 Each proposal keeps its base revision and agent-run identity. Changing the code
 does not carry a previous revision's passing checks forward. A text merge alone
 does not establish that two changes work together; the combined result needs checks.

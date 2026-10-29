@@ -316,6 +316,12 @@ impl Metadata {
             Begin::Replay(value) => return Ok(value),
             Begin::Fresh(tx) => tx,
         };
+        let scope = &ctx.scope;
+        let delivery=tx.tx.query_opt("SELECT delivery FROM th_workspaces WHERE tenant=$1 AND repository=$2 AND workspace=$3 AND principal=$4", &[&scope.tenant(),&scope.repository(),&workspace,&ctx.principal]).await?.ok_or(Error::ExecutionState)?.get::<_,String>(0);
+        if delivery == "api" {
+            let result = tx.close_api_workspace_effect(workspace, generation).await?;
+            return tx.complete(result, vec![]).await;
+        }
         let result = tx.drain_workspace_effect(workspace, generation).await?;
         tx.complete(result.clone(), vec![event("workspace.drain", result)])
             .await
@@ -359,8 +365,8 @@ impl Metadata {
 
     /// Caller must authenticate repository read access; a UUID is not a capability.
     pub async fn change_version(&self, scope: &Scope, id: Uuid, version: i64) -> Result<Value> {
-        let row=self.client.query_opt(r#"SELECT run,base_revision,base_snapshot,operations,result_snapshot
-            FROM th_change_versions WHERE tenant=$1 AND repository=$2 AND changeset=$3 AND version=$4"#,
+        let row=self.client.query_opt(r#"SELECT v.run,v.base_revision,v.base_snapshot,v.operations,v.result_snapshot,r.origin
+            FROM th_change_versions v JOIN th_agent_runs r USING(tenant,repository,run) WHERE v.tenant=$1 AND v.repository=$2 AND v.changeset=$3 AND v.version=$4"#,
             &[&scope.tenant,&scope.repository,&id,&version]).await?.ok_or(Error::NotFound)?;
         let object = |index| -> Result<String> {
             let raw: Vec<u8> = row.get(index);
@@ -369,10 +375,13 @@ impl Metadata {
             )
             .to_string())
         };
-        Ok(
-            json!({"changeset":id.to_string(),"version":version,"state":"accepted","run":row.get::<_,Uuid>(0).to_string(),
-            "base_revision":row.get::<_,String>(1),"base_snapshot":object(2)?,"operations":object(3)?,"result_snapshot":object(4)?}),
-        )
+        let mut result = json!({"changeset":id.to_string(),"version":version,"state":"accepted","run":row.get::<_,Uuid>(0).to_string(),
+            "base_revision":row.get::<_,String>(1),"base_snapshot":object(2)?,"operations":object(3)?,"result_snapshot":object(4)?});
+        if row.get::<_, String>(5) == "external_api" {
+            result["run_origin"] = json!("external_api");
+            result["execution_observed"] = json!(false);
+        }
+        Ok(result)
     }
 }
 
@@ -490,10 +499,13 @@ impl Mutation<'_> {
             )
             .await?;
         }
-        Ok(
-            json!({"changeset":change.id.to_string(),"version":version,"state":"accepted","run":change.run.to_string(),
-            "base_revision":base_revision,"base_snapshot":applied.base_snapshot().to_string(),"operations":applied.operations().to_string(),"result_snapshot":applied.result_snapshot().to_string()}),
-        )
+        let mut result = json!({"changeset":change.id.to_string(),"version":version,"state":"accepted","run":change.run.to_string(),
+            "base_revision":base_revision,"base_snapshot":applied.base_snapshot().to_string(),"operations":applied.operations().to_string(),"result_snapshot":applied.result_snapshot().to_string()});
+        if source.external_api {
+            result["run_origin"] = json!("external_api");
+            result["execution_observed"] = json!(false);
+        }
+        Ok(result)
     }
 
     async fn check_preparation_job(&self, job: &Job, ready: &WorkspaceReady) -> Result<()> {
@@ -572,6 +584,21 @@ impl Mutation<'_> {
 
 impl crate::Mutation<'_> {
     pub(crate) async fn create_workspace_effect(&self, spec: &WorkspaceSpec) -> Result<Value> {
+        self.create_source_workspace_effect(spec, "files").await
+    }
+    pub(crate) async fn create_api_workspace_effect(&self, spec: &WorkspaceSpec) -> Result<Value> {
+        self.create_source_workspace_effect(spec, "api").await
+    }
+    async fn create_source_workspace_effect(
+        &self,
+        spec: &WorkspaceSpec,
+        delivery: &str,
+    ) -> Result<Value> {
+        let state = if delivery == "api" {
+            "source_ready"
+        } else {
+            "requested"
+        };
         let revision = spec.base.to_string();
         let ctx = &self.request;
         let scope = &ctx.scope;
@@ -591,10 +618,17 @@ impl crate::Mutation<'_> {
         let holder = workspace_pin(spec.id);
         self.copy_root_pin(&row.get::<_, String>(0), &holder)
             .await?;
-        self.tx.execute(r#"INSERT INTO th_workspaces (tenant,repository,workspace,base_revision,principal,profile,format,state,epoch,pin_holder,resolved_profile)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,'requested',$8,$9,$6)"#,
-            &[&scope.tenant,&scope.repository,&spec.id,&revision,&ctx.principal,&spec.profile.as_slice(),&spec.format.name(),&ctx.epoch,&holder]).await?;
-        let result = json!({"workspace":spec.id.to_string(),"generation":1,"state":"requested","base":revision});
+        if delivery == "api" {
+            self.tx.execute(r#"INSERT INTO th_workspaces (tenant,repository,workspace,base_revision,principal,profile,format,state,epoch,pin_holder,resolved_profile,delivery)
+                VALUES ($1,$2,$3,$4,$5,$6,$7,'source_ready',$8,$9,$6,'api')"#,
+                &[&scope.tenant,&scope.repository,&spec.id,&revision,&ctx.principal,&spec.profile.as_slice(),&spec.format.name(),&ctx.epoch,&holder]).await?;
+        } else {
+            self.tx.execute(r#"INSERT INTO th_workspaces (tenant,repository,workspace,base_revision,principal,profile,format,state,epoch,pin_holder,resolved_profile)
+                VALUES ($1,$2,$3,$4,$5,$6,$7,'requested',$8,$9,$6)"#,
+                &[&scope.tenant,&scope.repository,&spec.id,&revision,&ctx.principal,&spec.profile.as_slice(),&spec.format.name(),&ctx.epoch,&holder]).await?;
+        }
+        let result =
+            json!({"workspace":spec.id.to_string(),"generation":1,"state":state,"base":revision});
         Ok(result)
     }
 }

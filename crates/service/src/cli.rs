@@ -541,6 +541,36 @@ enum Agent {
         #[arg(long)]
         request: PathBuf,
     },
+    /// Record an external task and pin its exact source; does not execute code.
+    ApiRunCreate {
+        #[command(flatten)]
+        mutation: Mutation,
+        #[arg(long)]
+        workspace: Uuid,
+        #[arg(long)]
+        run: Uuid,
+        #[arg(long)]
+        base: String,
+        #[arg(long)]
+        profile_digest: String,
+        #[arg(long)]
+        agent: String,
+        #[arg(long)]
+        task: String,
+    },
+    ApiRunStatus {
+        #[arg(long)]
+        run: Uuid,
+    },
+    /// Close the server context; does not stop any external process.
+    ApiRunClose {
+        #[command(flatten)]
+        mutation: Mutation,
+        #[arg(long)]
+        run: Uuid,
+        #[arg(long,value_parser=clap::value_parser!(i64).range(1..))]
+        generation: i64,
+    },
     /// Request a run from exactly prepared files and an operator-approved profile.
     RunRequest {
         #[command(flatten)]
@@ -900,6 +930,26 @@ impl Agent {
             | Self::ChangePut { .. }
             | Self::ChangeSubmit { .. } => {
                 return Err(Error::Config);
+            }
+            Self::ApiRunCreate {
+                mutation,
+                workspace,
+                run,
+                base,
+                profile_digest,
+                agent,
+                task,
+            } => {
+                json!({"method":"api_run_create","key":mutation.key,"authority":Authority::from(mutation.authority).as_str(),"epoch":mutation.epoch,
+                    "workspace":workspace.to_string(),"run":run.to_string(),"base":base,"profile_digest":profile_digest,"agent":agent,"task":task})
+            }
+            Self::ApiRunStatus { run } => json!({"method":"api_run_status","run":run.to_string()}),
+            Self::ApiRunClose {
+                mutation,
+                run,
+                generation,
+            } => {
+                json!({"method":"api_run_close","key":mutation.key,"authority":Authority::from(mutation.authority).as_str(),"epoch":mutation.epoch,"run":run.to_string(),"generation":generation})
             }
             Self::RunRequest {
                 mutation,

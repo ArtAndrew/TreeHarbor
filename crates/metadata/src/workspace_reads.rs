@@ -69,7 +69,7 @@ async fn context_in(
         || row.get::<_, i64>(5) != fence.epoch
         || !matches!(
             row.get::<_, String>(6).as_str(),
-            "requested" | "ready" | "in_use"
+            "requested" | "ready" | "in_use" | "source_ready"
         )
     {
         return Err(Error::ExecutionState);

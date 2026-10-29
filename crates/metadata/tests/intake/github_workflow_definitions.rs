@@ -488,7 +488,7 @@ async fn workflow_policy_upgrade_does_not_retroactively_approve_old_queues() {
             .await
             .unwrap()
             .get::<_, i32>(0),
-        31
+        32
     );
     assert_eq!(raw.query_one("SELECT permissions FROM th_access_tokens WHERE principal='human' ORDER BY created_at DESC LIMIT 1",&[]).await.unwrap().get::<_,Vec<String>>(0),grants);
     assert_eq!(before, f.request().await);

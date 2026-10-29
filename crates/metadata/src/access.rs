@@ -113,7 +113,9 @@ impl Permission {
             "base.register.v1" | "source.begin.v1" | "source.finish.v1" | "source.abort.v1" => {
                 Ok(Self::RepositoryWrite)
             }
-            "workspace.create.v1"
+            "api.run.create.v1"
+            | "api.run.close.v1"
+            | "workspace.create.v1"
             | "workspace.drain.v1"
             | "profile.put.v1"
             | "run.request.v1"
@@ -626,10 +628,13 @@ impl Metadata {
         repository_lock(&tx, &auth.scope, false).await?;
         auth.check_transaction(&tx, &auth.scope, &auth.principal, Permission::Read)
             .await?;
-        let row = tx.query_opt("SELECT base_revision,state,generation,epoch,format,profile,resolved_profile IS NOT NULL FROM th_workspaces WHERE tenant=$1 AND repository=$2 AND workspace=$3 AND principal=$4", &[&auth.scope.tenant,&auth.scope.repository,&workspace,&auth.principal]).await?.ok_or(Error::NotFound)?;
+        let row = tx.query_opt("SELECT base_revision,state,generation,epoch,format,profile,resolved_profile IS NOT NULL,delivery FROM th_workspaces WHERE tenant=$1 AND repository=$2 AND workspace=$3 AND principal=$4", &[&auth.scope.tenant,&auth.scope.repository,&workspace,&auth.principal]).await?.ok_or(Error::NotFound)?;
         let cleanup = tx.query_opt("SELECT cleanup,state FROM th_workspace_cleanups WHERE tenant=$1 AND repository=$2 AND workspace=$3", &[&auth.scope.tenant,&auth.scope.repository,&workspace]).await?
             .map(|r| serde_json::json!({"id":r.get::<_,Uuid>(0).to_string(),"state":r.get::<_,String>(1)}));
-        let result = serde_json::json!({"workspace":workspace.to_string(),"base":row.get::<_,String>(0),"state":row.get::<_,String>(1),"generation":row.get::<_,i64>(2),"epoch":row.get::<_,i64>(3),"format":row.get::<_,String>(4),"profile_digest":treeharbor_core::ObjectId::from_bytes(row.get::<_,Vec<u8>>(5).try_into().map_err(|_|Error::SchemaMismatch)?).to_string(),"profile_resolved":row.get::<_,bool>(6),"cleanup":cleanup});
+        let mut result = serde_json::json!({"workspace":workspace.to_string(),"base":row.get::<_,String>(0),"state":row.get::<_,String>(1),"generation":row.get::<_,i64>(2),"epoch":row.get::<_,i64>(3),"format":row.get::<_,String>(4),"profile_digest":treeharbor_core::ObjectId::from_bytes(row.get::<_,Vec<u8>>(5).try_into().map_err(|_|Error::SchemaMismatch)?).to_string(),"profile_resolved":row.get::<_,bool>(6),"cleanup":cleanup});
+        if row.get::<_, String>(7) == "api" {
+            result["delivery"] = serde_json::json!("api");
+        }
         auth.check_transaction(&tx, &auth.scope, &auth.principal, Permission::Read)
             .await?;
         tx.commit().await?;

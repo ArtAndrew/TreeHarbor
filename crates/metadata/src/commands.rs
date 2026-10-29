@@ -172,6 +172,27 @@ enum Command {
         epoch: i64,
         seal: String,
     },
+    ApiRunCreate {
+        key: String,
+        authority: Mode,
+        epoch: i64,
+        workspace: String,
+        run: String,
+        base: String,
+        profile_digest: String,
+        agent: String,
+        task: String,
+    },
+    ApiRunStatus {
+        run: String,
+    },
+    ApiRunClose {
+        key: String,
+        authority: Mode,
+        epoch: i64,
+        run: String,
+        generation: i64,
+    },
     RunRequest {
         key: String,
         authority: Mode,
@@ -303,7 +324,9 @@ impl Command {
             | Self::SourceFinish { .. }
             | Self::SourceAbort { .. }
             | Self::SourceStatus { .. } => Permission::RepositoryWrite,
-            Self::WorkspaceCreate { .. }
+            Self::ApiRunCreate { .. }
+            | Self::ApiRunClose { .. }
+            | Self::WorkspaceCreate { .. }
             | Self::WorkspaceDelete { .. }
             | Self::RunRequest { .. }
             | Self::RunStop { .. }
@@ -440,6 +463,49 @@ impl Metadata {
                 self.cancel_workspace_seal(
                     &auth.context(key, authority.into(), epoch),
                     uuid(&seal)?,
+                )
+                .await?
+            }
+            Command::ApiRunCreate {
+                key,
+                authority,
+                epoch,
+                workspace,
+                run,
+                base,
+                profile_digest,
+                agent,
+                task,
+            } => {
+                let base: RevisionRef = base.parse().map_err(|_| CommandError::InvalidRequest)?;
+                let profile: ProfileId = profile_digest
+                    .parse()
+                    .map_err(|_| CommandError::InvalidRequest)?;
+                self.create_api_run(
+                    &auth.context(key, authority.into(), epoch),
+                    &crate::api_runs::ApiRunSpec {
+                        workspace: uuid(&workspace)?,
+                        run: uuid(&run)?,
+                        base,
+                        profile: *profile.as_bytes(),
+                        agent,
+                        task,
+                    },
+                )
+                .await?
+            }
+            Command::ApiRunStatus { run } => self.api_run_status(&auth, uuid(&run)?).await?,
+            Command::ApiRunClose {
+                key,
+                authority,
+                epoch,
+                run,
+                generation,
+            } => {
+                self.close_api_run(
+                    &auth.context(key, authority.into(), epoch),
+                    uuid(&run)?,
+                    generation,
                 )
                 .await?
             }
@@ -607,6 +673,32 @@ impl Metadata {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn api_run_v1_vector_decodes_without_execution_or_identity_claims() {
+        let vector: Value =
+            serde_json::from_str(include_str!("../tests/fixtures/api-run-v1.json")).unwrap();
+        let mut envelope = vector["envelope"].clone();
+        let parsed = decode(&serde_json::to_vec(&envelope).unwrap()).unwrap();
+        assert!(matches!(parsed.command, Command::ApiRunCreate { .. }));
+        assert_eq!(parsed.command.permission(), Permission::WorkspaceWrite);
+        for field in [
+            "principal",
+            "origin",
+            "runtime",
+            "state",
+            "started_at",
+            "execution_observed",
+            "exit_code",
+            "validation",
+        ] {
+            envelope["command"][field] = json!(true);
+            assert!(
+                decode(&serde_json::to_vec(&envelope).unwrap()).is_err(),
+                "{field}"
+            );
+            envelope["command"].as_object_mut().unwrap().remove(field);
+        }
+    }
     #[test]
     fn capture_selection_rejects_ambiguous_paths_and_preserves_raw_bytes() {
         let raw: SelectionWire = serde_json::from_value(json!({

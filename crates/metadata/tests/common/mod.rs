@@ -68,6 +68,7 @@ pub async fn drop_unpopulated_v26(raw: &Client) {
 
 #[allow(dead_code)]
 pub async fn drop_unpopulated_v29(raw: &Client) {
+    drop_unpopulated_v32(raw).await;
     raw.batch_execute("DROP TABLE th_github_check_dispatch_policy; DROP INDEX th_github_managed_check_collections")
         .await
         .unwrap();
@@ -78,4 +79,11 @@ pub async fn drop_unpopulated_v29(raw: &Client) {
     .unwrap();
     assert_eq!(raw.query_one("SELECT (SELECT count(*) FROM th_github_admission_policies)+(SELECT count(*) FROM th_github_admission_refs)+(SELECT count(*) FROM th_github_queue_admission)+(SELECT count(*) FROM th_github_check_admission)", &[]).await.unwrap().get::<_,i64>(0),0);
     raw.batch_execute("DROP TABLE th_github_check_admission,th_github_queue_admission,th_github_admission_refs,th_github_admission_policies; DROP FUNCTION th_github_admission_ref_update(); DROP INDEX th_github_check_publication_unresolved; ALTER TABLE th_github_check_publications DROP COLUMN context_name; CREATE UNIQUE INDEX th_github_check_publication_unresolved ON th_github_check_publications(tenant,repository,binding,epoch,head,program) WHERE state IN ('requested','attempting','uncertain');").await.unwrap();
+}
+
+// Test-only reconstruction of the published v31 schema. Not a product downgrade.
+#[allow(dead_code)]
+pub async fn drop_unpopulated_v32(raw: &Client) {
+    assert_eq!(raw.query_one("SELECT (SELECT count(*) FROM th_workspaces WHERE delivery='api')+(SELECT count(*) FROM th_agent_runs WHERE origin='external_api')",&[]).await.unwrap().get::<_,i64>(0),0);
+    raw.batch_execute("DROP TRIGGER th_workspace_delivery_identity ON th_workspaces; DROP FUNCTION th_workspace_delivery_identity(); DROP TRIGGER th_api_agent_identity ON th_agent_runs; DROP FUNCTION th_api_agent_identity(); ALTER TABLE th_workspaces DROP CONSTRAINT th_workspaces_state_check; ALTER TABLE th_workspaces DROP COLUMN delivery; ALTER TABLE th_workspaces ADD CONSTRAINT th_workspaces_state_check CHECK(state IN ('requested','ready','in_use','draining','deleted')); ALTER TABLE th_agent_runs DROP CONSTRAINT th_agent_runs_state_check; ALTER TABLE th_agent_runs DROP COLUMN origin; ALTER TABLE th_agent_runs ADD CONSTRAINT th_agent_runs_state_check CHECK(state IN ('requested','launching','running','stopping','succeeded','failed','cancelled','lost')); DROP INDEX th_one_active_run; CREATE UNIQUE INDEX th_one_active_run ON th_agent_runs(tenant,repository,workspace) WHERE state IN ('requested','launching','running','stopping')").await.unwrap();
 }

@@ -457,6 +457,7 @@ async fn dispatch_policy_migration_does_not_backfill_legacy_authorizations() {
     );
     // Reconstruct the old schema: v30 could retain this dispatch, but had no
     // policy-proof table. Never infer a certificate from a later migration.
+    crate::common::drop_unpopulated_v32(&raw).await;
     raw.batch_execute("DROP TABLE th_github_check_dispatch_policy; DROP INDEX th_github_managed_check_collections")
         .await
         .unwrap();

@@ -2224,7 +2224,7 @@ dependencies = [
 
 [[package]]
 name = "treeharbor-core"
-version = "0.1.3-alpha.1"
+version = "0.1.4-alpha.1"
 dependencies = [
  "sha2",
  "thiserror",
@@ -2232,7 +2232,7 @@ dependencies = [
 
 [[package]]
 name = "treeharbor-git-bridge"
-version = "0.1.3-alpha.1"
+version = "0.1.4-alpha.1"
 dependencies = [
  "base64 0.23.1",
  "flate2",
@@ -2251,7 +2251,7 @@ dependencies = [
 
 [[package]]
 name = "treeharbor-github"
-version = "0.1.3-alpha.1"
+version = "0.1.4-alpha.1"
 dependencies = [
  "base64 0.23.1",
  "jsonwebtoken",
@@ -2273,7 +2273,7 @@ dependencies = [
 
 [[package]]
 name = "treeharbor-github-contract"
-version = "0.1.3-alpha.1"
+version = "0.1.4-alpha.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -2287,7 +2287,7 @@ dependencies = [
 
 [[package]]
 name = "treeharbor-github-webhook"
-version = "0.1.3-alpha.1"
+version = "0.1.4-alpha.1"
 dependencies = [
  "hmac",
  "serde",
@@ -2300,14 +2300,14 @@ dependencies = [
 
 [[package]]
 name = "treeharbor-history"
-version = "0.1.3-alpha.1"
+version = "0.1.4-alpha.1"
 dependencies = [
  "treeharbor-core",
 ]
 
 [[package]]
 name = "treeharbor-materializer"
-version = "0.1.3-alpha.1"
+version = "0.1.4-alpha.1"
 dependencies = [
  "rustix",
  "serde",
@@ -2325,7 +2325,7 @@ dependencies = [
 
 [[package]]
 name = "treeharbor-merge"
-version = "0.1.3-alpha.1"
+version = "0.1.4-alpha.1"
 dependencies = [
  "diffy",
  "tempfile",
@@ -2337,7 +2337,7 @@ dependencies = [
 
 [[package]]
 name = "treeharbor-metadata"
-version = "0.1.3-alpha.1"
+version = "0.1.4-alpha.1"
 dependencies = [
  "getrandom 0.4.3",
  "serde",
@@ -2359,7 +2359,7 @@ dependencies = [
 
 [[package]]
 name = "treeharbor-node"
-version = "0.1.3-alpha.1"
+version = "0.1.4-alpha.1"
 dependencies = [
  "rustix",
  "serde",
@@ -2379,7 +2379,7 @@ dependencies = [
 
 [[package]]
 name = "treeharbor-runtime"
-version = "0.1.3-alpha.1"
+version = "0.1.4-alpha.1"
 dependencies = [
  "bytes",
  "http-body-util",
@@ -2397,7 +2397,7 @@ dependencies = [
 
 [[package]]
 name = "treeharbor-service"
-version = "0.1.3-alpha.1"
+version = "0.1.4-alpha.1"
 dependencies = [
  "bytes",
  "clap",
@@ -2431,7 +2431,7 @@ dependencies = [
 
 [[package]]
 name = "treeharbor-storage"
-version = "0.1.3-alpha.1"
+version = "0.1.4-alpha.1"
 dependencies = [
  "tempfile",
  "thiserror",
@@ -2440,7 +2440,7 @@ dependencies = [
 
 [[package]]
 name = "treeharbor-validation"
-version = "0.1.3-alpha.1"
+version = "0.1.4-alpha.1"
 dependencies = [
  "sha2",
  "treeharbor-core",

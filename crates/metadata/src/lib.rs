@@ -9,6 +9,7 @@ use tokio_postgres::{Client, Transaction};
 use uuid::Uuid;
 
 pub mod access;
+pub mod api_runs;
 pub mod catalog;
 mod check_runtime;
 pub mod cleanup;
@@ -59,6 +60,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/029_github_admission_policy.sql"),
     include_str!("../migrations/030_github_report_trust.sql"),
     include_str!("../migrations/031_github_check_dispatch_policy.sql"),
+    include_str!("../migrations/032_external_api_runs.sql"),
 ];
 const MAX_JSON: usize = 1024 * 1024;
 

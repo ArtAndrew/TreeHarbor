@@ -9,10 +9,15 @@ The server computes the result from the run's original snapshot and explicit fil
 operations. The caller cannot supply a result snapshot. Unmentioned files remain
 unchanged, including sparse-omitted files. Deletes are explicit.
 
-An eligible run is running with the exact workspace/runtime binding, or terminal
+An eligible control-plane run is running with the exact workspace/runtime binding, or terminal
 with runtime removal confirmed by its managed node. Failed/cancelled/lost runs can
 also propose edits. Requested/launching/stopping/drained contexts are rejected.
 Owner, workspace generation, repository authority and epoch must still match.
+The development API candidate also accepts a currently recorded
+[external API context](external-api-runs.md) with exact owner/base/generation/epoch,
+without claiming execution or runtime removal. This new context requires schema
+032 and is not included in published 0.1.3 packages.
+
 Task exit is never Validation. This API accepts immutable bytes; it does **not**
 scan or seal a mutable workspace. Stopped-file capture remains a release gate.
 
