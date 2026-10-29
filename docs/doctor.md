@@ -1,8 +1,8 @@
 # Diagnose local service setup
 
-Available from source on the development branch; not included in the published
-0.1.2-alpha.1 package. Use the verified package's command once a release containing
-this feature is published.
+Planned for 0.1.3-alpha.1 and available from current development source. It is not
+included in the published 0.1.2-alpha.1 package. Use the verified package's command
+once a release containing this feature is published.
 
 Before starting the source service, run as the trusted operator:
 

@@ -37,9 +37,14 @@ Targeted local verification passed the actual CLI failure/redaction/no-clobber
 test, five existing local configuration/permission tests, and one real PostgreSQL
 CLI test covering absent namespace, existing unmigrated namespace and current
 schema, with no implicit table/storage/socket creation. Strict all-targets service
-Clippy passed. The existing installed managed-runtime scenario now checks doctor
-before and after explicit migration; Linux x86-64/ARM64 execution remains pending
-the candidate's required CI. No new App rights or live service credentials.
+Clippy passed. [PR97 CI](https://github.com/ArtAndrew/TreeHarbor/actions/runs/40843493976)
+passed all five jobs, with the separate required contribution-rights check also
+successful. Both installed Linux x86-64/ARM64 managed-runtime scenarios checked
+doctor before/after explicit migration and absence of implicit storage/socket
+writes. The implementation merged through the protected branch in
+[PR97](https://github.com/ArtAndrew/TreeHarbor/pull/97). Version 0.1.3-alpha.1 is
+being prepared; no signed release of this command is claimed yet. No new App
+rights or live service credentials.
 
 ## Released workspace request CLI — 0.1.2-alpha.1
 
