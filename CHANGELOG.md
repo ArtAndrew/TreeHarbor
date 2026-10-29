@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Synchronize newly materialized files in bounded batches (up to 32 open files and
+  four workers per active preparation). Every file still completes synchronization
+  before the manifest and parent directories are synchronized and the workspace
+  is published; write, thread creation or synchronization failures abort preparation.
+  No object format, database schema or public API changes.
+
 ## 0.1.4-alpha.1 — external agent API contexts — 2026-10-29
 
 - Add `api-run-create/status/close`: pin an exact source and accept immutable

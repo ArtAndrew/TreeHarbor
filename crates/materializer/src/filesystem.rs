@@ -38,6 +38,9 @@ pub(crate) struct Stage {
     directories: BTreeSet<Vec<u8>>,
     links: BTreeMap<Vec<u8>, Vec<u8>>,
     pub publication: Option<crate::Publication>,
+    // At most 32 private file descriptors; four synchronous workers per batch.
+    // All finish before the manifest/parent sync and before publication.
+    pending_sync: Vec<File>,
 }
 impl Stage {
     #[allow(clippy::too_many_arguments)]
@@ -77,6 +80,7 @@ impl Stage {
             directories: BTreeSet::from([vec![]]),
             links: BTreeMap::new(),
             publication: None,
+            pending_sync: Vec::new(),
         };
         if let Some(previous) = previous {
             stage.copy_stopped(&previous.path())?;
@@ -241,7 +245,10 @@ impl Stage {
                         0o600
                     },
                 ))?;
-                file.sync_all()?;
+                self.pending_sync.push(file);
+                if self.pending_sync.len() >= 32 {
+                    self.flush_files()?;
+                }
             }
             EntryMode::Symlink => self.write_link(relative, bytes)?,
             EntryMode::Directory => return Err(Error::UnsafePath("directory written as a leaf")),
@@ -323,7 +330,32 @@ impl Stage {
         }
         Ok(())
     }
+    fn flush_files(&mut self) -> Result<()> {
+        std::thread::scope(|scope| -> std::io::Result<()> {
+            let mut workers = Vec::new();
+            for chunk in self.pending_sync.chunks(8) {
+                workers.push(std::thread::Builder::new().spawn_scoped(
+                    scope,
+                    move || -> std::io::Result<()> {
+                        for file in chunk {
+                            file.sync_all()?;
+                        }
+                        Ok(())
+                    },
+                )?);
+            }
+            for worker in workers {
+                worker
+                    .join()
+                    .map_err(|_| std::io::Error::other("file sync worker panicked"))??;
+            }
+            Ok(())
+        })?;
+        self.pending_sync.clear();
+        Ok(())
+    }
     pub fn finish(&mut self) -> Result<()> {
+        self.flush_files()?;
         if let Some(paths) = &self.manifest.selection.paths {
             for path in paths {
                 if !self.manifest.entries.contains_key(path) {
@@ -539,5 +571,83 @@ mod tests {
             fs::read_to_string(stage.temp.path().join("manifest.json")).unwrap(),
             expected
         );
+    }
+
+    #[tokio::test]
+    async fn file_sync_batch_is_bounded_and_finish_drains_the_tail() {
+        let parent = tempfile::Builder::new()
+            .permissions(fs::Permissions::from_mode(0o700))
+            .tempdir()
+            .unwrap();
+        let permit = Arc::new(tokio::sync::Semaphore::new(1))
+            .acquire_owned()
+            .await
+            .unwrap();
+        let mut stage = Stage::new(
+            parent.path().to_owned(),
+            "tenant".into(),
+            "00000000-0000-0000-0000-000000000001".into(),
+            ObjectId::from_bytes([3; 32]),
+            Selection::full(),
+            Limits::default(),
+            permit,
+            None,
+        )
+        .unwrap();
+        for index in 0..33 {
+            stage
+                .write_source(
+                    format!("file-{index}").as_bytes(),
+                    EntryMode::File,
+                    b"durable",
+                )
+                .unwrap();
+            assert_eq!(stage.pending_sync.len(), (index + 1) % 32);
+        }
+        assert!(!stage.temp.path().join("manifest.json").exists());
+        stage.finish().unwrap();
+        assert!(stage.pending_sync.is_empty());
+        for index in 0..33 {
+            assert_eq!(
+                fs::read(stage.path(format!("file-{index}").as_bytes())).unwrap(),
+                b"durable"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn failed_file_sync_never_writes_the_completion_manifest() {
+        let parent = tempfile::Builder::new()
+            .permissions(fs::Permissions::from_mode(0o700))
+            .tempdir()
+            .unwrap();
+        let permit = Arc::new(tokio::sync::Semaphore::new(1))
+            .acquire_owned()
+            .await
+            .unwrap();
+        let mut stage = Stage::new(
+            parent.path().to_owned(),
+            "tenant".into(),
+            "00000000-0000-0000-0000-000000000001".into(),
+            ObjectId::from_bytes([3; 32]),
+            Selection::full(),
+            Limits::default(),
+            permit,
+            None,
+        )
+        .unwrap();
+        stage
+            .write_source(b"good", EntryMode::File, b"durable")
+            .unwrap();
+        // A read pipe cannot be fsynced on supported Unix platforms. Inject a
+        // real I/O failure without unsafe descriptor manipulation or test hooks.
+        let (reader, _writer) = std::io::pipe().unwrap();
+        let fd: std::os::fd::OwnedFd = reader.into();
+        stage.pending_sync.push(File::from(fd));
+        assert!(stage.finish().is_err());
+        assert!(!stage.temp.path().join("manifest.json").exists());
+        let path = stage.temp.path().to_owned();
+        drop(stage);
+        assert!(!path.exists());
     }
 }
