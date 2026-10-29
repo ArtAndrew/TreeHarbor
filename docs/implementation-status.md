@@ -21,6 +21,24 @@ These correctness checks do not establish complete mode readiness or performance
 superiority. The installed native workload includes deliberate replacement-node
 recovery; live GitHub recovery remains a separate release gate.
 
+## Unreleased MCP external task contexts
+
+The MCP adapter exposes three additional named tools: `api_run_create`,
+`api_run_status` and `api_run_close`. They forward the existing authenticated API
+operations with no new permissions or schema changes. A controller can register
+its own task, read exact source, submit immutable proposals and logically close
+the context without a TreeHarbor runtime node. Execution and isolation remain
+the controller's responsibility; `execution_observed` stays false.
+
+Local verification passed the independent stdio wire test and the real
+two-client MCP/service/PostgreSQL scenario on both supported protocol lifecycles.
+The scenario now creates external contexts through MCP, replacing its earlier
+SQL-inserted runtime facts. It checks overlapping proposals, replay, restart,
+foreign-owner/stale-generation refusal, logical close, retained acceptance and
+access revocation. This is API workflow evidence, not a real LLM or runtime trial.
+Cross-platform CI and release verification remain pending for this addition.
+See [the MCP workflow](mcp.md#start-a-task-using-your-own-execution-environment-unreleased).
+
 ## Unreleased native preparation helper
 
 [`native-advance`](native-advance.md) discovers one pending native entry and saves

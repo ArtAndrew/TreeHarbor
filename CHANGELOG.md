@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Expose external API task creation/status/close through three scoped MCP tools.
+  Context registration does not execute code, attest isolation or grant validation;
+  closing retains accepted changes and does not stop an external process.
+
 ## 0.1.5-alpha.1 — workspace preparation and native queue helper (candidate)
 
 - Add `native-advance` to journal and resume preparation of one pending native
