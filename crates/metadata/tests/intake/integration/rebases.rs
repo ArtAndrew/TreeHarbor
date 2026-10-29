@@ -504,7 +504,7 @@ async fn rebase_migration_preserves_accepted_versions_and_pending_checks() {
         .unwrap();
     let mut f = Fixture::from_db(schema, scope, db).await;
     let a = controls(&mut f).await;
-    let entry = proposal(&mut f, &a, "before-upgrade", b"already accepted\n").await;
+    let entry = legacy_proposal(&mut f, &a, "before-upgrade", b"already accepted\n").await;
     let (cid, worker) = start(&mut f, &a, entry).await;
     prepare(&mut f, &worker, cid).await;
     evidence(&mut f, &a, &worker, cid).await;

@@ -108,6 +108,92 @@ async fn controls(f: &mut Fixture) -> Actors {
     .unwrap();
     actors
 }
+// Frozen fixture for the published v9 first-version intake shape. Migration
+// tests populate the actual old schema; current intake requires schema 032.
+// This does not claim execution by an old binary or test current admission.
+async fn legacy_change(
+    f: &mut Fixture,
+    key: &str,
+    change: Uuid,
+    prepared: &(AppliedChange, ObjectLease, ObjectLease),
+) {
+    let (applied, operations, result) = prepared;
+    let source =
+        f.db.lease_pinned_root(
+            &f.scope,
+            &format!("workspace:{}", f.workspace),
+            Uuid::new_v4(),
+            60,
+        )
+        .await
+        .unwrap();
+    let request = treeharbor_metadata::Request::new(
+        f.scope.clone(),
+        key,
+        "agent-owner",
+        "change.accept.v1",
+        Authority::Standalone,
+        1,
+        json!([
+            1,
+            change.to_string(),
+            0,
+            f.run.to_string(),
+            1,
+            applied.base_snapshot().to_string(),
+            applied.operations().to_string(),
+            applied.result_snapshot().to_string()
+        ])
+        .to_string()
+        .as_bytes(),
+    )
+    .unwrap();
+    let treeharbor_metadata::Begin::Fresh(tx) = f.db.begin(request).await.unwrap() else {
+        panic!("legacy fixture already exists")
+    };
+    let prefix = format!("change:{change}:1");
+    let base_pin = format!("{prefix}:base");
+    let operations_pin = format!("{prefix}:operations");
+    let result_pin = format!("{prefix}:result");
+    tx.pin_object(&base_pin, &source).await.unwrap();
+    tx.pin_object(&operations_pin, operations).await.unwrap();
+    tx.pin_object(&result_pin, result).await.unwrap();
+    tx.transaction().execute("INSERT INTO th_changesets(tenant,repository,changeset,principal,latest_version) VALUES($1,$2,$3,'agent-owner',1)",&[&f.scope.tenant(),&f.scope.repository(),&change]).await.unwrap();
+    tx.transaction().execute("INSERT INTO th_change_versions(tenant,repository,changeset,version,run,base_revision,base_snapshot,operations,result_snapshot,base_pin,operations_pin,result_pin,operation_key) VALUES($1,$2,$3,1,$4,$5,$6,$7,$8,$9,$10,$11,$12)",
+        &[&f.scope.tenant(),&f.scope.repository(),&change,&f.run,&f.revision.to_string(),&applied.base_snapshot().as_bytes().as_slice(),&applied.operations().as_bytes().as_slice(),&applied.result_snapshot().as_bytes().as_slice(),&base_pin,&operations_pin,&result_pin,&key]).await.unwrap();
+    let value = json!({"changeset":change.to_string(),"version":1,"state":"accepted","run":f.run.to_string(),
+        "base_revision":f.revision.to_string(),"base_snapshot":applied.base_snapshot().to_string(),
+        "operations":applied.operations().to_string(),"result_snapshot":applied.result_snapshot().to_string()});
+    tx.complete(
+        value.clone(),
+        vec![treeharbor_metadata::Event {
+            kind: "change.accepted".into(),
+            payload: value,
+        }],
+    )
+    .await
+    .unwrap();
+}
+
+async fn legacy_proposal(f: &mut Fixture, actors: &Actors, key: &str, content: &[u8]) -> Uuid {
+    let change = Uuid::new_v4();
+    let prepared = f.prepare(content).await;
+    legacy_change(f, &format!("accept-{key}"), change, &prepared).await;
+    let owner = auth(f, &actors.owner, P::QueueRequest).await;
+    let entry = Uuid::new_v4();
+    f.db.enqueue_native_change(
+        &owner,
+        &cmd(&format!("enqueue-{key}")),
+        entry,
+        "main",
+        change,
+        1,
+    )
+    .await
+    .unwrap();
+    entry
+}
+
 async fn proposal(f: &mut Fixture, actors: &Actors, key: &str, content: &[u8]) -> Uuid {
     let change = Uuid::new_v4();
     let prepared = f.prepare(content).await;
@@ -785,13 +871,8 @@ async fn native_migration_preserves_existing_changes_and_can_enqueue_them() {
     let mut f = Fixture::from_db(schema, scope, db).await;
     let prepared = f.prepare(b"old accepted change").await;
     let change = Uuid::new_v4();
-    f.db.accept_change(
-        &context(&f.scope, "before"),
-        &submission(change, f.run, &prepared),
-    )
-    .await
-    .unwrap();
-    let snapshot = "SELECT jsonb_build_object('changes',(SELECT jsonb_agg(to_jsonb(v) ORDER BY version) FROM th_change_versions v),'pins',(SELECT jsonb_agg(to_jsonb(p) ORDER BY holder) FROM th_object_pins p),'runs',(SELECT jsonb_agg(to_jsonb(r) ORDER BY run) FROM th_agent_runs r),'receipts',(SELECT jsonb_agg(to_jsonb(o) ORDER BY key) FROM th_operations o))";
+    legacy_change(&mut f, "before", change, &prepared).await;
+    let snapshot = "SELECT jsonb_build_object('changes',(SELECT jsonb_agg(to_jsonb(v) ORDER BY version) FROM th_change_versions v),'pins',(SELECT jsonb_agg(to_jsonb(p) ORDER BY holder) FROM th_object_pins p),'runs',(SELECT jsonb_agg(to_jsonb(r)-'origin' ORDER BY run) FROM th_agent_runs r),'receipts',(SELECT jsonb_agg(to_jsonb(o) ORDER BY key) FROM th_operations o))";
     let before: Value = raw.query_one(snapshot, &[]).await.unwrap().get(0);
     assert!(matches!(
         f.db.check_schema().await,

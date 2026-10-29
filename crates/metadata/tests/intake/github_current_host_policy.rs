@@ -276,6 +276,7 @@ async fn current_host_policy_migration_keeps_history_but_does_not_infer_report_t
     let host = c.save_host("upgrade-host", &r).await;
     assert_eq!(c.with_host(checks, host).await["admission_verified"], true);
     let raw = connection(&c.f.p.f.schema).await;
+    crate::common::drop_unpopulated_v32(&raw).await;
     raw.batch_execute("DROP TABLE th_github_check_dispatch_policy; DROP INDEX th_github_managed_check_collections")
         .await
         .unwrap();
