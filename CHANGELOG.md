@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.5-alpha.1 — workspace preparation and native queue helper (candidate)
+
 - Add `native-advance` to journal and resume preparation of one pending native
   candidate; checks, review and integration remain separate authorized actions.
 
@@ -13,6 +15,12 @@
   before the manifest and parent directories are synchronized and the workspace
   is published; write, thread creation or synchronization failures abort preparation.
   No object format, database schema or public API changes.
+
+- Add an opt-in source-import benchmark with an actual CLI/service/PostgreSQL
+  sample and explicit scope limits; no performance superiority claim.
+- No schema migration from 0.1.4. Stop tasks/workers and the service before updating
+  binaries together; retain source data, credentials and private retry journals.
+  Native queue helpers remain experimental; Connected PR Preview scope is unchanged.
 
 ## 0.1.4-alpha.1 — external agent API contexts — 2026-10-29
 

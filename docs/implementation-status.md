@@ -34,8 +34,10 @@ explicitly a trusted fixture, separate from actual runtime acceptance.
 The installed Linux acceptance scenario now uses this helper before actual
 gVisor checks, review, publication and Git export. It also repeats the command
 after publication to require current `landed` status rather than the saved start
-receipt. Verification of this updated installed scenario is pending CI; it is
-not evidence of a released feature or an automatic queue controller.
+receipt. Both installed Linux architecture jobs passed this scenario in
+[PR105 CI](https://github.com/ArtAndrew/TreeHarbor/actions/runs/40930827791) at
+`6855b3672107505a96054a9ea49062be840159f0`. This verifies the stated helper and
+workflow, not a released feature or an automatic queue controller.
 
 ## Released external API contexts — 0.1.4-alpha.1
 
