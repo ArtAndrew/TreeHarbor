@@ -28,6 +28,11 @@ pub struct Cli {
 }
 #[derive(Subcommand)]
 enum Command {
+    /// Inspect local source-service prerequisites without installing or migrating anything.
+    Doctor {
+        #[arg(long)]
+        config: PathBuf,
+    },
     /// Serve agent tools over stdio using a fixed repository-scoped credential.
     Mcp {
         #[arg(long)]
@@ -985,6 +990,12 @@ impl Agent {
 }
 pub async fn run(cli: Cli) -> Result<bool> {
     match cli.command {
+        Command::Doctor { config } => {
+            let report = crate::doctor::inspect(&config).await;
+            let passed = report["passed"] == true;
+            println!("{report}");
+            Ok(passed)
+        }
         Command::InternalGitWorker => {
             treeharbor_git_bridge::download::worker()?;
             Ok(true)
