@@ -43,7 +43,12 @@ close, including interrupted projection preparation and exact parent preservatio
 Two v1 vector/claim-rejection unit tests passed; 28 existing upgrade regressions
 passed. The final versioned candidate passed both v1 tests, all three metadata contracts,
 the three external CLI/HTTP paths and an existing MCP transport regression.
-Strict all-targets metadata/service Clippy passed. Required CI,
+Strict all-targets metadata/service Clippy passed. Initial candidate CI passed both
+Rust jobs and both installed Linux runtime jobs, including the new API pair. Its
+PostgreSQL job exposed four historical-schema fixture failures. Test-only fixes
+populate old intake records using their published shape and remove newer schema
+extensions before reconstructed migrations; current admission predicates are
+unchanged. All six focused migration cases then passed locally. Required CI,
 installed package verification and signed publication are pending; published
 0.1.3 packages do not include these commands. No live App grants or new GitHub
 credentials were used. This does not certify either full mode or performance.
