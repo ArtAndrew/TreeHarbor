@@ -805,10 +805,18 @@ class Harness:
         changes = []
         for index, credential in enumerate(self.agents):
             workspace, run, upload, change = [str(uuid.uuid4()) for _ in range(4)]
-            create = ["api-run-create", "--key", "api-create-" + run, "--authority", "standalone", "--epoch", "1",
-                      "--workspace", workspace, "--run", run, "--base", self.revision,
-                      "--profile-digest", self.source_profile, "--agent", "external-controller/1", "--task", "api-edit"]
+            state = self.root / "api-task.json" if index == 0 else None
+            create = (["api-run-new", "--state", state] if state else
+                      ["api-run-create", "--key", "api-create-" + run, "--workspace", workspace, "--run", run])
+            create += ["--authority", "standalone", "--epoch", "1", "--base", self.revision,
+                       "--profile-digest", self.source_profile, "--agent", "external-controller/1", "--task", "api-edit"]
             receipt = self.client(*create, credential=credential)
+            if state:
+                workspace, run = receipt["workspace"], receipt["run"]
+                intent_bytes = state.read_bytes()
+                intent = json.loads(intent_bytes)
+                assert intent["workspace"] == workspace and intent["run"] == run
+                assert b"thv1_" not in intent_bytes
             assert receipt == self.client(*create, credential=credential)
             assert receipt["state"] == "recorded" and receipt["workspace_state"] == "source_ready"
             assert receipt["execution_observed"] is False
@@ -839,6 +847,11 @@ class Harness:
             assert closed == self.client(*close, credential=credential)
             assert closed["state"] == "deleted" and closed["run_state"] == "closed"
             assert "runtime_removed" not in closed
+            if state:
+                assert self.client(*create, credential=credential) == receipt
+                assert state.read_bytes() == intent_bytes
+                assert self.client("api-run-status", "--run", run, credential=credential)["state"] == "closed"
+                print("PASS installed api-run-new: saved creation identities survive retries and logical close without reopening the task", flush=True)
             assert self.client(*submit, credential=credential) == accepted
             retained = self.client("diff", "--authority", "standalone", "--epoch", "1", "change",
                                    "--changeset", change, "--version", "1", credential=credential)

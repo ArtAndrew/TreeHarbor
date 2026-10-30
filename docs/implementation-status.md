@@ -21,6 +21,26 @@ These correctness checks do not establish complete mode readiness or performance
 superiority. The installed native workload includes deliberate replacement-node
 recovery; live GitHub recovery remains a separate release gate.
 
+## Unreleased journaled external task creation
+
+`client api-run-new --state` generates and saves both task/workspace IDs and the
+request key before calling the existing `api_run_create`. Its private versioned
+intent binds repository scope, authority/epoch, exact base/profile and labels.
+It reuses no-clobber file publication and file/parent synchronization. Changed or
+malformed state is rejected before network IO; uncertain outcomes retain the file.
+Replay returns the original receipt, including after logical close; current status
+remains a separate read. There is no new backend command, permission or runtime.
+
+Local verification passed real CLI/server/PostgreSQL loss/restart/concurrent retry
+in both authority modes, closed-context replay and invalid intent preservation.
+The existing installed external-task scenario now uses the helper for one agent
+and retains explicit creation for the other, followed by the MCP scenario.
+That complete Python API scenario also passed locally against the real service,
+PostgreSQL and source import. Targeted service unit/transport tests and strict
+service all-target Clippy passed. Installed Linux verification remains pending;
+this helper is not in 0.1.6 and is prepared for the 0.1.7 candidate.
+See [external tasks](external-api-runs.md#save-creation-identities-automatically-unreleased).
+
 ## Released MCP external task contexts — 0.1.6-alpha.1
 
 The MCP adapter exposes three additional named tools: `api_run_create`,

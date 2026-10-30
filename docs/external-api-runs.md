@@ -27,9 +27,40 @@ GitHub publication or merge authority. Keep credentials outside untrusted code.
 
 ## One task
 
+### Save creation identities automatically (unreleased)
+
+The development CLI adds `api-run-new` after 0.1.6. It generates the workspace ID,
+run ID and request key, and durably saves them before sending the existing
+`api_run_create` command. Use an absolute state path in an owner-private directory;
+the state file must not exist for a new task. Source/profile registration and
+execution remain your controller's responsibility.
+
+```sh
+treeharbor client --socket "$TH_SOCKET" --credential-file "$TH_CREDENTIAL" \
+  api-run-new --state "$TH_PRIVATE/task.json" --authority connected --epoch 1 \
+  --base "$BASE" --profile-digest "$SOURCE_PROFILE" \
+  --agent my-controller/1 --task fix-parser
+```
+
+Read `result.workspace` and `result.run` from the returned JSON for subsequent
+source/proposal/status/close operations. Repeat the same command and state path
+after a lost response. The file binds the repository scope, authority, epoch,
+base, profile and agent/task labels; changed inputs, unknown fields or malformed
+state fail before sending. It contains no credential. Concurrent first calls
+using one state path share the same creation identity. Keep the state after
+errors; deleting it and starting over can create another task.
+
+A successful retry returns the original creation receipt, even after logical
+close. `recorded` in that historical receipt does not reopen the task or report
+its current state: use `api-run-status`. No automatic retry, process launch or
+runtime observation is added. Existing owner and permission checks still apply.
+Use a new state path for a genuinely new task.
+
+### Supply creation identities explicitly
+
 Choose and **save** a non-nil workspace UUID, run UUID and request key before the
 first call. Keep all arguments and the key unchanged on uncertain retries.
-Unlike `workspace-new`, these commands do not generate a local intent journal.
+`api-run-create` leaves the local intent journal to your controller.
 `BASE` must identify an exact registered `native:sha256:…` revision, not a branch.
 
 ```sh
