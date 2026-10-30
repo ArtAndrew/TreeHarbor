@@ -55,10 +55,21 @@ jobs:
         with:
           persist-credentials: false
       - run: rustup toolchain install 1.99.1 --profile minimal
+      - name: Expose matching PostgreSQL backup tools from the disposable server
+        env:
+          PG_CONTAINER: ${{ job.services.postgres.id }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/pg-tools"
+          for tool in pg_dump pg_restore; do
+            printf '#!/bin/sh\nexec /usr/bin/docker exec -i -e PGDATABASE -e PGUSER -e PGPASSWORD "%s" %s "$@"\n' "$PG_CONTAINER" "$tool" > "$RUNNER_TEMP/pg-tools/$tool"
+            chmod 700 "$RUNNER_TEMP/pg-tools/$tool"
+          done
       - name: Run real database contracts (not mocks)
         env:
           TH_TEST_DATABASE_URL: host=127.0.0.1 user=treeharbor_test password=disposable-ci-only dbname=treeharbor_test
           TH_SERVICE_TEST_DATABASE_URL: host=/var/run/treeharbor-test-pg user=treeharbor_test password=disposable-ci-only dbname=treeharbor_test
+          TH_TEST_PG_DUMP: ${{ runner.temp }}/pg-tools/pg_dump
+          TH_TEST_PG_RESTORE: ${{ runner.temp }}/pg-tools/pg_restore
         run: cargo test -p treeharbor-metadata -p treeharbor-materializer -p treeharbor-node -p treeharbor-service --locked -- --ignored
       - name: Install pinned webhook TLS proxy for acceptance
         working-directory: ${{ runner.temp }}

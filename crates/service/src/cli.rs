@@ -28,6 +28,11 @@ pub struct Cli {
 }
 #[derive(Subcommand)]
 enum Command {
+    /// Trusted operator cold backup. Requires explicitly stopped writers.
+    Backup {
+        #[command(subcommand)]
+        action: crate::backup::Action,
+    },
     /// Inspect local source-service prerequisites without installing or migrating anything.
     Doctor {
         #[arg(long)]
@@ -1068,6 +1073,7 @@ impl Agent {
 }
 pub async fn run(cli: Cli) -> Result<bool> {
     match cli.command {
+        Command::Backup { action } => crate::backup::run(action).await,
         Command::Doctor { config } => {
             let report = crate::doctor::inspect(&config).await;
             let passed = report["passed"] == true;

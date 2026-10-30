@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Add experimental operator `backup create` and `backup verify` for a stopped
+  local PostgreSQL/object-store deployment and explicitly enumerated private
+  state. Copies have an exact inventory and durable completion marker; existing
+  output, active service/write locks and missing/corrupt live objects are refused.
+  This does not implement safe restore activation or Connected reconciliation.
+
 ## 0.1.7-alpha.1 — saved external task requests — 2026-10-30
 
 - Add `client api-run-new` to save external task/workspace identities before

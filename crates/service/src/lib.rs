@@ -2,6 +2,7 @@
 #![cfg(unix)]
 mod api_run_new;
 pub mod archive;
+mod backup;
 pub mod cli;
 pub mod client;
 pub mod config;
@@ -30,6 +31,8 @@ mod workspace_new;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    #[error("{0}")]
+    Backup(#[from] backup::Error),
     #[error(
         "external task requires valid exact inputs and matching private state; preserve the original state and inputs on retry"
     )]
