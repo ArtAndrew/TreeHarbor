@@ -6,12 +6,14 @@ execution; it does not certify resuming old workers or publishing to GitHub afte
 a disaster. Keep independent backups while
 evaluating development builds.
 
-## Experimental cold backup commands (unreleased)
+## Experimental cold backup commands — 0.1.8-alpha.1
 
 The Rust CLI can create and verify a backup of one local source service, its
 unmodified TreeHarbor PostgreSQL schema and one bound local object backend.
-This increment is not included in 0.1.7-alpha.1. It does not stop workers, discover
-other hosts, fence old credentials, reconcile GitHub or authorize restoration.
+These commands are included in
+[0.1.8-alpha.1](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.8-alpha.1),
+not in earlier packages. They do not stop workers, discover other hosts, fence
+old credentials, reconcile GitHub or authorize restoration.
 
 Stop **all** incoming work, services, publishers, nodes, runtimes, GC and
 administrator writers first. Keep them stopped until the command finishes.
@@ -136,7 +138,7 @@ been checked, reviewed and published through the native engine. In a disposable
 Linux/PostgreSQL/gVisor environment it:
 
 - stops writers and uses actual `pg_dump` / `pg_restore`;
-- in the unreleased 0.1.8 candidate, invokes installed `backup create` / `verify`
+- starting with 0.1.8-alpha.1, invokes installed `backup create` / `verify`
   with explicitly selected credentials, import/native request journals and node
   state; verifies their inventory and refuses destination reuse before restore;
 - compares all retained tables and sequence values in a fresh database;
@@ -158,9 +160,9 @@ not discover or fence other infrastructure automatically. It exercises no live
 GitHub reconciliation and resumes no old task or copied node journal. Run it only
 through the disposable runtime CI harness; it is not an operator backup utility.
 
-The drill passed with installed static binaries on
-[Linux x86-64](https://github.com/ArtAndrew/TreeHarbor/actions/runs/40317254806/job/121553337315)
-and [ARM64](https://github.com/ArtAndrew/TreeHarbor/actions/runs/40317254806/job/121553336736)
-on 2026-10-26. These earlier job results cover source recovery, before the additional
-replacement-node scenario; the full
-candidate run still needed its Linux lint correction before merge.
+The complete drill, including operator backup creation and replacement-node
+execution, passed with installed static binaries on
+[Linux x86-64](https://github.com/ArtAndrew/TreeHarbor/actions/runs/41052176043/job/124050740230)
+and [ARM64](https://github.com/ArtAndrew/TreeHarbor/actions/runs/41052176043/job/124050740228)
+on 2026-10-30. These results cover the scoped recovery scenario above, not automatic
+restore activation or live GitHub recovery.

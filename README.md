@@ -97,7 +97,7 @@ tests, not completion of the entire product.
 | Developer interfaces | Local authenticated API/CLI, external task contexts and an experimental MCP stdio adapter | Packaged onboarding and remote service transport |
 | Connected | Real GitHub import, branch/PR publication, managed required checks, versioned branch-policy fences, queue requests, candidate/final-history evidence and signed events | Complete host-policy/admission certification and unattended operation |
 | Standalone | Native refs/history, candidate checks/reviews, merge, single-ChangeSet rebase and publication without Git/GitHub on the native path | Full lifecycle, broader history rewriting and fenced migration between modes |
-| Data recovery and interop | Durable transaction/retry paths, object retention and full-history Git import/export for supported inputs | Full server backup/restore, automatic GC/reconciliation and S3 backend |
+| Data recovery and interop | Durable transaction/retry paths, object retention, cold backup creation/verification and full-history Git import/export for supported inputs | Safe general restore activation, Connected recovery, automatic GC/reconciliation and S3 backend |
 
 A [live synthetic test](docs/evidence/connected-live-20261024.json) ran two isolated
 scripted agents and published their proposals as real GitHub PRs. A subsequent
@@ -217,6 +217,13 @@ save generated workspace/run IDs and the request key before creating an external
 task, then reuse the same state file after a lost reply. A replay after close
 returns the original receipt without reopening the task. Both signed Linux
 packages passed the installed workflow; execution remains external.
+
+The [0.1.8-alpha.1 backup update](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.8-alpha.1)
+adds [`backup create` and `backup verify`](docs/backup-restore.md) for a stopped
+local deployment. It preserves metadata, objects, configuration and explicitly
+selected private state. Both signed Linux packages passed the controlled restore
+drill. Operators must stop all writers and separately retain unsubmitted workspace
+edits; verification does not authorize restarting old workers or GitHub publishers.
 
 ## What remains before a full release?
 

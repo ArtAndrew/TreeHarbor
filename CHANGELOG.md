@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-## 0.1.8-alpha.1 — cold backup — candidate, not released
+## 0.1.8-alpha.1 — cold backup — 2026-10-30
 
 - Add experimental operator `backup create` and `backup verify` for a stopped
   local PostgreSQL/object-store deployment and explicitly enumerated private
@@ -12,8 +12,10 @@
 - Extend the installed native recovery drill to use the operator commands and
   preserve enumerated private journals/configuration with the dump and objects.
   Existing restore, corruption refusal and replacement-node checks remain.
-- No metadata migration from 0.1.7. The installed-package checks and signed
-  publication of this candidate are pending.
+- No metadata migration from 0.1.7. Publish
+  [signed Linux x86-64/ARM64 packages](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.8-alpha.1)
+  after installed backup/recovery acceptance and independent signature/subject
+  verification. Full restore activation and Connected recovery remain incomplete.
 
 ## 0.1.7-alpha.1 — saved external task requests — 2026-10-30
 
