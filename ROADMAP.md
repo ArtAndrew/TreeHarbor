@@ -31,6 +31,9 @@ file. Database migration, identity setup and process startup remain explicit.
 [Cold backup creation and inventory verification](docs/backup-restore.md) are
 available in 0.1.8-alpha.1. They cover a stopped local deployment and selected
 private state; safe restore activation and Connected recovery remain later work.
+[Restore staging](docs/restore-stage.md) is available in 0.1.10-alpha.1: a verified copy,
+a new isolated database and audited old-token revocation. Starting the recovered
+service, replacing workers and reconciling GitHub remain separate activation work.
 
 ## First preview acceptance
 

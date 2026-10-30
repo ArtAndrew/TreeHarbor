@@ -21,7 +21,7 @@ These correctness checks do not establish complete mode readiness or performance
 superiority. The installed native workload includes deliberate replacement-node
 recovery; live GitHub recovery remains a separate release gate.
 
-## Restore staging — unreleased 0.1.10 candidate
+## Released restore staging — 0.1.10-alpha.1
 
 `backup restore-stage` verifies and copies a trusted cold backup, creates an unused
 UUID database on an explicitly isolated local PostgreSQL server, restores it through
@@ -37,9 +37,21 @@ exact table/sequence comparison with explicit revoke/audit differences, old-toke
 denial, inspection using a newly issued reader, missing-original-store export,
 wrong-digest refusal, destination reuse refusal and identifiable incomplete output
 after an executable failure. The existing installed native drill now invokes the
-same command and explicitly rotates selected inspection credentials; Linux package
-acceptance and signed publication remain pending. No migration or dependency change.
+same command and explicitly rotates selected inspection credentials. Both installed
+Linux architectures passed staging, original-store-loss export, corrupt/missing-object
+refusal, old-node denial and a fresh gVisor check with exact native publication/export
+and cleanup. No migration or dependency change is required from 0.1.9.
 This does not certify live Connected recovery or complete either authority mode.
+
+Released source: `df7bb976c06c55d522278192724a563138fa0a96`.
+[Main CI](https://github.com/ArtAndrew/TreeHarbor/actions/runs/41095830287) and
+[signed producer](https://github.com/ArtAndrew/TreeHarbor/actions/runs/41097779078),
+both attempt 1, passed. Independent official online/bundle signature verification
+matched all eight signed subjects per architecture and the exact producer invocation.
+[0.1.10-alpha.1](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.10-alpha.1)
+contains the eight original public assets with server digests checked before and
+after publication; earlier releases were not replaced. Package provenance does not
+prove complete native dependency coverage, reproducible builds or full readiness.
 
 ## Released local service initialization — 0.1.9-alpha.1
 
