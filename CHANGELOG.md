@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## 0.1.9-alpha.1 — local initialization — candidate, not released
+
+- Add `init` to create private service configuration, local object storage and
+  operator-state directories from a protected PostgreSQL connection file. Existing
+  destinations are refused; interrupted output is retained. Database migration,
+  repository/credential setup and process startup remain explicit.
+- Exercise generated configuration in the existing real PostgreSQL diagnostic
+  test and installed managed workflow. Installed Linux results and signed
+  publication are pending. No schema migration or new dependencies from 0.1.8.
+
 ## 0.1.8-alpha.1 — cold backup — 2026-10-30
 
 - Add experimental operator `backup create` and `backup verify` for a stopped

@@ -41,6 +41,11 @@ Docker, gVisor or a GitHub App. See [package verification](release-packaging.md)
 
 ## 3. Prepare the service, storage and authority
 
+Development builds for the 0.1.9 candidate include a
+[local initialization helper](init.md) that creates source-enabled configuration
+and private directories. Published 0.1.8 and earlier packages use the manual
+configuration below. Database/schema setup and repository authority remain explicit.
+
 Use an operator-owned private directory (0700) and configuration (0600). The
 [service guide](local-service.md) explains its connection and file requirements.
 Include local object storage and choose `connected` when creating the repository.

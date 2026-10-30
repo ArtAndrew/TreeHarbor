@@ -5,15 +5,32 @@ use super::*;
 async fn doctor_distinguishes_missing_namespace_unmigrated_and_current_without_writes() {
     let mut f = Fixture::new().await;
     let original_schema = f.config.schema.clone();
-    let storage = f.dir.path().join("objects");
-    fs::create_dir(&storage).unwrap();
-    fs::set_permissions(&storage, fs::Permissions::from_mode(0o700)).unwrap();
-    f.config.storage = Some(treeharbor_service::config::StorageConfig {
-        root: storage.clone(),
-        backend: "doctor-test".into(),
-    });
-    f.config.schema = format!("th_doctor_{}", Uuid::new_v4().simple());
-    f.save_config();
+    let schema = format!("th_doctor_{}", Uuid::new_v4().simple());
+    let input = f.dir.path().join("database.url");
+    files::write_private(&input, f.config.database_url.as_bytes()).unwrap();
+    let directory = f.dir.path().join("service");
+    let initialized = Command::new(env!("CARGO_BIN_EXE_treeharbor"))
+        .env("PATH", "/treeharbor-test-no-executables")
+        .args(["init", "--directory"])
+        .arg(&directory)
+        .arg("--database-url-file")
+        .arg(&input)
+        .args(["--schema", &schema, "--backend", "doctor-test"])
+        .output()
+        .unwrap();
+    assert!(
+        initialized.status.success(),
+        "{}",
+        String::from_utf8_lossy(&initialized.stderr)
+    );
+    assert!(initialized.stderr.is_empty());
+    assert!(!String::from_utf8_lossy(&initialized.stdout).contains(&f.config.database_url));
+    let receipt: Value = serde_json::from_slice(&initialized.stdout).unwrap();
+    assert_eq!(receipt["database_initialized"], false);
+    assert_eq!(receipt["credentials_issued"], false);
+    f.config_path = PathBuf::from(receipt["config"].as_str().unwrap());
+    f.config = Config::load(&f.config_path).unwrap();
+    let storage = f.config.storage.as_ref().unwrap().root.clone();
     let run = || {
         let output = Command::new(env!("CARGO_BIN_EXE_treeharbor"))
             .args(["doctor", "--config"])
@@ -81,6 +98,15 @@ async fn doctor_distinguishes_missing_namespace_unmigrated_and_current_without_w
     assert_eq!(fs::read_dir(&storage).unwrap().count(), 0);
     assert!(!f.config.socket.exists());
     assert!(!f.config.socket.with_extension("sock.lock").exists());
+    // The same generated configuration starts the real server after the explicit
+    // migration. Init itself did not bind a socket, initialize storage or migrate.
+    let server = f.start().await;
+    assert!(
+        f.raw(b"GET /healthz HTTP/1.1\r\nHost: treeharbor.local\r\n\r\n")
+            .await
+            .starts_with(b"HTTP/1.1 200 ")
+    );
+    drop(server);
     f.sql
         .batch_execute(&format!("DROP SCHEMA {} CASCADE", f.config.schema))
         .await

@@ -21,6 +21,26 @@ These correctness checks do not establish complete mode readiness or performance
 superiority. The installed native workload includes deliberate replacement-node
 recovery; live GitHub recovery remains a separate release gate.
 
+## Local service initialization — unreleased 0.1.9 candidate
+
+`init --directory --database-url-file` creates a new private source-enabled
+configuration, object directory and operator-state directory. It validates the
+existing local PostgreSQL/configuration rules without connecting; the connection
+string stays in protected files. An exclusive directory create refuses all existing
+destinations. Directories and configuration are synchronized; configuration is
+published last without overwrite. Partial output is retained for inspection.
+No migrations, source/backend binding, credentials, repositories, authority changes
+or processes are created. See [local initialization](init.md).
+
+Targeted unit checks passed private file/directory behavior, concurrent ownership,
+unchanged prior state, invalid input before mutation and redacted output. The
+existing real CLI/PostgreSQL diagnostic test now starts from generated configuration
+and passed missing/unmigrated/current schema checks plus actual server startup
+after explicit migration. The installed managed workflow now also uses `init`
+before its complete source/task/native/recovery path; Linux results are pending.
+This is not database/runtime provisioning, unassisted onboarding evidence or full
+mode readiness. No schema or dependency change is required from 0.1.8.
+
 ## Released experimental operator cold backup — 0.1.8-alpha.1
 
 `backup create` saves an actual PostgreSQL custom dump, the complete local object

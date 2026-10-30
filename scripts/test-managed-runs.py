@@ -122,8 +122,8 @@ class Harness:
         self.schema = "th_test_" + uuid.uuid4().hex
         self.repository = str(uuid.uuid4())
         self.scope = ["--tenant", "managed-ci", "--repository", self.repository]
-        self.config = self.root / "config.json"
-        self.socket = self.root / "service.sock"
+        self.config = self.root / "service" / "service.json"
+        self.socket = self.root / "service" / "service.sock"
         self.mounts, self.children, self.cases, self.nodes = [], [], [], []
         self.image = self.proxy = self.server = None
         self.env = dict(os.environ, PATH="/treeharbor-test-no-executables", TH_TEST_SECRET="must-not-enter-task")
@@ -166,10 +166,23 @@ class Harness:
         wait_until(lambda: docker("exec", self.pg, "pg_isready", "-U", "treeharbor_test", check=False).returncode == 0)
         docker("exec", self.pg, "psql", "-U", "treeharbor_test", "-d", "treeharbor_test",
                "-v", "ON_ERROR_STOP=1", "-c", f"CREATE SCHEMA {self.schema}")
-        store = self.root / "objects"
-        store.mkdir(mode=0o700)
-        private_json(self.config, {"database_url": self.url, "schema": self.schema,
-                                  "socket": str(self.socket), "storage": {"root": str(store), "backend": "managed-ci"}})
+        connection_file = self.root / "database.url"
+        with os.fdopen(os.open(connection_file, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "w") as stream:
+            stream.write(self.url)
+        initialized = self.value("init", "--directory", self.root / "service",
+                                 "--database-url-file", connection_file,
+                                 "--schema", self.schema, "--backend", "managed-ci")
+        assert initialized["database_initialized"] is False and initialized["service_started"] is False
+        assert initialized["credentials_issued"] is False and initialized["repositories_created"] is False
+        assert Path(initialized["config"]) == self.config and Path(initialized["socket"]) == self.socket
+        assert self.url not in json.dumps(initialized)
+        store = Path(initialized["storage"])
+        config_bytes = self.config.read_bytes()
+        duplicate = self.cli("init", "--directory", self.root / "service",
+                             "--database-url-file", connection_file, "--schema", self.schema,
+                             "--backend", "managed-ci", check=False)
+        assert duplicate.returncode != 0 and self.config.read_bytes() == config_bytes
+        print("PASS installed init: private local configuration, explicit database setup and existing destination refusal")
         diagnosis = self.cli("doctor", "--config", self.config, check=False)
         before = json.loads(diagnosis.stdout)
         assert diagnosis.returncode != 0 and before["passed"] is False
