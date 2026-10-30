@@ -1,9 +1,9 @@
 # Diagnose local service setup
 
-Introduced in 0.1.3-alpha.1; available in the current signed
-[0.1.4-alpha.1 preview](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.4-alpha.1).
-Follow that release's source, signature and checksum instructions before running
-the package. Packages older than 0.1.3-alpha.1 do not include this command.
+Introduced in 0.1.3-alpha.1; available in subsequent
+[signed Linux previews](https://github.com/ArtAndrew/TreeHarbor/releases).
+Follow your chosen release's source, signature and checksum instructions before
+running the package. Packages older than 0.1.3-alpha.1 do not include this command.
 
 Before starting the source service, run as the trusted operator:
 

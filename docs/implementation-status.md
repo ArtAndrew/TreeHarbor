@@ -21,7 +21,7 @@ These correctness checks do not establish complete mode readiness or performance
 superiority. The installed native workload includes deliberate replacement-node
 recovery; live GitHub recovery remains a separate release gate.
 
-## Experimental operator cold backup — unreleased
+## Released experimental operator cold backup — 0.1.8-alpha.1
 
 `backup create` saves an actual PostgreSQL custom dump, the complete local object
 backend, service configuration and enumerated private state. It uses an exported
@@ -45,16 +45,24 @@ passed all required checks, including the real Linux backup/restore test using
 tools from its PostgreSQL18.6 container, not a simulated dump. The change merged
 at `5214ee1499b12994a10aa45e87d93ebb18f731f2`.
 
-The 0.1.8-alpha.1 candidate extends the existing installed native recovery drill
+The 0.1.8-alpha.1 release extends the existing installed native recovery drill
 to call `backup create`/`verify`, preserve explicitly listed private journals and
 credentials, verify exact payload limits and reject output reuse before restoring
 the database and objects. This keeps the existing actual gVisor check/review/land,
 Git export, corruption refusal, old-node revocation and fresh-node recovery tests.
-Installed results and signed publication are pending for this candidate.
+Both installed architectures passed in
+[PR114 CI](https://github.com/ArtAndrew/TreeHarbor/actions/runs/41049157732),
+[main CI](https://github.com/ArtAndrew/TreeHarbor/actions/runs/41050661368) and
+[signed producer](https://github.com/ArtAndrew/TreeHarbor/actions/runs/41052176043),
+all attempt 1. The tagged source is `cc9a9043911ff6377244c474f53cf54652cdfb99`.
+Independent official online and bundled signature verification matched all eight
+signed subjects per architecture and the exact producer invocation. The
+[published release](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.8-alpha.1)
+contains unchanged producer artifacts; public readback matched all eight assets
+by name, size and SHA-256, and the prior release remained unchanged.
 
-This is not yet an installed release, full crash/power-loss campaign, recovery of
-all authority modes, a replacement for the existing managed-runtime restore drill
-or authorization to restart copied node journals/Connected publishers. Safe
+This does not complete the full crash/power-loss campaign, recovery of all authority
+modes, or authorization to restart copied node journals/Connected publishers. Safe
 operator restore activation, old-infrastructure fencing, GitHub reconciliation
 and full release gates remain open. No metadata migration or agent permissions
 are added.

@@ -1,4 +1,6 @@
-# Cold backup format v1 (unreleased)
+# Cold backup format v1
+
+Introduced in [0.1.8-alpha.1](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.8-alpha.1).
 
 This is the private local artifact produced by `backup create`, not an agent
 upload format or Git export. All members belong to the service owner and have no

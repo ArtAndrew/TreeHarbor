@@ -24,6 +24,10 @@ immutable proposals. [Local diagnostics](docs/doctor.md),
 Infrastructure setup and the complete two-agent helper are still operator-assisted.
 Start with the [operator setup path](docs/connected-pr-preview.md).
 
+[Cold backup creation and inventory verification](docs/backup-restore.md) are
+available in 0.1.8-alpha.1. They cover a stopped local deployment and selected
+private state; safe restore activation and Connected recovery remain later work.
+
 ## First preview acceptance
 
 Verify a clean installation and the complete packaged two-agent-to-PR demo,
