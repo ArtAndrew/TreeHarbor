@@ -48,6 +48,9 @@ determine whether an omitted path is needed. Do not include live mounts, sockets
 workspaces or whole parent directories that overlap the automatically copied
 configuration/store. Files and directories must be owner-private; symlinks,
 hard-linked regular files, special files and non-UTF-8 names are refused.
+Unsubmitted edits in materialized workspaces are **not** protected by this source
+service backup. Capture and accept them, or export/save them separately, before
+the cold boundary. Copying node journals does not copy their referenced volumes.
 Secrets in the backup remain plaintext: protect/encrypt it with your backup system.
 
 The new directory receives a PostgreSQL custom-format dump, the complete object
@@ -133,6 +136,9 @@ been checked, reviewed and published through the native engine. In a disposable
 Linux/PostgreSQL/gVisor environment it:
 
 - stops writers and uses actual `pg_dump` / `pg_restore`;
+- in the unreleased 0.1.8 candidate, invokes installed `backup create` / `verify`
+  with explicitly selected credentials, import/native request journals and node
+  state; verifies their inventory and refuses destination reuse before restore;
 - compares all retained tables and sequence values in a fresh database;
 - starts the real service with copied objects and the original object path absent;
 - exports published history into ordinary Git and reads accepted agent changes;
