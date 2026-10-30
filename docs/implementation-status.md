@@ -21,7 +21,7 @@ These correctness checks do not establish complete mode readiness or performance
 superiority. The installed native workload includes deliberate replacement-node
 recovery; live GitHub recovery remains a separate release gate.
 
-## Unreleased MCP external task contexts
+## Released MCP external task contexts — 0.1.6-alpha.1
 
 The MCP adapter exposes three additional named tools: `api_run_create`,
 `api_run_status` and `api_run_close`. They forward the existing authenticated API
@@ -38,8 +38,8 @@ foreign-owner/stale-generation refusal, logical close, retained acceptance and
 access revocation. This is API workflow evidence, not a real LLM or runtime trial.
 [PR107 CI](https://github.com/ArtAndrew/TreeHarbor/actions/runs/40935220636) and
 [main CI](https://github.com/ArtAndrew/TreeHarbor/actions/runs/40937948721) passed.
-This addition is not included in 0.1.5; its release verification remains pending.
-See [the MCP workflow](mcp.md#start-a-task-using-your-own-execution-environment-unreleased).
+This addition is included in [0.1.6-alpha.1](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.6-alpha.1),
+not in 0.1.5. See [the MCP workflow](mcp.md#start-a-task-using-your-own-execution-environment).
 
 The existing installed managed-runtime workload now also exercises a complete
 external API task through the packaged MCP stdio adapter, using the 2025-11-25
@@ -50,7 +50,20 @@ the real Rust service, PostgreSQL, source import and scoped credentials, alongsi
 both existing external CLI task scenarios. The initial Linux CI found incorrect
 response unwrapping in the new test: source bytes accompany the metadata result,
 rather than being inside it. The corrected test reads that envelope explicitly.
-Local verification is not Linux installation evidence; installed CI is pending.
+Local verification is not Linux installation evidence. The corrected
+[PR109 CI](https://github.com/ArtAndrew/TreeHarbor/actions/runs/41013312530) passed,
+including both installed Linux workflows.
+
+Released source: `fef8b1166141f1e9d485cfdfe85ead25c6a26e8b`.
+[Main CI](https://github.com/ArtAndrew/TreeHarbor/actions/runs/41014304208) and
+[signed producer](https://github.com/ArtAndrew/TreeHarbor/actions/runs/41015146257),
+both attempt 1, passed. Both signed packages exercised the installed MCP task,
+the two CLI external tasks and existing managed/native runtime workflows,
+cleanup/export and scoped cold restore. Independent official online/bundled
+signature verification matched the exact eight subjects per architecture and
+producer invocation; public release asset hashes match the original artifacts.
+The metadata reports retain their explicit coverage limits. This is not an
+actual LLM-host trial, complete mode certification or production readiness.
 
 ## Released preparation update — 0.1.5-alpha.1
 
