@@ -1,11 +1,12 @@
-# Restore staging (unreleased)
+# Restore staging — 0.1.10-alpha.1
 
 `backup restore-stage` prepares a verified cold backup in isolated infrastructure.
 It creates a **new database**, copies the backup to a new private directory, checks
 schema/storage identities and live objects, and revokes the restored service tokens.
 It does **not** start TreeHarbor, issue new credentials, fence the old deployment or
-permit publishing to GitHub. This command is not included in 0.1.9-alpha.1 or earlier
-packages. Safe activation remains a separate release gate.
+permit publishing to GitHub. Available in
+[0.1.10-alpha.1](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.10-alpha.1);
+not included in earlier packages. Safe activation remains a separate release gate.
 
 ## Prerequisites
 
