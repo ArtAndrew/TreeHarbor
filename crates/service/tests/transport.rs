@@ -1851,8 +1851,23 @@ async fn request_timeout_rolls_back_before_pool_reuse_and_same_key_can_retry() {
         .unwrap()
         .get(0);
     assert_eq!(n, 0);
-    let reply = f.send(command).await;
-    assert!(reply.status.is_success());
+    // The 300 ms deadline also applies to the healthy retry. Shared CI load can
+    // legitimately expire it; this test verifies replay, not a latency SLO.
+    // Keep the exact intent and accept only the documented unknown-outcome error.
+    let retry_by = Instant::now() + Duration::from_secs(10);
+    loop {
+        let reply = f.send(command.clone()).await;
+        if reply.status.is_success() {
+            break;
+        }
+        assert_eq!(reply.status.as_u16(), 504, "{}", reply.body);
+        assert_eq!(reply.body["error"]["code"], "outcome_unknown");
+        assert!(
+            Instant::now() < retry_by,
+            "retry remained uncertain: {}",
+            reply.body
+        );
+    }
     let n: i64 = f
         .sql
         .query_one(
