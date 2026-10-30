@@ -1,5 +1,6 @@
 //! Authenticated local HTTP transport and CLI support. Unix-only at this stage.
 #![cfg(unix)]
+mod api_run_new;
 pub mod archive;
 pub mod cli;
 pub mod client;
@@ -29,6 +30,10 @@ mod workspace_new;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    #[error(
+        "external task requires valid exact inputs and matching private state; preserve the original state and inputs on retry"
+    )]
+    ApiRunState,
     #[error(
         "workspace request requires an exact native base, profile digest and matching private state; preserve the original state and inputs on retry"
     )]

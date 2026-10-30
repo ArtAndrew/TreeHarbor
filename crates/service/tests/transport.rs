@@ -1,4 +1,6 @@
 #![cfg(unix)]
+#[path = "transport/api_run_new.rs"]
+mod api_run_new;
 #[path = "transport/doctor.rs"]
 mod doctor;
 #[path = "support/git.rs"]

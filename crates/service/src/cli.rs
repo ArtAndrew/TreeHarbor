@@ -550,6 +550,23 @@ enum Agent {
         #[arg(long)]
         request: PathBuf,
     },
+    /// Save generated task/workspace identities before creation; reuse --state on retry.
+    ApiRunNew {
+        #[arg(long)]
+        state: PathBuf,
+        #[arg(long, value_enum)]
+        authority: Mode,
+        #[arg(long, value_parser=clap::value_parser!(i64).range(1..))]
+        epoch: i64,
+        #[arg(long)]
+        base: String,
+        #[arg(long)]
+        profile_digest: String,
+        #[arg(long)]
+        agent: String,
+        #[arg(long)]
+        task: String,
+    },
     /// Record an external task and pin its exact source; does not execute code.
     ApiRunCreate {
         #[command(flatten)]
@@ -1001,7 +1018,8 @@ impl Agent {
             Self::SourceStatus { upload } => {
                 json!({"method":"source_status","upload":upload.to_string()})
             }
-            Self::WorkspaceNew { .. }
+            Self::ApiRunNew { .. }
+            | Self::WorkspaceNew { .. }
             | Self::SourcePut { .. }
             | Self::SourceImport { .. }
             | Self::SourceFile { .. }
@@ -1211,6 +1229,31 @@ pub async fn run(cli: Cli) -> Result<bool> {
         } => {
             let credential = Credential::load(&credential_file)?;
             let action = match action {
+                Agent::ApiRunNew {
+                    state,
+                    authority,
+                    epoch,
+                    base,
+                    profile_digest,
+                    agent,
+                    task,
+                } => {
+                    let reply = crate::api_run_new::send(crate::api_run_new::Request {
+                        state: &state,
+                        socket: &socket,
+                        credential: &credential,
+                        authority: authority.into(),
+                        epoch,
+                        base: &base,
+                        profile_digest: &profile_digest,
+                        agent: &agent,
+                        task: &task,
+                        timeout: Duration::from_millis(timeout_ms),
+                    })
+                    .await?;
+                    println!("{}", reply.body);
+                    return Ok(reply.status.is_success());
+                }
                 Agent::NativeAdvance {
                     state,
                     target,
