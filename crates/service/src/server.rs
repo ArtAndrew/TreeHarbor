@@ -50,10 +50,11 @@ impl Drop for SocketGuard {
         }
     }
 }
-pub(crate) async fn bind(path: &Path) -> Result<(UnixListener, SocketGuard)> {
+/// Exclude cooperating service/backup processes without changing the socket.
+/// This does not fence administrator tools, remote nodes or external runtimes.
+pub(crate) fn lock_socket(path: &Path) -> Result<File> {
     let parent = files::private_directory(path.parent().ok_or(Error::UnsafeFile)?)?;
     let filename = path.file_name().ok_or(Error::UnsafeFile)?;
-    let path = parent.join(filename);
     let lock_path = parent.join(format!("{}.lock", filename.to_str().ok_or(Error::Config)?));
     let lock = OpenOptions::new()
         .read(true)
@@ -65,6 +66,12 @@ pub(crate) async fn bind(path: &Path) -> Result<(UnixListener, SocketGuard)> {
         .open(lock_path)?;
     files::private_file(&lock)?;
     flock(&lock, FlockOperation::NonBlockingLockExclusive).map_err(|_| Error::AlreadyRunning)?;
+    Ok(lock)
+}
+pub(crate) async fn bind(path: &Path) -> Result<(UnixListener, SocketGuard)> {
+    let lock = lock_socket(path)?;
+    let parent = files::private_directory(path.parent().ok_or(Error::UnsafeFile)?)?;
+    let path = parent.join(path.file_name().ok_or(Error::UnsafeFile)?);
     match fs::symlink_metadata(&path) {
         Ok(meta) => {
             if !meta.file_type().is_socket() || meta.uid() != rustix::process::geteuid().as_raw() {

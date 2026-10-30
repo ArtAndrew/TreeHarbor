@@ -6,6 +6,88 @@ execution; it does not certify resuming old workers or publishing to GitHub afte
 a disaster. Keep independent backups while
 evaluating development builds.
 
+## Experimental cold backup commands (unreleased)
+
+The Rust CLI can create and verify a backup of one local source service, its
+unmodified TreeHarbor PostgreSQL schema and one bound local object backend.
+This increment is not included in 0.1.7-alpha.1. It does not stop workers, discover
+other hosts, fence old credentials, reconcile GitHub or authorize restoration.
+
+Stop **all** incoming work, services, publishers, nodes, runtimes, GC and
+administrator writers first. Keep them stopped until the command finishes.
+Use the service owner account and a trusted `pg_dump` matching the server major
+version. The service configuration already supplies the private Unix database
+connection; no database password belongs on the command line.
+
+```sh
+# Example paths: replace them with this deployment's actual paths.
+# The backup parent must already exist, be owner-private (0700), and be outside
+# every input. The destination itself must NOT exist.
+treeharbor backup create \
+  --config /srv/treeharbor/config/service.json \
+  --pg-dump /usr/lib/postgresql/18/bin/pg_dump \
+  --output /srv/treeharbor-backups/snapshot-001 \
+  --state /srv/treeharbor/private/bridge-journals \
+  --state /srv/treeharbor/private/client-journals \
+  --state /srv/treeharbor/private/node-journals \
+  --writers-stopped
+```
+
+`--writers-stopped` is your acknowledgement of a required cold boundary, not
+proof that TreeHarbor stopped anything. The command takes the usual service socket
+lock and non-waiting SHARE locks on existing schema tables. These exclude a
+cooperating service and conflicting table writes. They do not stop filesystem-only
+writers, sequence changes, newly created schema objects or external GitHub actions.
+No online backup or point-in-time recovery is supported by this command.
+
+Service configuration and the entire object root are included automatically.
+Repeat `--state` for every required private file or directory outside those roots:
+publication/import journals, controller request identities, node journals and
+deployment configuration/credentials. Inputs cannot overlap. The tool cannot
+determine whether an omitted path is needed. Do not include live mounts, sockets,
+workspaces or whole parent directories that overlap the automatically copied
+configuration/store. Files and directories must be owner-private; symlinks,
+hard-linked regular files, special files and non-UTF-8 names are refused.
+Secrets in the backup remain plaintext: protect/encrypt it with your backup system.
+
+The new directory receives a PostgreSQL custom-format dump, the complete object
+root, copied configuration, enumerated state and private dump diagnostics. Live
+object locators, lengths and SHA-256 values must agree with the locked catalog.
+Files and directories are synchronized before `manifest.json` is written last.
+On failure, preserve the incomplete output for inspection; retry to a **new**
+destination. The command never overwrites or automatically resumes a backup.
+
+Successful output includes `complete`, `manifest_sha256`, `entries`, `bytes` and
+`restore_authorized: false`. Retain the digest separately in your trusted backup
+record. Verify it again after transfer:
+
+```sh
+: "${TH_BACKUP_SHA256:?Set this to the digest saved from the successful backup receipt}"
+treeharbor backup verify \
+  --backup /srv/treeharbor-backups/snapshot-001 \
+  --manifest-sha256 "$TH_BACKUP_SHA256"
+```
+
+Verification compares the manifest's exact bytes to that digest and then the
+entire inventory, including modes, directories, sizes and file hashes. Missing,
+extra or changed files fail. A matching digest establishes integrity relative to
+your retained record; it is not a signature, encryption or permission to activate
+restored credentials. `verify` never connects to PostgreSQL or executes dump SQL.
+
+Default copy budgets are 64 GiB of file content, 100,000 entries and one hour;
+`--max-bytes`, `--max-entries` and `--timeout-seconds` can adjust them. The manifest
+has a separate size limit, so the same payload budgets work for verification.
+Depth is capped at 64, relative paths at
+4096 UTF-8 bytes and the manifest at 64 MiB. These are operational limits, not
+license restrictions or replacements for filesystem quotas; external dump output
+is checked periodically and an OS filesystem operation may block.
+
+The [v1 format](cold-backup-format.md) records the source-to-backup path mapping.
+PostgreSQL roles, tablespaces, extensions/dependencies outside the selected schema,
+OS/runtime configuration not enumerated above and external GitHub state are not
+captured. Use the restoration boundary below. Never point an ordinary live server
+at the backup directory or resume publishers merely because verification passed.
+
 ## Reference backup boundary
 
 The initial single-host deployment uses a cold backup:

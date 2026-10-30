@@ -21,6 +21,35 @@ These correctness checks do not establish complete mode readiness or performance
 superiority. The installed native workload includes deliberate replacement-node
 recovery; live GitHub recovery remains a separate release gate.
 
+## Experimental operator cold backup — unreleased
+
+`backup create` saves an actual PostgreSQL custom dump, the complete local object
+backend, service configuration and enumerated private state. It uses an exported
+snapshot, non-waiting SHARE locks on schema tables and the cooperating service's
+socket lock. All runtimes, publishers, GC and administrator writers must already
+be stopped; these locks do not discover or fence other infrastructure. Private
+descriptor-relative copies reject symlinks, hard-linked regular files and special
+files. Byte/entry/depth/time limits, live locator digest/length checks and a final
+synced v1 inventory bound this backup path. `backup verify` checks exact inventory
+against the separately retained manifest digest, without executing SQL or starting
+the service. See [operator instructions](backup-restore.md).
+
+Local actual CLI/PostgreSQL/pg_dump/pg_restore acceptance passed: all retained
+table contents and sequence values match in a new database, an accepted external
+agent ChangeSet is readable, and native source history exports with the original
+object path absent. Active service and table writes are refused; repeated output,
+missing/corrupt live objects, incomplete over-budget output, changed/missing/extra
+backup files and incorrect manifest identity fail. Private traversal tests and
+strict service Clippy passed. CI uses the actual tools from its PostgreSQL18.6
+container, not a simulated dump. Linux CI results are still pending for this change.
+
+This is not yet an installed release, full crash/power-loss campaign, recovery of
+all authority modes, a replacement for the existing managed-runtime restore drill
+or authorization to restart copied node journals/Connected publishers. Safe
+operator restore activation, old-infrastructure fencing, GitHub reconciliation
+and full release gates remain open. No metadata migration or agent permissions
+are added.
+
 ## Released journaled external task creation — 0.1.7-alpha.1
 
 `client api-run-new --state` generates and saves both task/workspace IDs and the
