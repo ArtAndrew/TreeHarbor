@@ -1,4 +1,7 @@
-# Resume one native queue preparation (unreleased)
+# Resume one native queue preparation
+
+Available in [0.1.5-alpha.1](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.5-alpha.1).
+This is an experimental Standalone helper; it does not complete the Standalone release.
 
 `native-advance` discovers the oldest pending entry for one native target and
 prepares one merge candidate. It keeps its entry/candidate IDs and deterministic

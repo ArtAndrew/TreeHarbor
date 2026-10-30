@@ -105,7 +105,7 @@ object/policy digests are `sha256:<64 lowercase hex>` and revisions are
 
 ### Discover pending work
 
-The unreleased `queue_pending` read action lists `queued`, `preparing` and
+The `queue_pending` read action (available since 0.1.5-alpha.1) lists `queued`, `preparing` and
 `checking` entries for one target in queue position order. It does not start a
 candidate or grant permission to integrate it. For example, save this request
 with owner-only permissions and use the existing `client native --request` command:

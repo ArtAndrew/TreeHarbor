@@ -1,6 +1,6 @@
 # Implementation status
 
-Updated: 2026-10-29. This file describes implemented behavior and remaining release
+Updated: 2026-10-30. This file describes implemented behavior and remaining release
 gates. A foundation milestone does not complete either mode.
 
 For a concise current overview, see [what works today](../README.md#what-works-today)
@@ -36,10 +36,12 @@ The scenario now creates external contexts through MCP, replacing its earlier
 SQL-inserted runtime facts. It checks overlapping proposals, replay, restart,
 foreign-owner/stale-generation refusal, logical close, retained acceptance and
 access revocation. This is API workflow evidence, not a real LLM or runtime trial.
-Cross-platform CI and release verification remain pending for this addition.
+[PR107 CI](https://github.com/ArtAndrew/TreeHarbor/actions/runs/40935220636) and
+[main CI](https://github.com/ArtAndrew/TreeHarbor/actions/runs/40937948721) passed.
+This addition is not included in 0.1.5; its release verification remains pending.
 See [the MCP workflow](mcp.md#start-a-task-using-your-own-execution-environment-unreleased).
 
-## Unreleased native preparation helper
+## Released preparation update — 0.1.5-alpha.1
 
 [`native-advance`](native-advance.md) discovers one pending native entry and saves
 its identity before requesting candidate preparation. Repeating the command uses
@@ -55,7 +57,22 @@ after publication to require current `landed` status rather than the saved start
 receipt. Both installed Linux architecture jobs passed this scenario in
 [PR105 CI](https://github.com/ArtAndrew/TreeHarbor/actions/runs/40930827791) at
 `6855b3672107505a96054a9ea49062be840159f0`. This verifies the stated helper and
-workflow, not a released feature or an automatic queue controller.
+workflow, not an automatic queue controller.
+
+[Release 0.1.5-alpha.1](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.5-alpha.1)
+uses source `2d0f99b1a57ef759ab4b31f1a94620ec3da10b1a`.
+[Main CI](https://github.com/ArtAndrew/TreeHarbor/actions/runs/40934470497) and
+[signed producer](https://github.com/ArtAndrew/TreeHarbor/actions/runs/40937724165),
+both attempt 1, passed. Both installed architecture jobs exercised the helper,
+actual checks, publication, replay after landing and retained-history export.
+Official online and bundled signature verification matched all eight signed
+subjects per architecture and the exact source/tag/producer invocation. Public
+readback matched all eight release assets by name, size and SHA-256; the prior
+release was unchanged. This update also includes bounded parallel file
+synchronization and an opt-in source-import benchmark. No schema migration from
+0.1.4, fresh live GitHub trial, complete mode readiness or performance superiority
+is claimed. The MCP external task tools above were merged after this tag and
+remain unreleased.
 
 ## Released external API contexts — 0.1.4-alpha.1
 
