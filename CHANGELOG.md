@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-## 0.1.6-alpha.1 — MCP external tasks (candidate)
+## 0.1.6-alpha.1 — MCP external tasks — 2026-10-30
 
 - Expose external API task creation/status/close through three scoped MCP tools.
   Context registration does not execute code, attest isolation or grant validation;
@@ -11,6 +11,10 @@
 - Exercise the packaged MCP adapter in installed Linux acceptance alongside the
   existing CLI and managed-runtime scenarios. No schema migration from 0.1.5,
   new permissions or managed process launch; full mode readiness remains open.
+
+- Publish [signed Linux x86-64/ARM64 packages](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.6-alpha.1)
+  after installed MCP/runtime acceptance and independent signature/subject verification.
+  This does not establish compatibility with every MCP host or full mode readiness.
 
 ## 0.1.5-alpha.1 — workspace preparation and native queue helper — 2026-10-30
 
@@ -34,7 +38,7 @@
 
 - Publish [signed Linux x86-64/ARM64 packages](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.5-alpha.1)
   after installed runtime CI and independent signature/subject verification.
-  MCP external task tools in the later 0.1.6 candidate are not part of this tag.
+  MCP external task tools in the later 0.1.6 release are not part of this tag.
 
 ## 0.1.4-alpha.1 — external agent API contexts — 2026-10-29
 

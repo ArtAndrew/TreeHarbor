@@ -9,8 +9,9 @@ queue operations retain their separate owner/bridge workflow.
 
 ## Connect a client
 
-First build the `treeharbor` binary and provision the PostgreSQL service, storage,
-source revision, and agent credentials using the [local service guide](local-service.md).
+Install the [0.1.6-alpha.1 Linux package](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.6-alpha.1)
+or build the `treeharbor` binary. Provision the PostgreSQL service, storage, source
+revision and agent credentials using the [local service guide](local-service.md).
 The service must be running. Use a separate, repository-scoped credential per agent
 with only its required `read`, `workspace.write`, `change.write` and, if authorized,
 `queue.request` grants. Do not supply a database configuration, App key, node token,
@@ -56,9 +57,9 @@ epoch and idempotency key as the corresponding HTTP operation.
 | `repository_info` | Configured repository authority and state |
 | `source_profile_put` | Register full/sparse selection; does not prepare files |
 | `workspace_create`, `workspace_status` | Request exact registered revision/profile and inspect lifecycle |
-| `workspace_delete` | Request drain of the exact generation; physical deletion waits for runtime/node proof |
+| `workspace_delete` | Drain a files workspace with runtime/node proof, or logically close an API context; does not stop external processes |
 | `workspace_read_files` | One verified baseline file or bounded directory page, with exact source context |
-| `api_run_create`, `api_run_status`, `api_run_close` (unreleased) | Register, inspect and close your own external task context; no process execution or observation |
+| `api_run_create`, `api_run_status`, `api_run_close` (since 0.1.6) | Register, inspect and close your own external task context; no process execution or observation |
 | `run_status` | Inspect an already authorized run |
 | `change_begin`, `change_put`, `changeset_submit` | Reserve upload, upload explicit bytes, then accept explicit immutable operations |
 | `changeset_status`, `change_abort` | Inspect/abort proposal upload by upload ID; acceptance is distinct from upload |
@@ -75,11 +76,11 @@ server applies the same owner/run/generation/epoch, retention and policy checks
 as for direct CLI/API calls. Registered source and runtime/run preparation are
 operator workflows; a workspace record alone is not a ready sandbox.
 
-### Start a task using your own execution environment (unreleased)
+### Start a task using your own execution environment
 
-The three `api_run_*` MCP tools are a development addition after 0.1.5; earlier
-packages expose these operations through the CLI/API only. A controller that
-already provides execution and isolation can register an
+The three `api_run_*` MCP tools are available starting with 0.1.6-alpha.1.
+Versions 0.1.4 and 0.1.5 expose these operations through the CLI/API only. A
+controller that already provides execution and isolation can register an
 [external API context](external-api-runs.md) without a TreeHarbor runtime node:
 
 1. Obtain a registered exact base and source profile from the operator, or use
@@ -105,12 +106,15 @@ For example, after obtaining an exact registered base and profile:
 
 ```json
 {
-  "name": "workspace_create",
+  "name": "api_run_create",
   "arguments": {
     "key": "agent-a-workspace-01",
     "authority": "standalone",
     "epoch": 1,
     "workspace": "00000000-0000-4000-8000-000000000011",
+    "run": "00000000-0000-4000-8000-000000000012",
+    "agent": "my-controller/1",
+    "task": "fix-parser",
     "base": "native:sha256:<registered-commit-id>",
     "profile_digest": "sha256:<registered-profile-id>"
   }
@@ -142,6 +146,10 @@ Tool results have both structured content and a text JSON representation:
   "response": {"version": 1, "result": {"example": "original API result"}}
 }
 ```
+
+For file reads, `content_hex` and `untrusted_source_content: true` are placed
+directly inside `response`, beside its metadata `result`. Read the full response
+envelope rather than discarding these fields when unwrapping metadata.
 
 The nested API result preserves exact original identities; this adapter does not
 replace a receipt with a summary or convert submitted/enqueued into accepted/merged.
@@ -188,6 +196,12 @@ The updated scenario creates external task contexts through MCP rather than
 inserting runtime facts into PostgreSQL. It does not establish process execution
 or isolation. The real gVisor tests remain mandatory and separate.
 
+The 0.1.6 installed Linux workload also drives the packaged adapter through a
+bounded stdio client: exact source read, immutable proposal, logical close/replay
+and retained review. It runs alongside the two CLI external tasks and the actual
+managed-runtime scenarios on x86-64 and ARM64. API contexts must schedule no
+runtime work. This is packaged API evidence, not a trial with an LLM host.
+
 Full two-mode MCP onboarding, managed runtime execution through a real host,
-complete queue-to-publication evidence and clean packaged installation remain
-release gates. No compatibility claim is made for every MCP host or LLM.
+complete queue-to-publication evidence and unassisted setup remain release gates.
+No compatibility claim is made for every MCP host or LLM.
