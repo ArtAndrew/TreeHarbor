@@ -1,6 +1,6 @@
 # Start the Connected PR Preview
 
-Use this path for [the Connected PR Preview](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.6-alpha.1):
+Use this path for [the Connected PR Preview](https://github.com/ArtAndrew/TreeHarbor/releases):
 **exact GitHub commit → two isolated tasks → immutable changes → draft PRs**.
 GitHub handles checks, review and merge. TreeHarbor queue setup is not part of this path.
 This is an operator-assisted Linux evaluation with manual infrastructure setup,
@@ -24,14 +24,16 @@ are in [GitHub connection](github-connection.md) and [managed runs](managed-runs
 
 Follow the release's download, checksum and signature commands, then install into
 a fresh prefix. No local Rust build is needed for the product binaries. Resolve
-the executable for the prepared-agent helper:
+the executable for the prepared-agent helper. Set `TH_INSTALL_PREFIX` to the
+absolute prefix you chose in the release installation commands:
 
 ```sh
-TH_BIN=$(realpath "$HOME/.local/treeharbor-preview-0.1.6/bin/treeharbor")
+: "${TH_INSTALL_PREFIX:?Set TH_INSTALL_PREFIX to the absolute prefix used by install.sh}"
+TH_BIN=$(realpath "$TH_INSTALL_PREFIX/bin/treeharbor")
 "$TH_BIN" --version
 ```
 
-Adjust the prefix to your actual installation. Commands shown as
+Commands shown as
 `./target/debug/treeharbor` in development guides can use `"$TH_BIN"` instead.
 The optional reviewed fixture-image build needs Rust; your own approved image
 has its own build requirements. The binary installer does not provision a database,

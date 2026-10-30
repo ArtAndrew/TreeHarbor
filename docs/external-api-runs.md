@@ -27,9 +27,9 @@ GitHub publication or merge authority. Keep credentials outside untrusted code.
 
 ## One task
 
-### Save creation identities automatically (unreleased)
+### Save creation identities automatically
 
-The development CLI adds `api-run-new` after 0.1.6. It generates the workspace ID,
+The CLI provides `api-run-new` starting with 0.1.7-alpha.1. It generates the workspace ID,
 run ID and request key, and durably saves them before sending the existing
 `api_run_create` command. Use an absolute state path in an owner-private directory;
 the state file must not exist for a new task. Source/profile registration and

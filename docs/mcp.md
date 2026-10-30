@@ -9,9 +9,9 @@ queue operations retain their separate owner/bridge workflow.
 
 ## Connect a client
 
-Install the [0.1.6-alpha.1 Linux package](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.6-alpha.1)
-or build the `treeharbor` binary. Provision the PostgreSQL service, storage, source
-revision and agent credentials using the [local service guide](local-service.md).
+Install matching service/client binaries (0.1.6-alpha.1 or later) from the
+[Linux releases](https://github.com/ArtAndrew/TreeHarbor/releases), or build from source.
+Provision the PostgreSQL service, storage, source revision and agent credentials using the [local service guide](local-service.md).
 The service must be running. Use a separate, repository-scoped credential per agent
 with only its required `read`, `workspace.write`, `change.write` and, if authorized,
 `queue.request` grants. Do not supply a database configuration, App key, node token,

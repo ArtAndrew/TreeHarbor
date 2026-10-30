@@ -13,12 +13,14 @@ evidence of adoption or production readiness.
 | **Later Connected releases — integration and recovery** | Automate a demonstrated integration bottleneck, then recover the advertised deployment | First certify one TreeHarbor-managed queue/check profile if users need it; ship full Connected publication/queue disaster recovery as a separately verified increment. Neither blocks the PR Preview. |
 | **Standalone S2** | Own native history, review, checks and integration without Git/GitHub on the native path | Complete the native lifecycle and fenced migration on the shared Rust core, under the same ELv2. Prioritize after the first Connected usage evidence. |
 
-Current preview: [0.1.6-alpha.1](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.6-alpha.1),
-with [external task creation/status/close through MCP](docs/mcp.md#start-a-task-using-your-own-execution-environment).
-Controllers supply their own execution and isolation; TreeHarbor retains exact
-source and immutable proposals. The earlier [external API task contexts](docs/external-api-runs.md),
-[local diagnostics](docs/doctor.md), [saved workspace requests](docs/workspace-new.md)
-and experimental [native preparation retries](docs/native-advance.md) remain available.
+Available packages and their exact scope are listed in [signed alpha releases](https://github.com/ArtAndrew/TreeHarbor/releases).
+[External tasks](docs/external-api-runs.md#save-creation-identities-automatically)
+can save creation identities with `api-run-new` (0.1.7-alpha.1+) or use the
+[MCP task tools](docs/mcp.md#start-a-task-using-your-own-execution-environment) (0.1.6-alpha.1+).
+Controllers supply execution and isolation; TreeHarbor retains exact source and
+immutable proposals. [Local diagnostics](docs/doctor.md),
+[saved workspace requests](docs/workspace-new.md) and experimental
+[native preparation retries](docs/native-advance.md) remain available.
 Infrastructure setup and the complete two-agent helper are still operator-assisted.
 Start with the [operator setup path](docs/connected-pr-preview.md).
 

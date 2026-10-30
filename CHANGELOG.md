@@ -2,13 +2,16 @@
 
 ## Unreleased
 
-## 0.1.7-alpha.1 — saved external task requests (candidate)
+## 0.1.7-alpha.1 — saved external task requests — 2026-10-30
 
 - Add `client api-run-new` to save external task/workspace identities before
   creation and replay the same request after an uncertain response. Existing API,
   permissions and logical-close behavior remain unchanged; no execution is inferred.
 - Exercise saved creation and replay after close in the installed external-task
   workload, alongside explicit API creation and MCP. No schema migration from 0.1.6.
+
+- Publish [signed Linux x86-64/ARM64 packages](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.7-alpha.1)
+  after installed task/runtime acceptance and independent signature/subject verification.
 
 ## 0.1.6-alpha.1 — MCP external tasks — 2026-10-30
 
