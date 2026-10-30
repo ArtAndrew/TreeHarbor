@@ -21,7 +21,7 @@ These correctness checks do not establish complete mode readiness or performance
 superiority. The installed native workload includes deliberate replacement-node
 recovery; live GitHub recovery remains a separate release gate.
 
-## Unreleased journaled external task creation
+## Released journaled external task creation — 0.1.7-alpha.1
 
 `client api-run-new --state` generates and saves both task/workspace IDs and the
 request key before calling the existing `api_run_create`. Its private versioned
@@ -37,9 +37,20 @@ The existing installed external-task scenario now uses the helper for one agent
 and retains explicit creation for the other, followed by the MCP scenario.
 That complete Python API scenario also passed locally against the real service,
 PostgreSQL and source import. Targeted service unit/transport tests and strict
-service all-target Clippy passed. Installed Linux verification remains pending;
-this helper is not in 0.1.6 and is prepared for the 0.1.7 candidate.
-See [external tasks](external-api-runs.md#save-creation-identities-automatically-unreleased).
+service all-target Clippy passed. Both installed Linux architecture jobs passed
+in [PR111 CI](https://github.com/ArtAndrew/TreeHarbor/actions/runs/41020358577).
+The helper is included in [0.1.7-alpha.1](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.7-alpha.1), not in 0.1.6.
+
+Released source: `88cd5c5a06f02d5ffcd3dbc798d7300e083c4056`.
+[Main CI](https://github.com/ArtAndrew/TreeHarbor/actions/runs/41021649696) and
+[signed producer](https://github.com/ArtAndrew/TreeHarbor/actions/runs/41023210955),
+both attempt 1, passed. Both signed packages exercised saved external task
+creation/replay after close, explicit API and MCP tasks, existing managed/native
+runtime workflows, cleanup/export and scoped cold restore. Independent official
+online/bundled verification matched the eight signed subjects per architecture
+and producer invocation; public asset hashes match the original artifacts.
+Coverage remains scoped, not a real LLM-host trial or full mode/production readiness.
+See [external tasks](external-api-runs.md#save-creation-identities-automatically).
 
 ## Released MCP external task contexts — 0.1.6-alpha.1
 
