@@ -13,6 +13,7 @@ pub mod files;
 mod github;
 mod history;
 pub mod import;
+mod init;
 mod mcp;
 mod native;
 mod native_advance;
@@ -31,6 +32,10 @@ mod workspace_new;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    #[error(
+        "local initialization refused or incomplete; use valid private input, a short absolute path and a new directory under a private parent; preserve any existing output for inspection"
+    )]
+    InitState,
     #[error("{0}")]
     Backup(#[from] backup::Error),
     #[error(

@@ -28,6 +28,8 @@ pub struct Cli {
 }
 #[derive(Subcommand)]
 enum Command {
+    /// Create private local service configuration/storage directories, without starting anything.
+    Init(crate::init::Options),
     /// Trusted operator cold backup. Requires explicitly stopped writers.
     Backup {
         #[command(subcommand)]
@@ -1073,6 +1075,11 @@ impl Agent {
 }
 pub async fn run(cli: Cli) -> Result<bool> {
     match cli.command {
+        Command::Init(options) => {
+            let report = crate::init::create(options)?;
+            println!("{report}");
+            Ok(true)
+        }
         Command::Backup { action } => crate::backup::run(action).await,
         Command::Doctor { config } => {
             let report = crate::doctor::inspect(&config).await;
