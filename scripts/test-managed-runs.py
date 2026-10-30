@@ -6,10 +6,12 @@ No fixture fabricates runtime success or bypasses source import/preparation.
 Lease expiry is injected in PostgreSQL only after the corresponding worker dies.
 """
 import json
+from contextlib import contextmanager
 from hashlib import sha256
 import os
 from pathlib import Path
 import shutil
+import select
 import subprocess
 import sys
 import tempfile
@@ -42,6 +44,70 @@ def wait_until(predicate, timeout=20):
 def private_json(path, value):
     path.write_text(json.dumps(value))
     path.chmod(0o600)
+
+
+@contextmanager
+def mcp_tools(binary, socket, credential, env):
+    """Small bounded wire client for the installed binary; no SDK or shell."""
+    child = subprocess.Popen([str(binary), "mcp", "--socket", str(socket),
+                              "--credential-file", str(credential)], env=env,
+                             stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                             stderr=subprocess.DEVNULL, bufsize=0)
+    pending = bytearray()
+    sequence = 0
+
+    def send(message):
+        wire = (json.dumps(message) + "\n").encode()
+        assert len(wire) < 8192
+        while wire:
+            written = child.stdin.write(wire)
+            assert written, "MCP input closed"
+            wire = wire[written:]
+
+    def rpc(method, params):
+        nonlocal sequence
+        sequence += 1
+        send(dict(jsonrpc="2.0", id=sequence, method=method, params=params))
+        deadline = time.monotonic() + 20
+        while b"\n" not in pending:
+            remaining = deadline - time.monotonic()
+            assert remaining > 0 and select.select([child.stdout], [], [], remaining)[0], "MCP reply timeout"
+            chunk = os.read(child.stdout.fileno(), 8192)
+            assert chunk and len(pending) + len(chunk) <= 128 * 1024, "MCP reply ended or exceeded bound"
+            pending.extend(chunk)
+        line, _, rest = pending.partition(b"\n")
+        pending[:] = rest
+        assert b"thv1_" not in line, "credential leaked to MCP stdout"
+        value = json.loads(line)
+        assert value.get("jsonrpc") == "2.0" and value.get("id") == sequence and "error" not in value, "unexpected MCP reply"
+        return value["result"]
+
+    def call(name, arguments):
+        result = rpc("tools/call", dict(name=name, arguments=arguments))
+        value = result["structuredContent"]
+        assert value["adapter_version"] == 1
+        assert result.get("isError", False) == (value["http_status"] is None or value["http_status"] >= 400)
+        return value
+
+    try:
+        initialized = rpc("initialize", dict(protocolVersion="2025-11-25", capabilities={},
+                                             clientInfo=dict(name="installed-acceptance", version="1")))
+        assert initialized["protocolVersion"] == "2025-11-25"
+        send(dict(jsonrpc="2.0", method="notifications/initialized"))
+        names = {tool["name"] for tool in rpc("tools/list", {})["tools"]}
+        assert {"api_run_create", "api_run_status", "api_run_close"} <= names
+        assert not {"run_request", "validation_report", "land", "command"} & names
+        yield call
+    finally:
+        child.stdin.close()
+        try:
+            child.wait(timeout=10)
+        finally:
+            if child.poll() is None:
+                child.kill()
+                child.wait(timeout=10)
+            child.stdout.close()
+    assert child.returncode == 0, "MCP adapter did not shut down cleanly"
 
 
 class Harness:
@@ -780,8 +846,53 @@ class Harness:
             changes.append(accepted)
         assert changes[0]["base_snapshot"] == changes[1]["base_snapshot"]
         assert changes[0]["result_snapshot"] != changes[1]["result_snapshot"]
+        self.external_mcp_context()
         assert self.sql("SELECT count(*) FROM th_outbox WHERE kind IN ('workspace.prepare','run.execute','workspace.drain')") == before
         print("PASS installed external API: two scoped contexts read exact source, propose overlapping immutable edits and close without runtime observations; retained diffs and retries remain valid", flush=True)
+
+    def external_mcp_context(self):
+        workspace, run, upload, change = [str(uuid.uuid4()) for _ in range(4)]
+        fence = dict(authority="standalone", epoch=1)
+        with mcp_tools(self.binary, self.socket, self.agents[0], self.env) as call:
+            def tool(name, **args):
+                value = call(name, args)
+                assert value["http_status"] == 200, "installed MCP tool failed: " + name
+                response = value["response"]
+                return response.get("result", response)
+
+            create = dict(key="mcp-create-" + run, **fence, workspace=workspace, run=run,
+                          base=self.revision, profile_digest=self.source_profile,
+                          agent="mcp-controller/1", task="api-edit")
+            created = tool("api_run_create", **create)
+            assert tool("api_run_create", **create) == created
+            assert created["state"] == "recorded" and created["execution_observed"] is False
+            source = tool("workspace_read_files", **fence, workspace=workspace, generation=1,
+                          operation=dict(kind="file", path_hex=b"same.txt".hex()))
+            assert bytes.fromhex(source["content_hex"]) == b"base\n"
+            assert self.client("api-run-status", "--run", run, credential=self.agents[1], check=False).returncode != 0
+            tool("change_begin", key="mcp-begin-" + run, **fence, upload=upload, run=run,
+                 generation=1, max_objects=4, max_bytes=4096, ttl_seconds=600)
+            blob = tool("change_put", upload=upload, content_hex=b"mcp-agent".hex())["object"]
+            old = sha256(b"treeharbor\0" + (1).to_bytes(2, "big") + bytes([1]) + (5).to_bytes(8, "big") + b"base\n").hexdigest()
+            submit = dict(key="mcp-submit-" + run, **fence, upload=upload, changeset=change, previous_version=0,
+                          operations=[dict(path_hex=b"same.txt".hex(),
+                                           expected=dict(mode=0o100644, object="sha256:" + old),
+                                           replacement=dict(mode=0o100644, object=blob))])
+            accepted = tool("changeset_submit", **submit)
+            assert accepted["run_origin"] == "external_api" and accepted["execution_observed"] is False
+            close = dict(key="mcp-close-" + run, **fence, run=run, generation=1)
+            closed = tool("api_run_close", **close)
+            assert closed == tool("api_run_close", **close)
+            assert closed["state"] == "deleted" and closed["run_state"] == "closed"
+            assert closed["execution_observed"] is False and "runtime_removed" not in closed
+            assert tool("api_run_status", run=run)["state"] == "closed"
+            assert tool("changeset_submit", **submit) == accepted
+            retained = tool("review_diff", **fence, after=None, limit=20, text=False,
+                            diff_query=dict(kind="change", changeset=change, version=1))
+            assert retained["after_snapshot"] == accepted["result_snapshot"]
+            assert call("workspace_read_files", dict(**fence, workspace=workspace, generation=1,
+                        operation=dict(kind="file", path_hex=b"same.txt".hex())))["http_status"] >= 400
+        print("PASS installed MCP: exact API source, immutable proposal, unobserved external execution, close/replay and retained review through the packaged stdio adapter", flush=True)
 
     def diagnostics(self):
         # Fixture identifiers/state only; no credential files, source bytes or
