@@ -188,10 +188,11 @@ repository, credential and runtime setup.
 | Read pinned source and create/inspect/close external tasks over stdio | [MCP tools](docs/mcp.md) | 0.1.6-alpha.1 |
 | Prepare one native queue candidate using a saved request | [`native-advance`](docs/native-advance.md), experimental | 0.1.5-alpha.1 |
 | Save and verify a stopped local deployment's metadata, objects and selected private state | [`backup create` / `backup verify`](docs/backup-restore.md) | 0.1.8-alpha.1 |
+| Restore a verified backup into a new isolated database and revoke old tokens | [`backup restore-stage`](docs/restore-stage.md) | 0.1.10-alpha.1 |
 
 External task registration does not execute code or attest isolation; the controller
 supplies execution. Native preparation does not grant review or publish code.
-Backup verification does not authorize restarting old workers or GitHub publishers;
+Backup verification and restore staging do not authorize restarting old workers or GitHub publishers;
 operators must separately retain unsubmitted workspace edits.
 
 Each release records its exact installed-package and signing evidence. See the

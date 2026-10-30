@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-## 0.1.10-alpha.1 — restore staging — unreleased candidate
+## 0.1.10-alpha.1 — restore staging — 2026-10-30
 
 - Add `backup restore-stage` for trusted cold backups into an isolated local
   PostgreSQL server. Create a new database and private copied inventory, verify
@@ -12,8 +12,10 @@
 - Extend the existing PostgreSQL and installed native recovery drills to use
   the operator command, require denial of old credentials, and deliberately
   issue selected new credentials for inspection/replacement-node execution.
-- No schema or dependency change from 0.1.9. Signed packages and installed
-  acceptance are pending; full activation and Connected recovery remain open.
+- No schema or dependency change from 0.1.9. Publish
+  [signed Linux x86-64/ARM64 packages](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.10-alpha.1)
+  after installed recovery acceptance and independent signature/subject checks.
+  Full activation and Connected recovery remain open.
 
 ## 0.1.9-alpha.1 — local initialization — 2026-10-30
 

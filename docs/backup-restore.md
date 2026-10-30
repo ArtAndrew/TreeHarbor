@@ -93,12 +93,15 @@ OS/runtime configuration not enumerated above and external GitHub state are not
 captured. Use the restoration boundary below. Never point an ordinary live server
 at the backup directory or resume publishers merely because verification passed.
 
-## Restore staging — unreleased candidate
+## Restore staging — 0.1.10-alpha.1
 
 The new [restore-stage command](restore-stage.md) replaces manual database/file
 restoration with a verified copy into a new isolated database and audited revocation
-of old service tokens. It is not included in 0.1.9-alpha.1 or older packages and
-never authorizes activation. Its installed runtime acceptance is pending.
+of old service tokens. It is available in
+[0.1.10-alpha.1](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.10-alpha.1)
+and never authorizes activation. Installed runtime acceptance passed on
+[Linux x86-64](https://github.com/ArtAndrew/TreeHarbor/actions/runs/41097779078/job/124207992670)
+and [ARM64](https://github.com/ArtAndrew/TreeHarbor/actions/runs/41097779078/job/124207992386).
 
 ## Reference backup boundary
 
@@ -148,7 +151,7 @@ Linux/PostgreSQL/gVisor environment it:
 - starting with 0.1.8-alpha.1, invokes installed `backup create` / `verify`
   with explicitly selected credentials, import/native request journals and node
   state; verifies their inventory and refuses destination reuse before restore;
-- in the unreleased candidate, calls actual `backup restore-stage`, compares all
+- starting with 0.1.10-alpha.1, calls actual `backup restore-stage`, compares all
   retained tables/sequences except the explicitly asserted token revocations and
   appended audit, and verifies that the original database remains unchanged;
 - starts the real service with copied objects and the original object path absent;
@@ -156,7 +159,7 @@ Linux/PostgreSQL/gVisor environment it:
 - removes/corrupts a restored object, requires export failure, then verifies recovery
   after restoring its exact bytes;
 - retains a requested but unexecuted check without converting it to validation;
-- in the unreleased candidate, requires staging to revoke all old tokens, then
+- starting with 0.1.10-alpha.1, requires staging to revoke all old tokens, then
   deliberately issues selected new operator/agent credentials in the disposable
   harness; it keeps old node credentials revoked, restarts the service and requires
   an explicit node authentication failure and refusal to execute the old check with Engine available;
