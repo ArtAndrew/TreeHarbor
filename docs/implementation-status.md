@@ -45,9 +45,12 @@ The existing installed managed-runtime workload now also exercises a complete
 external API task through the packaged MCP stdio adapter, using the 2025-11-25
 initialization lifecycle. It requires exact source reads, immutable proposal
 acceptance, logical close/replay, retained review and no runtime work scheduled
-by these API operations. The bounded wire client passed a local actual-binary
-discovery/error/shutdown smoke check; that check has no backend and is not Linux
-installation evidence. CI verification of the added installed scenario is pending.
+by these API operations. The complete added Python scenario passed locally with
+the real Rust service, PostgreSQL, source import and scoped credentials, alongside
+both existing external CLI task scenarios. The initial Linux CI found incorrect
+response unwrapping in the new test: source bytes accompany the metadata result,
+rather than being inside it. The corrected test reads that envelope explicitly.
+Local verification is not Linux installation evidence; installed CI is pending.
 
 ## Released preparation update — 0.1.5-alpha.1
 

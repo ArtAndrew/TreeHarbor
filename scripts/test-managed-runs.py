@@ -854,11 +854,11 @@ class Harness:
         workspace, run, upload, change = [str(uuid.uuid4()) for _ in range(4)]
         fence = dict(authority="standalone", epoch=1)
         with mcp_tools(self.binary, self.socket, self.agents[0], self.env) as call:
-            def tool(name, **args):
+            def tool(name, *, unwrap=True, **args):
                 value = call(name, args)
                 assert value["http_status"] == 200, "installed MCP tool failed: " + name
                 response = value["response"]
-                return response.get("result", response)
+                return response["result"] if unwrap else response
 
             create = dict(key="mcp-create-" + run, **fence, workspace=workspace, run=run,
                           base=self.revision, profile_digest=self.source_profile,
@@ -866,9 +866,11 @@ class Harness:
             created = tool("api_run_create", **create)
             assert tool("api_run_create", **create) == created
             assert created["state"] == "recorded" and created["execution_observed"] is False
-            source = tool("workspace_read_files", **fence, workspace=workspace, generation=1,
+            # Source bytes accompany the metadata result in the response envelope.
+            source = tool("workspace_read_files", unwrap=False, **fence, workspace=workspace, generation=1,
                           operation=dict(kind="file", path_hex=b"same.txt".hex()))
             assert bytes.fromhex(source["content_hex"]) == b"base\n"
+            assert source["untrusted_source_content"] is True
             assert self.client("api-run-status", "--run", run, credential=self.agents[1], check=False).returncode != 0
             tool("change_begin", key="mcp-begin-" + run, **fence, upload=upload, run=run,
                  generation=1, max_objects=4, max_bytes=4096, ttl_seconds=600)
