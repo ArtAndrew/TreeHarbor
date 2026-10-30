@@ -1,6 +1,7 @@
 //! Cold backups of the local service. The operator stops ALL writers; locks only
 //! exclude cooperating local services and concurrent writes to existing tables.
 mod files;
+mod restore;
 
 use crate::{config::Config, database::Database};
 use clap::Subcommand;
@@ -23,6 +24,10 @@ pub enum Error {
         "backup input must be private, stopped, regular files/directories without symlinks or overlapping paths"
     )]
     Unsafe,
+    #[error(
+        "restore staging failed; keep the target isolated and inspect its private target.json and pg-restore.stderr; no activation is authorized"
+    )]
+    Restore,
     #[error("backup input changed; keep every writer stopped and use a fresh output directory")]
     Changed,
     #[error("backup byte, entry, depth or time budget exceeded; incomplete output is retained")]
@@ -50,6 +55,8 @@ type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Subcommand)]
 pub(crate) enum Action {
+    /// Restore a trusted backup into a new isolated database; never activate it.
+    RestoreStage(restore::Options),
     /// Save a stopped local deployment. Never stops/fences workers automatically.
     Create {
         #[arg(long)]
@@ -131,6 +138,7 @@ const MAX_MANIFEST: usize = 64 * 1024 * 1024;
 
 pub(crate) async fn run(action: Action) -> crate::Result<bool> {
     let value = match action {
+        Action::RestoreStage(options) => restore::stage(options).await?,
         Action::Create {
             config,
             output,
@@ -539,7 +547,16 @@ fn summary(manifest: &Manifest, bytes: &[u8]) -> Value {
         "entries":manifest.inventory.len(),"bytes":manifest.inventory.values().map(|entry|entry.bytes).sum::<u64>(),
         "scope":"cold local metadata, objects and enumerated private state","restore_authorized":false})
 }
-fn verify(path: &Path, expected_hash: &str, mut budget: Budget) -> Result<Value> {
+fn verify(path: &Path, expected_hash: &str, budget: Budget) -> Result<Value> {
+    let (manifest, bytes) = verified_manifest(path, expected_hash, budget)?;
+    Ok(summary(&manifest, &bytes))
+}
+
+fn verified_manifest(
+    path: &Path,
+    expected_hash: &str,
+    mut budget: Budget,
+) -> Result<(Manifest, Vec<u8>)> {
     let bytes = crate::files::read_private(&path.join(MANIFEST), MAX_MANIFEST)
         .map_err(|_| Error::Integrity)?;
     if treeharbor_core::ObjectId::hash_frame(&bytes).hex() != expected_hash {
@@ -563,7 +580,7 @@ fn verify(path: &Path, expected_hash: &str, mut budget: Budget) -> Result<Value>
     if inventory != manifest.inventory {
         return Err(Error::Integrity);
     }
-    Ok(summary(&manifest, &bytes))
+    Ok((manifest, bytes))
 }
 
 #[cfg(test)]
