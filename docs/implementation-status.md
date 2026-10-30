@@ -40,8 +40,17 @@ agent ChangeSet is readable, and native source history exports with the original
 object path absent. Active service and table writes are refused; repeated output,
 missing/corrupt live objects, incomplete over-budget output, changed/missing/extra
 backup files and incorrect manifest identity fail. Private traversal tests and
-strict service Clippy passed. CI uses the actual tools from its PostgreSQL18.6
-container, not a simulated dump. Linux CI results are still pending for this change.
+strict service Clippy passed. [PR113 CI](https://github.com/ArtAndrew/TreeHarbor/actions/runs/41046161956)
+passed all required checks, including the real Linux backup/restore test using
+tools from its PostgreSQL18.6 container, not a simulated dump. The change merged
+at `5214ee1499b12994a10aa45e87d93ebb18f731f2`.
+
+The 0.1.8-alpha.1 candidate extends the existing installed native recovery drill
+to call `backup create`/`verify`, preserve explicitly listed private journals and
+credentials, verify exact payload limits and reject output reuse before restoring
+the database and objects. This keeps the existing actual gVisor check/review/land,
+Git export, corruption refusal, old-node revocation and fresh-node recovery tests.
+Installed results and signed publication are pending for this candidate.
 
 This is not yet an installed release, full crash/power-loss campaign, recovery of
 all authority modes, a replacement for the existing managed-runtime restore drill

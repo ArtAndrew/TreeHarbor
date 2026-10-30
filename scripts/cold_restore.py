@@ -7,7 +7,9 @@ not Connected host reconciliation or resumption of an old in-flight task. Backup
 artifacts contain test credentials and stay in private tempdir.
 """
 import json
+from hashlib import sha256
 from pathlib import Path
+import shlex
 import shutil
 import subprocess
 import uuid
@@ -18,7 +20,6 @@ def exercise(h, landed, managed, pending):
         raise RuntimeError("restore drill requires the disposable acceptance database")
     target = "th_restore_" + uuid.uuid4().hex
     backup = h.root / "cold-backup"
-    backup.mkdir(mode=0o700)
     archive = backup / "metadata.dump"
     original_config = json.loads(h.config.read_text())
     original_store = Path(original_config["storage"]["root"])
@@ -26,6 +27,10 @@ def exercise(h, landed, managed, pending):
     restored_store = h.root / "restored-objects"
     created, hidden = False, False
     original_database = h.database
+    credential_names = ("owner", "policy_admin", "reviewer", "integrator", "ci")
+    original_credentials = {name: getattr(h, name) for name in credential_names}
+    original_agents = list(h.agents)
+    original_node_credentials = [(node, node["credential"]) for node in h.nodes]
 
     def sql(database, query):
         out = managed.docker("exec", h.pg, "psql", "-U", "treeharbor_test", "-d", database,
@@ -67,12 +72,42 @@ def exercise(h, landed, managed, pending):
         for case in h.cases:
             managed.docker("rm", "--force", "treeharbor-" + case["attempt"], check=False)
         before = snapshot("treeharbor_test")
-        with archive.open("xb") as output:
-            subprocess.run(["docker", "exec", h.pg, "pg_dump", "-U", "treeharbor_test",
-                            "-d", "treeharbor_test", "--format=custom", "--schema", h.schema],
-                           stdout=output, check=True, timeout=60)
-        archive.chmod(0o600)
-        shutil.copytree(original_store, backup / "objects")
+        # Use the installed Rust command and real matching container pg_dump;
+        # do not synthesize dump bytes, snapshots or success.
+        dump = h.root / "pg-dump"
+        dump.write_text("#!/bin/sh\nexec /usr/bin/docker exec -i -e PGDATABASE -e PGUSER -e PGPASSWORD "
+                        + shlex.quote(h.pg) + ' pg_dump "$@"\n')
+        dump.chmod(0o700)
+        states = [h.root / "import.json", h.root / "pack", h.root / "first-workspace.json",
+                  h.root / "native-advance", h.owner, *h.agents, h.policy_admin,
+                  h.reviewer, h.integrator, h.ci]
+        for node in h.nodes:
+            states.extend([node["credential"], node["root"]])
+        assert len(states) <= 32 and len(set(states)) == len(states)
+        assert all(path.exists() for path in states)
+        arguments = ["backup", "create", "--config", h.config, "--output", backup,
+                     "--pg-dump", dump, "--writers-stopped", "--timeout-seconds", "45"]
+        for path in states:
+            arguments.extend(["--state", path])
+        receipt = h.value(*arguments)
+        assert receipt["complete"] and receipt["restore_authorized"] is False
+        manifest_bytes = (backup / "manifest.json").read_bytes()
+        assert sha256(manifest_bytes).hexdigest() == receipt["manifest_sha256"]
+        manifest = json.loads(manifest_bytes)
+        assert manifest["version"] == 1 and manifest["schema"] == h.schema
+        assert manifest["inputs"][2:] == [
+            {"source": str(path.resolve()), "target": f"private-state/{index:02}"}
+            for index, path in enumerate(states)]
+        assert (backup / "service-config.json").read_bytes() == h.config.read_bytes()
+        verified = h.value("backup", "verify", "--backup", backup,
+                           "--manifest-sha256", receipt["manifest_sha256"],
+                           "--max-bytes", str(receipt["bytes"]),
+                           "--max-entries", str(receipt["entries"]))
+        assert verified == receipt
+        assert h.cli(*arguments, check=False).returncode != 0
+        assert (backup / "manifest.json").read_bytes() == manifest_bytes
+        assert snapshot("treeharbor_test") == before, "backup changed source metadata"
+        print("PASS installed cold backup: actual operator create/verify preserves enumerated private state and exact inventory without overwriting output", flush=True)
         managed.docker("exec", h.pg, "createdb", "-U", "treeharbor_test", target)
         created = True
         with archive.open("rb") as source:
@@ -81,11 +116,29 @@ def exercise(h, landed, managed, pending):
                            stdin=source, check=True, timeout=60)
         assert snapshot(target) == before, "restored tables or sequence values differ"
         print("PASS cold restore: actual pg_dump/pg_restore retains all tables, receipts, outbox, pins and sequences", flush=True)
+        # Read recovered credentials from separate files populated from the
+        # backup, not the original files. Copying node journals grants no right
+        # to resume them; the old-node denial/fresh-node test below still applies.
+        credentials = h.root / "restored-credentials"
+        credentials.mkdir(mode=0o700)
+
+        def recovered_credential(source):
+            target_file = credentials / source.name
+            assert not target_file.exists()
+            shutil.copy2(backup / "private-state" / f"{states.index(source):02}", target_file)
+            assert target_file.read_bytes() == source.read_bytes()
+            return target_file
+
+        for name, source in original_credentials.items():
+            setattr(h, name, recovered_credential(source))
+        h.agents = [recovered_credential(source) for source in original_agents]
+        for node, source in original_node_credentials:
+            node["credential"] = recovered_credential(source)
         shutil.copytree(backup / "objects", restored_store)
         original_store.rename(hidden_store)
         hidden = True
         assert not original_store.exists()
-        config = dict(original_config)
+        config = json.loads((backup / "service-config.json").read_text())
         config["database_url"] = h.url.replace("dbname=treeharbor_test", "dbname=" + target)
         config["storage"] = dict(original_config["storage"], root=str(restored_store))
         managed.private_json(h.config, config)
@@ -204,4 +257,9 @@ def exercise(h, landed, managed, pending):
         if hidden:
             hidden_store.rename(original_store)
         h.database = original_database
+        for name, source in original_credentials.items():
+            setattr(h, name, source)
+        h.agents = original_agents
+        for node, source in original_node_credentials:
+            node["credential"] = source
         managed.private_json(h.config, original_config)

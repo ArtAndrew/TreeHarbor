@@ -2,11 +2,18 @@
 
 ## Unreleased
 
+## 0.1.8-alpha.1 — cold backup — candidate, not released
+
 - Add experimental operator `backup create` and `backup verify` for a stopped
   local PostgreSQL/object-store deployment and explicitly enumerated private
   state. Copies have an exact inventory and durable completion marker; existing
   output, active service/write locks and missing/corrupt live objects are refused.
   This does not implement safe restore activation or Connected reconciliation.
+- Extend the installed native recovery drill to use the operator commands and
+  preserve enumerated private journals/configuration with the dump and objects.
+  Existing restore, corruption refusal and replacement-node checks remain.
+- No metadata migration from 0.1.7. The installed-package checks and signed
+  publication of this candidate are pending.
 
 ## 0.1.7-alpha.1 — saved external task requests — 2026-10-30
 

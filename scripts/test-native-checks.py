@@ -42,7 +42,9 @@ class Checks(managed.Harness):
         entry, check = [str(uuid.uuid4()) for _ in range(2)]
         self.native("enqueue", self.agents[0], entry=entry, target=target,
                     changeset=self.change["changeset"], version=self.change.get("version", 1))
-        state = self.root / ("advance-" + entry + ".json")
+        journals = self.root / "native-advance"
+        journals.mkdir(mode=0o700, exist_ok=True)
+        state = journals / (entry + ".json")
         result = self.advance(target, state)
         candidate = result["candidate"]
         assert result["state"] == "checking" and result["entry"] == entry
