@@ -41,6 +41,14 @@ access revocation. This is API workflow evidence, not a real LLM or runtime tria
 This addition is not included in 0.1.5; its release verification remains pending.
 See [the MCP workflow](mcp.md#start-a-task-using-your-own-execution-environment-unreleased).
 
+The existing installed managed-runtime workload now also exercises a complete
+external API task through the packaged MCP stdio adapter, using the 2025-11-25
+initialization lifecycle. It requires exact source reads, immutable proposal
+acceptance, logical close/replay, retained review and no runtime work scheduled
+by these API operations. The bounded wire client passed a local actual-binary
+discovery/error/shutdown smoke check; that check has no backend and is not Linux
+installation evidence. CI verification of the added installed scenario is pending.
+
 ## Released preparation update — 0.1.5-alpha.1
 
 [`native-advance`](native-advance.md) discovers one pending native entry and saves
