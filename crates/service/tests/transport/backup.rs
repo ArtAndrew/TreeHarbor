@@ -166,20 +166,6 @@ async fn snapshot(
     let sequences:Value=client.query_one("SELECT coalesce(jsonb_agg(jsonb_build_array(sequencename,last_value) ORDER BY sequencename),'[]') FROM pg_sequences WHERE schemaname::text=$1",&[&schema]).await.unwrap().get(0);
     (data, sequences)
 }
-fn copy_directory(from: &Path, to: &Path) {
-    fs::create_dir(to).unwrap();
-    fs::set_permissions(to, fs::Permissions::from_mode(0o700)).unwrap();
-    for entry in fs::read_dir(from).unwrap() {
-        let entry = entry.unwrap();
-        let target = to.join(entry.file_name());
-        if entry.file_type().unwrap().is_dir() {
-            copy_directory(&entry.path(), &target);
-        } else {
-            fs::copy(entry.path(), target).unwrap();
-        }
-    }
-}
-
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires disposable PostgreSQL and actual matching pg_dump/pg_restore executables"]
 async fn cold_backup_restores_metadata_and_native_source_and_refuses_unsafe_inputs() {
@@ -348,62 +334,196 @@ async fn cold_backup_restores_metadata_and_native_source_and_refuses_unsafe_inpu
     files::write_private(&private, &saved).unwrap();
     assert!(verify(&output, digest).status.success());
 
-    let target = format!("th_restore_{}", Uuid::new_v4().simple());
-    f.sql
-        .batch_execute(&format!("CREATE DATABASE {target}"))
-        .await
-        .unwrap();
-    let pg = f.config.database_config().unwrap();
-    let mut command = Command::new(restore);
-    command.env("PGDATABASE", &target).env(
-        "PGHOST",
-        match &pg.get_hosts()[0] {
-            tokio_postgres::config::Host::Unix(path) => path,
-            _ => unreachable!(),
-        },
+    let stage = f.dir.path().join("staged");
+    let input = f.dir.path().join("restore-database.url");
+    files::write_private(&input, f.config.database_url.as_bytes()).unwrap();
+    let stage_command = |path: &Path, hash: &str| {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_treeharbor"));
+        command
+            .args(["backup", "restore-stage", "--isolated-target", "--backup"])
+            .arg(&output)
+            .arg("--directory")
+            .arg(path)
+            .args(["--manifest-sha256", hash])
+            .arg("--database-url-file")
+            .arg(&input)
+            .arg("--pg-restore")
+            .arg(&restore)
+            .args(["--timeout-seconds", "30"]);
+        command
+    };
+    // A bad independently retained identity refuses before any output/SQL.
+    assert!(
+        !stage_command(&stage, &"0".repeat(64))
+            .output()
+            .unwrap()
+            .status
+            .success()
     );
-    if let Some(user) = pg.get_user() {
-        command.env("PGUSER", user);
-    }
-    if let Some(password) = pg.get_password() {
-        use std::os::unix::ffi::OsStrExt;
-        command.env("PGPASSWORD", std::ffi::OsStr::from_bytes(password));
-    }
-    if let Some(port) = pg.get_ports().first() {
-        command.env("PGPORT", port.to_string());
-    }
-    let restored = command
-        .args([
-            "--dbname",
-            &target,
-            "--no-owner",
-            "--no-privileges",
-            "--single-transaction",
-            "--exit-on-error",
-        ])
-        .stdin(fs::File::open(output.join("metadata.dump")).unwrap())
+    assert!(!stage.exists());
+    // A failed executable after database creation must retain an identifiable
+    // partial target and never report staged/activated success or overwrite it.
+    let failed_stage = f.dir.path().join("failed-stage");
+    let failed = Command::new(env!("CARGO_BIN_EXE_treeharbor"))
+        .args(["backup", "restore-stage", "--isolated-target", "--backup"])
+        .arg(&output)
+        .arg("--directory")
+        .arg(&failed_stage)
+        .args(["--manifest-sha256", digest])
+        .arg("--database-url-file")
+        .arg(&input)
+        .arg("--pg-restore")
+        .arg(f.dir.path().join("missing-pg-restore"))
         .output()
         .unwrap();
+    assert!(!failed.status.success());
+    assert!(!failed_stage.join("staged.json").exists());
+    assert!(failed_stage.join("backup/metadata.dump").exists());
+    let partial: Value =
+        serde_json::from_slice(&fs::read(failed_stage.join("target.json")).unwrap()).unwrap();
+    let partial_db = partial["database"].as_str().unwrap();
+    assert!(partial_db.starts_with("th_restore_") && partial_db.len() == 43);
+    assert!(
+        !stage_command(&failed_stage, digest)
+            .output()
+            .unwrap()
+            .status
+            .success()
+    );
+    f.sql
+        .batch_execute(&format!("DROP DATABASE {partial_db} WITH (FORCE)"))
+        .await
+        .unwrap();
+    let restored = stage_command(&stage, digest).output().unwrap();
     assert!(
         restored.status.success(),
-        "{}",
-        String::from_utf8_lossy(&restored.stderr)
+        "{}; {}",
+        String::from_utf8_lossy(&restored.stderr),
+        fs::read_to_string(stage.join("pg-restore.stderr")).unwrap_or_default()
     );
+    let staged: Value = serde_json::from_slice(&restored.stdout).unwrap();
+    assert_eq!(staged["status"], "staged");
+    assert_eq!(staged["activation_authorized"], false);
+    assert_eq!(staged["service_started"], false);
+    assert_eq!(staged["old_infrastructure_fenced"], false);
+    assert!(!stage.join("service.json").exists());
+    assert!(!stage.join("service.sock").exists());
+    assert!(!String::from_utf8_lossy(&restored.stdout).contains("thv1_"));
+    assert!(!String::from_utf8_lossy(&restored.stdout).contains(&f.config.database_url));
+    let marker = fs::read(stage.join("staged.json")).unwrap();
+    assert!(
+        !stage_command(&stage, digest)
+            .output()
+            .unwrap()
+            .status
+            .success()
+    );
+    assert_eq!(fs::read(stage.join("staged.json")).unwrap(), marker);
+    let target = staged["database"].as_str().unwrap().to_owned();
+    let pg = f.config.database_config().unwrap();
     let mut restored_pg = pg;
     restored_pg.dbname(&target);
     let (restored_sql, connection) = restored_pg.connect(tokio_postgres::NoTls).await.unwrap();
     let driver = tokio::spawn(async move {
         let _ = connection.await;
     });
-    assert_eq!(snapshot(&restored_sql, &f.config.schema).await, before);
-    let recovered = f.dir.path().join("recovered-objects");
-    copy_directory(&output.join("objects"), &recovered);
+    let (mut rows, sequences) = snapshot(&restored_sql, &f.config.schema).await;
+    let expected_tokens = before.0["th_access_tokens"].as_array().unwrap();
+    let actual_tokens = rows["th_access_tokens"].as_array().unwrap();
+    assert_eq!(expected_tokens.len(), actual_tokens.len());
+    assert!(
+        actual_tokens
+            .iter()
+            .all(|token| !token["revoked_at"].is_null())
+    );
+    let new_revocations = expected_tokens
+        .iter()
+        .filter(|token| token["revoked_at"].is_null())
+        .count();
+    assert_eq!(staged["revoked_tokens"], new_revocations);
+    for token in actual_tokens {
+        let expected = expected_tokens
+            .iter()
+            .find(|old| old["token"] == token["token"])
+            .unwrap();
+        let mut copy = token.clone();
+        if expected["revoked_at"].is_null() {
+            copy["revoked_at"] = Value::Null;
+        }
+        assert_eq!(&copy, expected);
+    }
+    let audit = rows["th_security_audit"].as_array().unwrap();
+    let appended: Vec<_> = audit
+        .iter()
+        .filter(|row| row["action"] == "restore.token.revoke")
+        .collect();
+    assert_eq!(appended.len(), new_revocations);
+    for row in appended {
+        assert_eq!(row["operator"], "restore-stage");
+        let token = actual_tokens
+            .iter()
+            .find(|token| token["token"] == row["token"])
+            .unwrap();
+        for key in ["tenant", "repository", "principal", "permissions"] {
+            assert_eq!(row[key], token[key]);
+        }
+    }
+    rows.insert(
+        "th_access_tokens".into(),
+        before.0["th_access_tokens"].clone(),
+    );
+    rows.get_mut("th_security_audit")
+        .unwrap()
+        .as_array_mut()
+        .unwrap()
+        .retain(|row| row["action"] != "restore.token.revoke");
+    assert_eq!(
+        rows, before.0,
+        "restore changed data outside explicit token revocation/audit"
+    );
+    let without_audit = |value: &Value| -> Vec<Value> {
+        value
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|row| row[0] != "th_security_audit_id_seq")
+            .cloned()
+            .collect()
+    };
+    assert_eq!(without_audit(&sequences), without_audit(&before.1));
+    assert_eq!(
+        snapshot(&f.sql, &f.config.schema).await,
+        before,
+        "source was modified"
+    );
+    let recovered = stage.join("backup/objects");
     fs::rename(&objects, f.dir.path().join("old-objects-unavailable")).unwrap();
     let original_url = f.config.database_url.clone();
     f.config.database_url = format!("{} dbname={target}", f.config.database_url);
     f.config.storage.as_mut().unwrap().root = recovered.clone();
     f.save_config();
+    // This disposable drill deliberately supplies its own inspection config;
+    // restore-stage never emits or activates one. All original writers stay off.
     let mut recovered_service = f.start().await;
+    let refused = f.cli(&["repository-info"]);
+    assert!(
+        !refused.status.success(),
+        "restored bearer token became active"
+    );
+    f.credential_path = f.dir.path().join("restored-reader.json");
+    f.admin_ok(&[
+        "token-issue",
+        "--tenant",
+        f.scope.tenant(),
+        "--repository",
+        &f.scope.repository().to_string(),
+        "--principal",
+        "agent-a",
+        "--permission",
+        "read",
+        "--output",
+        f.credential_path.to_str().unwrap(),
+    ]);
     let recovered_proposal = ok(f.cli(&[
         "diff",
         "--authority",

@@ -23,6 +23,7 @@ pub(super) struct Entry {
 }
 pub(super) type Inventory = BTreeMap<String, Entry>;
 
+#[derive(Clone)]
 pub(super) struct Budget {
     pub remaining: u64,
     pub entries: usize,

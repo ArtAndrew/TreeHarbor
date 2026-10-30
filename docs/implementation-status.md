@@ -21,6 +21,26 @@ These correctness checks do not establish complete mode readiness or performance
 superiority. The installed native workload includes deliberate replacement-node
 recovery; live GitHub recovery remains a separate release gate.
 
+## Restore staging — unreleased 0.1.10 candidate
+
+`backup restore-stage` verifies and copies a trusted cold backup, creates an unused
+UUID database on an explicitly isolated local PostgreSQL server, restores it through
+actual `pg_restore`, checks schema/storage/live-object identities, and revokes all
+previously unrevoked tokens with append-only audit records. It retains incomplete
+output and records the selected target before database creation; only a successful
+final receipt reports `staged`. It does not generate runnable configuration, issue
+new credentials, stop the old deployment or authorize activation/publication.
+See [operator prerequisites and limits](restore-stage.md).
+
+The targeted real PostgreSQL transport test passed preservation of accepted source,
+exact table/sequence comparison with explicit revoke/audit differences, old-token
+denial, inspection using a newly issued reader, missing-original-store export,
+wrong-digest refusal, destination reuse refusal and identifiable incomplete output
+after an executable failure. The existing installed native drill now invokes the
+same command and explicitly rotates selected inspection credentials; Linux package
+acceptance and signed publication remain pending. No migration or dependency change.
+This does not certify live Connected recovery or complete either authority mode.
+
 ## Released local service initialization — 0.1.9-alpha.1
 
 `init --directory --database-url-file` creates a new private source-enabled

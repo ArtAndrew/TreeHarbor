@@ -93,6 +93,13 @@ OS/runtime configuration not enumerated above and external GitHub state are not
 captured. Use the restoration boundary below. Never point an ordinary live server
 at the backup directory or resume publishers merely because verification passed.
 
+## Restore staging — unreleased candidate
+
+The new [restore-stage command](restore-stage.md) replaces manual database/file
+restoration with a verified copy into a new isolated database and audited revocation
+of old service tokens. It is not included in 0.1.9-alpha.1 or older packages and
+never authorizes activation. Its installed runtime acceptance is pending.
+
 ## Reference backup boundary
 
 The initial single-host deployment uses a cold backup:
@@ -141,13 +148,17 @@ Linux/PostgreSQL/gVisor environment it:
 - starting with 0.1.8-alpha.1, invokes installed `backup create` / `verify`
   with explicitly selected credentials, import/native request journals and node
   state; verifies their inventory and refuses destination reuse before restore;
-- compares all retained tables and sequence values in a fresh database;
+- in the unreleased candidate, calls actual `backup restore-stage`, compares all
+  retained tables/sequences except the explicitly asserted token revocations and
+  appended audit, and verifies that the original database remains unchanged;
 - starts the real service with copied objects and the original object path absent;
 - exports published history into ordinary Git and reads accepted agent changes;
 - removes/corrupts a restored object, requires export failure, then verifies recovery
   after restoring its exact bytes;
 - retains a requested but unexecuted check without converting it to validation;
-- explicitly revokes old node credentials, restarts the restored service and requires
+- in the unreleased candidate, requires staging to revoke all old tokens, then
+  deliberately issues selected new operator/agent credentials in the disposable
+  harness; it keeps old node credentials revoked, restarts the service and requires
   an explicit node authentication failure and refusal to execute the old check with Engine available;
 - registers a fresh node with new local state and volume, runs a fresh approved
   check through gVisor, publishes its exact native candidate, verifies the result
@@ -155,12 +166,12 @@ Linux/PostgreSQL/gVisor environment it:
 
 This is a shared storage and deliberate replacement-node recovery test with
 synthetic agent programs. The operator keeps all original writers stopped and
-explicitly revokes old node tokens before allowing a new node to work. It does
+checks old token revocation before allowing a new node to work. It does
 not discover or fence other infrastructure automatically. It exercises no live
 GitHub reconciliation and resumes no old task or copied node journal. Run it only
 through the disposable runtime CI harness; it is not an operator backup utility.
 
-The complete drill, including operator backup creation and replacement-node
+The previously released drill, including operator backup creation and replacement-node
 execution, passed with installed static binaries on
 [Linux x86-64](https://github.com/ArtAndrew/TreeHarbor/actions/runs/41052176043/job/124050740230)
 and [ARM64](https://github.com/ArtAndrew/TreeHarbor/actions/runs/41052176043/job/124050740228)

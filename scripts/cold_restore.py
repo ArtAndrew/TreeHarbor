@@ -12,19 +12,18 @@ from pathlib import Path
 import shlex
 import shutil
 import subprocess
-import uuid
 
 
 def exercise(h, landed, managed, pending):
     if not h.schema.startswith("th_test_") or "dbname=treeharbor_test" not in h.url:
         raise RuntimeError("restore drill requires the disposable acceptance database")
-    target = "th_restore_" + uuid.uuid4().hex
+    target = None
+    stage = h.root / "restore-stage"
     backup = h.root / "cold-backup"
-    archive = backup / "metadata.dump"
     original_config = json.loads(h.config.read_text())
     original_store = Path(original_config["storage"]["root"])
     hidden_store = h.root / "original-objects-unavailable"
-    restored_store = h.root / "restored-objects"
+    restored_store = stage / "backup" / "objects"
     created, hidden = False, False
     original_database = h.database
     credential_names = ("owner", "policy_admin", "reviewer", "integrator", "ci")
@@ -108,33 +107,45 @@ def exercise(h, landed, managed, pending):
         assert (backup / "manifest.json").read_bytes() == manifest_bytes
         assert snapshot("treeharbor_test") == before, "backup changed source metadata"
         print("PASS installed cold backup: actual operator create/verify preserves enumerated private state and exact inventory without overwriting output", flush=True)
-        managed.docker("exec", h.pg, "createdb", "-U", "treeharbor_test", target)
-        created = True
-        with archive.open("rb") as source:
-            subprocess.run(["docker", "exec", "-i", h.pg, "pg_restore", "-U", "treeharbor_test",
-                            "--dbname", target, "--no-owner", "--single-transaction", "--exit-on-error"],
-                           stdin=source, check=True, timeout=60)
-        assert snapshot(target) == before, "restored tables or sequence values differ"
-        print("PASS cold restore: actual pg_dump/pg_restore retains all tables, receipts, outbox, pins and sequences", flush=True)
-        # Read recovered credentials from separate files populated from the
-        # backup, not the original files. Copying node journals grants no right
-        # to resume them; the old-node denial/fresh-node test below still applies.
-        credentials = h.root / "restored-credentials"
-        credentials.mkdir(mode=0o700)
-
-        def recovered_credential(source):
-            target_file = credentials / source.name
-            assert not target_file.exists()
-            shutil.copy2(backup / "private-state" / f"{states.index(source):02}", target_file)
-            assert target_file.read_bytes() == source.read_bytes()
-            return target_file
-
-        for name, source in original_credentials.items():
-            setattr(h, name, recovered_credential(source))
-        h.agents = [recovered_credential(source) for source in original_agents]
-        for node, source in original_node_credentials:
-            node["credential"] = recovered_credential(source)
-        shutil.copytree(backup / "objects", restored_store)
+        restore = h.root / "pg-restore"
+        restore.write_text("#!/bin/sh\nexec /usr/bin/docker exec -i -e PGDATABASE -e PGUSER -e PGPASSWORD "
+                           + shlex.quote(h.pg) + ' pg_restore "$@"\n')
+        restore.chmod(0o700)
+        staged = h.value("backup", "restore-stage", "--isolated-target", "--backup", backup,
+                         "--manifest-sha256", receipt["manifest_sha256"], "--directory", stage,
+                         "--database-url-file", h.root / "database.url", "--pg-restore", restore,
+                         "--timeout-seconds", "60")
+        target, created = staged["database"], True
+        assert staged["status"] == "staged" and staged["activation_authorized"] is False
+        assert staged["service_started"] is False and staged["old_infrastructure_fenced"] is False
+        assert not (stage / "service.json").exists() and not (stage / "service.sock").exists()
+        after, sequences = snapshot(target)
+        tokens = after["th_access_tokens"]
+        expected = {row["token"]: row for row in before[0]["th_access_tokens"]}
+        assert len(tokens) == len(expected)
+        for row in tokens:
+            assert row["revoked_at"] is not None
+            original = expected[row["token"]]
+            assert dict(row, revoked_at=original["revoked_at"]) == original
+        revoked = sum(row["revoked_at"] is None for row in expected.values())
+        assert staged["revoked_tokens"] == revoked
+        audit = after["th_security_audit"]
+        additions = [row for row in audit if row["action"] == "restore.token.revoke"]
+        assert len(additions) == revoked
+        for row in additions:
+            old = expected[row["token"]]
+            assert row["operator"] == "restore-stage"
+            assert all(row[key] == old[key] for key in ("tenant", "repository", "principal", "permissions"))
+        after["th_security_audit"] = [row for row in audit if row["action"] != "restore.token.revoke"]
+        after["th_access_tokens"] = before[0]["th_access_tokens"]
+        assert after == before[0], "staging changed history, proposals, jobs or other metadata"
+        unchanged_sequences = lambda rows: [row for row in rows if row[0] != "th_security_audit_id_seq"]
+        assert unchanged_sequences(sequences) == unchanged_sequences(before[1])
+        assert snapshot("treeharbor_test") == before, "staging changed source database"
+        print("PASS installed restore-stage: actual pg_restore retains history, proposals, jobs and private state; only old credentials and revoke audit change; no activation", flush=True)
+        # All original writers remain stopped. The disposable drill supplies
+        # its own inspection configuration and explicitly issues selected new
+        # operator/agent credentials; the product does neither automatically.
         original_store.rename(hidden_store)
         hidden = True
         assert not original_store.exists()
@@ -143,8 +154,39 @@ def exercise(h, landed, managed, pending):
         config["storage"] = dict(original_config["storage"], root=str(restored_store))
         managed.private_json(h.config, config)
         h.database = target
+        # Read recovered credentials from separate files populated from the
+        # backup, not the original files. Copying node journals grants no right
+        # to resume them; the old-node denial/fresh-node test below still applies.
+        credentials = h.root / "restored-credentials"
+        credentials.mkdir(mode=0o700)
+
+        revoked_credentials = []
+
+        def recovered_credential(source, issue=False):
+            target_file = credentials / source.name
+            assert not target_file.exists()
+            shutil.copy2(stage / "backup" / "private-state" / f"{states.index(source):02}", target_file)
+            assert target_file.read_bytes() == source.read_bytes()
+            if not issue:
+                return target_file
+            revoked_credentials.append(target_file)
+            token = expected[json.loads(target_file.read_text())["token_id"]]
+            fresh = credentials / ("new-" + source.name)
+            grants = [item for permission in token["permissions"] for item in ("--permission", permission)]
+            h.admin("token-issue", *h.scope, "--principal", token["principal"], *grants, "--output", fresh)
+            return fresh
+
+        for name, source in original_credentials.items():
+            setattr(h, name, recovered_credential(source, issue=True))
+        h.agents = [recovered_credential(source, issue=True) for source in original_agents]
+        for node, source in original_node_credentials:
+            node["credential"] = recovered_credential(source)
+        before_start = snapshot(target)
         start_service("original")
-        assert snapshot(target) == before, "startup altered restored metadata"
+        assert snapshot(target) == before_start, "startup altered restored metadata"
+        for old in revoked_credentials:
+            denied = h.client("repository-info", credential=old, check=False)
+            assert denied.returncode != 0, "old credential became usable after restore"
         h.export_and_restore(landed, "cold-restored")
         changed = h.client("diff", "--authority", "standalone", "--epoch", "1", "change",
                            "--changeset", h.change["changeset"], "--version", "1", credential=h.agents[0])
@@ -184,8 +226,6 @@ def exercise(h, landed, managed, pending):
         assert h.native("land", h.integrator, check=False,
                         candidate=pending["candidate"]).returncode != 0
         for node in h.nodes:
-            token_id = json.loads(node["credential"].read_text())["token_id"]
-            h.admin("token-revoke", *h.scope, "--token-id", token_id)
             denied = h.cli(*h.node_args(node, "run-once"),
                            "--engine-socket", h.transport / "engine.sock", check=False)
             assert denied.returncode != 0
@@ -252,6 +292,10 @@ def exercise(h, landed, managed, pending):
         if h.server and h.server.poll() is None:
             h.server.kill()
             h.server.wait(timeout=10)
+        if not created and (stage / "target.json").exists():
+            target = json.loads((stage / "target.json").read_text())["database"]
+            assert target.startswith("th_restore_") and len(target) == 43
+            created = True
         if created:
             managed.docker("exec", h.pg, "dropdb", "-U", "treeharbor_test", "--force", target, check=False)
         if hidden:
