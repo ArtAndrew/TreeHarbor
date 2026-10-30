@@ -51,8 +51,7 @@ stopped-file captures as immutable changes, and the trusted bridge publishes PRs
 GitHub handles CI, review, conflicts and merge. Publisher credentials stay outside
 agent workspaces. The runtime supplies process isolation and resource limits.
 
-The [0.1.4-alpha.1 preview](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.4-alpha.1)
-also supports [external agent API contexts](docs/external-api-runs.md): use your own
+You can also use [external agent API contexts](docs/external-api-runs.md): use your own
 execution environment, read an exact base and submit immutable changes without
 TreeHarbor-managed execution. The client supplies execution isolation; registering
 an external task does not attest that it ran or passed tests.
@@ -128,11 +127,10 @@ is no verified unattended lifecycle, complete server restore procedure or
 one-command host provisioning. Keep ordinary Git and independent
 backups while evaluating the project.
 
-Development archives now pass offline CLI installation on Linux x86-64 and ARM64.
-See [packaging and verification](docs/release-packaging.md). These temporary CI
-artifacts are for technical evaluation. Installed-runtime and source-restore
-workloads have passed on both architectures; full Connected onboarding and
-operational recovery remain in progress.
+Published Linux x86-64 and ARM64 packages include an offline binary installer.
+See [packaging and verification](docs/release-packaging.md) and the release notes
+for the exact installed-runtime and source-restore evidence. Full Connected
+onboarding and operational recovery remain in progress.
 
 A workspace provides files; **the external runtime provides the execution sandbox**.
 Agents must not receive publisher credentials. Tests cannot detect every semantic
@@ -175,55 +173,32 @@ workflow passed the scoped ARM64 trial. An operator must still prepare the servi
 runtime, workspaces and scoped credentials; this is not automatic host provisioning
 or a ready-made LLM connector.
 
-The [0.1.1-alpha.1 setup patch](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.1-alpha.1) adds an actionable PostgreSQL
-schema diagnostic and the [operator setup path](docs/connected-pr-preview.md).
-Its installed ARM64 package passed missing-schema refusal, explicit migration,
-healthy startup and graceful shutdown; signed runtime/package CI passed on both
-architectures. See [the setup report](docs/evidence/connected-preview-setup-20261028.json). The two-agent GitHub trial
-above remains evidence for its original alpha.1 source, not a new patch trial.
+### Operator and controller tools
 
-The [0.1.2-alpha.1 workspace patch](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.2-alpha.1)
-adds [`client workspace-new`](docs/workspace-new.md): save a generated workspace
-ID and request key before sending, then reuse the same state file after a lost
-response. It removes manual creation IDs; file preparation and runtime setup
-remain explicit. Both signed Linux packages passed installed runtime CI with the
-new command. The patch does not repeat the historical live GitHub trial.
+Choose a [signed release](https://github.com/ArtAndrew/TreeHarbor/releases) at or
+above the minimum version below. The deployment still needs explicit database,
+repository, credential and runtime setup.
 
-The [0.1.3-alpha.1 diagnostic patch](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.3-alpha.1)
-adds [`doctor --config`](docs/doctor.md): check private configuration, local
-directories/socket path and PostgreSQL/schema prerequisites before startup, with
-redacted repair hints. It does not change setup or certify runtime/GitHub
-readiness. Both signed Linux packages passed the installed diagnostic and runtime
-scenarios. Use the [operator setup path](docs/connected-pr-preview.md).
+| Task | Tool | Minimum release |
+| --- | --- | --- |
+| Create private source-enabled configuration and local directories | [`init`](docs/init.md) | 0.1.9-alpha.1 |
+| Diagnose local configuration and PostgreSQL/schema prerequisites | [`doctor`](docs/doctor.md) | 0.1.3-alpha.1 |
+| Save a workspace creation request for safe retry | [`client workspace-new`](docs/workspace-new.md) | 0.1.2-alpha.1 |
+| Register an external task and retain its creation identities | [`client api-run-new`](docs/external-api-runs.md#save-creation-identities-automatically) | 0.1.7-alpha.1 |
+| Read pinned source and create/inspect/close external tasks over stdio | [MCP tools](docs/mcp.md) | 0.1.6-alpha.1 |
+| Prepare one native queue candidate using a saved request | [`native-advance`](docs/native-advance.md), experimental | 0.1.5-alpha.1 |
+| Save and verify a stopped local deployment's metadata, objects and selected private state | [`backup create` / `backup verify`](docs/backup-restore.md) | 0.1.8-alpha.1 |
 
-The [0.1.5-alpha.1 preparation update](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.5-alpha.1)
-synchronizes newly prepared files in bounded parallel batches while retaining
-all required durability steps. It also ships an experimental
-[native queue preparation helper](docs/native-advance.md) with a saved retry journal.
-Connected PR Preview scope is unchanged. The [source-import benchmark](docs/benchmark-source-import.md)
-includes a reproducible local sample with explicit limits; it does not establish
-an advantage over tuned Git. Both signed Linux packages passed installed workflows.
+External task registration does not execute code or attest isolation; the controller
+supplies execution. Native preparation does not grant review or publish code.
+Backup verification does not authorize restarting old workers or GitHub publishers;
+operators must separately retain unsubmitted workspace edits.
 
-The [0.1.6-alpha.1 MCP update](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.6-alpha.1)
-lets a controller [create, inspect and close external tasks through MCP](docs/mcp.md#start-a-task-using-your-own-execution-environment),
-read pinned source and submit immutable changes through the same stdio adapter.
-Accepted changes survive logical close. The controller supplies execution and
-isolation; TreeHarbor does not infer that tests ran or passed. Both signed Linux
-packages passed the installed MCP workflow. A real LLM-host trial remains open.
-
-The [0.1.7-alpha.1 task update](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.7-alpha.1)
-adds [`client api-run-new`](docs/external-api-runs.md#save-creation-identities-automatically):
-save generated workspace/run IDs and the request key before creating an external
-task, then reuse the same state file after a lost reply. A replay after close
-returns the original receipt without reopening the task. Both signed Linux
-packages passed the installed workflow; execution remains external.
-
-The [0.1.8-alpha.1 backup update](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.8-alpha.1)
-adds [`backup create` and `backup verify`](docs/backup-restore.md) for a stopped
-local deployment. It preserves metadata, objects, configuration and explicitly
-selected private state. Both signed Linux packages passed the controlled restore
-drill. Operators must stop all writers and separately retain unsubmitted workspace
-edits; verification does not authorize restarting old workers or GitHub publishers.
+Each release records its exact installed-package and signing evidence. See the
+[changelog](CHANGELOG.md) for individual changes and the
+[implementation ledger](docs/implementation-status.md) for scoped trials and remaining
+gates. The [source-import sample](docs/benchmark-source-import.md) is a limited
+measurement, not evidence of an advantage over tuned Git or a real LLM-host trial.
 
 ## What remains before a full release?
 
@@ -231,10 +206,11 @@ edits; verification does not authorize restarting old workers or GitHub publishe
    reconciliation, and repeatable operation beyond the bounded live trials.
 2. Verify the full Standalone lifecycle and safe transfer of repository authority
    between modes, with a single writer throughout.
-3. Finish storage and operations: S3, automatic cleanup/GC, full server backup and
-   restore, remote workers and recovery after node replacement.
-4. Ship and test installation, upgrade/removal, CLI/container artifacts, checksums,
-   dependency inventory (SBOM), build provenance and a reproducible agent demo.
+3. Finish storage and operations: S3, automatic cleanup/GC, safe restore activation,
+   remote workers and general recovery after node replacement.
+4. Finish clean deployment, upgrade/removal and container artifacts; extend the
+   dependency inventory (SBOM) and reproducible real-agent demonstration beyond
+   the signed Linux packages and scripted acceptance already available.
 5. Publish raw comparisons with tuned Git and available alternatives, including
    cold/warm caches, useful-action latency, server costs and cleanup.
 
