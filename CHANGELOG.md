@@ -6,7 +6,7 @@
   Context registration does not execute code, attest isolation or grant validation;
   closing retains accepted changes and does not stop an external process.
 
-## 0.1.5-alpha.1 — workspace preparation and native queue helper (candidate)
+## 0.1.5-alpha.1 — workspace preparation and native queue helper — 2026-10-30
 
 - Add `native-advance` to journal and resume preparation of one pending native
   candidate; checks, review and integration remain separate authorized actions.
@@ -25,6 +25,10 @@
 - No schema migration from 0.1.4. Stop tasks/workers and the service before updating
   binaries together; retain source data, credentials and private retry journals.
   Native queue helpers remain experimental; Connected PR Preview scope is unchanged.
+
+- Publish [signed Linux x86-64/ARM64 packages](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.5-alpha.1)
+  after installed runtime CI and independent signature/subject verification.
+  MCP external task tools listed under Unreleased are not part of this tag.
 
 ## 0.1.4-alpha.1 — external agent API contexts — 2026-10-29
 
