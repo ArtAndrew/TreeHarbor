@@ -17,10 +17,10 @@ An authority mismatch is not fixed by changing a helper config.
 
 ## Build and exercise repository access
 
-The unreleased [local initialization helper](init.md) creates source-enabled
-configuration and private directories from a protected connection file. It does
-not migrate or start anything. The manual path below remains available with
-published 0.1.8-alpha.1 and older packages.
+For source-enabled setup, use the [local initialization helper](init.md), available
+from 0.1.9-alpha.1, to create configuration and private directories from a protected
+connection file. It does not migrate or start anything. The manual metadata-only
+example below remains available, including with older packages.
 
 Prerequisites: the pinned Rust toolchain and an existing PostgreSQL 18 database
 with `fsync=on`, reachable through a trusted local Unix socket. The database role

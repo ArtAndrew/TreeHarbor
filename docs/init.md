@@ -1,7 +1,8 @@
-# Initialize local service files (unreleased)
+# Initialize local service files
 
-The 0.1.9-alpha.1 candidate adds `treeharbor init`. It is not in 0.1.8 or earlier
-packages. The command creates private configuration and storage directories for
+Available in [0.1.9-alpha.1](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.9-alpha.1)
+and subsequent packages. Earlier packages do not include `treeharbor init`.
+The command creates private configuration and storage directories for
 an operator-owned local service. It does not connect to PostgreSQL or provision
 the database, repositories, credentials, GitHub App or execution environment.
 Both repository authority modes use the same service configuration.

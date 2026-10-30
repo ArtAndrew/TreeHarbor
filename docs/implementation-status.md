@@ -21,7 +21,7 @@ These correctness checks do not establish complete mode readiness or performance
 superiority. The installed native workload includes deliberate replacement-node
 recovery; live GitHub recovery remains a separate release gate.
 
-## Local service initialization — unreleased 0.1.9 candidate
+## Released local service initialization — 0.1.9-alpha.1
 
 `init --directory --database-url-file` creates a new private source-enabled
 configuration, object directory and operator-state directory. It validates the
@@ -37,9 +37,21 @@ unchanged prior state, invalid input before mutation and redacted output. The
 existing real CLI/PostgreSQL diagnostic test now starts from generated configuration
 and passed missing/unmigrated/current schema checks plus actual server startup
 after explicit migration. The installed managed workflow now also uses `init`
-before its complete source/task/native/recovery path; Linux results are pending.
+before its complete source/task/native/recovery path. Both Linux architectures
+passed in [PR116 CI](https://github.com/ArtAndrew/TreeHarbor/actions/runs/41059444607).
 This is not database/runtime provisioning, unassisted onboarding evidence or full
 mode readiness. No schema or dependency change is required from 0.1.8.
+
+Released source: `2c402a934a6bb828e6a63484004c35685a235304`.
+[Main CI](https://github.com/ArtAndrew/TreeHarbor/actions/runs/41081551897) and
+[signed producer](https://github.com/ArtAndrew/TreeHarbor/actions/runs/41083420653),
+both attempt 1, passed. Both signed packages exercised init, destination-reuse
+refusal, explicit database migration, API/MCP and managed/native task workflows,
+backup/replacement-node recovery and Git export. Independent official online and
+bundled signature verification matched all eight subjects per architecture and the
+exact producer invocation. Public readback of
+[0.1.9-alpha.1](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.9-alpha.1)
+matched all eight original assets by name, size and SHA-256; 0.1.8 remained unchanged.
 
 ## Released experimental operator cold backup — 0.1.8-alpha.1
 
