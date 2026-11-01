@@ -289,6 +289,187 @@ async fn outbox_reclaim_fences_stale_workers_and_never_crosses_tenants() {
 
 #[tokio::test]
 #[ignore = "requires disposable PostgreSQL; runs explicitly in database CI"]
+async fn outbox_freeze_retains_jobs_and_skips_locked_or_inactive_repositories() {
+    let (schema, scope, mut db) = setup().await;
+    let other = Scope::new(scope.tenant(), Uuid::new_v4()).unwrap();
+    db.create_repository(&other, Authority::Standalone)
+        .await
+        .unwrap();
+    effect(&mut db, request(&scope, "running", b"running")).await;
+    let running = db
+        .claim(scope.tenant(), Uuid::new_v4(), 60)
+        .await
+        .unwrap()
+        .unwrap();
+    effect(&mut db, request(&scope, "pending", b"pending")).await;
+    effect(&mut db, request(&other, "other", b"other")).await;
+    let mut raw = connection(&schema).await;
+    let before: serde_json::Value = raw
+        .query_one(
+            "SELECT jsonb_agg(to_jsonb(o) ORDER BY id) FROM th_outbox o WHERE repository=$1",
+            &[&scope.repository()],
+        )
+        .await
+        .unwrap()
+        .get(0);
+
+    // A freeze not yet committed must exclude this repository from new claims,
+    // without preventing progress for another repository of the same tenant.
+    let freeze = raw.transaction().await.unwrap();
+    freeze
+        .execute(
+            "UPDATE th_repositories SET state='frozen' WHERE repository=$1",
+            &[&scope.repository()],
+        )
+        .await
+        .unwrap();
+    let next = tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        db.claim(scope.tenant(), Uuid::new_v4(), 60),
+    )
+    .await
+    .unwrap()
+    .unwrap()
+    .unwrap();
+    assert_eq!(next.scope.tenant(), other.tenant());
+    assert_eq!(next.scope.repository(), other.repository());
+    db.acknowledge(&next).await.unwrap();
+    freeze.commit().await.unwrap();
+
+    for state in ["frozen", "retired"] {
+        raw.execute(
+            "UPDATE th_repositories SET state=$1 WHERE repository=$2",
+            &[&state, &scope.repository()],
+        )
+        .await
+        .unwrap();
+        assert!(
+            db.claim(scope.tenant(), Uuid::new_v4(), 60)
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert!(matches!(db.renew(&running, 60).await, Err(Error::Fenced)));
+        assert!(matches!(db.acknowledge(&running).await, Err(Error::Fenced)));
+        let after: serde_json::Value = raw
+            .query_one(
+                "SELECT jsonb_agg(to_jsonb(o) ORDER BY id) FROM th_outbox o WHERE repository=$1",
+                &[&scope.repository()],
+            )
+            .await
+            .unwrap()
+            .get(0);
+        assert_eq!(
+            after, before,
+            "inactive repository must retain exact jobs and leases"
+        );
+    }
+
+    // Expired work is also retained while frozen. Explicitly thawing the same
+    // authority permits reclaim with a new generation; it is not restore approval.
+    raw.execute(
+        "UPDATE th_outbox SET lease_until=clock_timestamp()-interval '1 second' WHERE id=$1",
+        &[&running.id],
+    )
+    .await
+    .unwrap();
+    assert!(
+        db.claim(scope.tenant(), Uuid::new_v4(), 60)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    raw.execute(
+        "UPDATE th_repositories SET state='active' WHERE repository=$1",
+        &[&scope.repository()],
+    )
+    .await
+    .unwrap();
+    let reclaimed = db
+        .claim(scope.tenant(), Uuid::new_v4(), 60)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(reclaimed.id, running.id);
+    assert_eq!(reclaimed.generation, running.generation + 1);
+    assert!(matches!(
+        db.acknowledge(&running).await,
+        Err(Error::StaleLease)
+    ));
+    db.acknowledge(&reclaimed).await.unwrap();
+    let pending = db
+        .claim(scope.tenant(), Uuid::new_v4(), 60)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_ne!(pending.id, running.id);
+    db.acknowledge(&pending).await.unwrap();
+    cleanup(&schema).await;
+}
+
+#[tokio::test]
+#[ignore = "requires disposable PostgreSQL; runs explicitly in database CI"]
+async fn outbox_completion_and_renewal_wait_for_concurrent_freeze() {
+    let (schema, scope, mut db) = setup().await;
+    effect(&mut db, request(&scope, "job", b"job")).await;
+    let job = db
+        .claim(scope.tenant(), Uuid::new_v4(), 60)
+        .await
+        .unwrap()
+        .unwrap();
+    let mut admin = connection(&schema).await;
+    let observer = connection(&schema).await;
+    for acknowledge in [false, true] {
+        admin
+            .execute("UPDATE th_repositories SET state='active'", &[])
+            .await
+            .unwrap();
+        let client = connection(&schema).await;
+        let pid: i32 = client
+            .query_one("SELECT pg_backend_pid()", &[])
+            .await
+            .unwrap()
+            .get(0);
+        let mut worker = Metadata::new(client).await.unwrap();
+        let freeze = admin.transaction().await.unwrap();
+        freeze
+            .execute("UPDATE th_repositories SET state='frozen'", &[])
+            .await
+            .unwrap();
+        let leased = job.clone();
+        let pending = tokio::spawn(async move {
+            if acknowledge {
+                worker.acknowledge(&leased).await
+            } else {
+                worker.renew(&leased, 60).await
+            }
+        });
+        // Observe the actual PostgreSQL lock wait, rather than assume a sleep
+        // let the worker reach the critical section.
+        tokio::time::timeout(std::time::Duration::from_secs(3), async {
+            loop {
+                let waiting: bool = observer.query_one(
+                    "SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE pid=$1 AND wait_event_type='Lock')", &[&pid]
+                ).await.unwrap().get(0);
+                if waiting { break; }
+                assert!(!pending.is_finished(), "worker must not bypass a concurrent freeze");
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+        }).await.unwrap();
+        freeze.commit().await.unwrap();
+        assert!(matches!(pending.await.unwrap(), Err(Error::Fenced)));
+    }
+    let state: String = observer
+        .query_one("SELECT state FROM th_outbox WHERE id=$1", &[&job.id])
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(state, "running");
+    cleanup(&schema).await;
+}
+
+#[tokio::test]
+#[ignore = "requires disposable PostgreSQL; runs explicitly in database CI"]
 async fn rejected_completion_and_drop_leave_no_partial_effect() {
     let (schema, scope, mut db) = setup().await;
     let req = request(&scope, "bad-result", b"x");

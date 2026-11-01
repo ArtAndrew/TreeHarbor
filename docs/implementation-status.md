@@ -1,6 +1,6 @@
 # Implementation status
 
-Updated: 2026-10-30. This file describes implemented behavior and remaining release
+Updated: 2026-11-01. This file describes implemented behavior and remaining release
 gates. A foundation milestone does not complete either mode.
 
 For a concise current overview, see [what works today](../README.md#what-works-today)
@@ -20,6 +20,25 @@ managed/native workloads on x86-64 and ARM64, and webhook TLS/failure tests.
 These correctness checks do not establish complete mode readiness or performance
 superiority. The installed native workload includes deliberate replacement-node
 recovery; live GitHub recovery remains a separate release gate.
+
+## Unreleased generic outbox freeze enforcement
+
+The internal PostgreSQL `Metadata::claim`, `renew` and `acknowledge` primitives
+now lock the repository before changing a job lease and require an active
+repository. Claims skip locked/frozen/retired repositories; renewals and
+acknowledgments reject an inactive repository without rewriting the job.
+Pending and expired work remains available after an explicit thaw, with ordinary
+lease-generation fencing. Repository locks serialize these operations with freeze.
+
+The targeted PostgreSQL transaction suite passed nine tests, including retained
+job/lease records, locked-repository skipping, inactive-state refusal, stale-worker
+reclaim and observed database lock waits for concurrent freeze versus renewal or
+completion. Full branch CI remains required before merging this increment.
+
+This is not a public node authorization change, a universal epoch fence or an
+external side-effect authorization. Domain-specific authority/epoch checks remain
+necessary; a database freeze does not stop an existing runtime or publisher.
+Restored deployment activation and Connected reconciliation remain unfinished.
 
 ## Released restore staging — 0.1.10-alpha.1
 

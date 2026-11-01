@@ -432,6 +432,8 @@ impl Metadata {
     }
     /// At-least-once delivery, scoped by tenant. A reclaimed job gets a newer
     /// generation, so the previous worker cannot acknowledge it.
+    /// Frozen/retired repositories are skipped. This generic lease is not an
+    /// authority/epoch check or permission to perform an external side effect.
     pub async fn claim(
         &mut self,
         tenant: &str,
@@ -441,10 +443,27 @@ impl Metadata {
         tenant_valid(tenant)?;
         ttl_valid(ttl_seconds)?;
         let tx = self.client.transaction().await?;
-        tx.batch_execute("SET LOCAL synchronous_commit = on")
-            .await?;
-        let row = tx.query_opt("WITH selected AS (SELECT id FROM th_outbox WHERE tenant=$1 AND ((state='pending' AND available_at <= clock_timestamp()) OR (state='running' AND lease_until <= clock_timestamp())) ORDER BY id LIMIT 1 FOR UPDATE SKIP LOCKED) UPDATE th_outbox o SET state='running',worker=$2,generation=generation+1,lease_until=clock_timestamp()+($3::integer * interval '1 second') FROM selected WHERE o.id=selected.id RETURNING o.id,o.repository,o.generation,o.kind,o.payload",
-                               &[&tenant,&worker,&ttl_seconds]).await?;
+        catalog::settings(&tx).await?;
+        // Lock the repository before the job, as ordinary mutations do. Holding
+        // this lock until commit makes a concurrent freeze wait for this claim.
+        // Skip locked repositories so maintenance cannot stall another
+        // repository within this tenant.
+        let repository = tx.query_opt(r#"SELECT r.repository FROM th_repositories r
+            WHERE r.tenant=$1 AND r.state='active' AND EXISTS (
+                SELECT 1 FROM th_outbox o WHERE o.tenant=r.tenant AND o.repository=r.repository
+                AND ((o.state='pending' AND o.available_at<=clock_timestamp())
+                  OR (o.state='running' AND o.lease_until<=clock_timestamp())))
+            ORDER BY (SELECT min(o.id) FROM th_outbox o WHERE o.tenant=r.tenant AND o.repository=r.repository
+                AND ((o.state='pending' AND o.available_at<=clock_timestamp())
+                  OR (o.state='running' AND o.lease_until<=clock_timestamp())))
+            LIMIT 1 FOR UPDATE OF r SKIP LOCKED"#, &[&tenant]).await?;
+        let Some(repository) = repository else {
+            tx.commit().await?;
+            return Ok(None);
+        };
+        let repository: Uuid = repository.get(0);
+        let row = tx.query_opt("WITH selected AS (SELECT id FROM th_outbox WHERE tenant=$1 AND repository=$4 AND ((state='pending' AND available_at <= clock_timestamp()) OR (state='running' AND lease_until <= clock_timestamp())) ORDER BY id LIMIT 1 FOR UPDATE SKIP LOCKED) UPDATE th_outbox o SET state='running',worker=$2,generation=generation+1,lease_until=clock_timestamp()+($3::integer * interval '1 second') FROM selected WHERE o.id=selected.id RETURNING o.id,o.repository,o.generation,o.kind,o.payload",
+                               &[&tenant,&worker,&ttl_seconds,&repository]).await?;
         let job = row.map(|row| Job {
             id: row.get(0),
             scope: Scope {
@@ -461,8 +480,8 @@ impl Metadata {
     }
     pub async fn acknowledge(&mut self, job: &Job) -> Result<()> {
         let tx = self.client.transaction().await?;
-        tx.batch_execute("SET LOCAL synchronous_commit = on")
-            .await?;
+        catalog::settings(&tx).await?;
+        active_job_repository(&tx, &job.scope).await?;
         let count = tx.execute("UPDATE th_outbox SET state='done',worker=NULL,lease_until=NULL,completed_at=clock_timestamp() WHERE id=$1 AND tenant=$2 AND repository=$3 AND state='running' AND worker=$4 AND generation=$5 AND lease_until>clock_timestamp()",
                               &[&job.id,&job.scope.tenant,&job.scope.repository,&job.worker,&job.generation]).await?;
         if count != 1 {
@@ -474,8 +493,8 @@ impl Metadata {
     pub async fn renew(&mut self, job: &Job, ttl_seconds: i32) -> Result<()> {
         ttl_valid(ttl_seconds)?;
         let tx = self.client.transaction().await?;
-        tx.batch_execute("SET LOCAL synchronous_commit = on")
-            .await?;
+        catalog::settings(&tx).await?;
+        active_job_repository(&tx, &job.scope).await?;
         let count = tx.execute("UPDATE th_outbox SET lease_until=clock_timestamp()+($6::integer * interval '1 second') WHERE id=$1 AND tenant=$2 AND repository=$3 AND state='running' AND worker=$4 AND generation=$5 AND lease_until>clock_timestamp()",
             &[&job.id,&job.scope.tenant,&job.scope.repository,&job.worker,&job.generation,&ttl_seconds]).await?;
         if count != 1 {
@@ -484,6 +503,20 @@ impl Metadata {
         tx.commit().await?;
         Ok(())
     }
+}
+
+async fn active_job_repository(tx: &Transaction<'_>, scope: &Scope) -> Result<()> {
+    let row = tx
+        .query_opt(
+            "SELECT state FROM th_repositories WHERE tenant=$1 AND repository=$2 FOR UPDATE",
+            &[&scope.tenant, &scope.repository],
+        )
+        .await?
+        .ok_or(Error::NotFound)?;
+    if row.get::<_, String>(0) != "active" {
+        return Err(Error::Fenced);
+    }
+    Ok(())
 }
 
 #[derive(Clone, Debug)]
