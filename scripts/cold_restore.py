@@ -23,6 +23,7 @@ def exercise(h, landed, managed, pending):
     backup = h.root / "cold-backup"
     original_config = json.loads(h.config.read_text())
     original_config_path = h.config
+    original_socket = h.socket
     original_store = Path(original_config["storage"]["root"])
     hidden_store = h.root / "original-objects-unavailable"
     restored_store = stage / "active" / "objects"
@@ -191,6 +192,9 @@ def exercise(h, landed, managed, pending):
         assert configured["status"] == "configured" and configured["service_started"] is False
         assert configured["credentials_issued"] is False and configured["external_fencing_verified"] is False
         h.config = Path(configured["config"])
+        h.socket = Path(configured["socket"])
+        assert h.socket != original_socket
+        assert json.loads(h.config.read_text())["socket"] == str(h.socket)
         assert Path(configured["storage"]) == restored_store
         assert json.loads(h.config.read_text())["storage"]["root"] == str(restored_store)
         assert snapshot(target) == quarantined_rows, "configuration altered recovered metadata"
@@ -361,4 +365,5 @@ def exercise(h, landed, managed, pending):
         for node, source in original_node_credentials:
             node["credential"] = source
         h.config = original_config_path
+        h.socket = original_socket
         managed.private_json(h.config, original_config)
