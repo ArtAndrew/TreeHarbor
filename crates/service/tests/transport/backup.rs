@@ -71,6 +71,21 @@ fn save_proposal(f: &mut Fixture, base: RevisionRef) -> Value {
         "1",
         "--full",
     ]));
+    ok(f.cli(&[
+        "workspace-create",
+        "--key",
+        "unassigned-at-backup",
+        "--authority",
+        "standalone",
+        "--epoch",
+        "1",
+        "--workspace",
+        &Uuid::new_v4().to_string(),
+        "--base",
+        &base.to_string(),
+        "--profile-digest",
+        profile["profile_digest"].as_str().unwrap(),
+    ]));
     let task = ok(f.cli(&[
         "api-run-new",
         "--state",
@@ -166,6 +181,88 @@ async fn snapshot(
     let sequences:Value=client.query_one("SELECT coalesce(jsonb_agg(jsonb_build_array(sequencename,last_value) ORDER BY sequencename),'[]') FROM pg_sequences WHERE schemaname::text=$1",&[&schema]).await.unwrap().get(0);
     (data, sequences)
 }
+async fn connected_quarantine_fixture(f: &Fixture) {
+    use treeharbor_metadata::access::{Permission as P, PrincipalKind as K};
+    use treeharbor_metadata::github::{BindingSpec, Command as GitHubCommand, Observation};
+    let mut session = Database::new(f.config.clone())
+        .unwrap()
+        .connect(true)
+        .await
+        .unwrap();
+    let db = &mut session.metadata;
+    let scope = Scope::new(f.scope.tenant(), Uuid::new_v4()).unwrap();
+    db.create_repository(&scope, Authority::Connected)
+        .await
+        .unwrap();
+    db.provision_principal(scope.tenant(), "backup-node", K::Node, "test")
+        .await
+        .unwrap();
+    let mut identities = Vec::new();
+    for (name, kind, permission) in [
+        ("backup-owner", K::Human, P::RepositoryWrite),
+        ("bridge", K::Bridge, P::HostRead),
+    ] {
+        db.provision_principal(scope.tenant(), name, kind, "test")
+            .await
+            .unwrap();
+        db.set_repository_access(&scope, name, &[permission], "test")
+            .await
+            .unwrap();
+        let token = db
+            .issue_repository_token(&scope, name, &[permission], 3600, "test")
+            .await
+            .unwrap();
+        identities.push(
+            db.authorize(&token.secret, &scope, permission)
+                .await
+                .unwrap(),
+        );
+    }
+    let fixture: Value = serde_json::from_str(include_str!(
+        "../../../metadata/tests/fixtures/github-bind-v1.json"
+    ))
+    .unwrap();
+    let spec: BindingSpec = serde_json::from_value(fixture["specification"].clone()).unwrap();
+    let binding = Uuid::new_v4();
+    let probe = Uuid::new_v4();
+    let cmd = |key: &str| GitHubCommand {
+        key: key.into(),
+        epoch: 1,
+    };
+    db.bind_github(&identities[0], &cmd("backup-bind"), binding, &spec)
+        .await
+        .unwrap();
+    db.begin_github_probe(&identities[1], &cmd("backup-probe"), binding, probe)
+        .await
+        .unwrap();
+    // A declared metadata fixture, not a live provider reconciliation result.
+    let observed: Observation = serde_json::from_str(include_str!(
+        "../../../integrations-github/tests/fixtures/probe-v1.json"
+    ))
+    .unwrap();
+    db.finish_github_probe(
+        &identities[1],
+        &cmd("backup-observe"),
+        binding,
+        probe,
+        &observed,
+    )
+    .await
+    .unwrap();
+    let channel = serde_json::from_value(
+        json!({"binding":binding,"max_events":8,"max_bytes":8192,"max_aliases":2}),
+    )
+    .unwrap();
+    db.create_github_event_channel(
+        &identities[0],
+        &cmd("backup-channel"),
+        Uuid::new_v4(),
+        &channel,
+    )
+    .await
+    .unwrap();
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires disposable PostgreSQL and actual matching pg_dump/pg_restore executables"]
 async fn cold_backup_restores_metadata_and_native_source_and_refuses_unsafe_inputs() {
@@ -198,6 +295,7 @@ async fn cold_backup_restores_metadata_and_native_source_and_refuses_unsafe_inpu
         backend: "test-local".into(),
     });
     f.save_config();
+    connected_quarantine_fixture(&f).await;
     let mut service = f.start().await;
     let accepted = save_proposal(&mut f, base);
     let output = f.dir.path().join("backup");
@@ -495,6 +593,176 @@ async fn cold_backup_restores_metadata_and_native_source_and_refuses_unsafe_inpu
         snapshot(&f.sql, &f.config.schema).await,
         before,
         "source was modified"
+    );
+    let quarantine = |hash: &str| {
+        Command::new(env!("CARGO_BIN_EXE_treeharbor"))
+            .args([
+                "backup",
+                "restore-quarantine",
+                "--writers-stopped",
+                "--stage",
+            ])
+            .arg(&stage)
+            .args(["--manifest-sha256", hash])
+            .output()
+            .unwrap()
+    };
+    let before_quarantine = snapshot(&restored_sql, &f.config.schema).await;
+    assert!(!quarantine(&"0".repeat(64)).status.success());
+    assert_eq!(
+        snapshot(&restored_sql, &f.config.schema).await,
+        before_quarantine
+    );
+    // A target writer holding a conflicting lock must cause a refusal before any effect.
+    restored_sql
+        .batch_execute(&format!(
+            "BEGIN; LOCK TABLE {}.th_workspaces IN ROW EXCLUSIVE MODE",
+            f.config.schema
+        ))
+        .await
+        .unwrap();
+    assert!(!quarantine(digest).status.success());
+    restored_sql.batch_execute("ROLLBACK").await.unwrap();
+    assert_eq!(
+        snapshot(&restored_sql, &f.config.schema).await,
+        before_quarantine
+    );
+    restored_sql
+        .query_one(
+            "SELECT set_config('search_path',$1,false)",
+            &[&f.config.schema],
+        )
+        .await
+        .unwrap();
+    // Fault fixture: an operator issued/restored a usable token before quarantine.
+    // Refuse it even if all other source and schema identities still match.
+    let old_token = &before_quarantine.0["th_access_tokens"][0];
+    let token = Uuid::parse_str(old_token["token"].as_str().unwrap()).unwrap();
+    restored_sql
+        .execute(
+            "UPDATE th_access_tokens SET revoked_at=NULL WHERE token=$1",
+            &[&token],
+        )
+        .await
+        .unwrap();
+    let with_live_token = snapshot(&restored_sql, &f.config.schema).await;
+    assert!(!quarantine(digest).status.success());
+    assert_eq!(
+        snapshot(&restored_sql, &f.config.schema).await,
+        with_live_token
+    );
+    restored_sql
+        .execute(
+            "UPDATE th_access_tokens SET revoked_at=$1::text::timestamptz WHERE token=$2",
+            &[&old_token["revoked_at"].as_str().unwrap(), &token],
+        )
+        .await
+        .unwrap();
+    // Force a late transaction error after the workspace updates; no partial
+    // quarantine may survive a failure to persist its replay record.
+    restored_sql.batch_execute("CREATE FUNCTION th_test_reject_quarantine() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'injected quarantine journal failure'; END; $$; CREATE TRIGGER th_test_reject_quarantine BEFORE INSERT ON th_operations FOR EACH ROW EXECUTE FUNCTION th_test_reject_quarantine()").await.unwrap();
+    assert!(!quarantine(digest).status.success());
+    restored_sql.batch_execute("DROP TRIGGER th_test_reject_quarantine ON th_operations; DROP FUNCTION th_test_reject_quarantine()").await.unwrap();
+    // PostgreSQL sequences may advance across rollback; table effects may not.
+    assert_eq!(
+        snapshot(&restored_sql, &f.config.schema).await.0,
+        before_quarantine.0
+    );
+    let result = quarantine(digest);
+    assert!(
+        result.status.success(),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    let quarantined: Value = serde_json::from_slice(&result.stdout).unwrap();
+    assert_eq!(quarantined["status"], "quarantined");
+    assert_eq!(quarantined["activation_authorized"], false);
+    assert_eq!(quarantined["changes"]["workspaces_draining"], 1);
+    assert_eq!(quarantined["repositories"], 2);
+    for key in ["nodes_disabled", "bindings_revoked", "channels_revoked"] {
+        assert_eq!(quarantined["changes"][key], 1);
+    }
+    let after_quarantine = snapshot(&restored_sql, &f.config.schema).await;
+    for (table, rows) in &before_quarantine.0 {
+        if ![
+            "th_workspaces",
+            "th_operations",
+            "th_security_audit",
+            "th_principals",
+            "th_github_bindings",
+            "th_github_event_channels",
+        ]
+        .contains(&table.as_str())
+        {
+            assert_eq!(
+                &after_quarantine.0[table], rows,
+                "unexpected modification of {table}"
+            );
+        }
+    }
+    for table in ["th_github_bindings", "th_github_event_channels"] {
+        let row = &after_quarantine.0[table][0];
+        let mut expected = before_quarantine.0[table][0].clone();
+        assert!(!row["revoked_at"].is_null());
+        expected["revoked_at"] = row["revoked_at"].clone();
+        expected["state"] = json!("revoked");
+        assert_eq!(row, &expected);
+    }
+    for row in after_quarantine.0["th_principals"].as_array().unwrap() {
+        let mut expected = before_quarantine.0["th_principals"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|old| old["tenant"] == row["tenant"] && old["principal"] == row["principal"])
+            .unwrap()
+            .clone();
+        if expected["kind"] == "node" {
+            expected["enabled"] = json!(false);
+        }
+        assert_eq!(&expected, row);
+    }
+    for workspace in after_quarantine.0["th_workspaces"].as_array().unwrap() {
+        let old = before_quarantine.0["th_workspaces"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|old| old["workspace"] == workspace["workspace"])
+            .unwrap();
+        if workspace["delivery"] == "files" {
+            assert_eq!(workspace["state"], "draining");
+            assert_eq!(
+                workspace["generation"].as_i64().unwrap(),
+                old["generation"].as_i64().unwrap() + 1
+            );
+            let mut expected = old.clone();
+            expected["state"] = json!("draining");
+            expected["generation"] = workspace["generation"].clone();
+            assert_eq!(&expected, workspace);
+        } else {
+            assert_eq!(old, workspace);
+        }
+    }
+    // Simulate losing only the local receipt after DB commit. Retry must neither
+    // increment generations again nor append duplicate operation/audit records.
+    fs::remove_file(stage.join("quarantined.json")).unwrap();
+    let replay = quarantine(digest);
+    assert!(
+        replay.status.success(),
+        "{}",
+        String::from_utf8_lossy(&replay.stderr)
+    );
+    assert_eq!(
+        serde_json::from_slice::<Value>(&replay.stdout).unwrap(),
+        quarantined
+    );
+    assert_eq!(
+        snapshot(&restored_sql, &f.config.schema).await,
+        after_quarantine
+    );
+    assert_eq!(
+        snapshot(&f.sql, &f.config.schema).await,
+        before,
+        "quarantine touched source DB"
     );
     let recovered = stage.join("backup/objects");
     fs::rename(&objects, f.dir.path().join("old-objects-unavailable")).unwrap();

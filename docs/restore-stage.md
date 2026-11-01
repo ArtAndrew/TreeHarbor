@@ -92,3 +92,7 @@ point, not proof that subsequent changes or external effects never occurred.
 The current disposable recovery drill deliberately performs its own explicit
 inspection/new-node setup after staging. That test does not supply an operator
 activation command or certify live GitHub disaster recovery.
+
+The unreleased [restore quarantine command](restore-quarantine.md) withdraws old
+execution intent while preserving accepted source and history. Staging alone does
+not perform that step, and neither command authorizes service activation.

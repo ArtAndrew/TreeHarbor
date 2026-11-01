@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add an offline `backup restore-quarantine` step after staging: drain old file
+  workspaces, cancel pending native candidates, disable old nodes and revoke old
+  GitHub connections while preserving source, history and recorded outcomes.
+  Journal the transaction for safe retries; this does not activate the service.
+
 - Fence generic background-job claims, renewals and acknowledgments while their
   repository is frozen or retired. Serialize them with repository state changes,
   retain pending jobs, and skip locked repositories during claims. This does not
