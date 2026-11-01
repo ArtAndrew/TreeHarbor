@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add `github restore-inspect-queue` for retained queue/removal operations:
+  capture two read-only membership snapshots and retain them through the assigned
+  bridge with durable retry. Absent or merged PR observations do not settle old
+  in-flight mutations or authorize reconnection.
+
 - Add `github restore-inspect-pull`: read one exact PR twice with a scoped read
   token, retain its full metadata through the assigned bridge, and compare it
   with the current restored intent. A private journal retries the original

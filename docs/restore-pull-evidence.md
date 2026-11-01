@@ -98,3 +98,5 @@ receipt using ordinary repository `read` permission:
 This command leaves old publication attempts, observations, source pins and
 bindings untouched. Complete recovery still needs discovery of post-backup work,
 queue/check/delivery facts and a separately verified reconnection procedure.
+[Queue membership captures](restore-queue-evidence.md) cover retained enqueue
+and removal intents without settling their old mutations.

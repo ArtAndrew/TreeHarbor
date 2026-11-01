@@ -15,6 +15,8 @@ mod group_tests;
 mod host_configuration_tests;
 #[path = "host_policy.rs"]
 mod host_policy_tests;
+#[path = "restore_queue.rs"]
+mod restore_queue_tests;
 #[path = "workflow_definitions.rs"]
 mod workflow_definition_tests;
 use treeharbor_github_contract::queue::QueueTarget;

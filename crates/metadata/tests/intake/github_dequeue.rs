@@ -314,7 +314,7 @@ async fn report(f: &QueueFixture) -> DequeueObservation {
         token_revoked: false,
     }
 }
-async fn snapshot(f: &QueueFixture) -> QueueSnapshot {
+pub(super) async fn snapshot(f: &QueueFixture) -> QueueSnapshot {
     let capture: Value = connection(&f.p.f.schema)
         .await
         .query_one(

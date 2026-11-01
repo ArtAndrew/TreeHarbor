@@ -21,6 +21,29 @@ These correctness checks do not establish complete mode readiness or performance
 superiority. The installed native workload includes deliberate replacement-node
 recovery; live GitHub recovery remains a separate release gate.
 
+## Unreleased queue/removal recovery evidence
+
+`github restore-inspect-queue --kind queue|dequeue` resolves the retained operation
+to its original PR target, takes two read-only membership snapshots and records
+them through the assigned bridge. See [the guide](restore-queue-evidence.md).
+The new context wrapper leaves restore context v2 unchanged. Reports use the
+existing durable operation ledger; no database migration or new App capability
+is required. Old enqueue/removal attempts are never rewritten or settled by
+these observations, including when the PR is absent or reported merged.
+
+All 49 queue transport tests passed, including changed/merged/closed/disabled
+snapshots, mandatory nullable fields, malformed scope and token revocation.
+A real PostgreSQL contract passed queue/dequeue resolution, assigned-role checks,
+freshness/scope refusals, unchanged old history, stale-context rejection,
+historical replay and revoked access. The Connected HTTP/CLI projection trial
+passed with queue and removal receipts committed before a missing local
+acknowledgment, service restart and two retries without App configuration or
+duplicate receipts. Its quarantine and host captures are explicit fixtures;
+this is not a live GitHub disaster-recovery acceptance result. The independent
+wire fixture, strict GitHub/metadata/service all-target Clippy, formatting and
+changed documentation links passed. Required branch CI remains pending; this component is not
+included in published 0.1.11 packages.
+
 ## Unreleased exact PR recovery evidence
 
 `github restore-inspect-pull` captures one explicitly selected PR twice through
@@ -40,7 +63,8 @@ capture after server restart, with the App configuration absent, one durable
 receipt and denial after access revocation. That capture/quarantine is an explicit
 fixture; it is not a live GitHub disaster-recovery trial. The independent wire
 fixture, three journal tests, strict GitHub/metadata/service all-target Clippy,
-formatting and documentation file links passed. Required branch CI is pending;
+formatting and documentation file links passed. All six required checks passed
+and [PR130](https://github.com/ArtAndrew/TreeHarbor/pull/130) was merged;
 these commands are not in published 0.1.11 packages.
 
 The trusted bridge supplies network observations; the metadata service does not

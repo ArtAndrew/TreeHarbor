@@ -9,6 +9,8 @@ mod projections;
 mod recovery;
 #[path = "github/restore_pull.rs"]
 mod restore_pull;
+#[path = "github/restore_queue.rs"]
+mod restore_queue;
 #[path = "github/restore_source.rs"]
 mod restore_source;
 
