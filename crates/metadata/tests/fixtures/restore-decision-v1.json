@@ -1,0 +1,27 @@
+{
+  "request": {
+    "action": "restore_decision_record",
+    "key": "recovery-decision-1",
+    "epoch": 1,
+    "specification": {
+      "version": 1,
+      "binding": "00000000-0000-4000-8000-000000000001",
+      "manifest_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+      "context_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+      "evidence_sha256": "3333333333333333333333333333333333333333333333333333333333333333",
+      "subject": {
+        "kind": "external_branch",
+        "name": "treeharbor/recovered"
+      },
+      "disposition": {
+        "action": "preserve_source",
+        "source_holder": "source:recovered",
+        "native_revision": "native:sha256:4444444444444444444444444444444444444444444444444444444444444444"
+      },
+      "previous_key": null,
+      "note": "Retain accepted source for review."
+    }
+  },
+  "subject_sha256": "23a1317a0e2643505acb66f486905f0127d066080842ae2beee855702a6f56de",
+  "pin_holder": "restore-decision:c8cc57fca9a0c9b973ebb096e4436ef0e5ca77655dadcf744bba1c87e3e673e3"
+}

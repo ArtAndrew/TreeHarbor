@@ -4,6 +4,14 @@ use serde::Deserialize;
 #[derive(Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
 pub enum WireCommand {
+    RestoreDecisionRecord {
+        key: String,
+        epoch: i64,
+        specification: Box<RestoreDecisionSpec>,
+    },
+    RestoreDecisionStatus {
+        key: String,
+    },
     RestoreContext {
         epoch: i64,
         binding: String,
@@ -533,6 +541,8 @@ pub(super) fn id(s: &str) -> Result<Uuid> {
 impl WireCommand {
     pub fn permission(&self) -> Permission {
         match self {
+            Self::RestoreDecisionRecord { .. } => Permission::RepositoryWrite,
+            Self::RestoreDecisionStatus { .. } => Permission::Read,
             Self::RestoreContext { .. } => Permission::HostRead,
             Self::AdmissionPolicySet { .. } | Self::AdmissionPolicyPlan { .. } => {
                 Permission::PolicyWrite
@@ -637,6 +647,15 @@ impl WireCommand {
         backend: Option<&str>,
     ) -> Result<Value> {
         match self {
+            Self::RestoreDecisionRecord {
+                key,
+                epoch,
+                specification,
+            } => {
+                db.record_github_restore_decision(auth, &Command { key, epoch }, &specification)
+                    .await
+            }
+            Self::RestoreDecisionStatus { key } => db.github_restore_decision(auth, &key).await,
             Self::RestoreContext {
                 epoch,
                 binding,

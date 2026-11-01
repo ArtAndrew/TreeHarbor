@@ -21,6 +21,33 @@ These correctness checks do not establish complete mode readiness or performance
 superiority. The installed native workload includes deliberate replacement-node
 recovery; live GitHub recovery remains a separate release gate.
 
+## Unreleased recovery decisions and source retention
+
+The `restore_decision_record` API saves an owner-authored decision against the
+exact current manifest/database/binding/effect context. Per-subject predecessor
+checks serialize competing reviewers. Historical retry/read receipts survive
+reconnect without claiming current validity. `preserve_source` atomically copies
+a scoped live native-commit pin, preserving accepted source independently of its
+original owner. No old attempts or observations are rewritten, no dispatch job
+is emitted and no GitHub binding is reactivated. See the
+[operator guide and version-1 request contract](restore-decisions.md).
+
+Five targeted PostgreSQL tests passed (two context tests and three decision tests):
+stale-context rejection, role/scope checks, lost-response replay, concurrent
+predecessor conflict, wrong/foreign/non-commit source rollback, and retention after
+explicit fixture removal of the original source pin/holds. That removal isolates
+GC protection; it is not a complete node-cleanup trial. Two independent digest/wire
+vector tests passed. The actual dump/restore/configure HTTP drill passed decision
+record/retry, bridge refusal and historical read after server restart; it uses
+synthetic external identities and makes no live GitHub recovery claim.
+
+External evidence digests and external subjects remain operator assertions. Source
+pinning does not verify Git/native mapping or completeness of post-backup discovery.
+Complete effect reconciliation and atomic new-binding admission remain open. No
+schema migration or new permissions are introduced. Strict metadata/service
+all-target Clippy, formatting and changed documentation link checks passed.
+Required branch CI is pending.
+
 ## Unreleased restore state assessment
 
 `github restore-assess` binds a fresh host inventory to authenticated retained
@@ -40,7 +67,9 @@ context reads, owner/wrong-manifest refusal and unchanged restored metadata. The
 journal in the isolated metadata tests is a declared fixture; the transport test
 uses a real restored database. These are not a live GitHub App recovery trial.
 The resolution/admission procedure remains unfinished, and both completion and
-publication-authorization flags stay false. Required branch CI remains pending.
+publication-authorization flags stay false. [PR126 CI](https://github.com/ArtAndrew/TreeHarbor/actions/runs/41329376148)
+passed all required checks; the reviewed tree merged as
+`8e372fbbfbe3cf94be370a76bba07276cfa7cac4`.
 
 ## Unreleased GitHub restore inventory
 

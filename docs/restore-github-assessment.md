@@ -81,6 +81,8 @@ authorization. A row digest covers the retained database row, not host execution
 
 Two matching local contexts do not create an atomic GitHub snapshot or prove that
 old external writers are fenced. This command does not preserve post-backup source
-objects, inspect PR markers/queue/check outcomes or write a durable resolution
-decision. Those remain required before supported reconnection. Never manufacture
+objects, inspect PR markers/queue/check outcomes or by itself write a durable resolution
+decision. Use the separate [operator decision API](restore-decisions.md) to retain
+review decisions and already accepted source. Full reconciliation remains required
+before supported reconnection. Never manufacture
 a missing attempt or clear the quarantine journal to make an assessment pass.

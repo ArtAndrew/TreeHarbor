@@ -87,140 +87,158 @@ impl Metadata {
         id: Uuid,
         manifest: &str,
     ) -> Result<Value> {
-        uuid(id)?;
-        if manifest.len() != 64
-            || !manifest
-                .bytes()
-                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
-        {
-            return Err(Error::Invalid("restore manifest digest"));
-        }
         let tx = self.client.transaction().await?;
         settings(&tx).await?;
-        // Row fingerprints must not depend on pool connection display settings.
-        tx.batch_execute("SET LOCAL TimeZone='UTC'; SET LOCAL bytea_output='hex'")
-            .await?;
         repository_lock(&tx, auth.scope(), false).await?;
-        context(&tx, auth, epoch, Permission::HostRead).await?;
-        let s = auth.scope();
-        let b = binding(&tx, s, id).await?;
-        let spec = specification(&b)?;
-        if spec.bridge != auth.principal() {
-            return Err(Error::Forbidden);
-        }
-        if b.get::<_, i64>("epoch") != epoch || b.get::<_, String>("state") != "revoked" {
-            return Err(Error::HostBindingState);
-        }
-        let key = format!("restore-quarantine:{manifest}");
-        let journal = tx.query_opt("SELECT result,request_digest,current_database()::text AS database FROM th_operations WHERE tenant=$1 AND repository=$2 AND key=$3 AND kind='restore.quarantine.v1' AND principal='restore-quarantine'",
-            &[&s.tenant(),&s.repository(),&key]).await?.ok_or(Error::HostRecoveryRequired)?;
-        let receipt: Value = journal.get("result");
-        let database: String = journal.get("database");
-        let digest = Sha256::digest(format!(
-            "treeharbor-restore-quarantine\0v1\0{manifest}\0{database}"
-        ))
-        .to_vec();
-        if receipt["version"] != 1
-            || receipt["status"] != "quarantined"
-            || receipt["manifest_sha256"] != manifest
-            || receipt["database"] != database
-            || journal.get::<_, Vec<u8>>("request_digest") != digest
-        {
-            return Err(Error::HostRecoveryRequired);
-        }
-        let bindings = tx.query("SELECT binding,state FROM th_github_bindings WHERE tenant=$1 AND repository=$2 ORDER BY binding LIMIT $3",
-            &[&s.tenant(),&s.repository(),&(MAX_EFFECTS+1)]).await?;
-        if bindings.len() > MAX_EFFECTS as usize {
-            return Err(Error::RestoreContextLimit);
-        }
-        if bindings
-            .iter()
-            .any(|b| b.get::<_, String>("state") != "revoked")
-        {
-            return Err(Error::HostBindingState);
-        }
-        let other_bindings = bindings
-            .iter()
-            .map(|b| b.get::<_, Uuid>("binding"))
-            .filter(|b| *b != id)
-            .collect();
-        let mut effects = Vec::new();
-        // Table and identifier names below are constants, never client input.
-        for (kind, table, primary) in [
-            (
-                RestoreEffectKind::Branch,
-                "th_github_publications",
-                "publication",
-            ),
-            (RestoreEffectKind::Pull, "th_github_pulls", "pull"),
-            (RestoreEffectKind::Queue, "th_github_queue", "queue"),
-            (
-                RestoreEffectKind::Check,
-                "th_github_check_publications",
-                "publication",
-            ),
-        ] {
-            let rows=tx.query(&format!("SELECT to_jsonb(t) FROM {table} t WHERE tenant=$1 AND repository=$2 AND binding=$3 ORDER BY {primary} LIMIT $4"),
-                &[&s.tenant(),&s.repository(),&id,&(MAX_EFFECTS+1)]).await?;
-            if rows.len() > MAX_EFFECTS as usize {
-                return Err(Error::RestoreContextLimit);
-            }
-            for row in rows {
-                let value: Value = row.get(0);
-                if field::<i64>(&value, "epoch")? != epoch {
-                    return Err(Error::Fenced);
-                }
-                let native: Option<String> = optional(&value, "native_commit")?;
-                let native_object_hex = native
-                    .map(|v| {
-                        v.strip_prefix("\\x")
-                            .map(str::to_owned)
-                            .ok_or(Error::SchemaMismatch)
-                    })
-                    .transpose()?;
-                effects.push(RestoreEffect {
-                    kind: kind.clone(),
-                    id: field(&value, primary)?,
-                    branch: optional(&value, "branch")?,
-                    native_object_hex,
-                    expected_git: optional(&value, "expected_git")?,
-                    prepared_git: optional(&value, "prepared_git")?,
-                    target: if kind == RestoreEffectKind::Pull {
-                        Some(field(&value, "target")?)
-                    } else {
-                        None
-                    },
-                    pull_number: optional(&value, "pull_number")?,
-                    pull_node: optional(&value, "pull_node")?,
-                    attempt: optional(&value, "attempt")?,
-                    state: optional(&value, "state")?,
-                    cancel_requested: field(&value, "cancel_requested")?,
-                    row_sha256: restore_digest(&value)?,
-                });
-            }
-        }
-        let result = RestoreContext {
-            version: 1,
-            tenant: s.tenant().into(),
-            repository: s.repository(),
-            epoch,
-            binding: id,
-            specification: spec,
-            manifest_sha256: manifest.into(),
-            restored_database: database,
-            quarantine_sha256: restore_digest(&receipt)?,
-            other_bindings,
-            effects,
-            reconciliation_complete: false,
-        };
-        let bytes = serde_json::to_vec(&result).map_err(|_| Error::SchemaMismatch)?;
-        if bytes.len() > MAX_CONTEXT {
-            return Err(Error::RestoreContextLimit);
-        }
+        let result = retained_context(&tx, auth, epoch, id, manifest, Permission::HostRead).await?;
         context(&tx, auth, epoch, Permission::HostRead).await?;
         tx.commit().await?;
-        serde_json::from_slice(&bytes).map_err(|_| Error::SchemaMismatch)
+        Ok(json!(result))
     }
+}
+
+// Caller holds the repository lock. Owner recording may inspect the same retained
+// identities, while bridge assessment still requires the assigned HostRead role.
+pub(super) async fn retained_context(
+    tx: &Transaction<'_>,
+    auth: &Authorization,
+    epoch: i64,
+    id: Uuid,
+    manifest: &str,
+    permission: Permission,
+) -> Result<RestoreContext> {
+    uuid(id)?;
+    digest_valid(manifest)?;
+    tx.batch_execute("SET LOCAL TimeZone='UTC'; SET LOCAL bytea_output='hex'")
+        .await?;
+    context(tx, auth, epoch, permission).await?;
+    let s = auth.scope();
+    let b = binding(tx, s, id).await?;
+    let spec = specification(&b)?;
+    if permission == Permission::HostRead && spec.bridge != auth.principal() {
+        return Err(Error::Forbidden);
+    }
+    if b.get::<_, i64>("epoch") != epoch || b.get::<_, String>("state") != "revoked" {
+        return Err(Error::HostBindingState);
+    }
+    let key = format!("restore-quarantine:{manifest}");
+    let journal = tx.query_opt("SELECT result,request_digest,current_database()::text AS database FROM th_operations WHERE tenant=$1 AND repository=$2 AND key=$3 AND kind='restore.quarantine.v1' AND principal='restore-quarantine'",
+        &[&s.tenant(),&s.repository(),&key]).await?.ok_or(Error::HostRecoveryRequired)?;
+    let receipt: Value = journal.get("result");
+    let database: String = journal.get("database");
+    let digest = Sha256::digest(format!(
+        "treeharbor-restore-quarantine\0v1\0{manifest}\0{database}"
+    ))
+    .to_vec();
+    if receipt["version"] != 1
+        || receipt["status"] != "quarantined"
+        || receipt["manifest_sha256"] != manifest
+        || receipt["database"] != database
+        || journal.get::<_, Vec<u8>>("request_digest") != digest
+    {
+        return Err(Error::HostRecoveryRequired);
+    }
+    let bindings = tx.query("SELECT binding,state FROM th_github_bindings WHERE tenant=$1 AND repository=$2 ORDER BY binding LIMIT $3",
+        &[&s.tenant(),&s.repository(),&(MAX_EFFECTS+1)]).await?;
+    if bindings.len() > MAX_EFFECTS as usize {
+        return Err(Error::RestoreContextLimit);
+    }
+    if bindings
+        .iter()
+        .any(|b| b.get::<_, String>("state") != "revoked")
+    {
+        return Err(Error::HostBindingState);
+    }
+    let other_bindings = bindings
+        .iter()
+        .map(|b| b.get::<_, Uuid>("binding"))
+        .filter(|b| *b != id)
+        .collect();
+    let mut effects = Vec::new();
+    // Table and identifier names below are constants, never client input.
+    for (kind, table, primary) in [
+        (
+            RestoreEffectKind::Branch,
+            "th_github_publications",
+            "publication",
+        ),
+        (RestoreEffectKind::Pull, "th_github_pulls", "pull"),
+        (RestoreEffectKind::Queue, "th_github_queue", "queue"),
+        (
+            RestoreEffectKind::Check,
+            "th_github_check_publications",
+            "publication",
+        ),
+    ] {
+        let rows=tx.query(&format!("SELECT to_jsonb(t) FROM {table} t WHERE tenant=$1 AND repository=$2 AND binding=$3 ORDER BY {primary} LIMIT $4"),
+            &[&s.tenant(),&s.repository(),&id,&(MAX_EFFECTS+1)]).await?;
+        if rows.len() > MAX_EFFECTS as usize {
+            return Err(Error::RestoreContextLimit);
+        }
+        for row in rows {
+            let value: Value = row.get(0);
+            if field::<i64>(&value, "epoch")? != epoch {
+                return Err(Error::Fenced);
+            }
+            let native: Option<String> = optional(&value, "native_commit")?;
+            let native_object_hex = native
+                .map(|v| {
+                    v.strip_prefix("\\x")
+                        .map(str::to_owned)
+                        .ok_or(Error::SchemaMismatch)
+                })
+                .transpose()?;
+            effects.push(RestoreEffect {
+                kind: kind.clone(),
+                id: field(&value, primary)?,
+                branch: optional(&value, "branch")?,
+                native_object_hex,
+                expected_git: optional(&value, "expected_git")?,
+                prepared_git: optional(&value, "prepared_git")?,
+                target: if kind == RestoreEffectKind::Pull {
+                    Some(field(&value, "target")?)
+                } else {
+                    None
+                },
+                pull_number: optional(&value, "pull_number")?,
+                pull_node: optional(&value, "pull_node")?,
+                attempt: optional(&value, "attempt")?,
+                state: optional(&value, "state")?,
+                cancel_requested: field(&value, "cancel_requested")?,
+                row_sha256: restore_digest(&value)?,
+            });
+        }
+    }
+    let result = RestoreContext {
+        version: 1,
+        tenant: s.tenant().into(),
+        repository: s.repository(),
+        epoch,
+        binding: id,
+        specification: spec,
+        manifest_sha256: manifest.into(),
+        restored_database: database,
+        quarantine_sha256: restore_digest(&receipt)?,
+        other_bindings,
+        effects,
+        reconciliation_complete: false,
+    };
+    let bytes = serde_json::to_vec(&result).map_err(|_| Error::SchemaMismatch)?;
+    if bytes.len() > MAX_CONTEXT {
+        return Err(Error::RestoreContextLimit);
+    }
+    Ok(result)
+}
+
+pub(super) fn digest_valid(value: &str) -> Result<()> {
+    if value.len() != 64
+        || !value
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    {
+        return Err(Error::Invalid("restore digest"));
+    }
+    Ok(())
 }
 
 #[cfg(test)]
