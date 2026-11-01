@@ -21,6 +21,34 @@ These correctness checks do not establish complete mode readiness or performance
 superiority. The installed native workload includes deliberate replacement-node
 recovery; live GitHub recovery remains a separate release gate.
 
+## Unreleased restore effect coverage
+
+Restore context and assessment version 2 include queue removals and webhook
+recovery requests, scan pages and individual provider attempts. Scoped joins and
+full row hashes retain their identities without sending anything. Decisions can
+address a removal, recovery request or the composite recovery/provider attempt.
+Missing lists, unsupported old assessment versions and stale context digests are
+rejected; historical receipts and source pins remain intact. See the
+[context contract](restore-github-assessment.md#version-2-context-and-limits) and
+[decision subjects](restore-decisions.md).
+
+Seven targeted PostgreSQL tests passed, including retained effects with shared
+delivery GUIDs and provider IDs in separate recovery requests, another binding's
+excluded attempts, refusal of stale and version-1 context digests, a changed
+removal attempt and overflow without partial results or writes. The webhook rows
+are explicit database fixtures with real constraints, not a live redelivery test.
+Ten metadata/service unit tests passed, including an independently computed v2
+JSON digest and CLI refusal of changed/older contexts. The real PostgreSQL/HTTP
+source verification test also passed with the new context and retained its
+restart/retry behavior. Strict metadata/service all-target Clippy, formatting
+and changed Markdown file links passed. Full branch CI is pending.
+
+Queue/check/PR-marker observations, post-backup discovery completeness and safe
+reconnection remain incomplete. These records do not authorize replay or establish
+that an operation absent from the backup never happened. No new App permissions,
+live credentials or database schema migration are introduced. The published
+0.1.11 package is unchanged.
+
 ## Unreleased verified recovery source mapping
 
 `client restore-verify-source` computes a mapping from a decision's permanent
@@ -46,7 +74,11 @@ signature authenticity, discovery completeness or reconnection approval. No sche
 migration or new third-party package is introduced; metadata uses the existing
 Git-bridge crate's sealed proof type. Standalone's native path still invokes no
 Git process. Strict Git-bridge/metadata/service all-target Clippy, formatting and
-changed documentation links passed. Required branch CI is pending.
+changed documentation links passed. All six required checks passed in
+[CI 41336116484](https://github.com/ArtAndrew/TreeHarbor/actions/runs/41336116484)
+and the contribution-rights workflow before
+[PR128](https://github.com/ArtAndrew/TreeHarbor/pull/128) merged. These changes are
+not in the published 0.1.11 package.
 
 ## Unreleased recovery decisions and source retention
 

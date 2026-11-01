@@ -5,7 +5,7 @@ fn context_fixture() -> RestoreContext {
     let spec:BindingSpec=serde_json::from_value(json!({"version":1,"app_id":7,"client_id":"Iv1_test","bridge":"bridge",
         "upstream":{"installation_id":9,"repository_id":11,"owner_id":13,"owner":"example-org","name":"demo"}})).unwrap();
     RestoreContext {
-        version: 1,
+        version: 2,
         tenant: "test".into(),
         repository: Uuid::from_bytes([1; 16]),
         epoch: 1,
@@ -16,6 +16,10 @@ fn context_fixture() -> RestoreContext {
         quarantine_sha256: "bb".repeat(32),
         other_bindings: vec![],
         effects: vec![],
+        dequeues: vec![],
+        recoveries: vec![],
+        recovery_pages: vec![],
+        redeliveries: vec![],
         reconciliation_complete: false,
     }
 }
@@ -69,6 +73,32 @@ fn host_pull(number: u64) -> treeharbor_github::InventoryPull {
         "headRefName":format!("treeharbor/{}",target().branch_id.simple()),"headRefOid":"44".repeat(20),
         "baseRefName":"main","baseRefOid":"66".repeat(20),"headRepository":{"databaseId":11},"baseRepository":{"databaseId":11},
         "mergeCommit":{"oid":"77".repeat(20)}})).unwrap()
+}
+
+#[test]
+fn restore_assessment_requires_v2_and_reports_removal_and_composite_redeliveries() {
+    let vector: Value = serde_json::from_str(include_str!(
+        "../../../../metadata/tests/fixtures/restore-context-v2.json"
+    ))
+    .unwrap();
+    let c: RestoreContext = serde_json::from_value(vector["context"].clone()).unwrap();
+    let report = assess(&c, &c, &inventory()).unwrap();
+    assert_eq!(report["version"], 2);
+    assert_eq!(report["findings"].as_array().unwrap().len(), 4);
+    assert_eq!(report["findings"][0]["kind"], "dequeue");
+    assert_eq!(report["findings"][1]["kind"], "recovery");
+    assert_eq!(report["findings"][2]["provider_id"], 41);
+    assert_eq!(report["findings"][3]["provider_id"], 42);
+    for finding in report["findings"].as_array().unwrap() {
+        assert_eq!(finding["classification"], "external_inspection_required");
+    }
+    assert_eq!(report["publication_authorized"], false);
+    let mut changed = c.clone();
+    changed.redeliveries[0].dispatch = Some(Uuid::new_v4());
+    assert!(assess(&c, &changed, &inventory()).is_err());
+    changed = c.clone();
+    changed.version = 1;
+    assert!(assess(&changed, &changed, &inventory()).is_err());
 }
 
 #[test]

@@ -1,0 +1,93 @@
+{
+  "context": {
+    "version": 2,
+    "tenant": "fixture",
+    "repository": "01010101-0101-0101-0101-010101010101",
+    "epoch": 1,
+    "binding": "02020202-0202-0202-0202-020202020202",
+    "specification": {
+      "version": 1,
+      "app_id": 7,
+      "client_id": "Iv1_test",
+      "bridge": "bridge",
+      "upstream": {
+        "installation_id": 9,
+        "repository_id": 11,
+        "owner_id": 13,
+        "owner": "example-org",
+        "name": "demo"
+      }
+    },
+    "manifest_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "restored_database": "restored",
+    "quarantine_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "other_bindings": [],
+    "effects": [],
+    "dequeues": [
+      {
+        "id": "03030303-0303-0303-0303-030303030303",
+        "queue": "04040404-0404-0404-0404-040404040404",
+        "attempt": null,
+        "row_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      }
+    ],
+    "recoveries": [
+      {
+        "recovery": "05050505-0505-0505-0505-050505050505",
+        "channel": "06060606-0606-0606-0606-060606060606",
+        "cancelled": true,
+        "row_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "channel_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      }
+    ],
+    "recovery_pages": [
+      {
+        "recovery": "05050505-0505-0505-0505-050505050505",
+        "sequence": 1,
+        "row_sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+      }
+    ],
+    "redeliveries": [
+      {
+        "recovery": "05050505-0505-0505-0505-050505050505",
+        "provider_id": 41,
+        "delivery": "07070707-0707-0707-0707-070707070707",
+        "dispatch": null,
+        "row_sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      {
+        "recovery": "05050505-0505-0505-0505-050505050505",
+        "provider_id": 42,
+        "delivery": "07070707-0707-0707-0707-070707070707",
+        "dispatch": "08080808-0808-0808-0808-080808080808",
+        "row_sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+      }
+    ],
+    "reconciliation_complete": false
+  },
+  "context_sha256": "1204f0b77cfd43cb5f00e499b8492502cddb9dfe5c444572addda31cc819aa07",
+  "subjects": [
+    {
+      "subject": {
+        "kind": "retained_dequeue",
+        "operation": "03030303-0303-0303-0303-030303030303"
+      },
+      "subject_sha256": "f25b3349c6e82f0b26103c46794633c67e91366073ca45444718245dbc8da049"
+    },
+    {
+      "subject": {
+        "kind": "retained_recovery",
+        "recovery": "05050505-0505-0505-0505-050505050505"
+      },
+      "subject_sha256": "2b9105424da2892cd71e3e0bfd2e6f9fd376b63ecc7f977deff7f8a4147d0b03"
+    },
+    {
+      "subject": {
+        "kind": "retained_redelivery",
+        "recovery": "05050505-0505-0505-0505-050505050505",
+        "provider_id": 41
+      },
+      "subject_sha256": "5ccadae0fb226d4e2aa4491be7f756e64ab084a9447ce16defc34e943a6898b0"
+    }
+  ]
+}

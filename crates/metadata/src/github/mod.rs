@@ -24,7 +24,10 @@ mod restore_decisions;
 pub(crate) mod restore_mappings;
 pub use events::{EventChannelSpec, EventReceipt};
 pub use recovery::{RecoverySpec, RedeliveryOutcome, RedeliveryReport};
-pub use restore::{RestoreContext, RestoreEffect, RestoreEffectKind, restore_digest};
+pub use restore::{
+    RestoreContext, RestoreDequeue, RestoreEffect, RestoreEffectKind, RestoreRecovery,
+    RestoreRecoveryPage, RestoreRedelivery, restore_digest,
+};
 pub use restore_decisions::{RestoreDecisionSpec, RestoreDecisionSubject, RestoreDisposition};
 mod dequeues;
 mod inspections;

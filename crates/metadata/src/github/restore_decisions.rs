@@ -14,6 +14,16 @@ pub enum RestoreDecisionSubject {
         effect_kind: RestoreEffectKind,
         operation: Uuid,
     },
+    RetainedDequeue {
+        operation: Uuid,
+    },
+    RetainedRecovery {
+        recovery: Uuid,
+    },
+    RetainedRedelivery {
+        recovery: Uuid,
+        provider_id: i64,
+    },
     ExternalBranch {
         name: String,
     },
@@ -53,7 +63,7 @@ pub struct RestoreDecisionSpec {
 }
 impl RestoreDecisionSpec {
     fn validate(&self) -> Result<()> {
-        if self.version != 1
+        if !matches!(self.version, 1 | 2)
             || self.note.trim().is_empty()
             || self.note.len() > 4096
             || self
@@ -76,6 +86,24 @@ impl RestoreDecisionSpec {
         }
         match &self.subject {
             RestoreDecisionSubject::Retained { operation, .. } => uuid(*operation)?,
+            RestoreDecisionSubject::RetainedDequeue { operation } => {
+                self.require_v2()?;
+                uuid(*operation)?;
+            }
+            RestoreDecisionSubject::RetainedRecovery { recovery } => {
+                self.require_v2()?;
+                uuid(*recovery)?;
+            }
+            RestoreDecisionSubject::RetainedRedelivery {
+                recovery,
+                provider_id,
+            } => {
+                self.require_v2()?;
+                uuid(*recovery)?;
+                if *provider_id <= 0 {
+                    return Err(Error::Invalid("restore redelivery subject"));
+                }
+            }
             RestoreDecisionSubject::ExternalBranch { name } => {
                 // External names are recorded as data, never passed to Git or a shell.
                 if name.is_empty() || name.len() > 1024 || name.chars().any(char::is_control) {
@@ -96,6 +124,12 @@ impl RestoreDecisionSpec {
         {
             identifier(source_holder, 128)?;
             native_commit(native_revision)?;
+        }
+        Ok(())
+    }
+    fn require_v2(&self) -> Result<()> {
+        if self.version != 2 {
+            return Err(Error::Invalid("restore decision subject version"));
         }
         Ok(())
     }
@@ -132,15 +166,31 @@ impl Metadata {
         if restore_digest(&ctx)? != spec.context_sha256 {
             return Err(Error::RestoreContextChanged);
         }
-        if let RestoreDecisionSubject::Retained {
-            effect_kind,
-            operation,
-        } = &spec.subject
-            && !ctx
+        let present = match &spec.subject {
+            RestoreDecisionSubject::Retained {
+                effect_kind,
+                operation,
+            } => ctx
                 .effects
                 .iter()
-                .any(|e| e.kind == *effect_kind && e.id == *operation)
-        {
+                .any(|e| e.kind == *effect_kind && e.id == *operation),
+            RestoreDecisionSubject::RetainedDequeue { operation } => {
+                ctx.dequeues.iter().any(|e| e.id == *operation)
+            }
+            RestoreDecisionSubject::RetainedRecovery { recovery } => {
+                ctx.recoveries.iter().any(|e| e.recovery == *recovery)
+            }
+            RestoreDecisionSubject::RetainedRedelivery {
+                recovery,
+                provider_id,
+            } => ctx
+                .redeliveries
+                .iter()
+                .any(|e| e.recovery == *recovery && e.provider_id == *provider_id),
+            RestoreDecisionSubject::ExternalBranch { .. }
+            | RestoreDecisionSubject::ExternalPull { .. } => true,
+        };
+        if !present {
             return Err(Error::NotFound);
         }
         let s = auth.scope();
@@ -214,6 +264,37 @@ impl Metadata {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn restore_v2_subjects_keep_composite_identity_and_reject_v1_encoding() {
+        let vector: Value =
+            serde_json::from_str(include_str!("../../tests/fixtures/restore-context-v2.json"))
+                .unwrap();
+        let old: Value = serde_json::from_str(include_str!(
+            "../../tests/fixtures/restore-decision-v1.json"
+        ))
+        .unwrap();
+        let mut spec: RestoreDecisionSpec =
+            serde_json::from_value(old["request"]["specification"].clone()).unwrap();
+        for item in vector["subjects"].as_array().unwrap() {
+            spec.subject = serde_json::from_value(item["subject"].clone()).unwrap();
+            spec.version = 2;
+            spec.validate().unwrap();
+            assert_eq!(
+                restore_digest(&spec.subject).unwrap(),
+                item["subject_sha256"]
+            );
+            spec.version = 1;
+            assert!(spec.validate().is_err());
+        }
+        spec.version = 2;
+        for provider_id in [0, -1] {
+            spec.subject = RestoreDecisionSubject::RetainedRedelivery {
+                recovery: Uuid::from_bytes([5; 16]),
+                provider_id,
+            };
+            assert!(spec.validate().is_err());
+        }
+    }
     #[test]
     fn decision_wire_and_pin_identity_match_independent_v1_vector() {
         let vector: Value = serde_json::from_str(include_str!(

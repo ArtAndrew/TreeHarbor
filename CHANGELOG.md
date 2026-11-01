@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Extend restore context/assessment to version 2 with retained dequeues and
+  webhook recovery requests, pages and attempts. Decisions can address exact
+  composite delivery identities. Changed state or an older incomplete context
+  requires a fresh review; historical receipts remain intact. No remote replay
+  or reconnection is authorized by these records.
+
 - Add server-side `client restore-verify-source` for a preserved recovery commit.
   The Rust projector checks the full graph against an exact Git revision, then
   records a durable mapping after rechecking current fences. No Git process,
