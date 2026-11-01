@@ -35,11 +35,13 @@ private state; safe restore activation and Connected recovery remain later work.
 a new isolated database and audited old-token revocation. Starting the recovered
 service, replacing workers and reconciling GitHub remain separate activation work.
 
-The unreleased 0.1.11 candidate adds [quarantine](docs/restore-quarantine.md) and
+[0.1.11-alpha.1](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.11-alpha.1)
+adds [quarantine](docs/restore-quarantine.md) and
 [local restore configuration](docs/restore-configure.md): preserve old work without
 automatically executing it, then prepare an independent live store after explicit
 operator fencing. Fresh credentials/startup and Connected reconciliation remain
-separate responsibilities; this candidate is not yet a published package.
+separate responsibilities. Both installed Linux architectures passed the scoped
+recovery path before the original tested packages were signed and published.
 
 ## First preview acceptance
 

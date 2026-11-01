@@ -1,7 +1,8 @@
 # Quarantine restored work
 
-Unreleased 0.1.11-alpha.1 candidate. This follows [restore staging](restore-stage.md);
-released 0.1.10 packages do not contain it. It does not authorize activation.
+Available in [0.1.11-alpha.1](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.11-alpha.1).
+This follows [restore staging](restore-stage.md); 0.1.10 packages do not contain it.
+Quarantine does not authorize activation.
 
 Revoking old tokens alone is insufficient: a newly registered worker could claim
 an old workspace that was not yet assigned to a node. Quarantine retains that
@@ -55,7 +56,7 @@ repository set, conflicting journal, live token or damaged backup is refused.
 Keep partial output for inspection; never infer activation from a directory name
 or from the presence of an older staging receipt.
 
-This command is one recovery step. The separate unreleased
+This command is one recovery step. The separate
 [restore configuration step](restore-configure.md) rechecks current state and
 prepares a local service with an independent object store. Recovery cleanup of old
 node storage and full Connected external-state reconciliation remain unfinished.

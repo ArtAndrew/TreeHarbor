@@ -1,7 +1,8 @@
 # Configure a quarantined local restore
 
-Unreleased 0.1.11-alpha.1 candidate. Earlier published packages do not contain
-`backup restore-configure`. This is an operator-controlled local recovery path;
+Available in [0.1.11-alpha.1](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.11-alpha.1).
+Earlier packages do not contain `backup restore-configure`.
+This is an operator-controlled local recovery path;
 full Connected disaster recovery and unattended production operation remain open.
 
 Start with [restore staging](restore-stage.md) and [quarantine](restore-quarantine.md).

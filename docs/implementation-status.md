@@ -21,7 +21,7 @@ These correctness checks do not establish complete mode readiness or performance
 superiority. The installed native workload includes deliberate replacement-node
 recovery; live GitHub recovery remains a separate release gate.
 
-## Unreleased 0.1.11-alpha.1 local recovery continuation
+## Released 0.1.11-alpha.1 local recovery continuation
 
 `backup restore-configure` requires prior quarantine and explicit acknowledgment
 of external fencing. It verifies current metadata predicates, creates a separate
@@ -36,9 +36,27 @@ configuration, a newly issued reader, retained proposal/export with original
 objects unavailable, current-state refusal despite a valid old receipt, required
 acknowledgment and output-reuse refusal. A connection-string test covers quoting
 of user/password/Unix paths. These local tests preceded the version-only bump;
-installed x86-64/ARM64 acceptance of the 0.1.11 candidate remains pending.
+installed x86-64/ARM64 acceptance subsequently passed in
+[PR122 CI](https://github.com/ArtAndrew/TreeHarbor/actions/runs/41317800085),
+attempt 1, for reviewed head `72e19c8542e80c2fc36d94ea61699f02bf05ee11`.
+Both packages used the generated configuration and its new socket, recovered
+source with the original store unavailable, rejected old nodes, ran a fresh gVisor
+check, published/exported the exact native candidate, and verified that new writes
+left the copied backup unchanged. The reviewed tree merged as
+`6de30952b6d25e85a7ff5088d7fe2c0706c883f0`.
 
-## Unreleased restore quarantine
+[Main CI](https://github.com/ArtAndrew/TreeHarbor/actions/runs/41318749932) and
+[signed producer](https://github.com/ArtAndrew/TreeHarbor/actions/runs/41319732315),
+both attempt 1, passed for that source. The original installed packages passed
+the same recovery scenario on x86-64 and ARM64. Independent official online and
+bundled attestation verification matched all eight signed subjects per architecture
+and the exact producer invocation. The eight public assets in
+[0.1.11-alpha.1](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.11-alpha.1)
+were read back with matching names, sizes and SHA-256 digests. Previous release
+assets were unchanged. Native component inventory remains partial; this is not
+live Connected disaster-recovery certification or full mode readiness.
+
+## Restore quarantine — included in 0.1.11-alpha.1
 
 `backup restore-quarantine` verifies the copied staged backup and restored target,
 requires revoked tokens and stopped writers, and withdraws old execution intent
@@ -61,7 +79,7 @@ That candidate still supplied its own configuration; the subsequent configuratio
 command is a separately tested increment. This is not full
 activation, Connected disaster recovery or production readiness.
 
-## Unreleased generic outbox freeze enforcement
+## Generic outbox freeze enforcement — included in 0.1.11-alpha.1
 
 The internal PostgreSQL `Metadata::claim`, `renew` and `acknowledge` primitives
 now lock the repository before changing a job lease and require an active
@@ -73,7 +91,9 @@ lease-generation fencing. Repository locks serialize these operations with freez
 The targeted PostgreSQL transaction suite passed nine tests, including retained
 job/lease records, locked-repository skipping, inactive-state refusal, stale-worker
 reclaim and observed database lock waits for concurrent freeze versus renewal or
-completion. Full branch CI remains required before merging this increment.
+completion. All required branch checks passed in
+[PR120 CI](https://github.com/ArtAndrew/TreeHarbor/actions/runs/41314138093)
+before the protected merge.
 
 This is not a public node authorization change, a universal epoch fence or an
 external side-effect authorization. Domain-specific authority/epoch checks remain

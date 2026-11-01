@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-## 0.1.11-alpha.1 — local recovery continuation — unreleased
+## 0.1.11-alpha.1 — local recovery continuation — 2026-11-01
 
 - Add `backup restore-configure` after explicit quarantine and operator fencing.
   Recheck current metadata, copy objects into a separate live store and prepare
@@ -18,6 +18,11 @@
   repository is frozen or retired. Serialize them with repository state changes,
   retain pending jobs, and skip locked repositories during claims. This does not
   stop an already running worker or authorize recovered-deployment activation.
+
+- Publish [signed Linux x86-64/ARM64 packages](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.11-alpha.1)
+  after installed recovery acceptance and independent signature/source/asset checks.
+  No schema or dependency change from 0.1.10. Full Connected disaster recovery,
+  old-node recovery cleanup and unattended production operation remain unfinished.
 
 ## 0.1.10-alpha.1 — restore staging — 2026-10-30
 

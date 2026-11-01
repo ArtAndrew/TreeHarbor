@@ -90,11 +90,11 @@ credentials as an automatic consequence of staging. An old backup is a recovery
 point, not proof that subsequent changes or external effects never occurred.
 
 The released 0.1.10 drill supplies its own inspection configuration and new-node
-setup. The unreleased 0.1.11 candidate adds [restore configuration](restore-configure.md)
+setup. Released 0.1.11 adds [restore configuration](restore-configure.md)
 after quarantine, with independent live objects and current-state checks. New
 credentials and startup remain explicit. Neither drill certifies live GitHub
 disaster recovery.
 
-The unreleased [restore quarantine command](restore-quarantine.md) withdraws old
+The 0.1.11 [restore quarantine command](restore-quarantine.md) withdraws old
 execution intent while preserving accepted source and history. Staging alone does
 not perform that step, and neither command authorizes service activation.

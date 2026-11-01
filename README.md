@@ -85,7 +85,7 @@ Scion or tuned Git. Performance comparisons and unassisted onboarding remain ope
 
 ## What works today?
 
-Status as of **2026-10-30**. “Implemented” describes the stated component and its
+Status as of **2026-11-01**. “Implemented” describes the stated component and its
 tests, not completion of the entire product.
 
 | Area | Implemented and tested | Still incomplete |
@@ -96,7 +96,7 @@ tests, not completion of the entire product.
 | Developer interfaces | Local authenticated API/CLI, external task contexts and an experimental MCP stdio adapter | Packaged onboarding and remote service transport |
 | Connected | Real GitHub import, branch/PR publication, managed required checks, versioned branch-policy fences, queue requests, candidate/final-history evidence and signed events | Complete host-policy/admission certification and unattended operation |
 | Standalone | Native refs/history, candidate checks/reviews, merge, single-ChangeSet rebase and publication without Git/GitHub on the native path | Full lifecycle, broader history rewriting and fenced migration between modes |
-| Data recovery and interop | Durable transaction/retry paths, object retention, cold backup creation/verification and full-history Git import/export for supported inputs | Safe general restore activation, Connected recovery, automatic GC/reconciliation and S3 backend |
+| Data recovery and interop | Durable transaction/retry paths, object retention, cold backup/staging, quarantined local restore configuration and full-history Git import/export for supported inputs | External fencing automation, old-node recovery cleanup, Connected reconciliation, automatic GC and S3 backend |
 
 A [live synthetic test](docs/evidence/connected-live-20261024.json) ran two isolated
 scripted agents and published their proposals as real GitHub PRs. A subsequent
@@ -131,6 +131,14 @@ Published Linux x86-64 and ARM64 packages include an offline binary installer.
 See [packaging and verification](docs/release-packaging.md) and the release notes
 for the exact installed-runtime and source-restore evidence. Full Connected
 onboarding and operational recovery remain in progress.
+
+For a stopped local deployment, the [recovery workflow](docs/restore-configure.md)
+can stage a trusted backup, quarantine old tasks and prepare a new service
+configuration with an independent object store. The operator must fence the old
+deployment and explicitly provision fresh access. Previous GitHub bindings remain
+revoked; this does not authorize resuming Connected publishers after a disaster.
+These commands are available in
+[0.1.11-alpha.1](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.11-alpha.1).
 
 A workspace provides files; **the external runtime provides the execution sandbox**.
 Agents must not receive publisher credentials. Tests cannot detect every semantic

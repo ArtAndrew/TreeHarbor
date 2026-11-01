@@ -103,6 +103,18 @@ and never authorizes activation. Installed runtime acceptance passed on
 [Linux x86-64](https://github.com/ArtAndrew/TreeHarbor/actions/runs/41097779078/job/124207992670)
 and [ARM64](https://github.com/ArtAndrew/TreeHarbor/actions/runs/41097779078/job/124207992386).
 
+## Local recovery continuation — 0.1.11-alpha.1
+
+[Quarantine](restore-quarantine.md) withdraws old execution intent while preserving
+accepted changes and history. [Restore configuration](restore-configure.md) checks
+the current quarantine state and prepares a separate live object store and private
+configuration for the restored database. Both commands are available in
+[0.1.11-alpha.1](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.11-alpha.1).
+The operator must fence the old infrastructure and explicitly issue fresh access
+and start the new service. The retained backup remains unchanged. Connected
+bindings stay revoked; external-state reconciliation and old-node cleanup remain
+open, so this does not establish a complete disaster-recovery procedure.
+
 ## Reference backup boundary
 
 The initial single-host deployment uses a cold backup:
@@ -154,6 +166,9 @@ Linux/PostgreSQL/gVisor environment it:
 - starting with 0.1.10-alpha.1, calls actual `backup restore-stage`, compares all
   retained tables/sequences except the explicitly asserted token revocations and
   appended audit, and verifies that the original database remains unchanged;
+- starting with 0.1.11-alpha.1, invokes actual quarantine and restore configuration,
+  checks exact allowed metadata changes and lost-receipt replay, then uses the
+  generated configuration and new service socket with an independent live store;
 - starts the real service with copied objects and the original object path absent;
 - exports published history into ordinary Git and reads accepted agent changes;
 - removes/corrupts a restored object, requires export failure, then verifies recovery
@@ -166,6 +181,8 @@ Linux/PostgreSQL/gVisor environment it:
 - registers a fresh node with new local state and volume, runs a fresh approved
   check through gVisor, publishes its exact native candidate, verifies the result
   in ordinary Git and cleans up the new check workspace.
+- verifies the copied backup again after these fresh writes and publication,
+  requiring the original inventory and manifest receipt to remain unchanged.
 
 This is a shared storage and deliberate replacement-node recovery test with
 synthetic agent programs. The operator keeps all original writers stopped and
@@ -174,9 +191,9 @@ not discover or fence other infrastructure automatically. It exercises no live
 GitHub reconciliation and resumes no old task or copied node journal. Run it only
 through the disposable runtime CI harness; it is not an operator backup utility.
 
-The previously released drill, including operator backup creation and replacement-node
+The 0.1.11 drill, including quarantine, generated configuration and replacement-node
 execution, passed with installed static binaries on
-[Linux x86-64](https://github.com/ArtAndrew/TreeHarbor/actions/runs/41052176043/job/124050740230)
-and [ARM64](https://github.com/ArtAndrew/TreeHarbor/actions/runs/41052176043/job/124050740228)
-on 2026-10-30. These results cover the scoped recovery scenario above, not automatic
+[Linux x86-64](https://github.com/ArtAndrew/TreeHarbor/actions/runs/41319732315/job/124887212632)
+and [ARM64](https://github.com/ArtAndrew/TreeHarbor/actions/runs/41319732315/job/124887212600)
+on 2026-11-01. These results cover the scoped recovery scenario above, not automatic
 restore activation or live GitHub recovery.
