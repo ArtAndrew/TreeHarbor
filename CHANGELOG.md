@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Fence generic background-job claims, renewals and acknowledgments while their
+  repository is frozen or retired. Serialize them with repository state changes,
+  retain pending jobs, and skip locked repositories during claims. This does not
+  stop an already running worker or authorize recovered-deployment activation.
+
 ## 0.1.10-alpha.1 — restore staging — 2026-10-30
 
 - Add `backup restore-stage` for trusted cold backups into an isolated local
