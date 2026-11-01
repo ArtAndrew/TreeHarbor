@@ -2,6 +2,7 @@
 //! exclude cooperating local services and concurrent writes to existing tables.
 mod files;
 mod quarantine;
+mod recovered_config;
 mod restore;
 
 use crate::{config::Config, database::Database};
@@ -33,6 +34,10 @@ pub enum Error {
         "restore quarantine failed; keep both deployments stopped and isolated; no activation is authorized"
     )]
     Quarantine,
+    #[error(
+        "recovered service configuration failed; keep deployments isolated and inspect partial stage/active output; no service was started"
+    )]
+    RecoveredConfig,
     #[error("backup input changed; keep every writer stopped and use a fresh output directory")]
     Changed,
     #[error("backup byte, entry, depth or time budget exceeded; incomplete output is retained")]
@@ -60,6 +65,8 @@ type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Subcommand)]
 pub(crate) enum Action {
+    /// Prepare local service files from quarantined state after operator fencing.
+    RestoreConfigure(quarantine::ConfigureOptions),
     /// Quarantine old work in a staged database; retain history and never start services.
     RestoreQuarantine(quarantine::Options),
     /// Restore a trusted backup into a new isolated database; never activate it.
@@ -145,6 +152,7 @@ const MAX_MANIFEST: usize = 64 * 1024 * 1024;
 
 pub(crate) async fn run(action: Action) -> crate::Result<bool> {
     let value = match action {
+        Action::RestoreConfigure(options) => quarantine::configure(options).await?,
         Action::RestoreQuarantine(options) => quarantine::run(options).await?,
         Action::RestoreStage(options) => restore::stage(options).await?,
         Action::Create {

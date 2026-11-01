@@ -608,6 +608,27 @@ async fn cold_backup_restores_metadata_and_native_source_and_refuses_unsafe_inpu
             .unwrap()
     };
     let before_quarantine = snapshot(&restored_sql, &f.config.schema).await;
+    let configure = |acknowledge: bool| {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_treeharbor"));
+        command
+            .args([
+                "backup",
+                "restore-configure",
+                "--writers-stopped",
+                "--stage",
+            ])
+            .arg(&stage)
+            .args(["--manifest-sha256", digest]);
+        if acknowledge {
+            command.arg("--old-infrastructure-fenced");
+        }
+        command.output().unwrap()
+    };
+    assert!(
+        !configure(true).status.success(),
+        "configuration must require prior quarantine"
+    );
+    assert!(!stage.join("active").exists());
     assert!(!quarantine(&"0".repeat(64)).status.success());
     assert_eq!(
         snapshot(&restored_sql, &f.config.schema).await,
@@ -764,14 +785,62 @@ async fn cold_backup_restores_metadata_and_native_source_and_refuses_unsafe_inpu
         before,
         "quarantine touched source DB"
     );
-    let recovered = stage.join("backup/objects");
+    assert!(!configure(false).status.success());
+    // A valid historical receipt must not bypass current-state checks.
+    restored_sql
+        .execute(
+            "UPDATE th_principals SET enabled=true WHERE principal='backup-node'",
+            &[],
+        )
+        .await
+        .unwrap();
+    assert!(!configure(true).status.success());
+    assert!(!stage.join("active").exists());
+    restored_sql
+        .execute(
+            "UPDATE th_principals SET enabled=false WHERE principal='backup-node'",
+            &[],
+        )
+        .await
+        .unwrap();
+    let configured = configure(true);
+    assert!(
+        configured.status.success(),
+        "{}",
+        String::from_utf8_lossy(&configured.stderr)
+    );
+    let configured: Value = serde_json::from_slice(&configured.stdout).unwrap();
+    assert_eq!(configured["status"], "configured");
+    assert_eq!(configured["service_started"], false);
+    assert_eq!(configured["credentials_issued"], false);
+    assert_eq!(configured["external_fencing_verified"], false);
+    let config_path = PathBuf::from(configured["config"].as_str().unwrap());
+    let config_bytes = fs::read(&config_path).unwrap();
+    assert!(
+        !configure(true).status.success(),
+        "existing output must not be overwritten"
+    );
+    assert_eq!(fs::read(&config_path).unwrap(), config_bytes);
+    assert_eq!(
+        snapshot(&restored_sql, &f.config.schema).await,
+        after_quarantine
+    );
+    assert!(verify(&stage.join("backup"), digest).status.success());
+    let recovered = stage.join("active/objects");
     fs::rename(&objects, f.dir.path().join("old-objects-unavailable")).unwrap();
     let original_url = f.config.database_url.clone();
-    f.config.database_url = format!("{} dbname={target}", f.config.database_url);
-    f.config.storage.as_mut().unwrap().root = recovered.clone();
-    f.save_config();
-    // This disposable drill deliberately supplies its own inspection config;
-    // restore-stage never emits or activates one. All original writers stay off.
+    f.config_path = config_path;
+    f.config = Config::load(&f.config_path).unwrap();
+    assert_eq!(
+        f.config.database_config().unwrap().get_dbname(),
+        Some(target.as_str())
+    );
+    assert_eq!(
+        f.config.storage.as_ref().unwrap().root,
+        recovered.canonicalize().unwrap()
+    );
+    // Use the actual generated configuration. All original writers stay off;
+    // credentials are explicitly issued below, not inferred from backup files.
     let mut recovered_service = f.start().await;
     let refused = f.cli(&["repository-info"]);
     assert!(
@@ -826,6 +895,10 @@ async fn cold_backup_restores_metadata_and_native_source_and_refuses_unsafe_inpu
         String::from_utf8_lossy(&result.stderr)
     );
     assert!(!objects.exists());
+    assert!(
+        verify(&stage.join("backup"), digest).status.success(),
+        "live writes changed the retained backup"
+    );
     recovered_service.0.kill().unwrap();
     recovered_service.0.wait().unwrap();
     driver.abort();

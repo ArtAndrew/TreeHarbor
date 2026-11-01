@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.1.11-alpha.1 — local recovery continuation — unreleased
+
+- Add `backup restore-configure` after explicit quarantine and operator fencing.
+  Recheck current metadata, copy objects into a separate live store and prepare
+  private configuration for the exact restored database. New credentials and
+  service startup remain explicit; Connected reconciliation remains unfinished.
+
 - Add an offline `backup restore-quarantine` step after staging: drain old file
   workspaces, cancel pending native candidates, disable old nodes and revoke old
   GitHub connections while preserving source, history and recorded outcomes.

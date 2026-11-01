@@ -89,9 +89,11 @@ any publisher. Do not resume copied worker journals or grant fresh publishing
 credentials as an automatic consequence of staging. An old backup is a recovery
 point, not proof that subsequent changes or external effects never occurred.
 
-The current disposable recovery drill deliberately performs its own explicit
-inspection/new-node setup after staging. That test does not supply an operator
-activation command or certify live GitHub disaster recovery.
+The released 0.1.10 drill supplies its own inspection configuration and new-node
+setup. The unreleased 0.1.11 candidate adds [restore configuration](restore-configure.md)
+after quarantine, with independent live objects and current-state checks. New
+credentials and startup remain explicit. Neither drill certifies live GitHub
+disaster recovery.
 
 The unreleased [restore quarantine command](restore-quarantine.md) withdraws old
 execution intent while preserving accepted source and history. Staging alone does
