@@ -3,7 +3,7 @@ use sha2::{Digest, Sha256};
 use treeharbor_metadata::github::{RestoreContext, RestoreEffectKind};
 
 // A durable journal fixture, not evidence of pg_dump/restore or live GitHub recovery.
-async fn journal(p: &Projection, manifest: &str, database_override: Option<&str>) {
+pub(super) async fn journal(p: &Projection, manifest: &str, database_override: Option<&str>) {
     let sql = connection(&p.f.schema).await;
     let current: String = sql
         .query_one("SELECT current_database()::text", &[])
@@ -20,7 +20,7 @@ async fn journal(p: &Projection, manifest: &str, database_override: Option<&str>
     sql.execute("INSERT INTO th_operations(tenant,repository,key,request_digest,principal,kind,result) VALUES($1,$2,$3,$4,'restore-quarantine','restore.quarantine.v1',$5)",
         &[&p.f.scope.tenant(),&p.f.scope.repository(),&format!("restore-quarantine:{manifest}"),&digest,&result]).await.unwrap();
 }
-async fn retained(p: &Projection) -> Vec<Value> {
+pub(super) async fn retained(p: &Projection) -> Vec<Value> {
     let sql = connection(&p.f.schema).await;
     let mut rows = Vec::new();
     for table in [
@@ -30,6 +30,11 @@ async fn retained(p: &Projection) -> Vec<Value> {
         "th_github_publications",
         "th_github_pulls",
         "th_github_queue",
+        "th_github_dequeues",
+        "th_github_event_channels",
+        "th_github_event_recoveries",
+        "th_github_event_recovery_pages",
+        "th_github_event_recovery_attempts",
         "th_github_check_publications",
         "th_object_pins",
         "th_security_audit",

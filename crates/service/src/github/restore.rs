@@ -27,7 +27,7 @@ async fn context(o: &Options, credential: &Credential) -> Result<RestoreContext>
     )
     .await?;
     let c: RestoreContext = serde_json::from_value(value).map_err(|_| Error::RestoreAssessment)?;
-    if c.version != 1
+    if c.version != 2
         || c.tenant != credential.scope.tenant()
         || c.repository != credential.scope.repository()
         || c.epoch != o.epoch
@@ -62,7 +62,7 @@ fn assess(
     inventory: &RestoreInventory,
 ) -> Result<Value> {
     if before != after
-        || before.version != 1
+        || before.version != 2
         || before.reconciliation_complete
         || inventory.version != 1
         || inventory.reconciliation_complete
@@ -162,6 +162,23 @@ fn assess(
         };
         findings.push(finding);
     }
+    for e in &before.dequeues {
+        findings.push(json!({"kind":"dequeue","operation":e.id,"queue":e.queue,
+            "retained_attempt":e.attempt,"classification":"external_inspection_required"}));
+    }
+    for e in &before.recoveries {
+        findings.push(
+            json!({"kind":"recovery","recovery":e.recovery,"channel":e.channel,
+            "cancelled":e.cancelled,"classification":"external_inspection_required"}),
+        );
+    }
+    for e in &before.redeliveries {
+        findings.push(
+            json!({"kind":"redelivery","recovery":e.recovery,"provider_id":e.provider_id,
+            "delivery":e.delivery,"retained_dispatch":e.dispatch,
+            "classification":"external_inspection_required"}),
+        );
+    }
     let unmapped_heads: Vec<_> = inventory
         .heads
         .iter()
@@ -181,7 +198,7 @@ fn assess(
     let context_digest = restore_digest(before).map_err(|_| Error::RestoreAssessment)?;
     let inventory_digest = restore_digest(inventory).map_err(|_| Error::RestoreAssessment)?;
     Ok(
-        json!({"version":1,"context":before,"context_sha256":context_digest,
+        json!({"version":2,"context":before,"context_sha256":context_digest,
         "inventory":inventory,"inventory_sha256":inventory_digest,"findings":findings,
         "unmapped_to_selected_binding":{"heads":unmapped_heads,"pulls":unmapped_pulls},
         "reconciliation_complete":false,"publication_authorized":false}),

@@ -807,3 +807,6 @@ async fn queue_terminal_result_cannot_be_substituted_or_erased_by_expiry() {
     );
     cleanup(&f.p.f.schema).await;
 }
+
+#[path = "github_restore_effects.rs"]
+mod restore_effects;

@@ -36,7 +36,7 @@ jq -e --arg operation "$TH_OPERATION" --arg key "$TH_DECISION_KEY" \
   [.context.effects[] | select(.id == $operation)] |
   if length != 1 then error("select exactly one retained operation") else .[0] end |
   {action:"restore_decision_record",key:$key,epoch:$report.context.epoch,
-   specification:{version:1,binding:$report.context.binding,
+   specification:{version:2,binding:$report.context.binding,
      manifest_sha256:$report.context.manifest_sha256,
      context_sha256:$report.context_sha256,evidence_sha256:$evidence,
      subject:{kind:"retained",effect_kind:.kind,operation:.id},
@@ -47,7 +47,7 @@ jq -e --arg operation "$TH_OPERATION" --arg key "$TH_DECISION_KEY" \
 
 Review the resulting file before sending it. The evidence digest is ordinary
 SHA-256 of the complete file bytes; the context digest uses the assessment's
-[versioned canonical digest](restore-github-assessment.md#version-1-context-and-limits).
+[versioned canonical digest](restore-github-assessment.md#version-2-context-and-limits).
 Neither digest proves the external facts or supplies the evidence file to the server.
 
 ```sh
@@ -86,10 +86,21 @@ The subject can be:
 
 - `{"kind":"retained","effect_kind":"branch","operation":"<UUID>"}` for an
   operation present in the current context (`branch`, `pull`, `queue` or `check`).
+- `{"kind":"retained_dequeue","operation":"<UUID>"}` for a retained removal.
+- `{"kind":"retained_recovery","recovery":"<UUID>"}` for a retained webhook recovery request.
+- `{"kind":"retained_redelivery","recovery":"<UUID>","provider_id":41}` for
+  exactly one retained provider attempt in that recovery. A shared delivery GUID
+  does not collapse separate attempts.
 - `{"kind":"external_branch","name":"treeharbor/<branch>"}` for an external
   branch the operator is investigating.
 - `{"kind":"external_pull","number":123,"node":"<GitHub node ID>"}` for an
   external PR the operator is investigating.
+
+The three new subject kinds require specification `version:2`; version 1 remains
+accepted for its original subjects. Every retained subject must exist in the
+current selected binding's context. Use a fresh version-2 context digest even when
+reviewing an original subject. Historical receipts and source pins are preserved;
+an old context does not silently gain coverage of the newly included operations.
 
 External identities and the evidence digest are operator assertions. They are not
 promoted into trusted GitHub observations. There is no `approve`, `resume` or

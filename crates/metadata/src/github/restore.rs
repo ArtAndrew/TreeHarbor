@@ -6,6 +6,10 @@ use sha2::{Digest, Sha256};
 const MAX_EFFECTS: i64 = 256;
 const MAX_CONTEXT: usize = 512 * 1024;
 
+#[path = "restore_effects.rs"]
+mod extended;
+pub use extended::{RestoreDequeue, RestoreRecovery, RestoreRecoveryPage, RestoreRedelivery};
+
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum RestoreEffectKind {
@@ -48,6 +52,10 @@ pub struct RestoreContext {
     pub quarantine_sha256: String,
     pub other_bindings: Vec<Uuid>,
     pub effects: Vec<RestoreEffect>,
+    pub dequeues: Vec<RestoreDequeue>,
+    pub recoveries: Vec<RestoreRecovery>,
+    pub recovery_pages: Vec<RestoreRecoveryPage>,
+    pub redeliveries: Vec<RestoreRedelivery>,
     pub reconciliation_complete: bool,
 }
 
@@ -209,8 +217,10 @@ pub(super) async fn retained_context(
             });
         }
     }
+    let (dequeues, recoveries, recovery_pages, redeliveries) =
+        extended::load(tx, s, id, epoch).await?;
     let result = RestoreContext {
-        version: 1,
+        version: 2,
         tenant: s.tenant().into(),
         repository: s.repository(),
         epoch,
@@ -221,6 +231,10 @@ pub(super) async fn retained_context(
         quarantine_sha256: restore_digest(&receipt)?,
         other_bindings,
         effects,
+        dequeues,
+        recoveries,
+        recovery_pages,
+        redeliveries,
         reconciliation_complete: false,
     };
     let bytes = serde_json::to_vec(&result).map_err(|_| Error::SchemaMismatch)?;
@@ -244,6 +258,21 @@ pub(super) fn digest_valid(value: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn restore_context_v2_matches_independent_vector_and_requires_every_family() {
+        let vector: Value =
+            serde_json::from_str(include_str!("../../tests/fixtures/restore-context-v2.json"))
+                .unwrap();
+        let c: RestoreContext = serde_json::from_value(vector["context"].clone()).unwrap();
+        assert_eq!(c.version, 2);
+        assert_eq!(json!(c), vector["context"]);
+        assert_eq!(restore_digest(&c).unwrap(), vector["context_sha256"]);
+        for key in ["dequeues", "recoveries", "recovery_pages", "redeliveries"] {
+            let mut missing = vector["context"].clone();
+            missing.as_object_mut().unwrap().remove(key);
+            assert!(serde_json::from_value::<RestoreContext>(missing).is_err());
+        }
+    }
     #[test]
     fn restore_digest_matches_independent_json_vector_and_struct_field_order() {
         let vector: Value =
