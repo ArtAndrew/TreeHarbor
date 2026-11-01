@@ -21,6 +21,8 @@ mod groups;
 mod recovery;
 mod restore;
 mod restore_decisions;
+mod restore_pulls;
+pub use restore_pulls::{RestorePullEvidence, RestorePullReport};
 pub(crate) mod restore_mappings;
 pub use events::{EventChannelSpec, EventReceipt};
 pub use recovery::{RecoverySpec, RedeliveryOutcome, RedeliveryReport};

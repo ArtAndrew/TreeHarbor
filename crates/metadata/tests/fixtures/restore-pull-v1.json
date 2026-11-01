@@ -1,0 +1,61 @@
+{
+  "request": {
+    "action": "restore_pull_record",
+    "key": "github-publish-report-fixture",
+    "epoch": 1,
+    "specification": {
+      "version": 1,
+      "binding": "02020202-0202-0202-0202-020202020202",
+      "manifest_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "context_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "operation": "03030303-0303-0303-0303-030303030303",
+      "identity": {
+        "number": 17,
+        "node_id": "PR_test_17"
+      },
+      "report": {
+        "version": 1,
+        "app_id": 7,
+        "installation_id": 9,
+        "started_at_unix_ms": 1700000000000,
+        "finished_at_unix_ms": 1700000001000,
+        "before": {
+          "identity": {
+            "number": 17,
+            "node_id": "PR_test_17"
+          },
+          "head_repository": 11,
+          "base_repository": 11,
+          "head_ref": "treeharbor/04040404040404040404040404040404",
+          "base_ref": "main",
+          "head_revision": "git:sha1:1111111111111111111111111111111111111111",
+          "base_revision": "git:sha1:2222222222222222222222222222222222222222",
+          "title": "Agent change",
+          "body": "Selected change\n\n<!-- treeharbor-pull:03030303-0303-0303-0303-030303030303 -->",
+          "draft": true,
+          "state": "closed",
+          "merged": true
+        },
+        "after": {
+          "identity": {
+            "number": 17,
+            "node_id": "PR_test_17"
+          },
+          "head_repository": 11,
+          "base_repository": 11,
+          "head_ref": "treeharbor/04040404040404040404040404040404",
+          "base_ref": "main",
+          "head_revision": "git:sha1:1111111111111111111111111111111111111111",
+          "base_revision": "git:sha1:2222222222222222222222222222222222222222",
+          "title": "Agent change",
+          "body": "Selected change\n\n<!-- treeharbor-pull:03030303-0303-0303-0303-030303030303 -->",
+          "draft": true,
+          "state": "closed",
+          "merged": true
+        },
+        "token_revoked": true
+      }
+    }
+  },
+  "specification_sha256": "b001d8ec63d336be5eb860b2a069fe4adeb84fadbb8e7ac49f45aad4d9e202a5"
+}

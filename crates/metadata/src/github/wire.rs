@@ -4,6 +4,14 @@ use serde::Deserialize;
 #[derive(Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
 pub enum WireCommand {
+    RestorePullRecord {
+        key: String,
+        epoch: i64,
+        specification: Box<RestorePullEvidence>,
+    },
+    RestorePullStatus {
+        key: String,
+    },
     RestoreMappingStatus {
         key: String,
     },
@@ -544,6 +552,8 @@ pub(super) fn id(s: &str) -> Result<Uuid> {
 impl WireCommand {
     pub fn permission(&self) -> Permission {
         match self {
+            Self::RestorePullRecord { .. } => Permission::HostRead,
+            Self::RestorePullStatus { .. } => Permission::Read,
             Self::RestoreDecisionRecord { .. } => Permission::RepositoryWrite,
             Self::RestoreMappingStatus { .. } | Self::RestoreDecisionStatus { .. } => {
                 Permission::Read
@@ -652,6 +662,15 @@ impl WireCommand {
         backend: Option<&str>,
     ) -> Result<Value> {
         match self {
+            Self::RestorePullRecord {
+                key,
+                epoch,
+                specification,
+            } => {
+                db.record_github_restore_pull(auth, &Command { key, epoch }, &specification)
+                    .await
+            }
+            Self::RestorePullStatus { key } => db.github_restore_pull(auth, &key).await,
             Self::RestoreMappingStatus { key } => db.github_restore_mapping(auth, &key).await,
             Self::RestoreDecisionRecord {
                 key,

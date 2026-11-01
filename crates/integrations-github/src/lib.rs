@@ -17,6 +17,7 @@ pub use transport::deliveries::{
 };
 pub use transport::publisher::{BranchObservation, BranchOutcome, BranchResult};
 pub use transport::pulls::{ExpectedPull, PullIdentity, PullObservation, PullSnapshot, PullTarget};
+pub use transport::pulls::{ObservedRestorePull, RestorePullReport};
 pub use transport::restore_inventory::{
     InventoryCommit, InventoryHead, InventoryObject, InventoryPull, InventoryRepositoryId,
     RestoreInventory,

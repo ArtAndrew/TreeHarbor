@@ -120,7 +120,7 @@ impl PullSpec {
     }
 }
 impl PullIdentity {
-    pub(super) fn validate(&self) -> Result<()> {
+    pub(in crate::github) fn validate(&self) -> Result<()> {
         if self.number == 0
             || self.number > i64::MAX as u64
             || self.node_id.is_empty()
@@ -139,7 +139,7 @@ impl PullTarget {
     pub(super) fn head(&self) -> String {
         format!("treeharbor/{}", self.branch_id.simple())
     }
-    pub(super) fn matches(&self, p: &PullSnapshot) -> bool {
+    pub(in crate::github) fn matches(&self, p: &PullSnapshot) -> bool {
         p.head_revision == self.git_revision
             && p.title == self.title
             && p.body == self.body
@@ -147,7 +147,11 @@ impl PullTarget {
     }
 }
 impl PullSnapshot {
-    pub(super) fn validate(&self, target: &PullTarget, spec: &BindingSpec) -> Result<()> {
+    pub(in crate::github) fn validate(
+        &self,
+        target: &PullTarget,
+        spec: &BindingSpec,
+    ) -> Result<()> {
         self.identity.validate()?;
         git(&self.head_revision)?;
         git(&self.base_revision)?;

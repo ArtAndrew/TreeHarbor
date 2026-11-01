@@ -2,6 +2,166 @@ use super::*;
 use sha2::{Digest, Sha256};
 use treeharbor_metadata::github::{RestoreContext, RestoreEffectKind};
 
+#[tokio::test]
+#[ignore = "requires PostgreSQL; exact bridge PR captures, stale context, replay and unchanged publication history"]
+async fn restore_pull_evidence_is_scoped_fresh_and_never_fabricates_a_publication_attempt() {
+    use treeharbor_metadata::github::{RestorePullEvidence, RestorePullReport};
+    let mut p = Projection::new().await;
+    let (operation, _, value) = pulls::requested(&mut p).await;
+    let old_report = pulls::report(&p, Uuid::new_v4(), &value).await;
+    let snapshot = old_report.pull.unwrap();
+    p.f.db
+        .revoke_github(&p.owner, &cmd("restore-revoke"), p.binding)
+        .await
+        .unwrap();
+    let manifest = "81".repeat(32);
+    journal(&p, &manifest, None).await;
+    let context =
+        p.f.db
+            .github_restore_context(&p.reader, 1, p.binding, &manifest)
+            .await
+            .unwrap();
+    let mut spec = RestorePullEvidence {
+        version: 1,
+        binding: p.binding,
+        manifest_sha256: manifest,
+        context_sha256: restore_digest(&context).unwrap(),
+        operation,
+        identity: snapshot.identity.clone(),
+        report: RestorePullReport {
+            version: 1,
+            app_id: context["specification"]["app_id"].as_u64().unwrap(),
+            installation_id: context["specification"]["upstream"]["installation_id"]
+                .as_u64()
+                .unwrap(),
+            started_at_unix_ms: old_report.observed_at_unix_ms,
+            finished_at_unix_ms: old_report.observed_at_unix_ms,
+            before: snapshot.clone(),
+            after: snapshot,
+            token_revoked: true,
+        },
+    };
+    let wrong_bridge = actor(&mut p.f, "other-reader", K::Bridge, &[P::HostRead]).await;
+    let before = retained(&p).await;
+    for auth in [&p.owner, &wrong_bridge] {
+        assert!(matches!(
+            p.f.db
+                .record_github_restore_pull(auth, &cmd("denied"), &spec)
+                .await,
+            Err(MetaError::Forbidden)
+        ));
+    }
+    let receipt =
+        p.f.db
+            .record_github_restore_pull(&p.reader, &cmd("observed-pr"), &spec)
+            .await
+            .unwrap();
+    assert_eq!(receipt["metadata_and_marker_match"], true);
+    assert_eq!(receipt["capture_consistent"], true);
+    assert_eq!(receipt["publication_authorized"], false);
+    assert_eq!(before[1..], retained(&p).await[1..]);
+    let sql = connection(&p.f.schema).await;
+    let row = sql
+        .query_one(
+            "SELECT attempt,pull_number,state FROM th_github_pulls WHERE pull=$1",
+            &[&operation],
+        )
+        .await
+        .unwrap();
+    assert!(row.get::<_, Option<Uuid>>(0).is_none());
+    assert!(row.get::<_, Option<i64>>(1).is_none());
+    assert_eq!(row.get::<_, String>(2), "requested");
+    for case in [
+        "app",
+        "installation",
+        "node",
+        "revision",
+        "repository",
+        "future",
+        "old",
+        "duration",
+    ] {
+        let mut bad = spec.clone();
+        match case {
+            "app" => bad.report.app_id += 1,
+            "installation" => bad.report.installation_id += 1,
+            "node" => bad.report.after.identity.node_id = "PR_other".into(),
+            "revision" => bad.report.after.head_revision = "git:sha1:invalid".into(),
+            "repository" => bad.report.after.head_repository += 1,
+            "future" => {
+                bad.report.started_at_unix_ms += 60000;
+                bad.report.finished_at_unix_ms += 60000;
+            }
+            "old" => {
+                bad.report.started_at_unix_ms -= 300000;
+                bad.report.finished_at_unix_ms -= 300000;
+            }
+            _ => bad.report.finished_at_unix_ms += 120001,
+        }
+        let before = retained(&p).await;
+        assert!(
+            p.f.db
+                .record_github_restore_pull(&p.reader, &cmd(case), &bad)
+                .await
+                .is_err(),
+            "{case}"
+        );
+        assert_eq!(before, retained(&p).await);
+    }
+    spec.report.after.body = "Changed metadata without the original marker".into();
+    let changed =
+        p.f.db
+            .record_github_restore_pull(&p.reader, &cmd("changing-pr"), &spec)
+            .await
+            .unwrap();
+    assert_eq!(changed["classification"], "changed_during_capture");
+    spec.report.before = spec.report.after.clone();
+    let changed =
+        p.f.db
+            .record_github_restore_pull(&p.reader, &cmd("different-pr"), &spec)
+            .await
+            .unwrap();
+    assert_eq!(changed["classification"], "differs_from_retained_target");
+    // A changed request key payload cannot replace the original captured report.
+    assert!(matches!(
+        p.f.db
+            .record_github_restore_pull(&p.reader, &cmd("observed-pr"), &spec)
+            .await,
+        Err(MetaError::IdempotencyConflict)
+    ));
+    p.f.db
+        .cancel_github_pull(&p.owner, &cmd("cancel-old-pull"), operation)
+        .await
+        .unwrap();
+    assert!(matches!(
+        p.f.db
+            .record_github_restore_pull(&p.reader, &cmd("stale-pr"), &spec)
+            .await,
+        Err(MetaError::RestoreContextChanged)
+    ));
+    let original: RestorePullEvidence =
+        serde_json::from_value(receipt["specification"].clone()).unwrap();
+    let mut restarted = Metadata::new(connection(&p.f.schema).await).await.unwrap();
+    assert_eq!(
+        restarted
+            .record_github_restore_pull(&p.reader, &cmd("observed-pr"), &original)
+            .await
+            .unwrap(),
+        receipt
+    );
+    restarted
+        .set_repository_access(&p.f.scope, "bridge", &[], "operator")
+        .await
+        .unwrap();
+    assert!(matches!(
+        restarted
+            .record_github_restore_pull(&p.reader, &cmd("observed-pr"), &original)
+            .await,
+        Err(MetaError::Forbidden)
+    ));
+    cleanup(&p.f.schema).await;
+}
+
 // A durable journal fixture, not evidence of pg_dump/restore or live GitHub recovery.
 pub(super) async fn journal(p: &Projection, manifest: &str, database_override: Option<&str>) {
     let sql = connection(&p.f.schema).await;

@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Add `github restore-inspect-pull`: read one exact PR twice with a scoped read
+  token, retain its full metadata through the assigned bridge, and compare it
+  with the current restored intent. A private journal retries the original
+  receipt after interruption without another host read. No publication, merge
+  or reconnection permission is created.
+
 - Extend restore context/assessment to version 2 with retained dequeues and
   webhook recovery requests, pages and attempts. Decisions can address exact
   composite delivery identities. Changed state or an older incomplete context

@@ -21,6 +21,33 @@ These correctness checks do not establish complete mode readiness or performance
 superiority. The installed native workload includes deliberate replacement-node
 recovery; live GitHub recovery remains a separate release gate.
 
+## Unreleased exact PR recovery evidence
+
+`github restore-inspect-pull` captures one explicitly selected PR twice through
+an assigned read-only bridge and retains its full snapshots against the current
+restore context. The server compares code and metadata, including the complete
+operation marker, without changing the old publication attempt or creating a
+write grant. A private single-capture journal recovers a lost service acknowledgment
+without another host read. See the [operator guide](restore-pull-evidence.md).
+
+Ten host-transport tests passed, including exact-number/node reads, closed/merged
+PRs, changed metadata, missing fields and wrong scope, with token revocation on
+failures. A real PostgreSQL test passed assigned-role checks, unchanged attempt/
+source history, clock/context rejection, mismatch classification, restart/replay
+and revoked access. The actual Connected HTTP/CLI projection trial passed its
+existing source/export/publication checks plus replay of a retained restore
+capture after server restart, with the App configuration absent, one durable
+receipt and denial after access revocation. That capture/quarantine is an explicit
+fixture; it is not a live GitHub disaster-recovery trial. The independent wire
+fixture, three journal tests, strict GitHub/metadata/service all-target Clippy,
+formatting and documentation file links passed. Required branch CI is pending;
+these commands are not in published 0.1.11 packages.
+
+The trusted bridge supplies network observations; the metadata service does not
+independently verify a GitHub signature or TLS transcript. Matching captures do
+not prove atomic host state, uniqueness among candidate PRs, source bytes or
+reconnection readiness. Full Connected and Standalone release gates remain open.
+
 ## Unreleased restore effect coverage
 
 Restore context and assessment version 2 include queue removals and webhook
@@ -41,7 +68,10 @@ Ten metadata/service unit tests passed, including an independently computed v2
 JSON digest and CLI refusal of changed/older contexts. The real PostgreSQL/HTTP
 source verification test also passed with the new context and retained its
 restart/retry behavior. Strict metadata/service all-target Clippy, formatting
-and changed Markdown file links passed. Full branch CI is pending.
+and changed Markdown file links passed. All six exact-head checks passed in
+[CI41337635617](https://github.com/ArtAndrew/TreeHarbor/actions/runs/41337635617)
+and the contribution-rights workflow before
+[PR129](https://github.com/ArtAndrew/TreeHarbor/pull/129) merged.
 
 Queue/check/PR-marker observations, post-backup discovery completeness and safe
 reconnection remain incomplete. These records do not authorize replay or establish

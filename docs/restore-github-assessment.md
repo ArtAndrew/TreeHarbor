@@ -59,6 +59,10 @@ lists other binding UUIDs. Do not delete or automatically adopt these objects.
 The report always has `reconciliation_complete: false` and
 `publication_authorized: false`, even when no differences are found.
 
+For a retained PR intent, use [exact PR capture](restore-pull-evidence.md) to read
+and retain a selected PR's full body/marker and metadata separately. A matching
+assessment alone does not establish that comparison.
+
 ## Version 2 context and limits
 
 The authenticated GitHub request is `{"action":"restore_context","epoch":1,
