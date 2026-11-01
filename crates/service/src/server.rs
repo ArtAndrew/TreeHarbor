@@ -464,6 +464,7 @@ async fn handle(
                 | "admission_blocked"
                 | "rebase_state_changed"
                 | "host_binding_state"
+                | "host_recovery_required"
                 | "host_projection_state"
                 | "host_publication_state"
                 | "host_inspection_state"

@@ -150,6 +150,24 @@ fn describe_binding(row: &Row) -> Result<Value> {
 fn describe_probe(row: &Row, spec: &BindingSpec) -> Value {
     json!({"version":1,"probe":row.get::<_,Uuid>("probe").to_string(),"binding":row.get::<_,Uuid>("binding").to_string(),"epoch":row.get::<_,i64>("epoch"),"state":row.get::<_,String>("state"),"expires_at_unix":row.get::<_,i64>("deadline"),"unexpired":row.get::<_,bool>("unexpired"),"specification":spec,"observation":row.get::<_,Option<Value>>("observation"),"publication_ready":false})
 }
+
+// Quarantine's durable journal survives losing local receipts and uses the same
+// repository/operations locks as binding creation. A historical result is not
+// permission to resume publication. Clearing this fence requires a separately
+// verified reconciliation protocol, not merely a new binding or bearer token.
+pub(crate) async fn restore_reconciliation_required(
+    tx: &Transaction<'_>,
+    scope: &Scope,
+) -> Result<bool> {
+    Ok(tx
+        .query_one(
+            "SELECT EXISTS(SELECT 1 FROM th_operations WHERE tenant=$1 AND repository=$2 AND kind='restore.quarantine.v1')",
+            &[&scope.tenant(), &scope.repository()],
+        )
+        .await?
+        .get(0))
+}
+
 impl Metadata {
     pub async fn bind_github(
         &mut self,
@@ -172,6 +190,9 @@ impl Metadata {
         };
         context(&mutation.tx, auth, cmd.epoch, Permission::RepositoryWrite).await?;
         let s = auth.scope();
+        if restore_reconciliation_required(&mutation.tx, s).await? {
+            return Err(Error::HostRecoveryRequired);
+        }
         let bridge=mutation.tx.query_opt("SELECT p.kind,p.enabled,a.permissions FROM th_principals p JOIN th_repository_access a USING(tenant,principal) WHERE p.tenant=$1 AND p.principal=$2 AND a.repository=$3 FOR SHARE OF p,a",&[&s.tenant(),&spec.bridge,&s.repository()]).await?.ok_or(Error::Forbidden)?;
         if bridge.get::<_, String>(0) != "bridge"
             || !bridge.get::<_, bool>(1)

@@ -593,7 +593,9 @@ impl Metadata {
         auth.check_transaction(&tx, &auth.scope, &auth.principal, Permission::Read)
             .await?;
         let row = tx.query_one("SELECT authority,state,epoch FROM th_repositories WHERE tenant=$1 AND repository=$2", &[&auth.scope.tenant,&auth.scope.repository]).await?;
-        let result = serde_json::json!({"tenant":auth.scope.tenant,"repository":auth.scope.repository.to_string(),"authority":row.get::<_,String>(0),"state":row.get::<_,String>(1),"epoch":row.get::<_,i64>(2)});
+        let github_reconciliation_required = row.get::<_, String>(0) == "connected"
+            && crate::github::restore_reconciliation_required(&tx, &auth.scope).await?;
+        let result = serde_json::json!({"tenant":auth.scope.tenant,"repository":auth.scope.repository.to_string(),"authority":row.get::<_,String>(0),"state":row.get::<_,String>(1),"epoch":row.get::<_,i64>(2),"github_reconciliation_required":github_reconciliation_required});
         auth.check_transaction(&tx, &auth.scope, &auth.principal, Permission::Read)
             .await?;
         tx.commit().await?;

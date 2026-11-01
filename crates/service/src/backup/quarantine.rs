@@ -173,7 +173,7 @@ async fn inner(o: Options, configure: bool) -> Result<Value> {
     check_objects(&tx, &manifest.backend, &manifest.inventory, &budget).await?;
     let repos = tx
         .query(
-            "SELECT tenant,repository FROM th_repositories ORDER BY tenant,repository LIMIT $1",
+            "SELECT tenant,repository FROM th_repositories ORDER BY tenant,repository LIMIT $1 FOR UPDATE NOWAIT",
             &[&(i64::from(o.max_entries) + 1)],
         )
         .await

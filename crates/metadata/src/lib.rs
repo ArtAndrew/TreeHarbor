@@ -126,6 +126,8 @@ pub enum Error {
     AdmissionBlocked,
     #[error("GitHub binding or probe is inactive, changed or expired")]
     HostBindingState,
+    #[error("restored repository requires GitHub reconciliation before reconnecting")]
+    HostRecoveryRequired,
     #[error("GitHub projection is cancelled, expired or no longer current")]
     HostProjectionState,
     #[error("GitHub publication state, mapping or attempt is no longer usable")]

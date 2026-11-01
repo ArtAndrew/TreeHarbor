@@ -181,7 +181,7 @@ async fn snapshot(
     let sequences:Value=client.query_one("SELECT coalesce(jsonb_agg(jsonb_build_array(sequencename,last_value) ORDER BY sequencename),'[]') FROM pg_sequences WHERE schemaname::text=$1",&[&schema]).await.unwrap().get(0);
     (data, sequences)
 }
-async fn connected_quarantine_fixture(f: &Fixture) {
+async fn connected_quarantine_fixture(f: &Fixture) -> (Scope, Uuid) {
     use treeharbor_metadata::access::{Permission as P, PrincipalKind as K};
     use treeharbor_metadata::github::{BindingSpec, Command as GitHubCommand, Observation};
     let mut session = Database::new(f.config.clone())
@@ -261,6 +261,7 @@ async fn connected_quarantine_fixture(f: &Fixture) {
     )
     .await
     .unwrap();
+    (scope, binding)
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -295,7 +296,7 @@ async fn cold_backup_restores_metadata_and_native_source_and_refuses_unsafe_inpu
         backend: "test-local".into(),
     });
     f.save_config();
-    connected_quarantine_fixture(&f).await;
+    let (connected_scope, old_binding) = connected_quarantine_fixture(&f).await;
     let mut service = f.start().await;
     let accepted = save_proposal(&mut f, base);
     let output = f.dir.path().join("backup");
@@ -648,6 +649,22 @@ async fn cold_backup_restores_metadata_and_native_source_and_refuses_unsafe_inpu
         snapshot(&restored_sql, &f.config.schema).await,
         before_quarantine
     );
+    // A binding transaction may hold the repository row before writing any
+    // binding/operation table. Table locks alone must not let it resume past the
+    // newly committed quarantine with an earlier eligibility observation.
+    restored_sql
+        .batch_execute(&format!(
+            "BEGIN; SELECT repository FROM {}.th_repositories FOR UPDATE",
+            f.config.schema
+        ))
+        .await
+        .unwrap();
+    assert!(!quarantine(digest).status.success());
+    restored_sql.batch_execute("ROLLBACK").await.unwrap();
+    assert_eq!(
+        snapshot(&restored_sql, &f.config.schema).await,
+        before_quarantine
+    );
     restored_sql
         .query_one(
             "SELECT set_config('search_path',$1,false)",
@@ -895,6 +912,15 @@ async fn cold_backup_restores_metadata_and_native_source_and_refuses_unsafe_inpu
         String::from_utf8_lossy(&result.stderr)
     );
     assert!(!objects.exists());
+    restored_binding_fence(
+        &f,
+        &mut recovered_service,
+        &restored_sql,
+        &connected_scope,
+        old_binding,
+        &stage,
+    )
+    .await;
     assert!(
         verify(&stage.join("backup"), digest).status.success(),
         "live writes changed the retained backup"
@@ -909,4 +935,117 @@ async fn cold_backup_restores_metadata_and_native_source_and_refuses_unsafe_inpu
         .await
         .unwrap();
     f.cleanup().await;
+}
+
+async fn restored_binding_fence(
+    f: &Fixture,
+    server: &mut Process,
+    sql: &tokio_postgres::Client,
+    restored_scope: &Scope,
+    old_binding: Uuid,
+    stage: &Path,
+) {
+    use treeharbor_metadata::access::Permission as P;
+    let mut session = Database::new(f.config.clone())
+        .unwrap()
+        .connect(true)
+        .await
+        .unwrap();
+    let db = &mut session.metadata;
+    let control = Scope::new(restored_scope.tenant(), Uuid::new_v4()).unwrap();
+    db.create_repository(&control, Authority::Connected)
+        .await
+        .unwrap();
+    let fixture: Value = serde_json::from_str(include_str!(
+        "../../../metadata/tests/fixtures/github-bind-v1.json"
+    ))
+    .unwrap();
+    for (scope, blocked) in [(restored_scope, true), (&control, false)] {
+        db.set_repository_access(
+            scope,
+            "backup-owner",
+            &[P::Read, P::RepositoryWrite],
+            "test",
+        )
+        .await
+        .unwrap();
+        db.set_repository_access(scope, "bridge", &[P::HostRead], "test")
+            .await
+            .unwrap();
+        let token = db
+            .issue_repository_token(
+                scope,
+                "backup-owner",
+                &[P::Read, P::RepositoryWrite],
+                3600,
+                "test",
+            )
+            .await
+            .unwrap();
+        let credential = Credential {
+            scope: scope.clone(),
+            token: token.secret,
+        };
+        let binding = Uuid::new_v4();
+        let request = json!({"method":"github","request":{"action":"bind","key":"rebind-after-restore","epoch":1,
+            "binding":binding,"specification":fixture["specification"]}});
+        for restart in [false, true] {
+            if restart {
+                if !blocked {
+                    break;
+                }
+                // The durable DB record, not a local completion file or process
+                // cache, must keep publication disabled with fresh credentials.
+                fs::remove_file(stage.join("quarantined.json")).unwrap();
+                server.0.kill().unwrap();
+                server.0.wait().unwrap();
+                *server = f.start().await;
+            }
+            let before = snapshot(sql, &f.config.schema).await;
+            let info = client::send(
+                &f.config.socket,
+                &credential.token,
+                credential
+                    .request(json!({"method":"repository_info"}))
+                    .to_string()
+                    .into_bytes(),
+                Duration::from_secs(10),
+            )
+            .await
+            .unwrap();
+            assert_eq!(info.status.as_u16(), 200);
+            assert_eq!(
+                info.body["result"]["github_reconciliation_required"],
+                blocked
+            );
+            let result = client::send(
+                &f.config.socket,
+                &credential.token,
+                credential.request(request.clone()).to_string().into_bytes(),
+                Duration::from_secs(10),
+            )
+            .await
+            .unwrap();
+            if blocked {
+                assert_eq!(result.status.as_u16(), 409);
+                assert_eq!(
+                    result.body,
+                    json!({"error":{"code":"host_recovery_required"}})
+                );
+                assert_eq!(
+                    snapshot(sql, &f.config.schema).await,
+                    before,
+                    "refused rebind changed restored metadata"
+                );
+                let historical = client::send(&f.config.socket, &credential.token,
+                    credential.request(json!({"method":"github","request":{"action":"status","epoch":1,"binding":old_binding}})).to_string().into_bytes(),
+                    Duration::from_secs(10)).await.unwrap();
+                assert_eq!(historical.status.as_u16(), 200);
+                assert_eq!(historical.body["result"]["state"], "revoked");
+            } else {
+                assert_eq!(result.status.as_u16(), 200);
+                assert_eq!(result.body["result"]["outcome"], "configured");
+            }
+        }
+    }
 }
