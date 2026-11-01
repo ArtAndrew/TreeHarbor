@@ -918,3 +918,101 @@ fn pack_variable_lengths_and_incompressible_binary_objects_restore_exactly() {
         );
     }
 }
+
+#[test]
+fn recovery_mapping_verifies_git_oracle_identity_and_rejects_false_origins() {
+    for algorithm in [HashAlgorithm::Sha1, HashAlgorithm::Sha256] {
+        let temp = tempfile::tempdir().unwrap();
+        fs::set_permissions(temp.path(), fs::Permissions::from_mode(0o700)).unwrap();
+        let s = store(&temp.path().join("store"));
+        let git = temp.path().join("oracle.git");
+        run(
+            temp.path(),
+            &[
+                "init",
+                "--bare",
+                &format!("--object-format={}", algorithm.name()),
+                git.to_str().unwrap(),
+            ],
+            b"",
+        );
+        let git_tree = text(run(&git, &["mktree"], b""));
+        let snap = tree(&s, &[]);
+        let raw = original_bytes(&git_tree, &[], "source\n");
+        let native = original(&s, &git, algorithm, snap, vec![], &raw, "source\n");
+        let Object::NativeCommit(c) = s.get(native).unwrap() else {
+            panic!()
+        };
+        let expected = c.git_origin.as_ref().unwrap().oid;
+        let verified = treeharbor_git_bridge::verify_mapping(
+            &s,
+            native,
+            expected,
+            temp.path(),
+            Limits::default(),
+        )
+        .unwrap();
+        assert_eq!(verified.native(), native);
+        assert_eq!(verified.git(), expected);
+        assert!(verified.source_objects() >= 5 && verified.source_bytes() > 0);
+        let wrong = match algorithm {
+            HashAlgorithm::Sha1 => GitOid::Sha1([0; 20]),
+            HashAlgorithm::Sha256 => GitOid::Sha256([0; 32]),
+        };
+        assert!(
+            treeharbor_git_bridge::verify_mapping(
+                &s,
+                native,
+                wrong,
+                temp.path(),
+                Limits::default()
+            )
+            .is_err()
+        );
+        let mut forged = c.clone();
+        forged.message = "different message".into();
+        let forged = s.put(&Object::NativeCommit(forged)).unwrap();
+        assert!(
+            treeharbor_git_bridge::verify_mapping(
+                &s,
+                forged,
+                expected,
+                temp.path(),
+                Limits::default()
+            )
+            .is_err()
+        );
+        let mut missing_parent = c;
+        missing_parent.parents = vec![ObjectId::from_bytes([42; 32])];
+        let missing_parent = s.put(&Object::NativeCommit(missing_parent)).unwrap();
+        assert!(
+            treeharbor_git_bridge::verify_mapping(
+                &s,
+                missing_parent,
+                expected,
+                temp.path(),
+                Limits::default()
+            )
+            .is_err()
+        );
+        assert!(matches!(
+            treeharbor_git_bridge::verify_mapping(
+                &s,
+                native,
+                expected,
+                temp.path(),
+                Limits {
+                    objects: 1,
+                    ..Limits::default()
+                }
+            ),
+            Err(treeharbor_git_bridge::Error::Limit)
+        ));
+        assert!(!fs::read_dir(temp.path()).unwrap().any(|e| {
+            e.unwrap()
+                .file_name()
+                .to_string_lossy()
+                .starts_with(".treeharbor-mapping-")
+        }));
+    }
+}

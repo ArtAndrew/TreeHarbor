@@ -528,6 +528,17 @@ enum Agent {
         #[arg(long)]
         output: PathBuf,
     },
+    /// Verify a preserved recovery commit against an exact Git revision on the server.
+    RestoreVerifySource {
+        #[arg(long)]
+        key: String,
+        #[arg(long,value_parser=clap::value_parser!(i64).range(1..))]
+        epoch: i64,
+        #[arg(long)]
+        decision_key: String,
+        #[arg(long)]
+        git_revision: String,
+    },
     /// Journal and resume preparation of one pending native queue entry.
     NativeAdvance {
         #[arg(long)]
@@ -957,6 +968,7 @@ impl Agent {
             Self::SourceExport { .. }
             | Self::History { .. }
             | Self::Diff { .. }
+            | Self::RestoreVerifySource { .. }
             | Self::NativeAdvance { .. }
             | Self::NativePrepare { .. }
             | Self::RebasePrepare { .. }
@@ -1242,6 +1254,17 @@ pub async fn run(cli: Cli) -> Result<bool> {
         } => {
             let credential = Credential::load(&credential_file)?;
             let action = match action {
+                Agent::RestoreVerifySource {
+                    key,
+                    epoch,
+                    decision_key,
+                    git_revision,
+                } => {
+                    let reply=client::restore_verify_source(&socket,&credential,json!({"key":key,"epoch":epoch,"decision_key":decision_key,"git_revision":git_revision}),Duration::from_millis(timeout_ms)).await?;
+                    println!("{}", reply.body);
+                    return Ok(reply.status.is_success());
+                }
+
                 Agent::ApiRunNew {
                     state,
                     authority,

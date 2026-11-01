@@ -21,6 +21,7 @@ mod node_cli;
 pub mod pack;
 mod proposals;
 mod rebases;
+mod restore_source;
 mod review;
 mod seals;
 pub mod server;

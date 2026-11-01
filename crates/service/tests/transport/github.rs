@@ -7,6 +7,8 @@ mod events;
 mod projections;
 #[path = "github/recovery.rs"]
 mod recovery;
+#[path = "github/restore_source.rs"]
+mod restore_source;
 
 fn provision_bridge(f: &Fixture) -> PathBuf {
     let bridge = f.dir.path().join("bridge-import.json");

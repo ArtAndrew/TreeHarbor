@@ -11,6 +11,8 @@ mod pack;
 mod process;
 pub mod publish;
 mod stream;
+mod verify;
+pub use verify::{VerifiedMapping, verify_mapping};
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -157,6 +159,14 @@ fn valid_ref(name: &str) -> bool {
 }
 
 pub(crate) fn check_limits(limits: Limits, git: &Path) -> Result<()> {
+    check_source_limits(limits)?;
+    if !git.is_absolute() || !git.is_file() {
+        return Err(Error::Configuration);
+    }
+    Ok(())
+}
+
+fn check_source_limits(limits: Limits) -> Result<()> {
     if limits.objects == 0
         || limits.objects > 1_000_000
         || limits.edges == 0
@@ -169,8 +179,6 @@ pub(crate) fn check_limits(limits: Limits, git: &Path) -> Result<()> {
         || limits.path_visits > 10_000_000
         || limits.timeout.is_zero()
         || limits.timeout > Duration::from_secs(3600)
-        || !git.is_absolute()
-        || !git.is_file()
     {
         return Err(Error::Configuration);
     }

@@ -216,6 +216,7 @@ async fn handle(
         return response(StatusCode::OK, json!({"status":"alive"}));
     }
     let upload = crate::source::route(request.uri().path());
+    let restore_source = request.uri().path() == "/v1/github/restore/verify-source";
     let source_read = request.uri().path() == "/v1/source/read";
     let source_export = request.uri().path() == "/v1/source/export";
     let projection_export = request.uri().path() == "/v1/github/projections/export";
@@ -228,6 +229,7 @@ async fn handle(
     let change_submit = request.uri().path() == "/v1/changes/submit";
     if (request.uri().path() != "/v1/commands"
         && upload.is_none()
+        && !restore_source
         && !source_read
         && !source_export
         && !projection_export
@@ -374,6 +376,18 @@ async fn handle(
             Err(failure) => error(
                 StatusCode::from_u16(failure.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
                 failure.code,
+            ),
+        };
+    }
+    if restore_source {
+        let Some(backend) = backend else {
+            return error(StatusCode::SERVICE_UNAVAILABLE, "storage_not_configured");
+        };
+        return match crate::restore_source::verify(&body, &credential, backend, pool).await {
+            Ok(value) => response(StatusCode::OK, value),
+            Err(f) => error(
+                StatusCode::from_u16(f.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+                f.code,
             ),
         };
     }

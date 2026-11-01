@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "tenant": "example",
+  "repository": "00000000-0000-4000-8000-000000000001",
+  "key": "mapping-001",
+  "epoch": 1,
+  "decision_key": "preserve-001",
+  "git_revision": "git:sha1:1111111111111111111111111111111111111111"
+}
