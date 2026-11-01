@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Refuse new GitHub bindings for a repository with a durable restore-quarantine
+  journal, returning `host_recovery_required` and exposing
+  `github_reconciliation_required` through `repository-info`. Fresh credentials
+  or a lost local receipt do not clear the restriction. Reads and exports remain
+  available; a verified reconciliation/reconnection procedure is still unfinished.
+- Lock repository rows during quarantine/configuration to reject a binding
+  transaction that started before quarantine; table locks alone are insufficient.
+
 ## 0.1.11-alpha.1 — local recovery continuation — 2026-11-01
 
 - Add `backup restore-configure` after explicit quarantine and operator fencing.

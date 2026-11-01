@@ -21,6 +21,26 @@ These correctness checks do not establish complete mode readiness or performance
 superiority. The installed native workload includes deliberate replacement-node
 recovery; live GitHub recovery remains a separate release gate.
 
+## Unreleased restored GitHub binding fence
+
+New GitHub binding creation checks the repository's durable quarantine journal
+inside the same repository transaction. It returns HTTP 409 /
+`host_recovery_required`; `repository-info` exposes
+`github_reconciliation_required`. Quarantine/configuration also lock repository
+rows without waiting, so a binding transaction started before quarantine cannot
+resume after revocation with an earlier eligibility observation. No schema
+migration, authority/epoch rewrite or new license restriction is introduced.
+
+The targeted real PostgreSQL dump/restore test passed refusal of a held repository
+row, refusal of reconnection with fresh credentials through the restored HTTP
+service, persistence across restart/lost local receipt, exact metadata retention
+on refusal, historical revoked-binding inspection and successful binding of an
+unrestored control repository. Existing retained-source/export checks also passed.
+Required branch CI remains pending. This is not live GitHub reconciliation; the
+verified resolution/reconnection procedure remains unfinished. The
+[operator guide](restore-configure.md#development-builds-after-0111) distinguishes
+this development behavior from released 0.1.11.
+
 ## Released 0.1.11-alpha.1 local recovery continuation
 
 `backup restore-configure` requires prior quarantine and explicit acknowledgment

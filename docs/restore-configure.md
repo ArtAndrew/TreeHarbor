@@ -92,6 +92,22 @@ remain revoked. This command does not reconcile GitHub refs, PRs, queue/check
 attempts or effects occurring after the backup. Keep publishers off until a
 separately controlled reconciliation/reconnection procedure is completed.
 
+### Development builds after 0.1.11
+
+The server now enforces the reconnection restriction for repositories recorded by
+`restore-quarantine`, including journals created by 0.1.11. `repository-info`
+reports `github_reconciliation_required: true` for the restored Connected
+repository. A new GitHub binding receives HTTP 409 with `host_recovery_required`.
+New credentials, a different binding ID, service restart or deleting the local
+quarantine receipt do not remove the durable restriction. Other repositories in
+the same installation can still connect normally.
+
+This guard is not included in the published 0.1.11 package, whose operator must
+keep publishers disconnected as described above. The development guard preserves
+source reads/export and historical inspection; it does not perform reconciliation
+or provide an override. Do not delete recovery journals to bypass it. A supported
+resolution protocol remains required before reconnecting for new publications.
+
 ## Failures and retries
 
 Existing complete or partial `active/` output is never overwritten or silently
