@@ -125,6 +125,7 @@ pub(super) async fn exercise(f: &mut Fixture, server: &mut Process, owner: &Path
             .get::<_, i64>(0),
         1
     );
+    super::restore_queue::exercise(f, server, binding, &manifest).await;
     // Local acknowledgment is never substituted for current server authorization.
     f.admin_ok(&[
         "access-set",

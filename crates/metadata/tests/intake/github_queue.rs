@@ -810,3 +810,5 @@ async fn queue_terminal_result_cannot_be_substituted_or_erased_by_expiry() {
 
 #[path = "github_restore_effects.rs"]
 mod restore_effects;
+#[path = "github_restore_queues.rs"]
+mod restore_queues;

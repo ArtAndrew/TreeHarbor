@@ -1,0 +1,74 @@
+{
+  "request": {
+    "action": "restore_queue_record",
+    "key": "queue-capture",
+    "epoch": 1,
+    "specification": {
+      "version": 1,
+      "binding": "00000000-0000-4000-8000-000000000001",
+      "manifest_sha256": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+      "context_sha256": "a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2",
+      "subject": {
+        "kind": "dequeue",
+        "operation": "00000000-0000-4000-8000-000000000002"
+      },
+      "report": {
+        "version": 1,
+        "app_id": 7,
+        "installation_id": 9,
+        "started_at_unix_ms": 1,
+        "finished_at_unix_ms": 2,
+        "before": {
+          "pull": {
+            "repository_id": 11,
+            "number": 17,
+            "node_id": "PR_test_17",
+            "head_ref": "treeharbor/04040404040404040404040404040404",
+            "base_ref": "main",
+            "head_revision": "git:sha1:1111111111111111111111111111111111111111",
+            "base_revision": "git:sha1:2222222222222222222222222222222222222222",
+            "state": "open",
+            "draft": false,
+            "merged": false
+          },
+          "queue_enabled": true,
+          "configuration": null,
+          "queue_id": "MQ_one",
+          "entry": {
+            "id": "MQE_one",
+            "state": "QUEUED",
+            "base": null,
+            "head": null
+          },
+          "final_commit": null
+        },
+        "after": {
+          "pull": {
+            "repository_id": 11,
+            "number": 17,
+            "node_id": "PR_test_17",
+            "head_ref": "treeharbor/04040404040404040404040404040404",
+            "base_ref": "main",
+            "head_revision": "git:sha1:1111111111111111111111111111111111111111",
+            "base_revision": "git:sha1:2222222222222222222222222222222222222222",
+            "state": "open",
+            "draft": false,
+            "merged": false
+          },
+          "queue_enabled": true,
+          "configuration": null,
+          "queue_id": "MQ_one",
+          "entry": {
+            "id": "MQE_one",
+            "state": "QUEUED",
+            "base": null,
+            "head": null
+          },
+          "final_commit": null
+        },
+        "token_revoked": true
+      }
+    }
+  },
+  "specification_sha256": "031680399af9d5e98ff5a04de9d18c2ae1db1a1aead8d21a150666783801850d"
+}

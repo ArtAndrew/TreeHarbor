@@ -14,6 +14,13 @@ mod host_policy;
 mod publication;
 mod result;
 pub use dequeue::ObservedDequeue;
+use treeharbor_github_contract::restore_queue::RestoreQueueReport;
+
+pub struct ObservedRestoreQueue {
+    pub binding: RepositoryBinding,
+    pub report: RestoreQueueReport,
+    pub token_expires_at: String,
+}
 
 pub struct ObservedQueue {
     pub binding: RepositoryBinding,
@@ -91,7 +98,9 @@ struct EntryPull {
 struct Entry {
     id: String,
     state: String,
+    #[serde(deserialize_with = "required_nullable")]
     base_commit: Option<Commit>,
+    #[serde(deserialize_with = "required_nullable")]
     head_commit: Option<Commit>,
     merge_queue: QueueId,
     pull_request: EntryPull,
@@ -112,8 +121,11 @@ struct Pull {
     base_repository: DatabaseId,
     is_merge_queue_enabled: bool,
     is_in_merge_queue: bool,
+    #[serde(deserialize_with = "required_nullable")]
     merge_commit: Option<Commit>,
+    #[serde(deserialize_with = "required_nullable")]
     merge_queue: Option<Queue>,
+    #[serde(deserialize_with = "required_nullable")]
     merge_queue_entry: Option<Entry>,
 }
 #[derive(Deserialize)]
@@ -131,8 +143,72 @@ struct Graph {
     data: Option<Data>,
     errors: Option<Value>,
 }
+fn required_nullable<'de, D, T>(d: D) -> std::result::Result<Option<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: serde::Deserialize<'de>,
+{
+    Option::<T>::deserialize(d)
+}
 
 impl Connection {
+    /// Two read-only membership snapshots; no enqueue/dequeue call or settlement.
+    pub async fn observe_restore_queue(
+        &self,
+        b: &RepositoryBinding,
+        t: &QueueTarget,
+    ) -> Result<ObservedRestoreQueue> {
+        b.validate()?;
+        t.validate().map_err(|_| Error::Queue)?;
+        if b.repository_id != t.pull.repository_id || t.pull.pull_number > i32::MAX as u64 {
+            return Err(Error::Queue);
+        }
+        let _slot = tokio::time::timeout(PROBE_TIMEOUT, self.slots.acquire())
+            .await
+            .map_err(|_| Error::Deadline)?
+            .map_err(|_| Error::Configuration)?;
+        let (installation, token) =
+            tokio::time::timeout(PROBE_TIMEOUT, self.mint_for(b, wire::Capability::QueueRead))
+                .await
+                .map_err(|_| Error::Deadline)??;
+        let result = tokio::time::timeout(PROBE_TIMEOUT, async {
+            let started = now()? as i64 * 1000;
+            let probe = self
+                .observe_for(b, &installation, &token, wire::Capability::QueueRead)
+                .await?;
+            if now()?.saturating_add(PROBE_TIMEOUT.as_secs() + 30)
+                >= token.check_for(b.repository_id, now()?, wire::Capability::QueueRead)?
+            {
+                return Err(Error::TokenLifetime);
+            }
+            let before = self.queue_snapshot(b, t, &token, false).await?;
+            let after = self.queue_snapshot(b, t, &token, false).await?;
+            let report = RestoreQueueReport {
+                version: 1,
+                app_id: probe.app_id,
+                installation_id: b.installation_id,
+                started_at_unix_ms: started,
+                finished_at_unix_ms: now()? as i64 * 1000,
+                before,
+                after,
+                token_revoked: false,
+            };
+            report.validate(t).map_err(|_| Error::Queue)?;
+            Ok(report)
+        })
+        .await
+        .map_err(|_| Error::Deadline)
+        .and_then(|v| v);
+        let revoked = self.revoke(&token).await.is_ok();
+        let mut report = result?;
+        report.token_revoked = revoked;
+        Ok(ObservedRestoreQueue {
+            binding: b.clone(),
+            report,
+            token_expires_at: token.expires_at.clone(),
+        })
+    }
+
     async fn queue_snapshot(
         &self,
         b: &RepositoryBinding,
