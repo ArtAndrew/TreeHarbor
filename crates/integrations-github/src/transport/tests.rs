@@ -7,6 +7,8 @@ mod evidence_tests;
 mod publisher_tests;
 #[path = "tests/pulls.rs"]
 mod pull_tests;
+#[path = "tests/restore_inventory.rs"]
+mod restore_inventory_tests;
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use std::{fs, process::Command};
 use tokio::{

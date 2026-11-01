@@ -21,6 +21,28 @@ These correctness checks do not establish complete mode readiness or performance
 superiority. The installed native workload includes deliberate replacement-node
 recovery; live GitHub recovery remains a separate release gate.
 
+## Unreleased GitHub restore inventory
+
+`github restore-inventory --config` collects current heads and all PR states
+without requiring operation IDs from the restored database. It pins repository
+identity on each page, uses only a repository-scoped read token, attempts revocation
+after observation errors, and rejects partial/error responses, repeated identities,
+inconsistent counts/cursors and exceeded bounds. It never clears quarantine or
+replays a publication. See the [operator guide](restore-github-inventory.md).
+
+Six targeted HTTP transport tests passed, covering multiple pages, a merged PR
+without a surviving branch, deleted/foreign forks, malformed and missing fields,
+GraphQL errors alongside data, scope replacement, cursor/count inconsistencies,
+the page budget, lost responses and failed revocation. The exact query shapes
+were also accepted by GitHub for the public TreeHarbor repository using existing
+GitHub CLI authentication. This is API-schema evidence, not a live App credential
+trial or full restore acceptance. Required branch CI remains pending.
+
+The report covers an observation interval, not an atomic host snapshot. It omits
+tags, source contents, PR bodies/markers and queue/check effects. Durable comparison
+with the restored operations, explicit discrepancy resolution and safe reconnection
+remain unfinished; `reconciliation_complete` stays false.
+
 ## Unreleased restored GitHub binding fence
 
 New GitHub binding creation checks the repository's durable quarantine journal
@@ -36,7 +58,9 @@ row, refusal of reconnection with fresh credentials through the restored HTTP
 service, persistence across restart/lost local receipt, exact metadata retention
 on refusal, historical revoked-binding inspection and successful binding of an
 unrestored control repository. Existing retained-source/export checks also passed.
-Required branch CI remains pending. This is not live GitHub reconciliation; the
+[PR124 CI](https://github.com/ArtAndrew/TreeHarbor/actions/runs/41322172745) passed
+all required checks, and the reviewed tree merged as
+`fd3c5ee26e746252c3069b7ed7b62c2308e2792c`. This is not live GitHub reconciliation; the
 verified resolution/reconnection procedure remains unfinished. The
 [operator guide](restore-configure.md#development-builds-after-0111) distinguishes
 this development behavior from released 0.1.11.

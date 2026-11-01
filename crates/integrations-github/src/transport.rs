@@ -14,6 +14,7 @@ pub(crate) mod evidence;
 pub(crate) mod publisher;
 pub(crate) mod pulls;
 pub(crate) mod queue;
+pub(crate) mod restore_inventory;
 
 const MAX_RESPONSE: usize = 128 * 1024;
 const PROBE_TIMEOUT: Duration = Duration::from_secs(45);

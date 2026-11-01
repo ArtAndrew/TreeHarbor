@@ -17,6 +17,10 @@ pub use transport::deliveries::{
 };
 pub use transport::publisher::{BranchObservation, BranchOutcome, BranchResult};
 pub use transport::pulls::{ExpectedPull, PullIdentity, PullObservation, PullSnapshot, PullTarget};
+pub use transport::restore_inventory::{
+    InventoryCommit, InventoryHead, InventoryObject, InventoryPull, InventoryRepositoryId,
+    RestoreInventory,
+};
 
 pub const API_VERSION: &str = "2026-03-10";
 pub struct GitDownload {
@@ -110,10 +114,13 @@ pub enum Stage {
     WebhookDeliveries,
     WebhookDeliveryDetail,
     WebhookRedelivery,
+    RestoreInventory,
 }
 /// Never retains response bodies, URLs, private keys, tokens or upstream errors.
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum Error {
+    #[error("GitHub restore inventory is incomplete, inconsistent or exceeds its bound")]
+    RestoreInventory,
     #[error("GitHub webhook recovery identity, configuration or delivery does not match")]
     WebhookRecovery,
     #[error("GitHub webhook pagination is invalid or exceeds its bound")]

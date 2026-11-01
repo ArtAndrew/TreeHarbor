@@ -267,6 +267,12 @@ pub enum Action {
         #[arg(long)]
         config: PathBuf,
     },
+    /// Discover current heads and all PR states after restore; does not reconnect
+    /// the service, resolve discrepancies or grant any publication permission.
+    RestoreInventory {
+        #[arg(long)]
+        config: PathBuf,
+    },
 }
 #[derive(clap::Args)]
 pub struct PolicyOwnerArgs {
@@ -731,6 +737,17 @@ pub async fn run(action: Action) -> Result<bool> {
                 serde_json::to_string_pretty(&observation).map_err(|_| Error::Http)?
             );
             Ok(true)
+        }
+        Action::RestoreInventory { config } => {
+            let (credentials, config) = load(&config)?;
+            let observation = Connection::new(credentials)?
+                .observe_restore_inventory(&config.repository)
+                .await?;
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&observation).map_err(|_| Error::Http)?
+            );
+            Ok(observation.token_revoked)
         }
     }
 }
