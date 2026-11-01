@@ -108,6 +108,10 @@ source reads/export and historical inspection; it does not perform reconciliatio
 or provide an override. Do not delete recovery journals to bypass it. A supported
 resolution protocol remains required before reconnecting for new publications.
 
+The development [GitHub inventory command](restore-github-inventory.md) can collect
+current heads and all PR states for that investigation. It does not clear this
+restriction or prove that external effects have been reconciled.
+
 ## Failures and retries
 
 Existing complete or partial `active/` output is never overwritten or silently

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add read-only `github restore-inventory` discovery of current heads and all PR
+  states, including closed PRs whose branches no longer exist. Bounded cursor
+  traversal rejects incomplete/ambiguous pages; it never reconnects a restored
+  service, replays publications or declares recovery complete.
 - Refuse new GitHub bindings for a repository with a durable restore-quarantine
   journal, returning `host_recovery_required` and exposing
   `github_reconciliation_required` through `repository-info`. Fresh credentials
