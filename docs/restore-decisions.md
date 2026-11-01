@@ -72,7 +72,9 @@ it does not revalidate that decision for current use.
 | `{"action":"preserve_source","source_holder":"<existing pin>","native_revision":"native:sha256:<digest>"}` | Copy a live, repository-scoped commit pin to an independent permanent recovery pin. Wrong revision, object type, scope or generation fails atomically. |
 
 Use the source-import/upload result's existing pin holder and exact native revision
-for preservation. This command does not fetch or accept new source bytes. Preserve
+for preservation. This command does not fetch or accept new source bytes.
+Use [server-side source verification](restore-source-verification.md) afterward
+to obtain a separate verified Git/native mapping receipt. Preserve
 post-backup code through the source acceptance path first. A successful pin copy
 protects that accepted commit and its reachable object graph from ordinary GC;
 it does not establish Git/native mapping, prove a host PR's contents, attest physical

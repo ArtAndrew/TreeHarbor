@@ -9,6 +9,7 @@ authors.workspace = true
 publish.workspace = true
 
 [dependencies]
+treeharbor-git-bridge.workspace = true
 treeharbor-github-webhook.workspace = true
 treeharbor-github-contract.workspace = true
 tokio-postgres.workspace = true

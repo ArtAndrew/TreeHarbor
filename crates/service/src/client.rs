@@ -269,6 +269,31 @@ pub async fn history(
     )
     .await
 }
+pub async fn restore_verify_source(
+    socket: &Path,
+    credential: &Credential,
+    mut fields: Value,
+    timeout: Duration,
+) -> Result<Reply> {
+    fields["version"] = json!(1);
+    fields["tenant"] = json!(credential.scope.tenant());
+    fields["repository"] = json!(credential.scope.repository());
+    let body = serde_json::to_vec(&fields).map_err(|_| Error::Config)?;
+    if body.len() > MAX_REQUEST_BYTES {
+        return Err(Error::Size);
+    }
+    send_request(
+        socket,
+        &credential.token,
+        "POST",
+        "/v1/github/restore/verify-source".into(),
+        "application/json",
+        body,
+        timeout,
+    )
+    .await
+}
+
 pub async fn review(
     socket: &Path,
     credential: &Credential,

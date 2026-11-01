@@ -569,3 +569,140 @@ async fn restore_decision_refuses_foreign_and_wrong_kind_source_without_partial_
     ));
     cleanup(&p.f.schema).await;
 }
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL; exact projector proof, post-verification context race and permission revocation"]
+async fn restore_mapping_rechecks_context_and_authority_before_committing_proof() {
+    let (mut p, mut spec, _) = decision_fixture().await;
+    let RevisionRef::Native(root) = p.f.revision else {
+        unreachable!()
+    };
+    spec.disposition = RestoreDisposition::PreserveSource {
+        source_holder: format!("base:{}", root.hex()),
+        native_revision: p.f.revision.to_string(),
+    };
+    p.f.db
+        .record_github_restore_decision(&p.owner, &cmd("source-decision"), &spec)
+        .await
+        .unwrap();
+    // Independent SHA-1 of Git's commit header + the fixture's native projection:
+    // empty Git tree; Fixture <fixture@example.invalid> 0 +0000 as author/committer;
+    // message "base" without a trailing newline. Not taken from the verifier.
+    let expected = "git:sha1:2acbe39a88a8dfe59d8370733d81f21ec8a76d04";
+    let RevisionRef::Git(git) = expected.parse().unwrap() else {
+        unreachable!()
+    };
+    let scratch = private_temp();
+    let proof = treeharbor_git_bridge::verify_mapping(
+        &p.f.stage,
+        root,
+        git,
+        scratch.path(),
+        Default::default(),
+    )
+    .unwrap();
+    let before = retained(&p).await;
+    assert!(matches!(
+        p.f.db
+            .open_restore_source_export(&p.reader, 1, "source-decision", 60)
+            .await,
+        Err(MetaError::Forbidden)
+    ));
+    assert!(matches!(
+        p.f.db
+            .record_github_restore_mapping(
+                &p.owner,
+                &cmd("bad-proof"),
+                "source-decision",
+                &format!("git:sha1:{}", "00".repeat(20)),
+                &proof
+            )
+            .await,
+        Err(MetaError::ReceiptMismatch)
+    ));
+    let Object::NativeCommit(mut other_commit) = p.f.stage.get(root).unwrap() else {
+        unreachable!()
+    };
+    other_commit.message = "other".into();
+    let other_root = put(&p.f.stage, Object::NativeCommit(other_commit));
+    let other_expected = "git:sha1:5ecc92ddd78d6b01fd04343542c04e2ffaff90dd";
+    let RevisionRef::Git(other_git) = other_expected.parse().unwrap() else {
+        unreachable!()
+    };
+    let other_proof = treeharbor_git_bridge::verify_mapping(
+        &p.f.stage,
+        other_root,
+        other_git,
+        scratch.path(),
+        Default::default(),
+    )
+    .unwrap();
+    assert!(matches!(
+        p.f.db
+            .record_github_restore_mapping(
+                &p.owner,
+                &cmd("wrong-root-proof"),
+                "source-decision",
+                other_expected,
+                &other_proof
+            )
+            .await,
+        Err(MetaError::ReceiptMismatch)
+    ));
+    assert_eq!(before, retained(&p).await);
+    let receipt =
+        p.f.db
+            .record_github_restore_mapping(
+                &p.owner,
+                &cmd("mapping"),
+                "source-decision",
+                expected,
+                &proof,
+            )
+            .await
+            .unwrap();
+    assert_eq!(receipt["git_mapping_verified"], true);
+    assert_eq!(receipt["host_state_verified"], false);
+    assert_eq!(receipt["publication_authorized"], false);
+    let after = retained(&p).await;
+    assert_eq!(&before[1..], &after[1..]);
+    let RestoreDecisionSubject::Retained { operation, .. } = spec.subject else {
+        unreachable!()
+    };
+    p.f.db
+        .cancel_github_publication(&p.owner, &cmd("move-context"), operation)
+        .await
+        .unwrap();
+    let changed = retained(&p).await;
+    assert!(matches!(
+        p.f.db
+            .record_github_restore_mapping(
+                &p.owner,
+                &cmd("stale-proof"),
+                "source-decision",
+                expected,
+                &proof
+            )
+            .await,
+        Err(MetaError::RestoreContextChanged)
+    ));
+    assert_eq!(changed, retained(&p).await);
+    assert_eq!(
+        Some(receipt),
+        p.f.db
+            .github_restore_mapping_replay(&p.owner, &cmd("mapping"), "source-decision", expected)
+            .await
+            .unwrap()
+    );
+    p.f.db
+        .set_repository_access(&p.f.scope, "human", &[P::Read], "test")
+        .await
+        .unwrap();
+    assert!(matches!(
+        p.f.db
+            .github_restore_mapping_replay(&p.owner, &cmd("mapping"), "source-decision", expected)
+            .await,
+        Err(MetaError::Forbidden)
+    ));
+    cleanup(&p.f.schema).await;
+}

@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add server-side `client restore-verify-source` for a preserved recovery commit.
+  The Rust projector checks the full graph against an exact Git revision, then
+  records a durable mapping after rechecking current fences. No Git process,
+  live-host claim or reconnection grant is involved.
+
 - Add owner-only, append-only restore decisions with exact-context checks,
   predecessor conflict detection and historical retry/read receipts. A source
   preservation decision atomically copies an accepted commit pin; no decision

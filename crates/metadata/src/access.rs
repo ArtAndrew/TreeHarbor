@@ -86,9 +86,10 @@ impl Permission {
             "github.publication.prepare.v1"
             | "github.publication.begin.v1"
             | "github.publication.report.v1" => Ok(Self::HostPublish),
-            "github.restore.decision.v1" | "github.bind.v1" | "github.revoke.v1" => {
-                Ok(Self::RepositoryWrite)
-            }
+            "github.restore.mapping.v1"
+            | "github.restore.decision.v1"
+            | "github.bind.v1"
+            | "github.revoke.v1" => Ok(Self::RepositoryWrite),
             "github.import.request.v1" | "github.import.cancel.v1" => Ok(Self::RepositoryWrite),
             "github.import.begin.v1" | "github.import.finish.v1" => Ok(Self::HostRead),
             "github.projection.request.v1"

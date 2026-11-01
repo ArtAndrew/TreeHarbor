@@ -21,6 +21,33 @@ These correctness checks do not establish complete mode readiness or performance
 superiority. The installed native workload includes deliberate replacement-node
 recovery; live GitHub recovery remains a separate release gate.
 
+## Unreleased verified recovery source mapping
+
+`client restore-verify-source` computes a mapping from a decision's permanent
+native-commit pin to an exact expected Git revision. The server reads a scoped,
+leased complete graph and runs the existing Rust projector, including raw Git
+origin/tree/parent checks. Only its opaque proof can produce the durable mapping
+receipt, after a final context/authorization check. A request cannot supply a
+success flag, arbitrary source root or executable. See the
+[operator guide and version-1 request](restore-source-verification.md).
+
+A Git-oracle test passed for both hash algorithms, mismatched OIDs, false origin
+metadata, missing parents and exhausted bounds. A real PostgreSQL/HTTP test passed
+actual Git-history upload, server-side verification with no executables in PATH,
+wrong-role/forged-field refusal, failed mapping without a success record,
+restart/retry and historical retrieval. Its quarantine journal and external branch
+identity are explicit fixtures; this is not a live GitHub or full database-restore
+trial. A PostgreSQL proof test passed wrong root/revision, state changes between
+computation and commit, immutable retry and revoked access. The version-1 wire
+fixture rejects client-supplied proof/root/command fields.
+
+The mapping proves retained content correspondence, not current host state,
+signature authenticity, discovery completeness or reconnection approval. No schema
+migration or new third-party package is introduced; metadata uses the existing
+Git-bridge crate's sealed proof type. Standalone's native path still invokes no
+Git process. Strict Git-bridge/metadata/service all-target Clippy, formatting and
+changed documentation links passed. Required branch CI is pending.
+
 ## Unreleased recovery decisions and source retention
 
 The `restore_decision_record` API saves an owner-authored decision against the
@@ -46,7 +73,9 @@ pinning does not verify Git/native mapping or completeness of post-backup discov
 Complete effect reconciliation and atomic new-binding admission remain open. No
 schema migration or new permissions are introduced. Strict metadata/service
 all-target Clippy, formatting and changed documentation link checks passed.
-Required branch CI is pending.
+[PR127 CI](https://github.com/ArtAndrew/TreeHarbor/actions/runs/41332605723)
+passed all required checks; the reviewed tree merged as
+`1a227dab7bbaa923e61620134e272297100cd2f0`.
 
 ## Unreleased restore state assessment
 

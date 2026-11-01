@@ -116,7 +116,7 @@ fn parse(body: &[u8]) -> Result<(Scope, ExportFence)> {
         },
     ))
 }
-async fn spool(
+pub(crate) async fn spool(
     db: &mut Metadata,
     store: &ManagedStore,
     read: &SourceExport,
