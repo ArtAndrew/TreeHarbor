@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "value": {
+    "z": "x",
+    "a": [
+      1,
+      true,
+      null
+    ]
+  },
+  "sha256": "6f73a66d00d078059ea1e961167b652ab6f3b0e426c7eecd6374b0ddcdb5f555"
+}

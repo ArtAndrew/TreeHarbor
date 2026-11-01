@@ -19,9 +19,13 @@ mod publish;
 mod pulls;
 mod queue;
 mod recovery;
+mod restore;
 
 #[derive(Subcommand)]
 pub enum Action {
+    /// Compare live host discovery with an exact quarantined binding's retained
+    /// operations. Reports discrepancies without resolving or replaying them.
+    RestoreAssess(restore::Options),
     /// Preview required check names and configuration matching without approval.
     PolicyPlan(PolicyOwnerArgs),
     /// Adopt an explicitly reviewed policy with a generation fence and replay key.
@@ -372,6 +376,7 @@ fn matches_config(config: &Config, spec: &treeharbor_metadata::github::BindingSp
 }
 pub async fn run(action: Action) -> Result<bool> {
     match action {
+        Action::RestoreAssess(options) => restore::run(options).await,
         Action::PolicyPlan(policy) => policy_owner(policy, None).await,
         Action::PolicyAdopt { policy, key } => policy_owner(policy, Some(key)).await,
         Action::CheckPublish {

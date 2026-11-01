@@ -919,6 +919,7 @@ async fn cold_backup_restores_metadata_and_native_source_and_refuses_unsafe_inpu
         &connected_scope,
         old_binding,
         &stage,
+        digest,
     )
     .await;
     assert!(
@@ -944,6 +945,7 @@ async fn restored_binding_fence(
     restored_scope: &Scope,
     old_binding: Uuid,
     stage: &Path,
+    manifest: &str,
 ) {
     use treeharbor_metadata::access::Permission as P;
     let mut session = Database::new(f.config.clone())
@@ -986,6 +988,37 @@ async fn restored_binding_fence(
             scope: scope.clone(),
             token: token.secret,
         };
+        if blocked {
+            let token = db
+                .issue_repository_token(scope, "bridge", &[P::HostRead], 3600, "test")
+                .await
+                .unwrap();
+            let bridge = Credential {
+                scope: scope.clone(),
+                token: token.secret,
+            };
+            let before = snapshot(sql, &f.config.schema).await;
+            for (actor, hash, status) in [
+                (&bridge, manifest, 200),
+                (&credential, manifest, 403),
+                (
+                    &bridge,
+                    "0000000000000000000000000000000000000000000000000000000000000000",
+                    409,
+                ),
+            ] {
+                let response=client::send(&f.config.socket,&actor.token,actor.request(json!({"method":"github","request":{
+                    "action":"restore_context","epoch":1,"binding":old_binding,"manifest_sha256":hash}})).to_string().into_bytes(),Duration::from_secs(10)).await.unwrap();
+                assert_eq!(response.status.as_u16(), status, "{}", response.body);
+                if status == 200 {
+                    assert_eq!(response.body["result"]["manifest_sha256"], manifest);
+                    assert_eq!(response.body["result"]["binding"], json!(old_binding));
+                    assert_eq!(response.body["result"]["reconciliation_complete"], false);
+                    assert_eq!(response.body["result"]["effects"], json!([]));
+                }
+            }
+            assert_eq!(snapshot(sql, &f.config.schema).await, before);
+        }
         let binding = Uuid::new_v4();
         let request = json!({"method":"github","request":{"action":"bind","key":"rebind-after-restore","epoch":1,
             "binding":binding,"specification":fixture["specification"]}});

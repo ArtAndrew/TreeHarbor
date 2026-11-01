@@ -21,6 +21,27 @@ These correctness checks do not establish complete mode readiness or performance
 superiority. The installed native workload includes deliberate replacement-node
 recovery; live GitHub recovery remains a separate release gate.
 
+## Unreleased restore state assessment
+
+`github restore-assess` binds a fresh host inventory to authenticated retained
+operations for one revoked binding and exact restore manifest/database. The server
+requires the assigned bridge's `host.read`, checks current authority/epoch, and
+returns bounded identities and row digests under a repository lock. The CLI rereads
+the context after host observation and refuses changed input. Comparison classifies
+current branch mappings and known/unknown PR identities; queue/check effects remain
+explicitly unresolved. No attempts, observations, pins, bindings or journals change.
+See [the operator guide and version-1 contract](restore-github-assessment.md).
+
+Four classifier tests, an independent JSON digest vector and two real PostgreSQL
+context tests passed, including stable fingerprints across different PostgreSQL
+timezone/byte-display settings. Strict metadata/service all-target Clippy passed. The existing
+actual dump/restore/configure transport drill also passed fresh assigned-bridge
+context reads, owner/wrong-manifest refusal and unchanged restored metadata. The
+journal in the isolated metadata tests is a declared fixture; the transport test
+uses a real restored database. These are not a live GitHub App recovery trial.
+The resolution/admission procedure remains unfinished, and both completion and
+publication-authorization flags stay false. Required branch CI remains pending.
+
 ## Unreleased GitHub restore inventory
 
 `github restore-inventory --config` collects current heads and all PR states
@@ -36,7 +57,9 @@ GraphQL errors alongside data, scope replacement, cursor/count inconsistencies,
 the page budget, lost responses and failed revocation. The exact query shapes
 were also accepted by GitHub for the public TreeHarbor repository using existing
 GitHub CLI authentication. This is API-schema evidence, not a live App credential
-trial or full restore acceptance. Required branch CI remains pending.
+trial or full restore acceptance. [PR125 CI](https://github.com/ArtAndrew/TreeHarbor/actions/runs/41323475570)
+passed all required checks; the reviewed tree merged as
+`d5d8f0752a4b269b833728cfb62e86492b9de568`.
 
 The report covers an observation interval, not an atomic host snapshot. It omits
 tags, source contents, PR bodies/markers and queue/check effects. Durable comparison

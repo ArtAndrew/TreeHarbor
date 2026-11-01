@@ -62,3 +62,8 @@ the quarantine journal or clear `host_recovery_required` based on this report.
 API references: [repository connections](https://docs.github.com/en/graphql/reference/repos)
 and [cursor pagination](https://docs.github.com/en/graphql/guides/using-pagination-in-the-graphql-api),
 checked 2026-11-01.
+
+To compare this discovery with a restored binding's retained operations, use the
+development [restore assessment command](restore-github-assessment.md). It requires
+fresh assigned-bridge access and the exact manifest identity; it still does not
+authorize reconnection.
