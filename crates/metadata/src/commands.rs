@@ -44,6 +44,7 @@ impl CommandError {
             Self::Metadata(Error::AdmissionBlocked) => "admission_blocked",
             Self::Metadata(Error::HostBindingState) => "host_binding_state",
             Self::Metadata(Error::HostRecoveryRequired) => "host_recovery_required",
+            Self::Metadata(Error::RestoreContextLimit) => "restore_context_limit",
             Self::Metadata(Error::HostProjectionState) => "host_projection_state",
             Self::Metadata(Error::HostPublicationState) => "host_publication_state",
             Self::Metadata(Error::HostPullState) => "host_pull_state",

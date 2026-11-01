@@ -4,6 +4,11 @@ use serde::Deserialize;
 #[derive(Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
 pub enum WireCommand {
+    RestoreContext {
+        epoch: i64,
+        binding: String,
+        manifest_sha256: String,
+    },
     CheckDispatchPolicy {
         epoch: i64,
         publication: String,
@@ -528,6 +533,7 @@ pub(super) fn id(s: &str) -> Result<Uuid> {
 impl WireCommand {
     pub fn permission(&self) -> Permission {
         match self {
+            Self::RestoreContext { .. } => Permission::HostRead,
             Self::AdmissionPolicySet { .. } | Self::AdmissionPolicyPlan { .. } => {
                 Permission::PolicyWrite
             }
@@ -631,6 +637,14 @@ impl WireCommand {
         backend: Option<&str>,
     ) -> Result<Value> {
         match self {
+            Self::RestoreContext {
+                epoch,
+                binding,
+                manifest_sha256,
+            } => {
+                db.github_restore_context(auth, epoch, id(&binding)?, &manifest_sha256)
+                    .await
+            }
             Self::QueueHostPolicyContext {
                 epoch,
                 queue,

@@ -7,6 +7,8 @@ mod publication;
 mod pulls;
 #[path = "github_queue.rs"]
 mod queue;
+#[path = "github_restore.rs"]
+mod restore;
 use treeharbor_metadata::{
     access::{Authorization, Permission as P, PrincipalKind as K},
     github::{BindingSpec, Command, ProjectionSpec},

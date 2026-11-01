@@ -70,6 +70,8 @@ pub enum Error {
     HostEventState,
     #[error("GitHub event retention budget exhausted")]
     HostEventLimit,
+    #[error("retained restore context exceeds its record or byte budget")]
+    RestoreContextLimit,
     #[error("database operation failed: {0}")]
     Database(#[from] tokio_postgres::Error),
     #[error("invalid metadata input: {0}")]

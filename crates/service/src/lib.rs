@@ -60,6 +60,10 @@ pub enum Error {
         "GitHub operation state does not match the retained request; preserve the state directory and inspect that operation's status"
     )]
     PublicationState,
+    #[error(
+        "restore assessment context is invalid or changed; collect a fresh report without resuming publication"
+    )]
+    RestoreAssessment,
     #[error("GitHub binding operation rejected by the TreeHarbor server (HTTP {status})")]
     GithubBinding { status: u16 },
     #[error("GitHub connection failed: {0}")]

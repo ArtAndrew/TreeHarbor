@@ -108,6 +108,7 @@ pub(crate) fn metadata(error: treeharbor_metadata::Error) -> Failure {
         | "version_conflict"
         | "host_binding_state"
         | "host_recovery_required"
+        | "restore_context_limit"
         | "host_projection_state"
         | "host_publication_state"
         | "host_inspection_state"

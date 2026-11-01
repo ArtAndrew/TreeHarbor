@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add `github restore-assess` and authenticated `restore_context` to compare live
+  discovery with one quarantined binding's retained operations and exact backup
+  identity. The comparison refuses changed local state and distinguishes missing,
+  changed and unresolved external effects without changing attempts or resuming writes.
 - Add read-only `github restore-inventory` discovery of current heads and all PR
   states, including closed PRs whose branches no longer exist. Bounded cursor
   traversal rejects incomplete/ambiguous pages; it never reconnects a restored
