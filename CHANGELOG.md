@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add owner-only, append-only restore decisions with exact-context checks,
+  predecessor conflict detection and historical retry/read receipts. A source
+  preservation decision atomically copies an accepted commit pin; no decision
+  replays a host write, changes old attempts or authorizes reconnection.
+
 - Add `github restore-assess` and authenticated `restore_context` to compare live
   discovery with one quarantined binding's retained operations and exact backup
   identity. The comparison refuses changed local state and distinguishes missing,

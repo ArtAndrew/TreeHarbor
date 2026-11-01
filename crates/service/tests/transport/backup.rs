@@ -988,6 +988,7 @@ async fn restored_binding_fence(
             scope: scope.clone(),
             token: token.secret,
         };
+        let mut decision_receipt = None;
         if blocked {
             let token = db
                 .issue_repository_token(scope, "bridge", &[P::HostRead], 3600, "test")
@@ -998,6 +999,7 @@ async fn restored_binding_fence(
                 token: token.secret,
             };
             let before = snapshot(sql, &f.config.schema).await;
+            let mut retained_context = Value::Null;
             for (actor, hash, status) in [
                 (&bridge, manifest, 200),
                 (&credential, manifest, 403),
@@ -1011,6 +1013,7 @@ async fn restored_binding_fence(
                     "action":"restore_context","epoch":1,"binding":old_binding,"manifest_sha256":hash}})).to_string().into_bytes(),Duration::from_secs(10)).await.unwrap();
                 assert_eq!(response.status.as_u16(), status, "{}", response.body);
                 if status == 200 {
+                    retained_context = response.body["result"].clone();
                     assert_eq!(response.body["result"]["manifest_sha256"], manifest);
                     assert_eq!(response.body["result"]["binding"], json!(old_binding));
                     assert_eq!(response.body["result"]["reconciliation_complete"], false);
@@ -1018,6 +1021,32 @@ async fn restored_binding_fence(
                 }
             }
             assert_eq!(snapshot(sql, &f.config.schema).await, before);
+            let decision = json!({"method":"github","request":{
+                "action":"restore_decision_record","key":"restored-owner-decision","epoch":1,
+                "specification":{"version":1,"binding":old_binding,"manifest_sha256":manifest,
+                    "context_sha256":treeharbor_metadata::github::restore_digest(&retained_context).unwrap(),
+                    "evidence_sha256":"77".repeat(32),
+                    "subject":{"kind":"external_branch","name":"treeharbor/inspection-fixture"},
+                    "disposition":{"action":"await_evidence"},"previous_key":null,
+                    "note":"Synthetic fixture decision; no live host state asserted."}}});
+            for (actor, expected) in [(&bridge, 403), (&credential, 200), (&credential, 200)] {
+                let reply = client::send(
+                    &f.config.socket,
+                    &actor.token,
+                    actor.request(decision.clone()).to_string().into_bytes(),
+                    Duration::from_secs(10),
+                )
+                .await
+                .unwrap();
+                assert_eq!(reply.status.as_u16(), expected, "{}", reply.body);
+                if expected == 200 {
+                    assert_eq!(reply.body["result"]["publication_authorized"], false);
+                    if let Some(old) = &decision_receipt {
+                        assert_eq!(old, &reply.body["result"]);
+                    }
+                    decision_receipt = Some(reply.body["result"].clone());
+                }
+            }
         }
         let binding = Uuid::new_v4();
         let request = json!({"method":"github","request":{"action":"bind","key":"rebind-after-restore","epoch":1,
@@ -1035,6 +1064,22 @@ async fn restored_binding_fence(
                 *server = f.start().await;
             }
             let before = snapshot(sql, &f.config.schema).await;
+            if let Some(receipt) = &decision_receipt {
+                let reply = client::send(
+                    &f.config.socket,
+                    &credential.token,
+                    credential
+                        .request(json!({"method":"github","request":{
+                    "action":"restore_decision_status","key":"restored-owner-decision"}}))
+                        .to_string()
+                        .into_bytes(),
+                    Duration::from_secs(10),
+                )
+                .await
+                .unwrap();
+                assert_eq!(reply.status.as_u16(), 200, "{}", reply.body);
+                assert_eq!(&reply.body["result"], receipt);
+            }
             let info = client::send(
                 &f.config.socket,
                 &credential.token,

@@ -72,6 +72,10 @@ pub enum Error {
     HostEventLimit,
     #[error("retained restore context exceeds its record or byte budget")]
     RestoreContextLimit,
+    #[error("restore context changed since assessment")]
+    RestoreContextChanged,
+    #[error("restore decision predecessor is not current")]
+    RestoreDecisionConflict,
     #[error("database operation failed: {0}")]
     Database(#[from] tokio_postgres::Error),
     #[error("invalid metadata input: {0}")]
