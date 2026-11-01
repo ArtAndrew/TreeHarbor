@@ -37,6 +37,89 @@ fn body(request: &[u8]) -> Value {
 }
 
 #[tokio::test]
+async fn restore_pull_capture_reads_exact_identity_twice_and_retains_metadata_changes() {
+    let t = target();
+    let selected = PullIdentity {
+        number: 17,
+        node_id: "PR_test_17".into(),
+    };
+    for changed in [false, true] {
+        let mut after = pull(&t);
+        after["state"] = json!("closed");
+        after["merged"] = json!(true);
+        let before = after.clone();
+        if changed {
+            after["body"] = json!("Edited body without the original marker");
+        }
+        let mut responses = access(false);
+        responses.extend([response(200, before), response(200, after), revoked()]);
+        let (c, host) = host(responses).await;
+        let result = c
+            .observe_restore_pull(&binding(), &t, &selected)
+            .await
+            .unwrap();
+        assert_eq!(result.report.before == result.report.after, !changed);
+        assert_eq!(t.matches(&result.report.after), !changed);
+        assert!(result.report.token_revoked);
+        assert!(result.report.after.merged);
+        assert!(!serde_json::to_string(&result).unwrap().contains(TEST_TOKEN));
+        let requests = host.await.unwrap();
+        assert_eq!(requests.len(), 7);
+        assert_eq!(body(&requests[1])["permissions"]["pull_requests"], "read");
+        for r in &requests[4..6] {
+            assert!(request_text(r).starts_with("GET /repos/example-org/demo/pulls/17 "));
+        }
+        assert!(request_text(&requests[6]).starts_with("DELETE /installation/token "));
+    }
+}
+
+#[tokio::test]
+async fn restore_pull_capture_rejects_wrong_scope_missing_text_and_failed_reads_then_revokes() {
+    let t = target();
+    let selected = PullIdentity {
+        number: 17,
+        node_id: "PR_test_17".into(),
+    };
+    for case in [
+        "node",
+        "repository",
+        "base",
+        "missing_body",
+        "missing_merged",
+        "http",
+    ] {
+        let mut p = pull(&t);
+        match case {
+            "node" => p["node_id"] = json!("PR_other"),
+            "repository" => p["head"]["repo"]["id"] = json!(99),
+            "base" => p["base"]["ref"] = json!("other"),
+            "missing_body" => {
+                p.as_object_mut().unwrap().remove("body");
+            }
+            "missing_merged" => {
+                p.as_object_mut().unwrap().remove("merged");
+            }
+            _ => {}
+        }
+        let mut responses = access(false);
+        responses.extend([
+            response(if case == "http" { 404 } else { 200 }, p),
+            revoked(),
+        ]);
+        let (c, host) = host(responses).await;
+        assert!(
+            c.observe_restore_pull(&binding(), &t, &selected)
+                .await
+                .is_err(),
+            "{case}"
+        );
+        let requests = host.await.unwrap();
+        assert_eq!(requests.len(), 6);
+        assert!(request_text(&requests[5]).starts_with("DELETE /installation/token "));
+    }
+}
+
+#[tokio::test]
 async fn pull_create_lost_response_reconciles_one_post_and_exact_scoped_identity() {
     let t = target();
     let created = pull(&t);

@@ -78,6 +78,7 @@ impl Permission {
                 Ok(Self::RepositoryWrite)
             }
             "github.inspection.report.v1" => Ok(Self::HostRead),
+            "github.restore.pull.v1" => Ok(Self::HostRead),
             "github.pull.request.v1" | "github.pull.cancel.v1" => Ok(Self::RepositoryWrite),
             "github.pull.begin.v1" | "github.pull.report.v1" => Ok(Self::HostPublish),
             "github.publication.request.v1" | "github.publication.cancel.v1" => {

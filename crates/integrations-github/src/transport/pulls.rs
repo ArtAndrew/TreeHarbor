@@ -57,6 +57,28 @@ pub struct PullObservation {
     pub token_revoked: bool,
     pub token_expires_at: String,
 }
+
+#[derive(Debug, Serialize)]
+pub struct RestorePullReport {
+    pub version: u8,
+    pub app_id: u64,
+    pub installation_id: u64,
+    pub started_at_unix_ms: i64,
+    pub finished_at_unix_ms: i64,
+    pub before: PullSnapshot,
+    pub after: PullSnapshot,
+    pub token_revoked: bool,
+}
+#[derive(Debug, Serialize)]
+pub struct ObservedRestorePull {
+    pub binding: RepositoryBinding,
+    pub report: RestorePullReport,
+    pub token_expires_at: String,
+}
+fn capture_time() -> Result<i64> {
+    let seconds = i64::try_from(now()?).map_err(|_| Error::Configuration)?;
+    seconds.checked_mul(1000).ok_or(Error::Configuration)
+}
 fn identity(id: &PullIdentity) -> Result<()> {
     if id.number == 0
         || id.number > i64::MAX as u64
@@ -150,12 +172,18 @@ struct Pull {
     number: u64,
     node_id: String,
     title: String,
+    #[serde(deserialize_with = "required_body")]
     body: Option<String>,
     draft: bool,
     state: String,
     head: Side,
     base: Side,
     merged: Option<bool>,
+}
+fn required_body<'de, D: serde::Deserializer<'de>>(
+    d: D,
+) -> std::result::Result<Option<String>, D::Error> {
+    Option::<String>::deserialize(d)
 }
 impl Pull {
     fn scoped(&self, b: &RepositoryBinding, t: &PullTarget) -> Result<()> {
@@ -213,6 +241,75 @@ impl Pull {
     }
 }
 impl Connection {
+    /// Read one explicitly selected PR twice. Unlike normal operation recovery,
+    /// this does not search for or automatically select a matching marker.
+    pub async fn observe_restore_pull(
+        &self,
+        b: &RepositoryBinding,
+        target: &PullTarget,
+        selected: &PullIdentity,
+    ) -> Result<ObservedRestorePull> {
+        b.validate()?;
+        target.validate()?;
+        identity(selected)?;
+        if target
+            .previous
+            .as_ref()
+            .is_some_and(|p| p.identity != *selected)
+        {
+            return Err(Error::PullChanged);
+        }
+        let mut target = target.clone();
+        target.previous = Some(ExpectedPull {
+            identity: selected.clone(),
+            title: target.title.clone(),
+            body: target.body.clone(),
+            draft: target.draft,
+        });
+        let _slot = tokio::time::timeout(PROBE_TIMEOUT, self.slots.acquire())
+            .await
+            .map_err(|_| Error::Deadline)?
+            .map_err(|_| Error::Configuration)?;
+        let (installation, token) =
+            tokio::time::timeout(PROBE_TIMEOUT, self.mint_for(b, wire::Capability::PullRead))
+                .await
+                .map_err(|_| Error::Deadline)??;
+        let observed = tokio::time::timeout(PROBE_TIMEOUT, async {
+            let started_at_unix_ms = capture_time()?;
+            let probe = self
+                .observe_for(b, &installation, &token, wire::Capability::PullRead)
+                .await?;
+            if now()?.saturating_add(PROBE_TIMEOUT.as_secs() + 30)
+                >= token.check_for(b.repository_id, now()?, wire::Capability::PullRead)?
+            {
+                return Err(Error::TokenLifetime);
+            }
+            let before = self.pull_get(b, &target, &token, selected.number).await?;
+            let after = self.pull_get(b, &target, &token, selected.number).await?;
+            Ok(RestorePullReport {
+                version: 1,
+                app_id: probe.app_id,
+                installation_id: b.installation_id,
+                started_at_unix_ms,
+                finished_at_unix_ms: capture_time()?,
+                before,
+                after,
+                token_revoked: false,
+            })
+        })
+        .await
+        .map_err(|_| Error::Deadline)
+        .and_then(|v| v);
+        let revoked = self.revoke(&token).await;
+        let mut report = observed?;
+        report.token_revoked = revoked.is_ok();
+        Ok(ObservedRestorePull {
+            binding: b.clone(),
+            report,
+            token_expires_at: token.expires_at.clone(),
+        })
+    }
+
     async fn pull_get(
         &self,
         b: &RepositoryBinding,

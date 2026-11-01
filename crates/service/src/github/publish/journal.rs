@@ -31,6 +31,23 @@ fn read<T: DeserializeOwned>(path: &Path) -> Result<T> {
         .map_err(|_| Error::PublicationState)
 }
 impl Journal {
+    /// A single-capture operation must not silently ignore extra journal records.
+    pub fn single<R: DeserializeOwned>(&self) -> Result<Option<Record<R>>> {
+        match self.count()? {
+            0 => Ok(None),
+            1 => {
+                let r: Record<R> = read(&self.root.join("report-0000.json"))?;
+                if r.version != 1
+                    || !r.key.starts_with("github-publish-report-")
+                    || r.key.len() > 128
+                {
+                    return Err(Error::PublicationState);
+                }
+                Ok(Some(r))
+            }
+            _ => Err(Error::PublicationState),
+        }
+    }
     pub fn read_optional<T: DeserializeOwned>(&self, name: &str) -> Result<Option<T>> {
         let path = self.root.join(name);
         if path.try_exists()? {
@@ -179,6 +196,7 @@ mod tests {
         fs::set_permissions(dir.path(), fs::Permissions::from_mode(0o700)).unwrap();
         let identity = json!({"publication":Uuid::new_v4().to_string()});
         let j = Journal::open(dir.path(), &identity).unwrap();
+        assert!(j.single::<PublicationReport>().unwrap().is_none());
         assert!(matches!(
             Journal::open(dir.path(), &identity),
             Err(Error::AlreadyRunning)
@@ -186,6 +204,10 @@ mod tests {
         let attempt = j.attempt().unwrap();
         let record = report();
         j.append(&record).unwrap();
+        assert_eq!(
+            json!(j.single::<PublicationReport>().unwrap().unwrap()),
+            json!(record)
+        );
         assert!(j.append(&report()).is_err());
         drop(j);
         let j = Journal::open(dir.path(), &identity).unwrap();
@@ -197,6 +219,7 @@ mod tests {
         assert!(j.pending::<PublicationReport>().unwrap().is_none());
         assert!(j.ack(index, &json!({"state":"observed"})).is_err());
         j.append(&report()).unwrap();
+        assert!(j.single::<PublicationReport>().is_err());
         assert_eq!(j.pending::<PublicationReport>().unwrap().unwrap().0, 1);
         drop(j);
         assert!(Journal::open(dir.path(), &json!({"publication":"other"})).is_err());

@@ -336,7 +336,7 @@ async fn external_api_projection_recovers_after_context_close_and_exports_exact_
         output.to_str().unwrap(),
     ];
     assert!(!github(&f, &args).status.success());
-    f.credential_path = readonly;
+    f.credential_path = readonly.clone();
     assert!(!github(&f, &args).status.success());
     f.credential_path = publisher.clone();
     let exported = github(&f, &args);
@@ -404,7 +404,7 @@ async fn external_api_projection_recovers_after_context_close_and_exports_exact_
         &restored,
     )
     .await;
-    f.credential_path = owner;
+    f.credential_path = owner.clone();
     result(request(
         &f,
         &json!({"action":"projection_cancel","key":"cancel","epoch":1,"projection":projection.to_string()}),
@@ -451,6 +451,7 @@ async fn external_api_projection_recovers_after_context_close_and_exports_exact_
             .get::<_, i64>(0),
         2 // original source plus the exact exported PR head imported for its check
     );
+    super::restore_pull::exercise(&mut f, &mut server, &owner, &readonly).await;
     drop(server);
     f.cleanup().await;
 }
