@@ -21,6 +21,25 @@ These correctness checks do not establish complete mode readiness or performance
 superiority. The installed native workload includes deliberate replacement-node
 recovery; live GitHub recovery remains a separate release gate.
 
+## Unreleased restore quarantine
+
+`backup restore-quarantine` verifies the copied staged backup and restored target,
+requires revoked tokens and stopped writers, and withdraws old execution intent
+in one journaled transaction. It drains file workspaces, requests stops without
+inventing runtime outcomes, cancels pending native candidates/queue entries,
+disables previous nodes and revokes old GitHub bindings/event channels. It keeps
+source/history/pins/checks, uncertain publication journals, outbox and authority
+epochs. It emits no runnable configuration or credentials and starts no service.
+See [restore quarantine](restore-quarantine.md) for prerequisites and retry limits.
+
+Local PostgreSQL recovery testing exercises retained source/export, an unassigned
+workspace, disabled node and revoked GitHub binding/channel metadata, refusal of
+changed backup identity, live tokens or conflicting writers, late transaction
+rollback, and replay after losing the local completion receipt. GitHub records in
+this test are declared metadata fixtures, not live provider recovery. Installed Linux worker/queue coverage
+and the full branch checks are still pending for this increment. This is not full
+activation, Connected disaster recovery or production readiness.
+
 ## Unreleased generic outbox freeze enforcement
 
 The internal PostgreSQL `Metadata::claim`, `renew` and `acknowledge` primitives

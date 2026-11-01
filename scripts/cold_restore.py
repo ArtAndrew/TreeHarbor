@@ -12,6 +12,7 @@ from pathlib import Path
 import shlex
 import shutil
 import subprocess
+import uuid
 
 
 def exercise(h, landed, managed, pending):
@@ -55,6 +56,10 @@ def exercise(h, landed, managed, pending):
         assert h.server.poll() is None, "restored service did not start"
 
     try:
+        unassigned = str(uuid.uuid4())
+        h.client("workspace-create", "--key", "restore-unassigned", "--authority", "standalone",
+                 "--epoch", "1", "--workspace", unassigned, "--base", h.revision,
+                 "--profile-digest", h.source_profile, credential=h.agents[0])
         # Stop every writer before the metadata/object copy. No GC/admin writer
         # runs in this isolated harness. Existing runtime outcomes were collected
         # by the real tests; external teardown below does not create evidence.
@@ -143,6 +148,41 @@ def exercise(h, landed, managed, pending):
         assert unchanged_sequences(sequences) == unchanged_sequences(before[1])
         assert snapshot("treeharbor_test") == before, "staging changed source database"
         print("PASS installed restore-stage: actual pg_restore retains history, proposals, jobs and private state; only old credentials and revoke audit change; no activation", flush=True)
+        staged_rows = snapshot(target)
+        quarantine_args = ["backup", "restore-quarantine", "--stage", stage,
+                           "--manifest-sha256", receipt["manifest_sha256"], "--writers-stopped"]
+        quarantined = h.value(*quarantine_args)
+        assert quarantined["status"] == "quarantined" and quarantined["activation_authorized"] is False
+        assert quarantined["changes"]["workspaces_draining"] >= 1
+        quarantined_rows = snapshot(target)
+        changed_tables = {"th_workspaces", "th_workspace_preparations", "th_managed_runs",
+                          "th_native_queue", "th_native_candidates", "th_principals",
+                          "th_security_audit", "th_operations", "th_github_bindings",
+                          "th_github_event_channels"}
+        for table, rows in staged_rows[0].items():
+            if table not in changed_tables:
+                assert quarantined_rows[0][table] == rows, "quarantine changed " + table
+        expected_transitions = {
+            "th_workspaces": lambda r: dict(r, state="draining", generation=r["generation"] + 1)
+                if r["delivery"] == "files" and r["state"] in ("requested", "ready", "in_use") else r,
+            "th_workspace_preparations": lambda r: dict(r, state="draining")
+                if r["state"] in ("reserved", "prepared") else r,
+            "th_managed_runs": lambda r: dict(r, stop_requested=True) if not r["removed"] else r,
+            "th_native_queue": lambda r: dict(r, state="cancelled", reason="restore_quarantine")
+                if r["state"] in ("queued", "preparing", "checking") else r,
+            "th_native_candidates": lambda r: dict(r, state="cancelled")
+                if r["state"] in ("preparing", "checking") else r,
+            "th_principals": lambda r: dict(r, enabled=False) if r["kind"] == "node" else r,
+        }
+        normalized = lambda rows: sorted(json.dumps(r, sort_keys=True) for r in rows)
+        for table, transition in expected_transitions.items():
+            assert normalized(quarantined_rows[0][table]) == normalized(
+                [transition(r) for r in staged_rows[0][table]]), table
+        (stage / "quarantined.json").unlink()
+        assert h.value(*quarantine_args) == quarantined
+        assert snapshot(target) == quarantined_rows, "retry changed quarantined records"
+        assert snapshot("treeharbor_test") == before, "quarantine changed original database"
+        print("PASS installed restore-quarantine: old work drains, pending candidates cancel, node identities disable; source/history/pins/evidence remain exact and lost-receipt retry changes nothing", flush=True)
         # All original writers remain stopped. The disposable drill supplies
         # its own inspection configuration and explicitly issues selected new
         # operator/agent credentials; the product does neither automatically.
@@ -268,6 +308,8 @@ def exercise(h, landed, managed, pending):
                 "--storage", identity["storage"])
         index = len(h.nodes)
         h.nodes.append({"root": root, "credential": credential, "storage": identity["storage"]})
+        assert h.value(*h.node_args(h.nodes[-1], "prepare-once")) == {"state": "idle"}
+        assert h.sql(f"SELECT state FROM th_workspaces WHERE workspace='{unassigned}'") == "draining"
         fresh = h.check_case(node=index, timeout=17000)
         assert fresh["node"]["root"] != pending["node"]["root"]
         assert fresh["workspace"] != pending["workspace"]
