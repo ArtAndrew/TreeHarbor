@@ -21,6 +21,23 @@ These correctness checks do not establish complete mode readiness or performance
 superiority. The installed native workload includes deliberate replacement-node
 recovery; live GitHub recovery remains a separate release gate.
 
+## Unreleased 0.1.11-alpha.1 local recovery continuation
+
+`backup restore-configure` requires prior quarantine and explicit acknowledgment
+of external fencing. It verifies current metadata predicates, creates a separate
+verified live object copy and prepares private configuration for the exact restored
+database. It does not issue credentials or start a process. The backup stays
+unchanged when the recovered service writes to its new store. See the
+[operator workflow](restore-configure.md); Connected reconciliation and recovery
+cleanup remain unfinished.
+
+The targeted PostgreSQL transport test passed actual startup from generated
+configuration, a newly issued reader, retained proposal/export with original
+objects unavailable, current-state refusal despite a valid old receipt, required
+acknowledgment and output-reuse refusal. A connection-string test covers quoting
+of user/password/Unix paths. These local tests preceded the version-only bump;
+installed x86-64/ARM64 acceptance of the 0.1.11 candidate remains pending.
+
 ## Unreleased restore quarantine
 
 `backup restore-quarantine` verifies the copied staged backup and restored target,
@@ -36,8 +53,12 @@ Local PostgreSQL recovery testing exercises retained source/export, an unassigne
 workspace, disabled node and revoked GitHub binding/channel metadata, refusal of
 changed backup identity, live tokens or conflicting writers, late transaction
 rollback, and replay after losing the local completion receipt. GitHub records in
-this test are declared metadata fixtures, not live provider recovery. Installed Linux worker/queue coverage
-and the full branch checks are still pending for this increment. This is not full
+this test are declared metadata fixtures, not live provider recovery.
+[PR121 CI](https://github.com/ArtAndrew/TreeHarbor/actions/runs/41315816902) passed
+the installed x86-64/ARM64 quarantine, replacement-node gVisor check, exact native
+publication/export and cleanup path, alongside all required branch checks.
+That candidate still supplied its own configuration; the subsequent configuration
+command is a separately tested increment. This is not full
 activation, Connected disaster recovery or production readiness.
 
 ## Unreleased generic outbox freeze enforcement

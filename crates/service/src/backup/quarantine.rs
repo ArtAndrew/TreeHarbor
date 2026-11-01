@@ -22,7 +22,25 @@ pub(crate) struct Options {
 }
 
 pub(super) async fn run(options: Options) -> Result<Value> {
-    inner(options).await.map_err(|_| Error::Quarantine)
+    inner(options, false).await.map_err(|_| Error::Quarantine)
+}
+
+#[derive(Args)]
+pub(crate) struct ConfigureOptions {
+    #[command(flatten)]
+    source: Options,
+    /// Acknowledge that old DB writers, runtimes and publishers cannot restart.
+    #[arg(long, required = true)]
+    old_infrastructure_fenced: bool,
+}
+
+pub(super) async fn configure(options: ConfigureOptions) -> Result<Value> {
+    if !options.old_infrastructure_fenced {
+        return Err(Error::RecoveredConfig);
+    }
+    inner(options.source, true)
+        .await
+        .map_err(|_| Error::RecoveredConfig)
 }
 
 fn private_json(path: &Path) -> Result<Value> {
@@ -32,7 +50,7 @@ fn private_json(path: &Path) -> Result<Value> {
     .map_err(|_| Error::Integrity)
 }
 
-async fn inner(o: Options) -> Result<Value> {
+async fn inner(o: Options, configure: bool) -> Result<Value> {
     if !o.writers_stopped || !o.stage.is_absolute() {
         return Err(Error::Unsafe);
     }
@@ -194,6 +212,10 @@ async fn inner(o: Options) -> Result<Value> {
         }
         result
     } else {
+        // Configuring must never silently perform quarantine on the caller's behalf.
+        if configure {
+            return Err(Error::Integrity);
+        }
         let counts = quarantine(&tx).await?;
         let result = json!({"version":1,"status":"quarantined","database":database,
             "schema":manifest.schema,"manifest_sha256":o.manifest_sha256,
@@ -210,6 +232,23 @@ async fn inner(o: Options) -> Result<Value> {
         }
         result
     };
+    if configure {
+        if private_json(&stage.join("quarantined.json"))? != result {
+            return Err(Error::Integrity);
+        }
+        recovered_config::check_quarantine(&tx).await?;
+        let user: String = tx
+            .query_one("SELECT current_user::text", &[])
+            .await
+            .map_err(|_| Error::Database)?
+            .get(0);
+        // Exclusive output claim prevents two configured roots for this stage.
+        // Copying is offline while metadata writers are excluded; no tokens are issued.
+        let prepared = recovered_config::prepare(&stage, &manifest, &pg, &user, &budget)?;
+        budget.tick()?;
+        tx.commit().await.map_err(|_| Error::Database)?;
+        return prepared.publish(&o.manifest_sha256);
+    }
     budget.tick()?;
     tx.commit().await.map_err(|_| Error::Database)?;
     let path = stage.join("quarantined.json");

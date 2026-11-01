@@ -22,9 +22,10 @@ def exercise(h, landed, managed, pending):
     stage = h.root / "restore-stage"
     backup = h.root / "cold-backup"
     original_config = json.loads(h.config.read_text())
+    original_config_path = h.config
     original_store = Path(original_config["storage"]["root"])
     hidden_store = h.root / "original-objects-unavailable"
-    restored_store = stage / "backup" / "objects"
+    restored_store = stage / "active" / "objects"
     created, hidden = False, False
     original_database = h.database
     credential_names = ("owner", "policy_admin", "reviewer", "integrator", "ci")
@@ -183,16 +184,23 @@ def exercise(h, landed, managed, pending):
         assert snapshot(target) == quarantined_rows, "retry changed quarantined records"
         assert snapshot("treeharbor_test") == before, "quarantine changed original database"
         print("PASS installed restore-quarantine: old work drains, pending candidates cancel, node identities disable; source/history/pins/evidence remain exact and lost-receipt retry changes nothing", flush=True)
-        # All original writers remain stopped. The disposable drill supplies
-        # its own inspection configuration and explicitly issues selected new
-        # operator/agent credentials; the product does neither automatically.
+        configure_args = ["backup", "restore-configure", "--stage", stage,
+                          "--manifest-sha256", receipt["manifest_sha256"],
+                          "--writers-stopped", "--old-infrastructure-fenced"]
+        configured = h.value(*configure_args)
+        assert configured["status"] == "configured" and configured["service_started"] is False
+        assert configured["credentials_issued"] is False and configured["external_fencing_verified"] is False
+        h.config = Path(configured["config"])
+        assert Path(configured["storage"]) == restored_store
+        assert json.loads(h.config.read_text())["storage"]["root"] == str(restored_store)
+        assert snapshot(target) == quarantined_rows, "configuration altered recovered metadata"
+        assert h.cli(*configure_args, check=False).returncode != 0
+        print("PASS installed restore-configure: verified current quarantine, independent live objects and private target configuration; no implicit credentials/start and no output overwrite", flush=True)
+        # All original writers remain stopped. Use the product-generated config
+        # and explicitly issue selected new operator/agent credentials.
         original_store.rename(hidden_store)
         hidden = True
         assert not original_store.exists()
-        config = json.loads((backup / "service-config.json").read_text())
-        config["database_url"] = h.url.replace("dbname=treeharbor_test", "dbname=" + target)
-        config["storage"] = dict(original_config["storage"], root=str(restored_store))
-        managed.private_json(h.config, config)
         h.database = target
         # Read recovered credentials from separate files populated from the
         # backup, not the original files. Copying node journals grants no right
@@ -329,6 +337,10 @@ def exercise(h, landed, managed, pending):
         h.cleanup_workspace(fresh, already_drained=True)
         assert h.native("check_status", h.ci, run=fresh["check"])["state"] == "collected"
         print("PASS cold restore: fresh node executes actual gVisor check, exact candidate lands once, exports to ordinary Git and cleans up", flush=True)
+        retained = h.value("backup", "verify", "--backup", stage / "backup",
+                           "--manifest-sha256", receipt["manifest_sha256"])
+        assert retained == receipt, "new live writes changed the retained backup"
+        print("PASS cold restore: original copied backup still verifies after recovered service writes and fresh native publication", flush=True)
 
     finally:
         if h.server and h.server.poll() is None:
@@ -348,4 +360,5 @@ def exercise(h, landed, managed, pending):
         h.agents = original_agents
         for node, source in original_node_credentials:
             node["credential"] = source
+        h.config = original_config_path
         managed.private_json(h.config, original_config)

@@ -35,6 +35,12 @@ private state; safe restore activation and Connected recovery remain later work.
 a new isolated database and audited old-token revocation. Starting the recovered
 service, replacing workers and reconciling GitHub remain separate activation work.
 
+The unreleased 0.1.11 candidate adds [quarantine](docs/restore-quarantine.md) and
+[local restore configuration](docs/restore-configure.md): preserve old work without
+automatically executing it, then prepare an independent live store after explicit
+operator fencing. Fresh credentials/startup and Connected reconciliation remain
+separate responsibilities; this candidate is not yet a published package.
+
 ## First preview acceptance
 
 Verify a clean installation and the complete packaged two-agent-to-PR demo,

@@ -1,6 +1,6 @@
 # Quarantine restored work
 
-Unreleased development command. This follows [restore staging](restore-stage.md);
+Unreleased 0.1.11-alpha.1 candidate. This follows [restore staging](restore-stage.md);
 released 0.1.10 packages do not contain it. It does not authorize activation.
 
 Revoking old tokens alone is insufficient: a newly registered worker could claim
@@ -55,5 +55,7 @@ repository set, conflicting journal, live token or damaged backup is refused.
 Keep partial output for inspection; never infer activation from a directory name
 or from the presence of an older staging receipt.
 
-This command is one recovery step. Safe service activation, recovery cleanup of
-old node storage and full Connected external-state reconciliation are unfinished.
+This command is one recovery step. The separate unreleased
+[restore configuration step](restore-configure.md) rechecks current state and
+prepares a local service with an independent object store. Recovery cleanup of old
+node storage and full Connected external-state reconciliation remain unfinished.
