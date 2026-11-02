@@ -5,6 +5,10 @@ Use this after a [source-preservation decision](restore-decisions.md). It verifi
 on the server that the exact native commit held by that decision projects to the
 expected Git commit, then saves a durable mapping receipt.
 
+To download and preserve missing source as one recoverable workflow, use
+[source acquisition](restore-acquire-source.md). The commands below remain useful
+for source already accepted through another trusted import path.
+
 This closes the gap between retaining source and knowing which Git revision it
 represents. A commit's `git_origin` field alone is insufficient: the verifier
 reconstructs trees, preserves parent order, checks every reachable typed object,

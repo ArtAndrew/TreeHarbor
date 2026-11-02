@@ -21,6 +21,36 @@ These correctness checks do not establish complete mode readiness or performance
 superiority. The installed native workload includes deliberate replacement-node
 recovery; live GitHub recovery remains a separate release gate.
 
+## Unreleased exact source acquisition during recovery
+
+`github restore-acquire-source` connects an owner's version-3 `acquire_source`
+decision to exact Git download/import, the existing durable source-upload journal,
+an independent preservation pin and server-side Git mapping verification. The
+old binding stays revoked. Current acquisition requires the latest decision,
+original quarantine/context and owner authorization; supersession or context
+movement stops new work at checkpoints. See [the guide](restore-acquire-source.md).
+This adds no schema migration or publication permission.
+
+Local verification passed the owner/context PostgreSQL contract and nine restore
+wire/format tests, including v1/v2 compatibility and v3 budget/identity limits.
+The actual CLI/service trial starts with source absent from the database and a
+real two-commit Git pack retained privately. It uploads the history, loses the
+preservation response after commit, kills both processes, removes the local pack
+and completes verification after restart without App files or a Git executable.
+Further restarts return the same mapping, with one mapping record, retained graph,
+no active binding and no publication attempt. Quarantine and external subject
+selection are explicit fixtures; this is not live GitHub disaster recovery.
+The download path reuses the existing GitHub read-token adapter; the new CLI's
+fresh network path has not yet received live installed-App acceptance.
+Independent phase-key vectors fix retry identities. Strict metadata/service
+all-target Clippy, formatting and documentation file links passed. Required
+branch CI is pending.
+
+This closes selected-source acquisition, not complete post-backup discovery,
+host-state attestation, external-writer fencing or new-binding admission. Larger
+source inputs and full mode/operational release gates remain incomplete. These
+commands are not in the published 0.1.11 package.
+
 ## Unreleased retained delivery recovery evidence
 
 `github restore-inspect-delivery` reads one retained provider delivery attempt
@@ -42,7 +72,8 @@ or external executables. It retains one receipt and an unchanged old attempt.
 The signed receiver is real; provider captures and quarantine are explicit fixture
 data. This is not live GitHub disaster-recovery acceptance. The independent v1
 wire fixture and strict GitHub/metadata/service all-target Clippy passed.
-Required branch CI remains pending; this is not in published 0.1.11 packages.
+[PR133](https://github.com/ArtAndrew/TreeHarbor/pull/133) merged after all six
+required exact-head checks passed. This is not in published 0.1.11 packages.
 
 Post-backup operation/source discovery, expired provider history, complete event
 processing reconciliation, external fencing and verified reconnection remain

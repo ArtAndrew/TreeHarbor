@@ -363,6 +363,99 @@ use treeharbor_metadata::github::{
     RestoreDecisionSpec, RestoreDecisionSubject, RestoreDisposition, restore_digest,
 };
 
+#[tokio::test]
+#[ignore = "requires PostgreSQL; exact current owner source acquisition and supersession"]
+async fn restore_acquisition_requires_current_latest_owner_decision() {
+    let (mut p, mut spec, _) = decision_fixture().await;
+    spec.version = 3;
+    spec.disposition = RestoreDisposition::AcquireSource {
+        git_revision: format!("git:sha1:{}", "11".repeat(20)),
+        max_objects: 1000,
+        max_bytes: 1048576,
+    };
+    let receipt =
+        p.f.db
+            .record_github_restore_decision(&p.owner, &cmd("acquire"), &spec)
+            .await
+            .unwrap();
+    assert!(receipt["source_preservation"].is_null());
+    let before = retained(&p).await;
+    assert!(matches!(
+        p.f.db
+            .github_restore_acquisition_context(&p.reader, 1, "acquire")
+            .await,
+        Err(MetaError::Forbidden)
+    ));
+    let ctx =
+        p.f.db
+            .github_restore_acquisition_context(&p.owner, 1, "acquire")
+            .await
+            .unwrap();
+    assert_eq!(ctx["decision"], json!(spec));
+    assert_eq!(ctx["decision_sha256"], restore_digest(&receipt).unwrap());
+    assert_eq!(ctx["publication_authorized"], false);
+    assert!(
+        p.f.db
+            .github_restore_acquisition_context(&p.owner, 2, "acquire")
+            .await
+            .is_err()
+    );
+    assert_eq!(before, retained(&p).await);
+    // Owner supersession stops new work even while retained host context is unchanged.
+    let mut successor = spec.clone();
+    successor.previous_key = Some("acquire".into());
+    successor.disposition = RestoreDisposition::AwaitEvidence;
+    p.f.db
+        .record_github_restore_decision(&p.owner, &cmd("suspend"), &successor)
+        .await
+        .unwrap();
+    assert!(matches!(
+        p.f.db
+            .github_restore_acquisition_context(&p.owner, 1, "acquire")
+            .await,
+        Err(MetaError::RestoreDecisionConflict)
+    ));
+    assert!(
+        p.f.db
+            .github_restore_acquisition_context(&p.owner, 1, "suspend")
+            .await
+            .is_err()
+    );
+    successor.previous_key = Some("suspend".into());
+    successor.disposition = spec.disposition.clone();
+    p.f.db
+        .record_github_restore_decision(&p.owner, &cmd("acquire-again"), &successor)
+        .await
+        .unwrap();
+    p.f.db
+        .github_restore_acquisition_context(&p.owner, 1, "acquire-again")
+        .await
+        .unwrap();
+    let RestoreDecisionSubject::Retained { operation, .. } = spec.subject else {
+        panic!()
+    };
+    p.f.db
+        .cancel_github_publication(&p.owner, &cmd("cancel-effect"), operation)
+        .await
+        .unwrap();
+    assert!(matches!(
+        p.f.db
+            .github_restore_acquisition_context(&p.owner, 1, "acquire-again")
+            .await,
+        Err(MetaError::RestoreContextChanged)
+    ));
+    // Historical receipt remains retrievable but is no fresh acquisition authority.
+    let read = actor(&mut p.f, "history-reader", K::Human, &[P::Read]).await;
+    assert_eq!(
+        p.f.db
+            .github_restore_decision(&read, "acquire")
+            .await
+            .unwrap(),
+        receipt
+    );
+    cleanup(&p.f.schema).await;
+}
+
 async fn decision_fixture() -> (Projection, RestoreDecisionSpec, String) {
     let mut p = Projection::new().await;
     let (operation, _, value) = publication::requested(&mut p).await;

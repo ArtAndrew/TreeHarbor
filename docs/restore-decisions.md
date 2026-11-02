@@ -69,6 +69,7 @@ it does not revalidate that decision for current use.
 | --- | --- |
 | `{"action":"await_evidence"}` | Record that investigation is still required. |
 | `{"action":"do_not_replay"}` | Record the operator's decision against replay. Does not assert that an external write never happened or alter the original operation. |
+| `{"action":"acquire_source","git_revision":"git:sha1:<40 hex>","max_objects":100000,"max_bytes":4294967296}` | Version 3 only: select an exact revision for the [source acquisition workflow](restore-acquire-source.md). Recording alone downloads nothing and creates no source pin. |
 | `{"action":"preserve_source","source_holder":"<existing pin>","native_revision":"native:sha256:<digest>"}` | Copy a live, repository-scoped commit pin to an independent permanent recovery pin. Wrong revision, object type, scope or generation fails atomically. |
 
 Use the source-import/upload result's existing pin holder and exact native revision
@@ -96,7 +97,7 @@ The subject can be:
 - `{"kind":"external_pull","number":123,"node":"<GitHub node ID>"}` for an
   external PR the operator is investigating.
 
-The three new subject kinds require specification `version:2`; version 1 remains
+The three new subject kinds require specification `version:2` or `version:3`; version 1 remains
 accepted for its original subjects. Every retained subject must exist in the
 current selected binding's context. Use a fresh version-2 context digest even when
 reviewing an original subject. Historical receipts and source pins are preserved;

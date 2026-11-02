@@ -39,6 +39,12 @@ pub enum RestoreDisposition {
     AwaitEvidence,
     /// Operator intention, not a claim that the original operation never ran.
     DoNotReplay,
+    /// Operator-selected source acquisition; never permission to replay a write.
+    AcquireSource {
+        git_revision: String,
+        max_objects: i64,
+        max_bytes: i64,
+    },
     /// Retain an already accepted commit. No unverified locator can create a pin.
     PreserveSource {
         source_holder: String,
@@ -63,7 +69,7 @@ pub struct RestoreDecisionSpec {
 }
 impl RestoreDecisionSpec {
     fn validate(&self) -> Result<()> {
-        if !matches!(self.version, 1 | 2)
+        if !matches!(self.version, 1..=3)
             || self.note.trim().is_empty()
             || self.note.len() > 4096
             || self
@@ -117,6 +123,27 @@ impl RestoreDecisionSpec {
                 identifier(node, 256)?;
             }
         }
+        if let RestoreDisposition::AcquireSource {
+            git_revision,
+            max_objects,
+            max_bytes,
+        } = &self.disposition
+        {
+            if self.version != 3 {
+                return Err(Error::Invalid("restore acquisition version"));
+            }
+            // Match the currently supported source spool/projector profile.
+            if *max_objects > 100_000 || *max_bytes > 4 * 1024 * 1024 * 1024 {
+                return Err(Error::Invalid("restore acquisition budget"));
+            }
+            ImportSpec {
+                git_revision: git_revision.clone(),
+                max_objects: *max_objects,
+                max_bytes: *max_bytes,
+                ttl_seconds: 3600,
+            }
+            .validate()?;
+        }
         if let RestoreDisposition::PreserveSource {
             source_holder,
             native_revision,
@@ -128,7 +155,7 @@ impl RestoreDecisionSpec {
         Ok(())
     }
     fn require_v2(&self) -> Result<()> {
-        if self.version != 2 {
+        if !matches!(self.version, 2 | 3) {
             return Err(Error::Invalid("restore decision subject version"));
         }
         Ok(())
@@ -264,6 +291,52 @@ impl Metadata {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn restore_acquisition_requires_v3_and_bounded_exact_git_input() {
+        let v: Value =
+            serde_json::from_str(include_str!("../../tests/fixtures/restore-acquire-v3.json"))
+                .unwrap();
+        let wire: WireCommand = serde_json::from_value(v["request"].clone()).unwrap();
+        assert_eq!(wire.permission(), Permission::RepositoryWrite);
+        let WireCommand::RestoreDecisionRecord { specification, .. } = wire else {
+            panic!()
+        };
+        specification.validate().unwrap();
+        assert_eq!(
+            restore_digest(&specification).unwrap(),
+            v["specification_sha256"]
+        );
+        for version in [1, 2, 4] {
+            let mut bad = specification.clone();
+            bad.version = version;
+            assert!(bad.validate().is_err());
+        }
+        for (revision, objects, bytes) in [
+            (format!("native:sha256:{}", "11".repeat(32)), 1000, 1048576),
+            ("main".into(), 1000, 1048576),
+            (format!("git:sha1:{}", "11".repeat(20)), 0, 1048576),
+            (format!("git:sha1:{}", "11".repeat(20)), 100001, 1048576),
+            (format!("git:sha1:{}", "11".repeat(20)), 1000, 21),
+            (format!("git:sha1:{}", "11".repeat(20)), 1000, 4294967297),
+        ] {
+            let mut bad = specification.clone();
+            bad.disposition = RestoreDisposition::AcquireSource {
+                git_revision: revision,
+                max_objects: objects,
+                max_bytes: bytes,
+            };
+            assert!(bad.validate().is_err());
+        }
+        for field in [
+            "publication_authorized",
+            "git_mapping_verified",
+            "source_preservation",
+        ] {
+            let mut bad = v["request"].clone();
+            bad["specification"][field] = json!(true);
+            assert!(serde_json::from_value::<WireCommand>(bad).is_err());
+        }
+    }
     #[test]
     fn restore_v2_subjects_keep_composite_identity_and_reject_v1_encoding() {
         let vector: Value =

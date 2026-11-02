@@ -20,6 +20,8 @@ mod group_checks;
 mod groups;
 mod recovery;
 mod restore;
+mod restore_acquisition;
+pub use restore_acquisition::RestoreAcquisitionContext;
 mod restore_checks;
 mod restore_deliveries;
 pub use restore_deliveries::{RestoreDeliveryContext, RestoreDeliveryEvidence};
