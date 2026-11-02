@@ -7,6 +7,8 @@ mod events;
 mod projections;
 #[path = "github/recovery.rs"]
 mod recovery;
+#[path = "github/restore_acquire.rs"]
+mod restore_acquire;
 #[path = "github/restore_check.rs"]
 mod restore_check;
 #[path = "github/restore_delivery.rs"]

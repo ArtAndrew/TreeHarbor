@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add owner-selected `github restore-acquire-source`: recover one exact Git
+  revision while the old binding stays revoked, upload its complete history,
+  retain a separate recovery pin and verify its Git mapping on the server.
+  Replay completes from committed preservation without local source or App files.
+
 - Add `github restore-inspect-delivery`: read one retained provider delivery
   attempt twice and compare its payload hash with the retained signed inbox.
   A provider success status does not prove local receipt. Committed captures

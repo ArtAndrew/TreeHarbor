@@ -4,6 +4,10 @@ use serde::Deserialize;
 #[derive(Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
 pub enum WireCommand {
+    RestoreAcquisitionContext {
+        epoch: i64,
+        decision_key: String,
+    },
     RestoreDeliveryContext {
         epoch: i64,
         binding: String,
@@ -596,6 +600,7 @@ pub(super) fn id(s: &str) -> Result<Uuid> {
 impl WireCommand {
     pub fn permission(&self) -> Permission {
         match self {
+            Self::RestoreAcquisitionContext { .. } => Permission::RepositoryWrite,
             Self::RestoreDeliveryContext { .. }
             | Self::RestoreDeliveryRecord { .. }
             | Self::RestoreCheckContext { .. }
@@ -717,6 +722,10 @@ impl WireCommand {
         backend: Option<&str>,
     ) -> Result<Value> {
         match self {
+            Self::RestoreAcquisitionContext {
+                epoch,
+                decision_key,
+            } => Box::pin(db.github_restore_acquisition_context(auth, epoch, &decision_key)).await,
             Self::RestoreDeliveryContext {
                 epoch,
                 binding,

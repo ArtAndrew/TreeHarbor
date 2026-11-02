@@ -1,0 +1,29 @@
+{
+  "request": {
+    "action": "restore_decision_record",
+    "key": "acquire-source-001",
+    "epoch": 1,
+    "specification": {
+      "version": 3,
+      "binding": "00000000-0000-4000-8000-000000000001",
+      "manifest_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+      "context_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+      "evidence_sha256": "3333333333333333333333333333333333333333333333333333333333333333",
+      "subject": {
+        "kind": "external_branch",
+        "name": "treeharbor/post-backup"
+      },
+      "disposition": {
+        "action": "acquire_source",
+        "git_revision": "git:sha1:1111111111111111111111111111111111111111",
+        "max_objects": 1000,
+        "max_bytes": 1048576
+      },
+      "previous_key": null,
+      "note": "Recover the selected exact Git revision without reactivating publication."
+    }
+  },
+  "specification_sha256": "590cdac300848b1e0a9787d73ec7f22f1bc42800c76ac72099db90389e1db41e",
+  "preserve_key": "restore-acquire-preserve:5838c83c20e8866a9a8e4a9685afbc3a54d1d845f1c8c9c888409d0c563ac344",
+  "mapping_key": "restore-acquire-map:5838c83c20e8866a9a8e4a9685afbc3a54d1d845f1c8c9c888409d0c563ac344"
+}
