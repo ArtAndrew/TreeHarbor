@@ -444,6 +444,49 @@ impl Connection {
         })
     }
     /// Read-only provider content comparison; does not construct a signed event.
+    pub async fn observe_restore_delivery(
+        &self,
+        target: &RecoveryTarget,
+        expected: &DeliveryAttempt,
+    ) -> Result<treeharbor_github_contract::restore_delivery::RestoreDeliveryReport> {
+        target.validate()?;
+        let started_at_unix_ms = milliseconds()?;
+        expected
+            .validate(
+                target.binding.installation_id,
+                target.binding.repository_id,
+                started_at_unix_ms,
+            )
+            .map_err(|_| Error::WebhookRecovery)?;
+        tokio::time::timeout(PROBE_TIMEOUT, async {
+            let _slot = self
+                .slots
+                .acquire()
+                .await
+                .map_err(|_| Error::Configuration)?;
+            let jwt = self.recovery_preflight(target).await?;
+            let before = self.recovery_detail(target, expected, &jwt).await?;
+            let after = self.recovery_detail(target, expected, &jwt).await?;
+            let report = treeharbor_github_contract::restore_delivery::RestoreDeliveryReport {
+                version: 1,
+                app_id: target.app_id,
+                installation_id: target.binding.installation_id,
+                repository_id: target.binding.repository_id,
+                callback_url: target.callback_url.clone(),
+                started_at_unix_ms,
+                finished_at_unix_ms: milliseconds()?,
+                before,
+                after,
+            };
+            report
+                .validate(expected)
+                .map_err(|_| Error::WebhookRecovery)?;
+            Ok(report)
+        })
+        .await
+        .map_err(|_| Error::Deadline)?
+    }
+    /// Read-only provider content comparison; does not construct a signed event.
     pub async fn inspect_webhook_delivery(
         &self,
         target: &RecoveryTarget,

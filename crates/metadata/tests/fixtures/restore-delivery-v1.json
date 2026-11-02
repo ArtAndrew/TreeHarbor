@@ -1,0 +1,57 @@
+{
+  "request": {
+    "action": "restore_delivery_record",
+    "key": "delivery-capture",
+    "epoch": 1,
+    "specification": {
+      "version": 1,
+      "binding": "00000000-0000-4000-8000-000000000001",
+      "manifest_sha256": "b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3",
+      "context_sha256": "b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4",
+      "recovery": "22222222-2222-4222-8222-222222222222",
+      "provider_id": 700,
+      "report": {
+        "version": 1,
+        "app_id": 7,
+        "installation_id": 9,
+        "repository_id": 11,
+        "callback_url": "https://hooks.example.com/github/events",
+        "started_at_unix_ms": 10,
+        "finished_at_unix_ms": 11,
+        "before": {
+          "version": 1,
+          "attempt": {
+            "id": 700,
+            "guid": "12121212-1212-4212-8212-121212121212",
+            "installation_id": 9,
+            "repository_id": 11,
+            "delivered_at_unix_ms": 1,
+            "redelivery": false,
+            "action": "checks_requested",
+            "status_code": 200,
+            "throttled_at_unix_ms": null
+          },
+          "observed_at_unix_ms": 10,
+          "payload_sha256": "abababababababababababababababababababababababababababababababab"
+        },
+        "after": {
+          "version": 1,
+          "attempt": {
+            "id": 700,
+            "guid": "12121212-1212-4212-8212-121212121212",
+            "installation_id": 9,
+            "repository_id": 11,
+            "delivered_at_unix_ms": 1,
+            "redelivery": false,
+            "action": "checks_requested",
+            "status_code": 200,
+            "throttled_at_unix_ms": null
+          },
+          "observed_at_unix_ms": 11,
+          "payload_sha256": "abababababababababababababababababababababababababababababababab"
+        }
+      }
+    }
+  },
+  "specification_sha256": "37ab1cf1845ace3b41c2e1855f17ec8f85c6d884c64b6c6630fdf2eabac93431"
+}

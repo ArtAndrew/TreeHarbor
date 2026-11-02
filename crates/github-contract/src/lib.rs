@@ -12,6 +12,7 @@ pub mod host_policy_evaluation;
 pub mod publication;
 pub mod queue;
 pub mod restore_check;
+pub mod restore_delivery;
 pub mod restore_queue;
 pub mod workflow_definitions;
 use serde::{Deserialize, Serialize};

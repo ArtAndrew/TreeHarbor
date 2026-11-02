@@ -21,6 +21,7 @@ mod queue;
 mod recovery;
 mod restore;
 mod restore_check;
+mod restore_delivery;
 mod restore_pull;
 mod restore_queue;
 
@@ -30,6 +31,7 @@ pub enum Action {
     RestoreInspectPull(restore_pull::Options),
     RestoreInspectQueue(restore_queue::Options),
     RestoreInspectCheck(restore_check::Options),
+    RestoreInspectDelivery(restore_delivery::Options),
     /// Compare live host discovery with an exact quarantined binding's retained
     /// operations. Reports discrepancies without resolving or replaying them.
     RestoreAssess(restore::Options),
@@ -386,6 +388,7 @@ pub async fn run(action: Action) -> Result<bool> {
         Action::RestoreAssess(options) => restore::run(options).await,
         Action::RestoreInspectPull(options) => restore_pull::run(options).await,
         Action::RestoreInspectQueue(options) => restore_queue::run(options).await,
+        Action::RestoreInspectDelivery(options) => restore_delivery::run(options).await,
         Action::RestoreInspectCheck(options) => restore_check::run(options).await,
         Action::PolicyPlan(policy) => policy_owner(policy, None).await,
         Action::PolicyAdopt { policy, key } => policy_owner(policy, Some(key)).await,

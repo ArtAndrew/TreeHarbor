@@ -51,16 +51,16 @@ fn provider(id: i64) -> Result<()> {
         Ok(())
     }
 }
-async fn load(tx: &Transaction<'_>, s: &Scope, id: Uuid) -> Result<Row> {
+pub(super) async fn load(tx: &Transaction<'_>, s: &Scope, id: Uuid) -> Result<Row> {
     tx.query_opt("SELECT *,expires_at>clock_timestamp() AS unexpired,(extract(epoch from created_at)*1000)::bigint AS created_ms,(extract(epoch from expires_at)*1000)::bigint AS deadline,(extract(epoch from clock_timestamp())*1000)::bigint AS now_ms FROM th_github_event_recoveries WHERE tenant=$1 AND repository=$2 AND recovery=$3",&[&s.tenant(),&s.repository(),&id]).await?.ok_or(Error::NotFound)
 }
-async fn attempt(tx: &Transaction<'_>, s: &Scope, id: Uuid, p: i64) -> Result<Row> {
+pub(super) async fn attempt(tx: &Transaction<'_>, s: &Scope, id: Uuid, p: i64) -> Result<Row> {
     tx.query_opt("SELECT *,(extract(epoch from started_at)*1000)::bigint AS started_ms FROM th_github_event_recovery_attempts WHERE tenant=$1 AND repository=$2 AND recovery=$3 AND provider_id=$4",&[&s.tenant(),&s.repository(),&id,&p]).await?.ok_or(Error::NotFound)
 }
-fn observed(r: &Row) -> Result<DeliveryAttempt> {
+pub(super) fn observed(r: &Row) -> Result<DeliveryAttempt> {
     serde_json::from_value(r.get("observation")).map_err(|_| Error::SchemaMismatch)
 }
-fn details(r: &Row) -> Result<Option<DeliveryDetails>> {
+pub(super) fn details(r: &Row) -> Result<Option<DeliveryDetails>> {
     r.get::<_, Option<Value>>("details")
         .map(serde_json::from_value)
         .transpose()
@@ -121,11 +121,28 @@ fn time_valid(time: i64, r: &Row) -> Result<()> {
     Ok(())
 }
 async fn inbox(tx: &Transaction<'_>, s: &Scope, r: &Row, a: &Row) -> Result<Value> {
-    let row=tx.query_opt("SELECT e.event,e.id,e.body,encode(e.digest,'hex') AS raw_digest FROM th_github_event_deliveries d JOIN th_github_events e ON (e.tenant,e.repository,e.channel,e.digest)=(d.tenant,d.repository,d.channel,d.digest) WHERE d.tenant=$1 AND d.repository=$2 AND d.channel=$3 AND d.delivery=$4",&[&s.tenant(),&s.repository(),&r.get::<_,Uuid>("channel"),&a.get::<_,Uuid>("delivery")]).await?;
+    let d = details(a)?;
+    inbox_against(
+        tx,
+        s,
+        r.get("channel"),
+        a.get("delivery"),
+        d.as_ref().map(|d| d.payload_sha256.as_str()),
+    )
+    .await
+}
+pub(super) async fn inbox_against(
+    tx: &Transaction<'_>,
+    s: &Scope,
+    channel: Uuid,
+    delivery: Uuid,
+    payload: Option<&str>,
+) -> Result<Value> {
+    let row=tx.query_opt("SELECT e.event,e.id,e.body,encode(e.digest,'hex') AS raw_digest FROM th_github_event_deliveries d JOIN th_github_events e ON (e.tenant,e.repository,e.channel,e.digest)=(d.tenant,d.repository,d.channel,d.digest) WHERE d.tenant=$1 AND d.repository=$2 AND d.channel=$3 AND d.delivery=$4",&[&s.tenant(),&s.repository(),&channel,&delivery]).await?;
     let Some(row) = row else {
         return Ok(json!({"state":"missing"}));
     };
-    let Some(d) = details(a)? else {
+    let Some(expected) = payload else {
         return Ok(json!({"state":"needs_content_check"}));
     };
     let body: Value = serde_json::from_slice(&row.get::<_, Vec<u8>>("body"))
@@ -133,7 +150,7 @@ async fn inbox(tx: &Transaction<'_>, s: &Scope, r: &Row, a: &Row) -> Result<Valu
     let Ok(digest) = payload_digest(&body) else {
         return Ok(json!({"state":"comparison_unavailable"}));
     };
-    if digest != d.payload_sha256 {
+    if digest != expected {
         return Ok(json!({"state":"payload_conflict"}));
     }
     Ok(
