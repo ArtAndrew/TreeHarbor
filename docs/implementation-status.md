@@ -21,6 +21,35 @@ These correctness checks do not establish complete mode readiness or performance
 superiority. The installed native workload includes deliberate replacement-node
 recovery; live GitHub recovery remains a separate release gate.
 
+## Unreleased durable inventory and source coverage
+
+`github restore-capture-inventory` retains a completed heads/all-state-PR traversal
+as an immutable manifest and hashed pages. All observed refs and PRs participate,
+including ordinary names, closed PR heads and explicit foreign/unknown fork origins.
+Sealing requires every page, exact counts and unique identities; partial uploads
+cannot masquerade as a completed inventory. The existing API request limit is
+preserved through pages of up to 16 items. See [the guide](restore-inventory-coverage.md).
+
+The owner's `restore_inventory_coverage` API compares each page's exact Git revisions
+with server-generated Rust projection receipts and independent live recovery pins.
+A preservation decision alone is insufficient. Missing pins expose missing source
+again. Queries require a current quarantine/context and do not grant admission;
+zero missing revisions covers only the selected observation, not unavailable host
+history, retained unknown dispatches or future host changes. No schema or host
+permission change is introduced.
+
+Local verification passed the versioned wire/golden test and real PostgreSQL
+contract (missing/duplicate pages, wrong role/identity/time/context, restart,
+actual projection proof, removed pin and deleted-fork head). The real CLI/service
+trial loses an already committed page response, kills both processes, resumes the
+remaining page and seals once without App files, then repeats after another restart.
+It leaves bindings revoked and creates no publication attempts. Provider capture
+and quarantine are explicit fixtures; fresh host collection reuses the tested
+read-only adapter and is not new live installed-App acceptance. Twelve service
+GitHub/journal unit tests passed, including full normalization across pages.
+Strict metadata/service all-target Clippy, formatting and changed documentation
+links passed. Required branch CI remains pending; this functionality is not in 0.1.11.
+
 ## Unreleased exact source acquisition during recovery
 
 `github restore-acquire-source` connects an owner's version-3 `acquire_source`
@@ -44,7 +73,9 @@ The download path reuses the existing GitHub read-token adapter; the new CLI's
 fresh network path has not yet received live installed-App acceptance.
 Independent phase-key vectors fix retry identities. Strict metadata/service
 all-target Clippy, formatting and documentation file links passed. Required
-branch CI is pending.
+branch CI passed on [PR134](https://github.com/ArtAndrew/TreeHarbor/pull/134):
+[CI](https://github.com/ArtAndrew/TreeHarbor/actions/runs/41409013689) and
+[contribution rights](https://github.com/ArtAndrew/TreeHarbor/actions/runs/41409013778).
 
 This closes selected-source acquisition, not complete post-backup discovery,
 host-state attestation, external-writer fencing or new-binding admission. Larger

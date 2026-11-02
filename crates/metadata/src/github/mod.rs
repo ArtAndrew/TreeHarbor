@@ -26,7 +26,11 @@ mod restore_checks;
 mod restore_deliveries;
 pub use restore_deliveries::{RestoreDeliveryContext, RestoreDeliveryEvidence};
 mod restore_decisions;
+mod restore_inventory;
 mod restore_pulls;
+pub use restore_inventory::{
+    RESTORE_INVENTORY_PAGE_ITEMS, RestoreInventoryItem, RestoreInventoryPage, RestoreInventorySpec,
+};
 mod restore_queues;
 pub use restore_checks::{RestoreCheckContext, RestoreCheckEvidence};
 pub use restore_pulls::{RestorePullEvidence, RestorePullReport};

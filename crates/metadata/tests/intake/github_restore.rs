@@ -3,6 +3,319 @@ use sha2::{Digest, Sha256};
 use treeharbor_metadata::github::{RestoreContext, RestoreEffectKind};
 
 #[tokio::test]
+#[ignore = "requires PostgreSQL; complete paged inventory, restart, real mapping coverage and unchanged host intents"]
+async fn restore_inventory_requires_all_pages_and_live_verified_source() {
+    use treeharbor_metadata::github::{RestoreInventoryPage, RestoreInventorySpec};
+    let (mut p, mut decision, _) = decision_fixture().await;
+    let v: Value =
+        serde_json::from_str(include_str!("../fixtures/restore-inventory-v1.json")).unwrap();
+    let mut spec: RestoreInventorySpec =
+        serde_json::from_value(v["request"]["specification"].clone()).unwrap();
+    let pages: Vec<RestoreInventoryPage> = serde_json::from_value(v["pages"].clone()).unwrap();
+    let ctx =
+        p.f.db
+            .github_restore_context(&p.reader, 1, p.binding, &decision.manifest_sha256)
+            .await
+            .unwrap();
+    spec.binding = p.binding;
+    spec.manifest_sha256 = decision.manifest_sha256.clone();
+    spec.context_sha256 = decision.context_sha256.clone();
+    spec.app_id = ctx["specification"]["app_id"].as_u64().unwrap();
+    spec.installation_id = ctx["specification"]["upstream"]["installation_id"]
+        .as_u64()
+        .unwrap();
+    spec.repository_id = ctx["specification"]["upstream"]["repository_id"]
+        .as_u64()
+        .unwrap();
+    spec.started_at_unix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    spec.finished_at_unix = spec.started_at_unix;
+    let wrong = actor(
+        &mut p.f,
+        "other-inventory-reader",
+        K::Bridge,
+        &[P::HostRead],
+    )
+    .await;
+    let before = retained(&p).await;
+    for auth in [&p.owner, &wrong] {
+        assert!(matches!(
+            p.f.db
+                .start_github_restore_inventory(auth, &cmd("denied"), &spec)
+                .await,
+            Err(MetaError::Forbidden)
+        ));
+    }
+    for case in [
+        "app",
+        "installation",
+        "repository",
+        "context",
+        "future",
+        "old",
+    ] {
+        let mut bad = spec.clone();
+        match case {
+            "app" => bad.app_id += 1,
+            "installation" => bad.installation_id += 1,
+            "repository" => bad.repository_id += 1,
+            "context" => bad.context_sha256 = "99".repeat(32),
+            "future" => {
+                bad.started_at_unix += 60;
+                bad.finished_at_unix += 60;
+            }
+            _ => {
+                bad.started_at_unix -= 300;
+                bad.finished_at_unix -= 300;
+            }
+        }
+        assert!(
+            p.f.db
+                .start_github_restore_inventory(&p.reader, &cmd(case), &bad)
+                .await
+                .is_err(),
+            "{case}"
+        );
+    }
+    assert_eq!(before, retained(&p).await);
+    let started =
+        p.f.db
+            .start_github_restore_inventory(&p.reader, &cmd("inventory"), &spec)
+            .await
+            .unwrap();
+    assert!(
+        p.f.db
+            .seal_github_restore_inventory(&p.reader, 1, "inventory")
+            .await
+            .is_err()
+    );
+    assert!(
+        p.f.db
+            .github_restore_inventory_coverage(&p.owner, 1, "inventory", 0)
+            .await
+            .is_err()
+    );
+    let mut bad = pages[0].clone();
+    bad.items.reverse();
+    assert!(
+        p.f.db
+            .record_github_restore_inventory_page(&p.reader, 1, "inventory", &bad)
+            .await
+            .is_err()
+    );
+    // Page arrival order is independent; missing page zero still prevents seal.
+    p.f.db
+        .record_github_restore_inventory_page(&p.reader, 1, "inventory", &pages[1])
+        .await
+        .unwrap();
+    assert!(
+        p.f.db
+            .seal_github_restore_inventory(&p.reader, 1, "inventory")
+            .await
+            .is_err()
+    );
+    let page0 =
+        p.f.db
+            .record_github_restore_inventory_page(&p.reader, 1, "inventory", &pages[0])
+            .await
+            .unwrap();
+    assert!(matches!(
+        p.f.db
+            .record_github_restore_inventory_page(&p.reader, 1, "inventory", &bad)
+            .await,
+        Err(MetaError::IdempotencyConflict)
+    ));
+    let seal =
+        p.f.db
+            .seal_github_restore_inventory(&p.reader, 1, "inventory")
+            .await
+            .unwrap();
+    assert_eq!(seal["inventory_complete"], true);
+    assert_eq!(seal["publication_authorized"], false);
+    assert_eq!(before[1..], retained(&p).await[1..]);
+    let mut restarted = Metadata::new(connection(&p.f.schema).await).await.unwrap();
+    assert_eq!(
+        started,
+        restarted
+            .start_github_restore_inventory(&p.reader, &cmd("inventory"), &spec)
+            .await
+            .unwrap()
+    );
+    assert_eq!(
+        page0,
+        restarted
+            .record_github_restore_inventory_page(&p.reader, 1, "inventory", &pages[0])
+            .await
+            .unwrap()
+    );
+    assert_eq!(
+        seal,
+        restarted
+            .seal_github_restore_inventory(&p.reader, 1, "inventory")
+            .await
+            .unwrap()
+    );
+    let coverage = restarted
+        .github_restore_inventory_coverage(&p.owner, 1, "inventory", 0)
+        .await
+        .unwrap();
+    assert_eq!(coverage["missing_on_page"], 1);
+    assert_eq!(coverage["next_page"], 1);
+    assert_eq!(
+        coverage["sources"][0]["origins"].as_array().unwrap().len(),
+        16
+    );
+    assert!(matches!(
+        restarted
+            .github_restore_inventory_coverage(&p.reader, 1, "inventory", 0)
+            .await,
+        Err(MetaError::Forbidden)
+    ));
+    assert!(
+        restarted
+            .github_restore_inventory_coverage(&p.owner, 2, "inventory", 0)
+            .await
+            .is_err()
+    );
+    assert!(
+        restarted
+            .github_restore_inventory_coverage(&p.owner, 1, "inventory", 2)
+            .await
+            .is_err()
+    );
+    let RevisionRef::Native(root) = p.f.revision else {
+        panic!()
+    };
+    decision.disposition = RestoreDisposition::PreserveSource {
+        source_holder: format!("base:{}", root.hex()),
+        native_revision: p.f.revision.to_string(),
+    };
+    let saved = restarted
+        .record_github_restore_decision(&p.owner, &cmd("preserved-inventory-source"), &decision)
+        .await
+        .unwrap();
+    // A pin or operator decision alone does not prove this Git identity.
+    assert_eq!(
+        restarted
+            .github_restore_inventory_coverage(&p.owner, 1, "inventory", 0)
+            .await
+            .unwrap()["missing_on_page"],
+        1
+    );
+    let expected = "git:sha1:2acbe39a88a8dfe59d8370733d81f21ec8a76d04";
+    let RevisionRef::Git(git) = expected.parse().unwrap() else {
+        panic!()
+    };
+    let scratch = private_temp();
+    let proof = treeharbor_git_bridge::verify_mapping(
+        &p.f.stage,
+        root,
+        git,
+        scratch.path(),
+        Default::default(),
+    )
+    .unwrap();
+    restarted
+        .record_github_restore_mapping(
+            &p.owner,
+            &cmd("inventory-mapping"),
+            "preserved-inventory-source",
+            expected,
+            &proof,
+        )
+        .await
+        .unwrap();
+    let coverage = restarted
+        .github_restore_inventory_coverage(&p.owner, 1, "inventory", 0)
+        .await
+        .unwrap();
+    assert_eq!(coverage["missing_on_page"], 0);
+    assert_eq!(
+        coverage["sources"][0]["mapping"]["key"],
+        "inventory-mapping"
+    );
+    let coverage = restarted
+        .github_restore_inventory_coverage(&p.owner, 1, "inventory", 1)
+        .await
+        .unwrap();
+    assert_eq!(coverage["missing_on_page"], 1);
+    assert_eq!(coverage["next_page"], Value::Null);
+    let missing = coverage["sources"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|s| s["classification"] == "missing_verified_source")
+        .unwrap();
+    assert_eq!(missing["origins"][0]["kind"], "pull_head");
+    assert_eq!(missing["origins"][0]["repository_id"], Value::Null);
+    // Loss of the independent permanent holder must not inherit historical success.
+    let sql = connection(&p.f.schema).await;
+    sql.execute(
+        "DELETE FROM th_object_pins WHERE holder=$1",
+        &[&saved["source_preservation"]["holder"].as_str().unwrap()],
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        restarted
+            .github_restore_inventory_coverage(&p.owner, 1, "inventory", 0)
+            .await
+            .unwrap()["missing_on_page"],
+        1
+    );
+    // Unique page hashes cannot hide duplicate refs across different pages.
+    let mut duplicate = pages.clone();
+    duplicate[1].items[0] = duplicate[0].items[0].clone();
+    let mut dup_spec = spec.clone();
+    dup_spec.head_count = 17;
+    dup_spec.pull_count = 0;
+    dup_spec.page_sha256 = duplicate
+        .iter()
+        .map(|p| restore_digest(p).unwrap())
+        .collect();
+    restarted
+        .start_github_restore_inventory(&p.reader, &cmd("duplicate"), &dup_spec)
+        .await
+        .unwrap();
+    for inventory_page in &duplicate {
+        restarted
+            .record_github_restore_inventory_page(&p.reader, 1, "duplicate", inventory_page)
+            .await
+            .unwrap();
+    }
+    assert!(
+        restarted
+            .seal_github_restore_inventory(&p.reader, 1, "duplicate")
+            .await
+            .is_err()
+    );
+    let RestoreDecisionSubject::Retained { operation, .. } = decision.subject else {
+        panic!()
+    };
+    restarted
+        .cancel_github_publication(&p.owner, &cmd("inventory-context-moved"), operation)
+        .await
+        .unwrap();
+    assert!(matches!(
+        restarted
+            .github_restore_inventory_coverage(&p.owner, 1, "inventory", 0)
+            .await,
+        Err(MetaError::RestoreContextChanged)
+    ));
+    // Historical seal replay is still historical, not current coverage/admission.
+    assert_eq!(
+        seal,
+        restarted
+            .seal_github_restore_inventory(&p.reader, 1, "inventory")
+            .await
+            .unwrap()
+    );
+    cleanup(&p.f.schema).await;
+}
+
+#[tokio::test]
 #[ignore = "requires PostgreSQL; exact bridge PR captures, stale context, replay and unchanged publication history"]
 async fn restore_pull_evidence_is_scoped_fresh_and_never_fabricates_a_publication_attempt() {
     use treeharbor_metadata::github::{RestorePullEvidence, RestorePullReport};

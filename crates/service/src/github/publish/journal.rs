@@ -5,6 +5,7 @@ const MAX_REPORTS: usize = 1024;
 const MAX_RECORD_BYTES: usize = 256 * 1024;
 pub(in crate::github) struct Journal {
     pub root: PathBuf,
+    max_record_bytes: usize,
     _lock: File,
 }
 #[derive(Serialize, Deserialize)]
@@ -26,9 +27,8 @@ impl<R> Record<R> {
         }
     }
 }
-fn read<T: DeserializeOwned>(path: &Path) -> Result<T> {
-    serde_json::from_slice(&files::read_private(path, MAX_RECORD_BYTES)?)
-        .map_err(|_| Error::PublicationState)
+fn read<T: DeserializeOwned>(path: &Path, limit: usize) -> Result<T> {
+    serde_json::from_slice(&files::read_private(path, limit)?).map_err(|_| Error::PublicationState)
 }
 impl Journal {
     /// A single-capture operation must not silently ignore extra journal records.
@@ -36,7 +36,8 @@ impl Journal {
         match self.count()? {
             0 => Ok(None),
             1 => {
-                let r: Record<R> = read(&self.root.join("report-0000.json"))?;
+                let r: Record<R> =
+                    read(&self.root.join("report-0000.json"), self.max_record_bytes)?;
                 if r.version != 1
                     || !r.key.starts_with("github-publish-report-")
                     || r.key.len() > 128
@@ -51,12 +52,18 @@ impl Journal {
     pub fn read_optional<T: DeserializeOwned>(&self, name: &str) -> Result<Option<T>> {
         let path = self.root.join(name);
         if path.try_exists()? {
-            Ok(Some(read(&path)?))
+            Ok(Some(read(&path, self.max_record_bytes)?))
         } else {
             Ok(None)
         }
     }
     pub fn open(path: &Path, intent: &Value) -> Result<Self> {
+        Self::open_bounded(path, intent, MAX_RECORD_BYTES)
+    }
+    pub fn open_inventory(path: &Path, intent: &Value) -> Result<Self> {
+        Self::open_bounded(path, intent, 32 * 1024 * 1024)
+    }
+    fn open_bounded(path: &Path, intent: &Value, max_record_bytes: usize) -> Result<Self> {
         let root = files::private_directory(path)?;
         let lock = OpenOptions::new()
             .read(true)
@@ -72,14 +79,18 @@ impl Journal {
         rustix::fs::flock(&lock, rustix::fs::FlockOperation::NonBlockingLockExclusive)
             .map_err(|_| Error::AlreadyRunning)?;
         File::open(&root)?.sync_all()?;
-        let j = Self { root, _lock: lock };
+        let j = Self {
+            root,
+            max_record_bytes,
+            _lock: lock,
+        };
         j.bind("intent.json", intent)?;
         Ok(j)
     }
     pub fn bind(&self, name: &str, value: &Value) -> Result<()> {
         let path = self.root.join(name);
         let bytes = serde_json::to_vec(value).map_err(|_| Error::PublicationState)?;
-        if bytes.len() > MAX_RECORD_BYTES {
+        if bytes.len() > self.max_record_bytes {
             return Err(Error::Size);
         }
         match files::write_private(&path, &bytes) {
@@ -87,7 +98,7 @@ impl Journal {
             Err(Error::Io(e)) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
             Err(e) => return Err(e),
         }
-        if read::<Value>(&path)? != *value {
+        if read::<Value>(&path, self.max_record_bytes)? != *value {
             return Err(Error::PublicationState);
         }
         Ok(())
@@ -100,7 +111,7 @@ impl Journal {
                 &json!({"version":1,"attempt":Uuid::new_v4().to_string()}),
             )?;
         }
-        let v: Value = read(&path)?;
+        let v: Value = read(&path, self.max_record_bytes)?;
         if v["version"] != 1 {
             return Err(Error::PublicationState);
         }
@@ -139,7 +150,10 @@ impl Journal {
                 if i + 1 != count {
                     return Err(Error::PublicationState);
                 }
-                let r: Record<R> = read(&self.root.join(format!("report-{i:04}.json")))?;
+                let r: Record<R> = read(
+                    &self.root.join(format!("report-{i:04}.json")),
+                    self.max_record_bytes,
+                )?;
                 if r.version != 1
                     || !r.key.starts_with("github-publish-report-")
                     || r.key.len() > 128
@@ -148,7 +162,10 @@ impl Journal {
                 }
                 return Ok(Some((i, r)));
             }
-            let _: Value = read(&self.root.join(format!("ack-{i:04}.json")))?;
+            let _: Value = read(
+                &self.root.join(format!("ack-{i:04}.json")),
+                self.max_record_bytes,
+            )?;
         }
         Ok(None)
     }
@@ -224,7 +241,7 @@ mod tests {
         drop(j);
         assert!(Journal::open(dir.path(), &json!({"publication":"other"})).is_err());
         assert_eq!(
-            read::<Value>(&dir.path().join("intent.json")).unwrap(),
+            read::<Value>(&dir.path().join("intent.json"), MAX_RECORD_BYTES).unwrap(),
             identity
         );
     }
@@ -260,7 +277,7 @@ mod tests {
         let j = Journal::open(dir.path(), &intent).unwrap();
         assert!(j.pending::<Value>().unwrap().is_none());
         assert_eq!(
-            read::<Value>(&dir.path().join("ack-0000.json")).unwrap(),
+            read::<Value>(&dir.path().join("ack-0000.json"), MAX_RECORD_BYTES).unwrap(),
             observed
         );
         assert!(matches!(

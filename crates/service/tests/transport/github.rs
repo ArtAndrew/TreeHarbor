@@ -13,6 +13,8 @@ mod restore_acquire;
 mod restore_check;
 #[path = "github/restore_delivery.rs"]
 mod restore_delivery;
+#[path = "github/restore_inventory.rs"]
+mod restore_inventory;
 #[path = "github/restore_pull.rs"]
 mod restore_pull;
 #[path = "github/restore_queue.rs"]

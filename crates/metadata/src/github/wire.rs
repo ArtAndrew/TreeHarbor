@@ -4,6 +4,25 @@ use serde::Deserialize;
 #[derive(Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
 pub enum WireCommand {
+    RestoreInventoryStart {
+        key: String,
+        epoch: i64,
+        specification: Box<RestoreInventorySpec>,
+    },
+    RestoreInventoryPage {
+        epoch: i64,
+        inventory_key: String,
+        page: Box<RestoreInventoryPage>,
+    },
+    RestoreInventorySeal {
+        epoch: i64,
+        inventory_key: String,
+    },
+    RestoreInventoryCoverage {
+        epoch: i64,
+        inventory_key: String,
+        page: usize,
+    },
     RestoreAcquisitionContext {
         epoch: i64,
         decision_key: String,
@@ -600,7 +619,12 @@ pub(super) fn id(s: &str) -> Result<Uuid> {
 impl WireCommand {
     pub fn permission(&self) -> Permission {
         match self {
-            Self::RestoreAcquisitionContext { .. } => Permission::RepositoryWrite,
+            Self::RestoreInventoryStart { .. }
+            | Self::RestoreInventoryPage { .. }
+            | Self::RestoreInventorySeal { .. } => Permission::HostRead,
+            Self::RestoreInventoryCoverage { .. } | Self::RestoreAcquisitionContext { .. } => {
+                Permission::RepositoryWrite
+            }
             Self::RestoreDeliveryContext { .. }
             | Self::RestoreDeliveryRecord { .. }
             | Self::RestoreCheckContext { .. }
@@ -812,6 +836,37 @@ impl WireCommand {
                     .await
             }
             Self::RestoreQueueStatus { key } => db.github_restore_queue(auth, &key).await,
+            Self::RestoreInventoryStart {
+                key,
+                epoch,
+                specification,
+            } => {
+                db.start_github_restore_inventory(auth, &Command { key, epoch }, &specification)
+                    .await
+            }
+            Self::RestoreInventoryPage {
+                epoch,
+                inventory_key,
+                page,
+            } => {
+                db.record_github_restore_inventory_page(auth, epoch, &inventory_key, &page)
+                    .await
+            }
+            Self::RestoreInventorySeal {
+                epoch,
+                inventory_key,
+            } => {
+                db.seal_github_restore_inventory(auth, epoch, &inventory_key)
+                    .await
+            }
+            Self::RestoreInventoryCoverage {
+                epoch,
+                inventory_key,
+                page,
+            } => {
+                db.github_restore_inventory_coverage(auth, epoch, &inventory_key, page)
+                    .await
+            }
             Self::RestorePullRecord {
                 key,
                 epoch,

@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add `github restore-capture-inventory` and owner source-coverage inspection:
+  retain all observed heads/PRs through hashed pages, resume interrupted uploads,
+  and expose exact revisions missing verified, permanently pinned source.
+  Full traversal retention does not authorize restored publication.
+
 - Add owner-selected `github restore-acquire-source`: recover one exact Git
   revision while the old binding stays revoked, upload its complete history,
   retain a separate recovery pin and verify its Git mapping on the server.
