@@ -21,6 +21,22 @@ These correctness checks do not establish complete mode readiness or performance
 superiority. The installed native workload includes deliberate replacement-node
 recovery; live GitHub recovery remains a separate release gate.
 
+## Unreleased node preparation diagnostics
+
+`node prepare-once` now exposes the materializer's existing counters in
+`preparation_statistics`: source object reads/encoded bytes, source bytes written,
+local bytes copied, logical workspace bytes and filesystem entries. Reopening or
+recovering a published placement returns an explicit `null`; the observations
+are not persisted or reconstructed from changed files. Existing readiness and
+`recovered_baseline` semantics are unchanged. No persisted object format, database
+schema or dependency changes are needed. See [counter meanings and limits](local-node.md).
+
+Targeted real PostgreSQL CLI tests passed for both native source and Git history
+import followed by preparation/reopening with Git absent from the node's PATH.
+They check actual materialized content/counters, edited-file preservation and
+unavailable historical statistics. These counters are diagnostic data, not a
+latency benchmark, physical disk measurement or evidence of performance superiority.
+
 ## 0.1.12-alpha.1 release scope
 
 Current documentation additions: [first-run checkpoints](try-treeharbor.md), a

@@ -56,6 +56,27 @@ snapshot, and `runtime: null`. No eligible job returns `idle`. After process los
 a running job becomes reclaimable when its 60-second lease expires; a live worker
 renews every 15 seconds. `idle` does not mean every queued workspace is complete.
 
+Development builds after 0.1.12-alpha.1 also return `preparation_statistics` for
+newly materialized files. These counters describe that preparation, not live disk
+usage or the complete cost of an agent task:
+
+| Field | Meaning |
+| --- | --- |
+| `source_objects` | Source object reads accounted during preparation; not a count of unique stored objects |
+| `source_encoded_bytes` | Encoded source bytes read; not network traffic |
+| `source_bytes_written` | Source content materialized into files or symlink targets |
+| `local_bytes_copied` | Bytes copied from preserved local files during materialization |
+| `workspace_bytes` | Logical content bytes accounted for the prepared tree; not allocated disk blocks |
+| `filesystem_entries` | Prepared filesystem entries, including directories and symlinks |
+
+After `node prepared` reopens an existing placement, or preparation recovers an
+already published tree, `preparation_statistics` is `null`. Those observations
+are not persisted, and the files may have changed. `recovered_baseline: true`
+distinguishes this case from a newly measured preparation; missing observations
+are never reported as zero. The `idle` response has no preparation statistics.
+These fields do not measure latency, OS cache state, server CPU, cleanup or build
+cost. Collect those separately for comparisons with Git.
+
 To prepare one exact workspace, add `--workspace WORKSPACE_UUID` to
 `node prepare-once`. It can be combined with `--slot SLOT_UUID`; the workspace
 selects the queued job, while the slot selects its bounded placement. A slot by
