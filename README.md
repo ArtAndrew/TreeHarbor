@@ -85,7 +85,7 @@ Scion or tuned Git. Performance comparisons and unassisted onboarding remain ope
 
 ## What works today?
 
-Status as of **2026-11-01**. “Implemented” describes the stated component and its
+Status as of **2026-11-02**. “Implemented” describes the stated component and its
 tests, not completion of the entire product.
 
 | Area | Implemented and tested | Still incomplete |
@@ -96,7 +96,7 @@ tests, not completion of the entire product.
 | Developer interfaces | Local authenticated API/CLI, external task contexts and an experimental MCP stdio adapter | Packaged onboarding and remote service transport |
 | Connected | Real GitHub import, branch/PR publication, managed required checks, versioned branch-policy fences, queue requests, candidate/final-history evidence and signed events | Complete host-policy/admission certification and unattended operation |
 | Standalone | Native refs/history, candidate checks/reviews, merge, single-ChangeSet rebase and publication without Git/GitHub on the native path | Full lifecycle, broader history rewriting and fenced migration between modes |
-| Data recovery and interop | Durable transaction/retry paths, object retention, cold backup/staging, quarantined local restore configuration and full-history Git import/export for supported inputs | External fencing automation, old-node recovery cleanup, Connected reconciliation, automatic GC and S3 backend |
+| Data recovery and interop | Durable transaction/retry paths, object retention, cold backup/staging, quarantined local restore, operator-assisted GitHub reconciliation in development builds, and full-history Git import/export for supported inputs | Full Connected disaster certification, external fencing automation, old-node recovery cleanup, automatic GC and S3 backend |
 
 A [live synthetic test](docs/evidence/connected-live-20261024.json) ran two isolated
 scripted agents and published their proposals as real GitHub PRs. A subsequent
@@ -108,6 +108,14 @@ subsequently ran fresh checks for the original PR, its failing combined candidat
 a scripted repair and the repair's combined candidate. The repair merged through
 GitHub's queue; TreeHarbor matched the checked candidate to the final commit and
 recovered a check receipt after a server crash without publishing it twice.
+
+A [Connected recovery trial](docs/evidence/connected-restore-live-20261102.json)
+used an installed development build to restore a real cold backup, preserve eight
+Git revisions discovered in live GitHub branches/PRs, and reconnect under operator
+control. A retained proposal exported to the same Git commit; a new proposal also
+exported successfully. This trial sent no GitHub repository writes and used external
+API tasks, not managed agents. It does not certify uncertain PR/queue recovery or
+production operation. These development additions are not in the published 0.1.11 package.
 
 The CI suite exercises Rust on Linux/macOS, real PostgreSQL contracts, and actual
 gVisor tasks on Linux x86-64/ARM64. See [CI runs](https://github.com/ArtAndrew/TreeHarbor/actions)

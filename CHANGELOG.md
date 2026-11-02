@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Record an installed ARM64 Connected recovery trial using actual cold backup,
+  real GitHub source discovery, operator-assisted reconnection and retained/new
+  proposal export. No host writes or managed agent execution were tested; full
+  publication/queue disaster certification remains open.
+
 - Add `github restore-register-target` for backups predating the first GitHub
   binding. Record a permanently disabled discovery target with explicit provenance,
   then require the existing complete inventory/source/reconnect path. Empty local
