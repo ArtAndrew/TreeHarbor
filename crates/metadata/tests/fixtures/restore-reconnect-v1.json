@@ -1,0 +1,35 @@
+{
+  "request": {
+    "action": "restore_reconnect_plan",
+    "key": "reconnect-plan-example",
+    "epoch": 1,
+    "specification": {
+      "version": 1,
+      "manifest_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+      "source_binding": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      "new_binding": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      "binding": {
+        "version": 1,
+        "app_id": 7,
+        "client_id": "Iv1_public_test",
+        "bridge": "bridge",
+        "upstream": {
+          "installation_id": 9,
+          "repository_id": 11,
+          "owner_id": 13,
+          "owner": "example-org",
+          "name": "demo"
+        }
+      },
+      "ttl_seconds": 300,
+      "evidence_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+      "old_writers_and_runtimes_fenced": true,
+      "old_credentials_cannot_mint": true,
+      "old_tokens_revoked_or_expired": true,
+      "prior_host_mutations_settled": true,
+      "host_writes_controlled": true,
+      "host_policy_reviewed": true
+    }
+  },
+  "specification_sha256": "f662e692d2136b66ae9b611d2c5fd02d8a64e92a1fc8be9488506a1a60438a3f"
+}

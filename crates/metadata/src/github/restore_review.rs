@@ -17,7 +17,7 @@ pub struct RestoreReviewSpec {
     pub inventory_keys: Vec<String>,
 }
 impl RestoreReviewSpec {
-    fn validate(&self) -> Result<()> {
+    pub(super) fn validate(&self) -> Result<()> {
         if self.version != 1 || self.inventory_keys.len() > MAX_BINDINGS {
             return Err(Error::Invalid("restore review specification"));
         }
@@ -219,113 +219,127 @@ impl Metadata {
         let s = auth.scope();
         repository_lock(&tx, s, false).await?;
         context(&tx, auth, epoch, Permission::RepositoryWrite).await?;
-        let rows=tx.query("SELECT binding FROM th_github_bindings WHERE tenant=$1 AND repository=$2 ORDER BY binding LIMIT $3",&[&s.tenant(),&s.repository(),&((MAX_BINDINGS+1) as i64)]).await?;
-        if rows.is_empty() {
-            return Err(Error::NotFound);
+        let result = evaluate(&tx, auth, epoch, spec).await?;
+        tx.commit().await?;
+        Ok(result)
+    }
+}
+
+// Reused inside the exclusive activation transaction; no cached-pass shortcut.
+pub(super) async fn evaluate(
+    tx: &Transaction<'_>,
+    auth: &Authorization,
+    epoch: i64,
+    spec: &RestoreReviewSpec,
+) -> Result<Value> {
+    spec.validate()?;
+    context(tx, auth, epoch, Permission::RepositoryWrite).await?;
+    let s = auth.scope();
+    let rows=tx.query("SELECT binding FROM th_github_bindings WHERE tenant=$1 AND repository=$2 ORDER BY binding LIMIT $3",&[&s.tenant(),&s.repository(),&((MAX_BINDINGS+1) as i64)]).await?;
+    if rows.is_empty() {
+        return Err(Error::NotFound);
+    }
+    if rows.len() > MAX_BINDINGS {
+        return Err(Error::RestoreContextLimit);
+    }
+    let bindings: BTreeSet<Uuid> = rows.into_iter().map(|r| r.get(0)).collect();
+    let mut inventories = BTreeMap::new();
+    for key in &spec.inventory_keys {
+        let inv = restore_inventory::inventory(tx, s, key, epoch).await?;
+        if inv.manifest_sha256 != spec.manifest_sha256
+            || !bindings.contains(&inv.binding)
+            || inventories.insert(inv.binding, (key, inv)).is_some()
+        {
+            return Err(Error::Invalid("restore review inventory selection"));
         }
-        if rows.len() > MAX_BINDINGS {
-            return Err(Error::RestoreContextLimit);
-        }
-        let bindings: BTreeSet<Uuid> = rows.into_iter().map(|r| r.get(0)).collect();
-        let mut inventories = BTreeMap::new();
-        for key in &spec.inventory_keys {
-            let inv = restore_inventory::inventory(&tx, s, key, epoch).await?;
-            if inv.manifest_sha256 != spec.manifest_sha256
-                || !bindings.contains(&inv.binding)
-                || inventories.insert(inv.binding, (key, inv)).is_some()
-            {
-                return Err(Error::Invalid("restore review inventory selection"));
-            }
-        }
-        let now: i64 = tx
-            .query_one("SELECT extract(epoch FROM clock_timestamp())::bigint", &[])
-            .await?
-            .get(0);
-        let mut remaining = MAX_WORK;
-        let mut reports = Vec::new();
-        let mut incomplete = 0;
-        for binding in bindings {
-            let ctx = restore::retained_context(
-                &tx,
-                auth,
-                epoch,
-                binding,
-                &spec.manifest_sha256,
-                Permission::RepositoryWrite,
-            )
-            .await?;
-            let ctx_sha = restore_digest(&ctx)?;
-            let decisions = decisions(&tx, s, &ctx, &mut remaining).await?;
-            let (mut git, native) = retained_sources(&tx, s, &ctx).await?;
-            budget(&mut remaining, git.len() + native.len())?;
-            let mut inventory_status = "missing";
-            let mut inventory_fresh = false;
-            let mut inventory_receipt = Value::Null;
-            if let Some((key, inv)) = inventories.get(&binding) {
-                inventory_status = if inv.context_sha256 != ctx_sha {
-                    "stale_context"
-                } else if !restore_inventory::sealed(&tx, s, key).await? {
-                    "incomplete"
-                } else {
-                    "sealed"
-                };
-                let finished = inv.finished_at_unix as i64;
-                inventory_fresh =
-                    finished <= now.saturating_add(5) && finished >= now.saturating_sub(120);
-                inventory_receipt = json!({"key":key,"specification_sha256":restore_digest(inv)?,"capture_finished_at_unix":inv.finished_at_unix,"token_revoked":inv.token_revoked});
-                if inventory_status == "sealed" {
-                    for index in 0..inv.page_sha256.len() {
-                        let page = restore_inventory::page(&tx, s, key, index).await?;
-                        inv.validate_page(&page)?;
-                        budget(&mut remaining, page.items.len())?;
-                        for item in page.items {
-                            match item {
-                                RestoreInventoryItem::Branch { git_revision, .. } => {
-                                    git.insert(git_revision);
-                                }
-                                RestoreInventoryItem::Pull {
-                                    head_revision,
-                                    base_revision,
-                                    merge_revision,
-                                    ..
-                                } => {
-                                    git.insert(head_revision);
-                                    git.insert(base_revision);
-                                    git.extend(merge_revision);
-                                }
+    }
+    let now: i64 = tx
+        .query_one("SELECT extract(epoch FROM clock_timestamp())::bigint", &[])
+        .await?
+        .get(0);
+    let mut remaining = MAX_WORK;
+    let mut reports = Vec::new();
+    let mut incomplete = 0;
+    for binding in bindings {
+        let ctx = restore::retained_context(
+            tx,
+            auth,
+            epoch,
+            binding,
+            &spec.manifest_sha256,
+            Permission::RepositoryWrite,
+        )
+        .await?;
+        let ctx_sha = restore_digest(&ctx)?;
+        let decisions = decisions(tx, s, &ctx, &mut remaining).await?;
+        let (mut git, native) = retained_sources(tx, s, &ctx).await?;
+        budget(&mut remaining, git.len() + native.len())?;
+        let mut inventory_status = "missing";
+        let mut inventory_fresh = false;
+        let mut inventory_receipt = Value::Null;
+        if let Some((key, inv)) = inventories.get(&binding) {
+            inventory_status = if inv.context_sha256 != ctx_sha {
+                "stale_context"
+            } else if !restore_inventory::sealed(tx, s, key).await? {
+                "incomplete"
+            } else {
+                "sealed"
+            };
+            let finished = inv.finished_at_unix as i64;
+            inventory_fresh =
+                finished <= now.saturating_add(5) && finished >= now.saturating_sub(120);
+            inventory_receipt = json!({"key":key,"specification_sha256":restore_digest(inv)?,"capture_finished_at_unix":inv.finished_at_unix,"token_revoked":inv.token_revoked});
+            if inventory_status == "sealed" {
+                for index in 0..inv.page_sha256.len() {
+                    let page = restore_inventory::page(tx, s, key, index).await?;
+                    inv.validate_page(&page)?;
+                    budget(&mut remaining, page.items.len())?;
+                    for item in page.items {
+                        match item {
+                            RestoreInventoryItem::Branch { git_revision, .. } => {
+                                git.insert(git_revision);
+                            }
+                            RestoreInventoryItem::Pull {
+                                head_revision,
+                                base_revision,
+                                merge_revision,
+                                ..
+                            } => {
+                                git.insert(head_revision);
+                                git.insert(base_revision);
+                                git.extend(merge_revision);
                             }
                         }
                     }
                 }
             }
-            let sources = source_summary(&tx, s, &ctx, git, native).await?;
-            let complete = inventory_status == "sealed"
-                && inventory_fresh
-                && decisions["blockers"]["count"] == 0
-                && sources["missing_git"]["count"] == 0
-                && sources["missing_native"]["count"] == 0;
-            if !complete {
-                incomplete += 1;
-            }
-            reports.push(json!({"binding":binding,"context_sha256":ctx_sha,"inventory_status":inventory_status,"inventory_fresh":inventory_fresh,"inventory":inventory_receipt,
-                "decisions":decisions,"sources":sources,"local_review_complete":complete}));
         }
-        let assessment = json!({"version":1,"tenant":s.tenant(),"repository":s.repository(),"epoch":epoch,"manifest_sha256":spec.manifest_sha256,
+        let sources = source_summary(tx, s, &ctx, git, native).await?;
+        let complete = inventory_status == "sealed"
+            && inventory_fresh
+            && decisions["blockers"]["count"] == 0
+            && sources["missing_git"]["count"] == 0
+            && sources["missing_native"]["count"] == 0;
+        if !complete {
+            incomplete += 1;
+        }
+        reports.push(json!({"binding":binding,"context_sha256":ctx_sha,"inventory_status":inventory_status,"inventory_fresh":inventory_fresh,"inventory":inventory_receipt,
+                "decisions":decisions,"sources":sources,"local_review_complete":complete}));
+    }
+    let assessment = json!({"version":1,"tenant":s.tenant(),"repository":s.repository(),"epoch":epoch,"manifest_sha256":spec.manifest_sha256,
             "bindings":reports,"incomplete_bindings":incomplete,"local_review_complete":incomplete==0,"external_fencing_verified":false,
             "prior_host_mutations_settled":false,"reconciliation_complete":false,"publication_authorized":false});
-        if serde_json::to_vec(&assessment)
-            .map_err(|_| Error::SchemaMismatch)?
-            .len()
-            > 512 * 1024
-        {
-            return Err(Error::RestoreContextLimit);
-        }
-        context(&tx, auth, epoch, Permission::RepositoryWrite).await?;
-        tx.commit().await?;
-        Ok(
-            json!({"version":1,"observed_at_unix":now,"assessment_sha256":restore_digest(&assessment)?,"assessment":assessment}),
-        )
+    if serde_json::to_vec(&assessment)
+        .map_err(|_| Error::SchemaMismatch)?
+        .len()
+        > 512 * 1024
+    {
+        return Err(Error::RestoreContextLimit);
     }
+    context(tx, auth, epoch, Permission::RepositoryWrite).await?;
+    Ok(
+        json!({"version":1,"observed_at_unix":now,"assessment_sha256":restore_digest(&assessment)?,"assessment":assessment}),
+    )
 }
 
 #[cfg(test)]

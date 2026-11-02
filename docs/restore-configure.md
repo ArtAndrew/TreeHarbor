@@ -105,8 +105,9 @@ the same installation can still connect normally.
 This guard is not included in the published 0.1.11 package, whose operator must
 keep publishers disconnected as described above. The development guard preserves
 source reads/export and historical inspection; it does not perform reconciliation
-or provide an override. Do not delete recovery journals to bypass it. A supported
-resolution protocol remains required before reconnecting for new publications.
+or provide an override. Do not delete recovery journals to bypass it. Use the
+separate [operator-assisted reconnect protocol](restore-reconnect.md) in development
+builds; its local checks do not independently verify external fencing.
 
 The development [GitHub inventory command](restore-github-inventory.md) can collect
 current heads and all PR states for that investigation. It does not clear this
@@ -126,3 +127,8 @@ administrative changes. It reports `service_started: false`,
 `credentials_issued: false`, `external_fencing_verified: false` and
 `github_reconciled: false`. Backup integrity and source retention are separate from
 runtime isolation and external publication authority.
+
+Development builds after 0.1.11 include a separate
+[operator-assisted reconnect protocol](restore-reconnect.md). It requires explicit
+external assertions, fresh probe/inventory and atomic local re-review. Configuration
+alone still cannot clear quarantine; the published 0.1.11 behavior is unchanged.

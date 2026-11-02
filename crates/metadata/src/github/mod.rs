@@ -27,7 +27,9 @@ mod restore_deliveries;
 pub use restore_deliveries::{RestoreDeliveryContext, RestoreDeliveryEvidence};
 mod restore_decisions;
 mod restore_inventory;
+mod restore_reconnect;
 mod restore_review;
+pub use restore_reconnect::{RestoreActivateSpec, RestoreReconnectProbe, RestoreReconnectSpec};
 pub use restore_review::RestoreReviewSpec;
 mod restore_pulls;
 pub use restore_inventory::{
@@ -177,19 +179,13 @@ fn describe_probe(row: &Row, spec: &BindingSpec) -> Value {
 
 // Quarantine's durable journal survives losing local receipts and uses the same
 // repository/operations locks as binding creation. A historical result is not
-// permission to resume publication. Clearing this fence requires a separately
-// verified reconciliation protocol, not merely a new binding or bearer token.
+// permission to resume publication. Clearing this fence requires the separate
+// operator-assisted admission protocol, not merely a new binding or bearer token.
 pub(crate) async fn restore_reconciliation_required(
     tx: &Transaction<'_>,
     scope: &Scope,
 ) -> Result<bool> {
-    Ok(tx
-        .query_one(
-            "SELECT EXISTS(SELECT 1 FROM th_operations WHERE tenant=$1 AND repository=$2 AND kind='restore.quarantine.v1')",
-            &[&scope.tenant(), &scope.repository()],
-        )
-        .await?
-        .get(0))
+    restore_reconnect::reconciliation_required(tx, scope).await
 }
 
 impl Metadata {

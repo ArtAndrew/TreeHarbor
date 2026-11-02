@@ -4,6 +4,34 @@ use serde::Deserialize;
 #[derive(Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
 pub enum WireCommand {
+    RestoreReconnectPlan {
+        key: String,
+        epoch: i64,
+        specification: Box<RestoreReconnectSpec>,
+    },
+    RestoreReconnectContext {
+        epoch: i64,
+        plan_key: String,
+    },
+    RestoreReconnectProbe {
+        key: String,
+        epoch: i64,
+        specification: Box<RestoreReconnectProbe>,
+    },
+    RestoreReconnectCancel {
+        key: String,
+        epoch: i64,
+        plan_key: String,
+    },
+    RestoreReconnectStatus {
+        epoch: i64,
+        plan_key: String,
+    },
+    RestoreReconnectActivate {
+        key: String,
+        epoch: i64,
+        specification: Box<RestoreActivateSpec>,
+    },
     RestoreReview {
         epoch: i64,
         specification: RestoreReviewSpec,
@@ -623,6 +651,13 @@ pub(super) fn id(s: &str) -> Result<Uuid> {
 impl WireCommand {
     pub fn permission(&self) -> Permission {
         match self {
+            Self::RestoreReconnectPlan { .. }
+            | Self::RestoreReconnectCancel { .. }
+            | Self::RestoreReconnectStatus { .. }
+            | Self::RestoreReconnectActivate { .. } => Permission::RepositoryWrite,
+            Self::RestoreReconnectContext { .. } | Self::RestoreReconnectProbe { .. } => {
+                Permission::HostRead
+            }
             Self::RestoreInventoryStart { .. }
             | Self::RestoreInventoryPage { .. }
             | Self::RestoreInventorySeal { .. } => Permission::HostRead,
@@ -840,6 +875,50 @@ impl WireCommand {
                     .await
             }
             Self::RestoreQueueStatus { key } => db.github_restore_queue(auth, &key).await,
+            Self::RestoreReconnectPlan {
+                key,
+                epoch,
+                specification,
+            } => {
+                db.plan_github_restore_reconnect(auth, &Command { key, epoch }, &specification)
+                    .await
+            }
+            Self::RestoreReconnectContext { epoch, plan_key } => {
+                db.github_restore_reconnect_context(auth, epoch, &plan_key)
+                    .await
+            }
+            Self::RestoreReconnectProbe {
+                key,
+                epoch,
+                specification,
+            } => {
+                db.record_github_restore_reconnect_probe(
+                    auth,
+                    &Command { key, epoch },
+                    &specification,
+                )
+                .await
+            }
+            Self::RestoreReconnectCancel {
+                key,
+                epoch,
+                plan_key,
+            } => {
+                db.cancel_github_restore_reconnect(auth, &Command { key, epoch }, &plan_key)
+                    .await
+            }
+            Self::RestoreReconnectStatus { epoch, plan_key } => {
+                db.github_restore_reconnect_status(auth, epoch, &plan_key)
+                    .await
+            }
+            Self::RestoreReconnectActivate {
+                key,
+                epoch,
+                specification,
+            } => {
+                db.activate_github_restore_reconnect(auth, &Command { key, epoch }, &specification)
+                    .await
+            }
             Self::RestoreReview {
                 epoch,
                 specification,
