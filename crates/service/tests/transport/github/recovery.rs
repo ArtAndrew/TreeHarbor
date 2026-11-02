@@ -145,7 +145,7 @@ async fn github_recovery_cli_resumes_lost_commits_without_app_key_or_duplicate_d
         &f,
         &json!({"action":"recovery_request","key":"recover","epoch":1,"recovery":id,"specification":{"channel":channel,"callback_url":"https://hooks.example.com/github/events","since_unix_ms":at-60000,"ttl_seconds":300,"max_pages":2,"max_deliveries":2}}),
     ));
-    f.credential_path = readonly;
+    f.credential_path = readonly.clone();
     assert!(
         !request(
             &f,
@@ -308,7 +308,7 @@ async fn github_recovery_cli_resumes_lost_commits_without_app_key_or_duplicate_d
         );
     }
     // Owner cancellation remains inspectable and does not discard late evidence.
-    f.credential_path = owner;
+    f.credential_path = owner.clone();
     result(request(
         &f,
         &json!({"action":"recovery_cancel","key":"cancel","epoch":1,"recovery":id}),
@@ -316,6 +316,16 @@ async fn github_recovery_cli_resumes_lost_commits_without_app_key_or_duplicate_d
     f.credential_path = bridge;
     assert!(cli(&f, id, &state, &app).output().unwrap().status.success());
     drop(receiver);
+    super::restore_delivery::exercise(
+        &mut f,
+        &mut server,
+        &owner,
+        &readonly,
+        bind["binding"].as_str().unwrap().parse().unwrap(),
+        channel,
+        id,
+    )
+    .await;
     drop(server);
     f.cleanup().await;
 }

@@ -97,6 +97,88 @@ fn assert_jwts(requests: &[Vec<u8>]) {
 }
 
 #[tokio::test]
+async fn restore_delivery_reads_twice_without_dispatch_or_payload_disclosure() {
+    for changed in [false, true] {
+        let a = attempt();
+        let first = detail(&a);
+        let mut second = first.clone();
+        if changed {
+            second["status_code"] = json!(200);
+            second["request"]["payload"]["untrusted"] = json!("changed");
+        }
+        let mut replies = preflight();
+        replies.extend([response(200, first), response(200, second)]);
+        let (connection, server) = host(replies).await;
+        let r = connection
+            .observe_restore_delivery(&target(), &expected(&a))
+            .await
+            .unwrap();
+        r.validate(&expected(&a)).unwrap();
+        assert_eq!(r.capture_consistent(), !changed);
+        let mut later = r.clone();
+        later.finished_at_unix_ms += 1;
+        later.after.observed_at_unix_ms += 1;
+        later.validate(&expected(&a)).unwrap();
+        assert_eq!(later.capture_consistent(), !changed);
+        assert!(!serde_json::to_string(&r).unwrap().contains(PRIVATE_MARKER));
+        let requests = server.await.unwrap();
+        assert_eq!(requests.len(), 5);
+        assert_jwts(&requests);
+        assert!(requests.iter().all(|r| request_text(r).starts_with("GET ")));
+        assert!(request_text(&requests[3]).starts_with("GET /app/hook/deliveries/12345678 "));
+        assert_eq!(request_text(&requests[3]), request_text(&requests[4]));
+    }
+}
+
+#[tokio::test]
+async fn restore_delivery_refuses_missing_changed_identity_and_partial_response() {
+    for case in [
+        "missing",
+        "id",
+        "guid",
+        "repository",
+        "url",
+        "status",
+        "payload",
+    ] {
+        let a = attempt();
+        let first = detail(&a);
+        let mut second = first.clone();
+        match case {
+            "id" => second["id"] = json!(12345679),
+            "guid" => second["guid"] = json!(Uuid::new_v4()),
+            "repository" => second["request"]["payload"]["repository"]["id"] = json!(12),
+            "url" => second["url"] = json!("https://other.example/github/events"),
+            "status" => {
+                second.as_object_mut().unwrap().remove("status_code");
+            }
+            "payload" => {
+                second["request"].as_object_mut().unwrap().remove("payload");
+            }
+            _ => {}
+        }
+        let mut replies = preflight();
+        replies.push(response(200, first));
+        replies.push(response(if case == "missing" { 404 } else { 200 }, second));
+        let (connection, server) = host(replies).await;
+        assert!(
+            connection
+                .observe_restore_delivery(&target(), &expected(&a))
+                .await
+                .is_err(),
+            "{case}"
+        );
+        assert!(
+            server
+                .await
+                .unwrap()
+                .iter()
+                .all(|r| request_text(r).starts_with("GET "))
+        );
+    }
+}
+
+#[tokio::test]
 async fn app_jwt_page_includes_pending_and_success_and_filters_other_scopes() {
     let a = attempt();
     let mut pending = a.clone();

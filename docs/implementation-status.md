@@ -21,6 +21,34 @@ These correctness checks do not establish complete mode readiness or performance
 superiority. The installed native workload includes deliberate replacement-node
 recovery; live GitHub recovery remains a separate release gate.
 
+## Unreleased retained delivery recovery evidence
+
+`github restore-inspect-delivery` reads one retained provider delivery attempt
+twice, persists its metadata and payload hash, and compares it with the independently
+retained signed inbox. See [the guide](restore-delivery-evidence.md).
+The bridge must be assigned to the quarantined binding; both binding and channel
+must remain revoked. Provider 2xx status never supplies local receipt or processing
+proof. Old attempts, reports and outbox records remain unchanged. This adds no
+database migration, App permission, token mint or redelivery.
+
+Seventeen delivery HTTP adapter tests passed, including exact-ID/GUID/callback
+checks, missing responses, changed payload/status and GET-only capture. Nine real
+PostgreSQL recovery tests passed, including the shared signed-inbox comparison
+and new missing/received/conflicting/no-prior-details cases, stale contexts,
+scope/time/role refusals and replay after restart and access revocation.
+The actual HTTP/CLI recovery trial now captures a retained delivery, loses its
+acknowledgment, restarts the server and replays twice without App configuration
+or external executables. It retains one receipt and an unchanged old attempt.
+The signed receiver is real; provider captures and quarantine are explicit fixture
+data. This is not live GitHub disaster-recovery acceptance. The independent v1
+wire fixture and strict GitHub/metadata/service all-target Clippy passed.
+Required branch CI remains pending; this is not in published 0.1.11 packages.
+
+Post-backup operation/source discovery, expired provider history, complete event
+processing reconciliation, external fencing and verified reconnection remain
+required. Matching inbox content does not settle an uncertain old dispatch or
+authorize a replacement publisher.
+
 ## Unreleased exact check recovery evidence
 
 `github restore-inspect-check` reads one explicitly selected GitHub check twice
@@ -43,10 +71,12 @@ GitHub disaster-recovery acceptance. The trial pins server workers to a 2 MiB
 stack, so a developer's larger inherited setting cannot hide report-processing
 overflows. Large futures are boxed at the HTTP, GitHub command and queue-report
 boundaries; the local trial and timeout/transaction-rollback test passed.
-Linux CI exposed the need for these additional boundaries and must pass before
-merge. The independent wire fixture, strict
+Linux CI exposed the need for these additional boundaries. The corrected
+[PR132](https://github.com/ArtAndrew/TreeHarbor/pull/132) merged after all six
+required checks succeeded on its exact head, including PostgreSQL and installed
+runtime workloads on both Linux architectures. The independent wire fixture, strict
 GitHub/metadata/service all-target Clippy, formatting and changed file links passed.
-Required branch CI is pending; this is not in published 0.1.11 packages.
+This is not in published 0.1.11 packages.
 
 ## Unreleased queue/removal recovery evidence
 

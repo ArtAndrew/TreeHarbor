@@ -4,6 +4,21 @@ use serde::Deserialize;
 #[derive(Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
 pub enum WireCommand {
+    RestoreDeliveryContext {
+        epoch: i64,
+        binding: String,
+        manifest_sha256: String,
+        recovery: String,
+        provider_id: i64,
+    },
+    RestoreDeliveryRecord {
+        key: String,
+        epoch: i64,
+        specification: Box<RestoreDeliveryEvidence>,
+    },
+    RestoreDeliveryStatus {
+        key: String,
+    },
     RestoreCheckContext {
         epoch: i64,
         binding: String,
@@ -581,10 +596,13 @@ pub(super) fn id(s: &str) -> Result<Uuid> {
 impl WireCommand {
     pub fn permission(&self) -> Permission {
         match self {
-            Self::RestoreCheckContext { .. } | Self::RestoreCheckRecord { .. } => {
-                Permission::HostRead
+            Self::RestoreDeliveryContext { .. }
+            | Self::RestoreDeliveryRecord { .. }
+            | Self::RestoreCheckContext { .. }
+            | Self::RestoreCheckRecord { .. } => Permission::HostRead,
+            Self::RestoreDeliveryStatus { .. } | Self::RestoreCheckStatus { .. } => {
+                Permission::Read
             }
-            Self::RestoreCheckStatus { .. } => Permission::Read,
             Self::RestoreQueueContext { .. } | Self::RestoreQueueRecord { .. } => {
                 Permission::HostRead
             }
@@ -699,6 +717,36 @@ impl WireCommand {
         backend: Option<&str>,
     ) -> Result<Value> {
         match self {
+            Self::RestoreDeliveryContext {
+                epoch,
+                binding,
+                manifest_sha256,
+                recovery,
+                provider_id,
+            } => {
+                Box::pin(db.github_restore_delivery_context(
+                    auth,
+                    epoch,
+                    id(&binding)?,
+                    &manifest_sha256,
+                    id(&recovery)?,
+                    provider_id,
+                ))
+                .await
+            }
+            Self::RestoreDeliveryRecord {
+                key,
+                epoch,
+                specification,
+            } => {
+                Box::pin(db.record_github_restore_delivery(
+                    auth,
+                    &Command { key, epoch },
+                    &specification,
+                ))
+                .await
+            }
+            Self::RestoreDeliveryStatus { key } => db.github_restore_delivery(auth, &key).await,
             Self::RestoreCheckContext {
                 epoch,
                 binding,

@@ -1,4 +1,6 @@
 use super::*;
+#[path = "restore_delivery.rs"]
+mod restore_delivery;
 use serde_json::Value;
 use treeharbor_github_contract::deliveries::{
     DeliveryAttempt, DeliveryDetails, DeliveryPageReport, payload_digest,

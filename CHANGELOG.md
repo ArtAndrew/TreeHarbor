@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add `github restore-inspect-delivery`: read one retained provider delivery
+  attempt twice and compare its payload hash with the retained signed inbox.
+  A provider success status does not prove local receipt. Committed captures
+  survive CLI restart without another host request or redelivery.
+
 - Add `github restore-inspect-check`: capture one exact GitHub check twice and
   retain its identity, revision and metadata against the original publication
   intent. Retry preserves the receipt across restart without a new host read.

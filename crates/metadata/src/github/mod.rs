@@ -21,6 +21,8 @@ mod groups;
 mod recovery;
 mod restore;
 mod restore_checks;
+mod restore_deliveries;
+pub use restore_deliveries::{RestoreDeliveryContext, RestoreDeliveryEvidence};
 mod restore_decisions;
 mod restore_pulls;
 mod restore_queues;
