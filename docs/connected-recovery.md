@@ -1,5 +1,8 @@
 # Connected recovery — 0.1.12-alpha.1
 
+Available in [signed 0.1.12-alpha.1 packages](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.12-alpha.1).
+Earlier packages do not contain the complete reconnection protocol described here.
+
 Recover retained source and prepare a new GitHub connection after restoring a
 trusted cold backup. This is an **operator-assisted alpha workflow**, not automatic
 failover. GitHub stays authoritative for published branches. Old connections stay

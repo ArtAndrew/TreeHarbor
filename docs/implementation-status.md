@@ -23,12 +23,22 @@ recovery; live GitHub recovery remains a separate release gate.
 
 ## 0.1.12-alpha.1 release scope
 
-This source version packages the operator-assisted recovery additions described
-below. Use the [Connected recovery guide](connected-recovery.md) for their order,
+Published [0.1.12-alpha.1](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.12-alpha.1)
+packages the operator-assisted recovery additions described below. Use the [Connected recovery guide](connected-recovery.md) for their order,
 roles, upgrade boundary and limitations. The development trial keeps its actual
 archive/source identities; it is not a trial of every later release binary.
 Published artifacts and exact signed-build evidence belong to the selected
-[release record](https://github.com/ArtAndrew/TreeHarbor/releases).
+[release record](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.12-alpha.1).
+Source/tag `ae3fe17f1b5dd92211c9ecbdb500267bb6832690` passed
+[main CI](https://github.com/ArtAndrew/TreeHarbor/actions/runs/41434421570) and
+[signed producer 41436173654/1](https://github.com/ArtAndrew/TreeHarbor/actions/runs/41436173654).
+Both architectures exercised installed managed/native and cold-restore workflows.
+Independent online/bundled attestation verification matched all eight signed
+subjects per architecture and the exact producer invocation/source/tag. A separate
+installation of the original signed ARM64 archive verified recovery commands,
+refused replacement and read the retained prior-trial backup without new service
+credentials or GitHub access. All eight public asset digests matched the original
+files; previous release assets were unchanged. See the [release receipt](evidence/connected-recovery-release-20261102.json).
 Full Connected disaster certification and both-mode release gates remain open.
 
 ## Installed Connected recovery with real GitHub reads — 2026-11-02
