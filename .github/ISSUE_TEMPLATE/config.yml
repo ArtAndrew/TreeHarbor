@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: First run and installation checkpoints
+    url: https://github.com/ArtAndrew/TreeHarbor/blob/main/docs/try-treeharbor.md
+    about: Check prerequisites and follow the supported Connected preview path.
+  - name: Setup questions
+    url: https://github.com/ArtAndrew/TreeHarbor/discussions/categories/q-a
+    about: Ask about fit or installation without opening a bug report.
+  - name: Ideas and workloads
+    url: https://github.com/ArtAndrew/TreeHarbor/discussions/categories/ideas
+    about: Describe the task or infrastructure problem you want TreeHarbor to solve.
