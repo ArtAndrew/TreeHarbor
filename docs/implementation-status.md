@@ -21,6 +21,43 @@ These correctness checks do not establish complete mode readiness or performance
 superiority. The installed native workload includes deliberate replacement-node
 recovery; live GitHub recovery remains a separate release gate.
 
+## Installed Connected recovery with real GitHub reads — 2026-11-02
+
+The [scoped acceptance receipt](evidence/connected-restore-live-20261102.json)
+records an ARM64 development archive from
+[CI 41425099379](https://github.com/ArtAndrew/TreeHarbor/actions/runs/41425099379).
+Its archive, installed binaries and sidecars were hash-checked; its CI source tree
+matches merged main `a3a03089ca4a98a0f4fa24dee5a707a1b6d5004f`. The archive still
+embeds version 0.1.11-alpha.1, but contains later development source. It is not the
+published 0.1.11 release artifact or a newly signed release.
+
+The trial accepted an external API proposal, exported it, stopped its service,
+created and verified a cold backup using actual PostgreSQL tools, staged a new
+database, quarantined old work and configured an independent live store. The old
+object store was made unavailable. Client proposal state was read from the staged
+backup. Real read-only App discovery covered six branches and five all-state PRs;
+all eight distinct observed Git revisions were acquired, preserved and verified
+through the Rust mapping path. A fresh probe, sealed capture and atomic review
+admitted a new binding. Restart and identical activation retry returned the same
+receipt. The retained proposal exported to its original Git commit; a fresh API
+proposal exported with the expected bytes and parent. Both exports passed ordinary
+`git fsck --full --strict`. The staged backup still verified after new live writes.
+
+The first backup attempt failed because the test container wrapper discarded
+`PGUSER` through sudo. Incomplete output was retained, credentials revoked and the
+service stopped. After fixing the wrapper, the trial continued from saved accepted
+proposal/export receipts to a new backup destination. It did not recreate the
+proposal or silently reuse incomplete output. All seven new one-hour service
+credentials were revoked; copied old tokens stayed revoked and both trial services
+stopped. No GitHub branch/PR/check/queue/policy mutation was sent.
+
+This was a controlled operator-assisted source/reconnection trial. It had no
+dispatched host mutations from the pre-backup instance. It does not certify
+settlement of unknown post-backup writes, runtime/node replacement, full queue
+policy, automatic external fencing, high availability or production readiness.
+The policy inspection retained unverified queue configuration and redacted bypass
+visibility as limitations; no merge permission was inferred from it.
+
 ## Discovery target for a backup without bindings — development
 
 Not included in published 0.1.11-alpha.1. The owner can

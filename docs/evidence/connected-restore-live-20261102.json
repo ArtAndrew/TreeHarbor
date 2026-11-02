@@ -1,0 +1,88 @@
+{
+  "version": 1,
+  "observed_date": "2026-11-02",
+  "status": "passed",
+  "scope": "installed Connected source recovery and operator-assisted read-only host reconciliation",
+  "repository": "https://github.com/TreeHarbor/TreeHarbor-acceptance",
+  "authority": "connected",
+  "build": {
+    "release": false,
+    "published_release_unchanged": "v0.1.11-alpha.1",
+    "embedded_product_version": "0.1.11-alpha.1",
+    "ci_source_revision": "c7edb6803fb62914903d1b71484637709c4dbea7",
+    "reviewed_head": "6da19b0c042bad4a60cdf0aca1b53e81bc3e646d",
+    "merged_main": "a3a03089ca4a98a0f4fa24dee5a707a1b6d5004f",
+    "ci_and_main_source_trees_equal": true,
+    "ci_run": "https://github.com/ArtAndrew/TreeHarbor/actions/runs/41425099379",
+    "artifact_id": 13131833457,
+    "archive": {
+      "name": "treeharbor-0.1.11-alpha.1-aarch64-unknown-linux-musl.tar.gz",
+      "sha256": "3aa4d165419465ed71800eda68161135a65d72009c1971c51c5ad109b8bb7cec"
+    },
+    "binary_sha256": "15f29f2f332a2af530e8d8f10353258009e3f56d5d816f0388c2078c043e9729"
+  },
+  "environment": {
+    "os": "Linux",
+    "architecture": "aarch64",
+    "metadata": "PostgreSQL",
+    "object_store": "local filesystem",
+    "managed_runtime_used": false
+  },
+  "workload": {
+    "origin": "external_api",
+    "execution_observed": false,
+    "pre_backup_proposals": 1,
+    "fresh_post_restore_proposals": 1
+  },
+  "recovery": {
+    "actual_pg_dump_and_pg_restore": true,
+    "original_store_unavailable": true,
+    "private_client_state_recovered": true,
+    "retained_backup_verified_after_new_writes": true,
+    "old_bindings_remain_revoked": true,
+    "fresh_binding_admitted": true,
+    "service_restart_and_same_key_activation_replay": true,
+    "source_git_revision": "git:sha1:a91d290d47abeaec32867dd21bb7107bec87ef05",
+    "before_export": "git:sha1:9b15a2a8d19e79e77f59903a483b74399a652654",
+    "retained_export": "git:sha1:9b15a2a8d19e79e77f59903a483b74399a652654",
+    "new_export": "git:sha1:8b1914487e0b97b00f9ac6d1ec2ad6a69b964c3d",
+    "exported_proposal_bytes_and_parent_checked": true,
+    "git_fsck_full_strict_passed": true
+  },
+  "github": {
+    "observed_heads": 6,
+    "observed_all_state_pulls": 5,
+    "distinct_git_revisions_acquired_and_verified": 8,
+    "final_inventory_sealed": true,
+    "source_coverage_review_complete": true,
+    "repository_mutations_sent": 0,
+    "read_tokens_revoked": true,
+    "host_policy_reviewed": true,
+    "host_policy_limitations": [
+      "queue_configuration_unproven",
+      "ruleset/25773283/bypass_redacted"
+    ],
+    "queue_policy_certified": false
+  },
+  "cleanup": {
+    "new_local_service_tokens_issued": 7,
+    "new_local_service_tokens_revoked": 7,
+    "old_restored_tokens_remain_revoked": true,
+    "active_trial_tokens_after_cleanup": 0,
+    "trial_services_stopped": true
+  },
+  "interruption": {
+    "stage": "initial backup creation",
+    "cause": "Test pg_dump container wrapper lost PGUSER through sudo environment filtering.",
+    "effect": "Backup refused completion; partial output retained. Three original credentials revoked and service stopped.",
+    "resolution": "Preserved database connection environment in the private wrapper. Continued from saved proposal/export receipts into a new backup directory; no duplicate proposal or replacement credential for the original instance."
+  },
+  "limitations": [
+    "Controlled operator-assisted trial, not automated external fencing or production certification.",
+    "No pre-backup GitHub mutations were dispatched by this new local instance; uncertain publication/check/queue recovery is not certified by this trial.",
+    "No GitHub branch, PR, check, queue, webhook or policy write was sent.",
+    "New post-recovery work used the external API; this trial did not launch managed agents or verify runtime replacement.",
+    "One ARM64 deployment; no high availability, scale, performance benchmark, or unassisted onboarding claim.",
+    "Development CI archive reused exactly; it is not a newly signed public release."
+  ]
+}
