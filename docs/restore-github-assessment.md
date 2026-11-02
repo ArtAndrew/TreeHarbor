@@ -1,6 +1,6 @@
 # Compare GitHub with retained restore state
 
-Development command after 0.1.11. It is not in the published 0.1.11 package.
+Introduced in 0.1.12-alpha.1; not included in 0.1.11 or earlier packages.
 Use this after [local restore configuration](restore-configure.md), with old
 publishers still fenced. It extends [host inventory](restore-github-inventory.md)
 by comparing live observations with the exact operations retained for one binding.
@@ -20,7 +20,7 @@ umask 077
 : "${TH_BACKUP_SHA256:?Set the retained backup manifest digest}"
 : "${TH_BINDING:?Set the old revoked binding UUID}"
 : "${TH_EPOCH:?Set the current repository epoch}"
-cargo run -p treeharbor-service --locked -- github restore-assess \
+treeharbor github restore-assess \
   --config /absolute/private/treeharbor/github-app.json \
   --socket /srv/treeharbor-recovery/stage-001/active/service.sock \
   --credential-file /absolute/private/treeharbor/recovery-bridge.json \

@@ -1,6 +1,6 @@
 # Recover when the backup has no GitHub binding
 
-Development functionality after 0.1.11; not included in the published package.
+Introduced in 0.1.12-alpha.1; not included in 0.1.11 or earlier packages.
 A backup taken before the first GitHub connection may contain no binding even
 though agents later published branches and PRs. **No local records does not mean
 no remote history.** Ordinary binding creation stays blocked after quarantine.

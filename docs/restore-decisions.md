@@ -1,6 +1,6 @@
 # Retain recovery decisions and source
 
-Development API after 0.1.11; not included in the published 0.1.11 package.
+Introduced in 0.1.12-alpha.1; not included in 0.1.11 or earlier packages.
 After [assessing a restored binding](restore-github-assessment.md), an operator
 can save a decision against the exact assessment context. The record survives
 service restart and lost responses. A source-preservation decision also creates
@@ -53,7 +53,7 @@ SHA-256 of the complete file bytes; the context digest uses the assessment's
 Neither digest proves the external facts or supplies the evidence file to the server.
 
 ```sh
-cargo run -p treeharbor-service --locked -- client \
+treeharbor client \
   --socket /srv/treeharbor-recovery/stage-001/active/service.sock \
   --credential-file /absolute/private/treeharbor/recovery-owner.json \
   github --request /absolute/private/treeharbor/restore-review-001.json

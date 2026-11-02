@@ -1,6 +1,6 @@
 # Verify preserved recovery source against Git
 
-Development command after 0.1.11; not part of the published 0.1.11 package.
+Introduced in 0.1.12-alpha.1; not included in 0.1.11 or earlier packages.
 Use this after a [source-preservation decision](restore-decisions.md). It verifies
 on the server that the exact native commit held by that decision projects to the
 expected Git commit, then saves a durable mapping receipt.
@@ -35,7 +35,7 @@ cryptographically validated.
 ```sh
 : "${TH_DECISION_KEY:?Set the committed preserve_source decision key}"
 : "${TH_EXPECTED_GIT:?Set git:sha1:<40 hex> or git:sha256:<64 hex>}"
-cargo run -p treeharbor-service --locked -- client \
+treeharbor client \
   --socket /srv/treeharbor-recovery/stage-001/active/service.sock \
   --credential-file /absolute/private/treeharbor/recovery-owner.json \
   --timeout-ms 60000 \
@@ -75,7 +75,7 @@ private GitHub-command JSON file using a credential with `read`:
 ```
 
 ```sh
-cargo run -p treeharbor-service --locked -- client \
+treeharbor client \
   --socket /srv/treeharbor-recovery/stage-001/active/service.sock \
   --credential-file /absolute/private/treeharbor/recovery-owner.json \
   github --request /absolute/private/treeharbor/restore-map-status.json

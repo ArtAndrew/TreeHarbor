@@ -1,6 +1,6 @@
 # Discover source missing after a restore
 
-Development functionality after 0.1.11; not in the published 0.1.11 package.
+Introduced in 0.1.12-alpha.1; not included in 0.1.11 or earlier packages.
 Use this after [quarantine and local configuration](restore-configure.md), with
 the old deployment fenced and every recovered GitHub binding still revoked.
 It records a completed traversal of GitHub heads and PRs, then identifies observed
@@ -23,7 +23,7 @@ Keep App keys and private capture files outside agent workspaces.
 umask 077
 mkdir /absolute/private/treeharbor/inventory-001
 
-cargo run -p treeharbor-service --locked -- github restore-capture-inventory \
+treeharbor github restore-capture-inventory \
   --config /absolute/private/treeharbor/github-app.json \
   --socket /srv/treeharbor-recovery/stage-001/active/service.sock \
   --credential-file /absolute/private/treeharbor/recovery-bridge.json \
@@ -77,7 +77,7 @@ request with the `inventory_key` from `sealed.json`, starting at page zero:
 ```
 
 ```sh
-cargo run -p treeharbor-service --locked -- client \
+treeharbor client \
   --socket /srv/treeharbor-recovery/stage-001/active/service.sock \
   --credential-file /absolute/private/treeharbor/recovery-owner.json \
   github --request /absolute/private/treeharbor/coverage-page-0.json

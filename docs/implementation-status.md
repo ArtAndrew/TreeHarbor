@@ -21,6 +21,16 @@ These correctness checks do not establish complete mode readiness or performance
 superiority. The installed native workload includes deliberate replacement-node
 recovery; live GitHub recovery remains a separate release gate.
 
+## 0.1.12-alpha.1 release scope
+
+This source version packages the operator-assisted recovery additions described
+below. Use the [Connected recovery guide](connected-recovery.md) for their order,
+roles, upgrade boundary and limitations. The development trial keeps its actual
+archive/source identities; it is not a trial of every later release binary.
+Published artifacts and exact signed-build evidence belong to the selected
+[release record](https://github.com/ArtAndrew/TreeHarbor/releases).
+Full Connected disaster certification and both-mode release gates remain open.
+
 ## Installed Connected recovery with real GitHub reads — 2026-11-02
 
 The [scoped acceptance receipt](evidence/connected-restore-live-20261102.json)

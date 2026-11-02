@@ -1,6 +1,6 @@
 # Compare a retained webhook delivery during recovery
 
-Development command after 0.1.11, not included in that published package.
+Introduced in 0.1.12-alpha.1; not included in 0.1.11 or earlier packages.
 After [restore assessment](restore-github-assessment.md), inspect one retained
 webhook recovery attempt without redelivering it or reactivating a channel.
 The command reads the exact provider delivery ID twice and retains bounded
@@ -18,7 +18,7 @@ agents. No installation token, new permission or delivery request is created.
 ```sh
 umask 077
 mkdir -m 700 /absolute/private/treeharbor/delivery-capture-001
-cargo run -p treeharbor-service --locked -- github restore-inspect-delivery \
+treeharbor github restore-inspect-delivery \
   --config /absolute/private/treeharbor/github-app.json \
   --socket /srv/treeharbor-recovery/stage-001/active/service.sock \
   --credential-file /absolute/private/treeharbor/recovery-bridge.json \

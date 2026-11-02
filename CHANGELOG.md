@@ -2,90 +2,32 @@
 
 ## Unreleased
 
-- Record an installed ARM64 Connected recovery trial using actual cold backup,
-  real GitHub source discovery, operator-assisted reconnection and retained/new
-  proposal export. No host writes or managed agent execution were tested; full
-  publication/queue disaster certification remains open.
+## 0.1.12-alpha.1 — operator-assisted Connected recovery — 2026-11-02
 
-- Add `github restore-register-target` for backups predating the first GitHub
-  binding. Record a permanently disabled discovery target with explicit provenance,
-  then require the existing complete inventory/source/reconnect path. Empty local
-  history does not bypass preservation or authorize host writes.
-
-- Add `github restore-reconnect plan/probe/activate/status/cancel`: admit one
-  fresh binding after operator-confirmed external fencing, a fresh read-only
-  probe and atomic re-review of every retained binding and source dependency.
-  Preserve old revoked bindings and same-key recovery after a lost response.
-  External assertions are not independently verified; live full-disaster
-  acceptance remains unfinished.
-
-- Add owner-only `github restore-review`: inspect every retained binding, latest
-  decisions, complete inventory coverage and independent source pins together.
-  Missing selections and changed dependencies remain visible; this local review
-  cannot reactivate publishing. Batch source-mapping lookup per binding.
-
-- Add `github restore-capture-inventory` and owner source-coverage inspection:
-  retain all observed heads/PRs through hashed pages, resume interrupted uploads,
-  and expose exact revisions missing verified, permanently pinned source.
-  Full traversal retention does not authorize restored publication.
-
-- Add owner-selected `github restore-acquire-source`: recover one exact Git
-  revision while the old binding stays revoked, upload its complete history,
-  retain a separate recovery pin and verify its Git mapping on the server.
-  Replay completes from committed preservation without local source or App files.
-
-- Add `github restore-inspect-delivery`: read one retained provider delivery
-  attempt twice and compare its payload hash with the retained signed inbox.
-  A provider success status does not prove local receipt. Committed captures
-  survive CLI restart without another host request or redelivery.
-
-- Add `github restore-inspect-check`: capture one exact GitHub check twice and
-  retain its identity, revision and metadata against the original publication
-  intent. Retry preserves the receipt across restart without a new host read.
-  Matching an old result grants no validation or publication authority.
-
-- Add `github restore-inspect-queue` for retained queue/removal operations:
-  capture two read-only membership snapshots and retain them through the assigned
-  bridge with durable retry. Absent or merged PR observations do not settle old
-  in-flight mutations or authorize reconnection.
-
-- Add `github restore-inspect-pull`: read one exact PR twice with a scoped read
-  token, retain its full metadata through the assigned bridge, and compare it
-  with the current restored intent. A private journal retries the original
-  receipt after interruption without another host read. No publication, merge
-  or reconnection permission is created.
-
-- Extend restore context/assessment to version 2 with retained dequeues and
-  webhook recovery requests, pages and attempts. Decisions can address exact
-  composite delivery identities. Changed state or an older incomplete context
-  requires a fresh review; historical receipts remain intact. No remote replay
-  or reconnection is authorized by these records.
-
-- Add server-side `client restore-verify-source` for a preserved recovery commit.
-  The Rust projector checks the full graph against an exact Git revision, then
-  records a durable mapping after rechecking current fences. No Git process,
-  live-host claim or reconnection grant is involved.
-
-- Add owner-only, append-only restore decisions with exact-context checks,
-  predecessor conflict detection and historical retry/read receipts. A source
-  preservation decision atomically copies an accepted commit pin; no decision
-  replays a host write, changes old attempts or authorizes reconnection.
-
-- Add `github restore-assess` and authenticated `restore_context` to compare live
-  discovery with one quarantined binding's retained operations and exact backup
-  identity. The comparison refuses changed local state and distinguishes missing,
-  changed and unresolved external effects without changing attempts or resuming writes.
-- Add read-only `github restore-inventory` discovery of current heads and all PR
-  states, including closed PRs whose branches no longer exist. Bounded cursor
-  traversal rejects incomplete/ambiguous pages; it never reconnects a restored
-  service, replays publications or declares recovery complete.
-- Refuse new GitHub bindings for a repository with a durable restore-quarantine
-  journal, returning `host_recovery_required` and exposing
-  `github_reconciliation_required` through `repository-info`. Fresh credentials
-  or a lost local receipt do not clear the restriction. Reads and exports remain
-  available; a verified reconciliation/reconnection procedure is still unfinished.
-- Lock repository rows during quarantine/configuration to reject a binding
-  transaction that started before quarantine; table locks alone are insufficient.
+- Enforce durable quarantine before any new GitHub connection. Discover all host
+  branches/PR states, compare them with retained operations and preserve complete
+  inventories through restartable, hashed-page uploads. Missing local records do
+  not imply an empty remote history.
+- Inspect exact retained PR, queue/removal, check and delivery identities through
+  read-only App access. Keep operator decisions, immutable receipts and current
+  context hashes; an old success is never fresh validation or merge permission.
+- Acquire explicitly selected missing Git revisions, preserve independent source
+  pins and verify native/Git mappings on the server. A repository-wide review
+  checks every retained binding, current decision and source obligation together.
+- Add bounded `restore-reconnect plan/probe/activate/status/cancel`. Admit one fresh
+  connection only after operator-confirmed external fencing, fresh observations
+  and atomic re-review. Old connections remain disabled and old writes are not
+  replayed. Backups predating their first binding can register one permanently
+  disabled discovery target before following the same recovery path.
+- Record an [installed ARM64 trial](docs/evidence/connected-restore-live-20261102.json)
+  of real backup/restore, live source discovery and retained/new proposal export.
+  The receipt keeps its actual development source/archive identity; it is not
+  evidence for host writes, managed agent execution or every later release binary.
+- Add a [recovery and upgrade guide](docs/connected-recovery.md). No database schema
+  or dependency change from 0.1.11. Upgrade client/server together for restore
+  context v2; old context hashes cannot authorize new work. Full publication/queue
+  disaster certification, external fencing automation and production readiness
+  remain open.
 
 ## 0.1.11-alpha.1 — local recovery continuation — 2026-11-01
 
