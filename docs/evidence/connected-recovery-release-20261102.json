@@ -1,0 +1,96 @@
+{
+  "version": 1,
+  "published_at": "2026-11-02T11:48:24Z",
+  "release": "https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.12-alpha.1",
+  "release_id": 431395247,
+  "source_revision": "ae3fe17f1b5dd92211c9ecbdb500267bb6832690",
+  "tag": "v0.1.12-alpha.1",
+  "main_ci": "https://github.com/ArtAndrew/TreeHarbor/actions/runs/41434421570",
+  "signed_producer": "https://github.com/ArtAndrew/TreeHarbor/actions/runs/41436173654",
+  "signed_attempt": 1,
+  "architectures": {
+    "x86_64": {
+      "target": "x86_64-unknown-linux-musl",
+      "archive_sha256": "5856f19945045b41c1e1a8ccededaafe2d7fc3d7f6e2d81fde9ed88b32752b21",
+      "official_online_and_bundle_attestation_verified": true,
+      "exact_subject_set_and_invocation_verified": true,
+      "installed_managed_native_and_cold_restore_passed": true
+    },
+    "aarch64": {
+      "target": "aarch64-unknown-linux-musl",
+      "archive_sha256": "1586e9f94dda784b4989d739aa91ce22fd5f580f4f0cf4732953306da2672920",
+      "official_online_and_bundle_attestation_verified": true,
+      "exact_subject_set_and_invocation_verified": true,
+      "installed_managed_native_and_cold_restore_passed": true
+    }
+  },
+  "separate_arm64_install": {
+    "version": 1,
+    "source_revision": "ae3fe17f1b5dd92211c9ecbdb500267bb6832690",
+    "archive_sha256": "1586e9f94dda784b4989d739aa91ce22fd5f580f4f0cf4732953306da2672920",
+    "installed_version": "0.1.12-alpha.1",
+    "offline_install": true,
+    "replacement_refused": true,
+    "recovery_commands_present": true,
+    "prior_actual_backup_verified": true,
+    "service_started": false,
+    "credentials_issued": false,
+    "github_access": false,
+    "live_reconnection_retested": false
+  },
+  "public_assets": [
+    {
+      "name": "treeharbor-0.1.12-alpha.1-aarch64-unknown-linux-musl.metadata.zip",
+      "size": 62954,
+      "digest": "sha256:2a82a2b731f51e892a44e7366257dad3381c2933efee2a19b7f203d2ece3058b"
+    },
+    {
+      "name": "treeharbor-0.1.12-alpha.1-aarch64-unknown-linux-musl.provenance.sigstore.json",
+      "size": 12459,
+      "digest": "sha256:9a9f1f137bbc89f61feb33142e51c5e3fe2799b2efbaf5862c994a0e86057f37"
+    },
+    {
+      "name": "treeharbor-0.1.12-alpha.1-aarch64-unknown-linux-musl.tar.gz",
+      "size": 11882108,
+      "digest": "sha256:1586e9f94dda784b4989d739aa91ce22fd5f580f4f0cf4732953306da2672920"
+    },
+    {
+      "name": "treeharbor-0.1.12-alpha.1-aarch64-unknown-linux-musl.tar.gz.sha256",
+      "size": 126,
+      "digest": "sha256:28c880e43461ad2bcfb642737675bd04dca4745a13de27a5cfdfef322552d976"
+    },
+    {
+      "name": "treeharbor-0.1.12-alpha.1-x86_64-unknown-linux-musl.metadata.zip",
+      "size": 63186,
+      "digest": "sha256:da72f955bf0afcffb75f7706bff4971a07202d7c24ac8d3423ac3f6c460a022b"
+    },
+    {
+      "name": "treeharbor-0.1.12-alpha.1-x86_64-unknown-linux-musl.provenance.sigstore.json",
+      "size": 12596,
+      "digest": "sha256:a5e56931bf4e0ed6bd605f0e565d72c8a433a591b86af34e19c02e2430131ae5"
+    },
+    {
+      "name": "treeharbor-0.1.12-alpha.1-x86_64-unknown-linux-musl.tar.gz",
+      "size": 12673385,
+      "digest": "sha256:5856f19945045b41c1e1a8ccededaafe2d7fc3d7f6e2d81fde9ed88b32752b21"
+    },
+    {
+      "name": "treeharbor-0.1.12-alpha.1-x86_64-unknown-linux-musl.tar.gz.sha256",
+      "size": 125,
+      "digest": "sha256:fb69a1f8a5ba5c82f1da9dcdf4a5d81a9f3b30fc670ea7583d895e6a8f709ffc"
+    }
+  ],
+  "all_public_asset_digests_verified": true,
+  "previous_release_unchanged": true,
+  "prior_live_trial": "connected-restore-live-20261102.json",
+  "prior_live_trial_relabelled": false,
+  "full_connected_disaster_certified": false,
+  "full_standalone_ready": false,
+  "production_ready": false,
+  "performance_benchmark": false,
+  "limits": [
+    "The live GitHub trial used its separately recorded earlier development archive; it is not a live trial of these release bytes.",
+    "Installed runtime/restore acceptance does not certify unknown post-backup GitHub writes, automated external fencing, high availability or fleet recovery.",
+    "Metadata reports have explicit native-component attribution limits; no complete native SBOM, compiler reproducibility or SLSA level is claimed."
+  ]
+}

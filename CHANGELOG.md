@@ -24,10 +24,14 @@
   The receipt keeps its actual development source/archive identity; it is not
   evidence for host writes, managed agent execution or every later release binary.
 - Add a [recovery and upgrade guide](docs/connected-recovery.md). No database schema
-  or dependency change from 0.1.11. Upgrade client/server together for restore
+  or third-party dependency change from 0.1.11. The metadata component now uses the
+  existing Rust Git projection component for source verification. Upgrade client/server together for restore
   context v2; old context hashes cannot authorize new work. Full publication/queue
   disaster certification, external fencing automation and production readiness
   remain open.
+- Publish [signed Linux x86-64/ARM64 packages](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.12-alpha.1)
+  after installed runtime/cold-restore acceptance, independent signature/source
+  verification and a separate signed ARM64 installation/backup verification.
 
 ## 0.1.11-alpha.1 — local recovery continuation — 2026-11-01
 

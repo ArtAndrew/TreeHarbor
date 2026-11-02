@@ -1,15 +1,19 @@
 # TreeHarbor
 
-**Self-hosted source infrastructure for parallel coding agents. Built in Rust.**
+**Self-hosted AI agent workspaces and change tracking, with GitHub PR integration. Built in Rust.**
 
-TreeHarbor prepares workspaces from exact revisions, saves agent changes as
-immutable proposals, and connects checks to the exact code they tested. It is
-designed to help teams run many automated coding tasks while preserving their
-source history and controlling how changes reach the main branch.
+Run parallel coding agents against the same starting revision, keep each agent's
+changes after its workspace is deleted, and publish those changes as ordinary
+GitHub pull requests. TreeHarbor provides the source and change layer for agent
+platforms, automated code migrations and developer infrastructure.
 
-Start with **Connected**: keep GitHub as the authority for your main branch,
-checks and code review. **Standalone** shares the Rust core and is an experimental
-path toward native history and integration; its full release comes later.
+The **Connected PR Preview** keeps your existing GitHub repository, CI, code review
+and merge process. Use the authenticated API/CLI from your own agent controller,
+or evaluate the experimental **MCP server** (Model Context Protocol) for source
+reads and change proposals. TreeHarbor does not supply a coding model.
+
+**Standalone** shares the Rust core and has experimental native history, checks
+and integration. Its complete release remains in development.
 
 TreeHarbor is inspired by Anthropic's [Redesigning source control at Anthropic](https://www.anthropic.com/research/redesigning-source-control)
 (Scion; published October 13, 2026, updated October 15). The shared idea is to
@@ -18,10 +22,12 @@ TreeHarbor is an independent implementation and is not affiliated with Anthropic
 
 > **The Connected PR Preview is available in [signed alpha releases](https://github.com/ArtAndrew/TreeHarbor/releases).**
 > Signed Linux packages and the exact tested scope are in the release notes.
+> Latest: [0.1.12-alpha.1 — operator-assisted recovery](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.12-alpha.1).
 > Evaluate on disposable pilot repositories. The full Connected and Standalone
 > releases remain incomplete; production use is not supported.
 > [What works](#what-works-today) · [What remains](#what-remains-before-a-full-release) ·
-> [Try the development build](#try-the-development-build) · [Detailed evidence](docs/implementation-status.md)
+> [Install and set up](docs/connected-pr-preview.md) · [Agent integration](#integrate-an-agent-or-controller) ·
+> [Detailed evidence](docs/implementation-status.md)
 
 ## Who is it for?
 
@@ -32,10 +38,17 @@ TreeHarbor is an independent implementation and is not affiliated with Anthropic
 - **Infrastructure engineers** evaluating how to reduce repeated source preparation
   and recover work when a worker fails or a request is retried.
 
-For example, two agents can propose changes to the same service from one starting
-revision. TreeHarbor keeps each proposal and its checks separate, then requires
-checks of the combined candidate before it can be accepted. Failed work can be
-revised without losing the original proposal or confusing its checks with the repair.
+A typical task is a repository-wide migration split between agents, or two
+independent fixes that touch the same service. Each task starts from a pinned
+revision and produces a separately retained proposal. In the Connected preview,
+GitHub handles conflicts, CI, review and merge; TreeHarbor keeps the source and
+proposal identities needed to inspect what each agent changed.
+
+If you only need a few local working directories, start with Git worktrees.
+Evaluate TreeHarbor when your controller needs durable change submissions, exact
+source identities and recoverable task state across disposable workers. Current
+native workspaces contain files without `.git`; tools requiring a local Git
+checkout need a separate integration path.
 
 The intended benefit is lower workspace preparation cost and less coordination
 between an agent's edit and accepted code. **A performance advantage has not yet
@@ -44,7 +57,7 @@ the comparison baseline.
 
 ## The workflow
 
-![TreeHarbor Connected architecture: pinned GitHub source, two externally isolated agent workspaces, immutable changes, ordinary PRs, and separate metadata/object storage](docs/assets/connected-architecture.svg)
+![Self-hosted TreeHarbor: pinned GitHub revision, parallel agent workspaces or external API tasks, durable ChangeSets, GitHub pull requests, Rust API and experimental MCP, PostgreSQL and object storage, operator-assisted recovery](docs/assets/connected-architecture.svg)
 
 In alpha.1, agents run in separate native workspaces, the Rust engine accepts their
 stopped-file captures as immutable changes, and the trusted bridge publishes PRs.
@@ -59,6 +72,27 @@ an external task does not attest that it ran or passed tests.
 Each proposal keeps its base revision and agent-run identity. Changing the code
 does not carry a previous revision's passing checks forward. A text merge alone
 does not establish that two changes work together; the combined result needs checks.
+
+## Integrate an agent or controller
+
+The entry points below describe the current product for developers and agents
+selecting infrastructure. They are not a claim of compatibility with every agent
+host. All interfaces require operator setup and scoped credentials.
+
+| Need | Entry point | Current scope |
+| --- | --- | --- |
+| Run two agents and publish GitHub PRs | [Connected setup](docs/connected-pr-preview.md) and [two-agent example](examples/connected-pr/README.md) | Released preview; operator prepares service, runtime and GitHub App |
+| Bring your own agent execution environment | [External API tasks](docs/external-api-runs.md) and [change proposals](docs/change-proposals.md) | Read a pinned base, submit immutable changes, inspect and close tasks; your controller supplies isolation |
+| Connect a model through MCP | [MCP stdio tools and configuration](docs/mcp.md) | Experimental local adapter for source, task and proposal operations; no process launch or GitHub publication tool |
+| Recover retained source and reconnect GitHub | [Connected recovery](docs/connected-recovery.md) | Operator-assisted in 0.1.12; full publication/queue disaster recovery remains incomplete |
+| Inspect evidence or choose a version | [Implementation status](docs/implementation-status.md), [changelog](CHANGELOG.md), [signed packages](https://github.com/ArtAndrew/TreeHarbor/releases) | Versioned tests and scoped trials; no production-readiness claim |
+
+**Deployment:** self-hosted Linux service, PostgreSQL and local object storage.
+Managed task execution additionally uses external gVisor; external API tasks use
+your execution environment. There is no managed cloud service or automatic host
+provisioning. Source is available under [Elastic License 2.0](LICENSE), with no
+workspace-count limit. Git import/export provides an exit path; a virtual filesystem,
+GitLab integration and a measured speed advantage are not available today.
 
 ## What differs from Scion?
 
