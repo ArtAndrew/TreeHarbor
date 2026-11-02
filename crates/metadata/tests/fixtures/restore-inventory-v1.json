@@ -1,0 +1,156 @@
+{
+  "request": {
+    "action": "restore_inventory_start",
+    "key": "inventory-001",
+    "epoch": 1,
+    "specification": {
+      "version": 1,
+      "binding": "00000000-0000-4000-8000-000000000001",
+      "manifest_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+      "context_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+      "app_id": 123,
+      "installation_id": 456,
+      "repository_id": 789,
+      "repository_node": "R_demo",
+      "default_branch": "main",
+      "started_at_unix": 1800000000,
+      "finished_at_unix": 1800000001,
+      "head_count": 16,
+      "pull_count": 1,
+      "page_sha256": [
+        "6f195755796b4787d0bf28226ba65ecd21311bf4f2330176ccb36ca411d0ca0f",
+        "77f0b362fdec7729aac7bc51409c5423c058b0a86d0a0253d1156d21677d928d"
+      ],
+      "token_revoked": true,
+      "token_expires_at": "2027-01-15T09:00:00Z"
+    }
+  },
+  "pages": [
+    {
+      "version": 1,
+      "index": 0,
+      "items": [
+        {
+          "kind": "branch",
+          "node": "REF_0",
+          "name": "topic/0",
+          "git_revision": "git:sha1:2acbe39a88a8dfe59d8370733d81f21ec8a76d04"
+        },
+        {
+          "kind": "branch",
+          "node": "REF_1",
+          "name": "topic/1",
+          "git_revision": "git:sha1:2acbe39a88a8dfe59d8370733d81f21ec8a76d04"
+        },
+        {
+          "kind": "branch",
+          "node": "REF_2",
+          "name": "topic/2",
+          "git_revision": "git:sha1:2acbe39a88a8dfe59d8370733d81f21ec8a76d04"
+        },
+        {
+          "kind": "branch",
+          "node": "REF_3",
+          "name": "topic/3",
+          "git_revision": "git:sha1:2acbe39a88a8dfe59d8370733d81f21ec8a76d04"
+        },
+        {
+          "kind": "branch",
+          "node": "REF_4",
+          "name": "topic/4",
+          "git_revision": "git:sha1:2acbe39a88a8dfe59d8370733d81f21ec8a76d04"
+        },
+        {
+          "kind": "branch",
+          "node": "REF_5",
+          "name": "topic/5",
+          "git_revision": "git:sha1:2acbe39a88a8dfe59d8370733d81f21ec8a76d04"
+        },
+        {
+          "kind": "branch",
+          "node": "REF_6",
+          "name": "topic/6",
+          "git_revision": "git:sha1:2acbe39a88a8dfe59d8370733d81f21ec8a76d04"
+        },
+        {
+          "kind": "branch",
+          "node": "REF_7",
+          "name": "topic/7",
+          "git_revision": "git:sha1:2acbe39a88a8dfe59d8370733d81f21ec8a76d04"
+        },
+        {
+          "kind": "branch",
+          "node": "REF_8",
+          "name": "topic/8",
+          "git_revision": "git:sha1:2acbe39a88a8dfe59d8370733d81f21ec8a76d04"
+        },
+        {
+          "kind": "branch",
+          "node": "REF_9",
+          "name": "topic/9",
+          "git_revision": "git:sha1:2acbe39a88a8dfe59d8370733d81f21ec8a76d04"
+        },
+        {
+          "kind": "branch",
+          "node": "REF_10",
+          "name": "topic/10",
+          "git_revision": "git:sha1:2acbe39a88a8dfe59d8370733d81f21ec8a76d04"
+        },
+        {
+          "kind": "branch",
+          "node": "REF_11",
+          "name": "topic/11",
+          "git_revision": "git:sha1:2acbe39a88a8dfe59d8370733d81f21ec8a76d04"
+        },
+        {
+          "kind": "branch",
+          "node": "REF_12",
+          "name": "topic/12",
+          "git_revision": "git:sha1:2acbe39a88a8dfe59d8370733d81f21ec8a76d04"
+        },
+        {
+          "kind": "branch",
+          "node": "REF_13",
+          "name": "topic/13",
+          "git_revision": "git:sha1:2acbe39a88a8dfe59d8370733d81f21ec8a76d04"
+        },
+        {
+          "kind": "branch",
+          "node": "REF_14",
+          "name": "topic/14",
+          "git_revision": "git:sha1:2acbe39a88a8dfe59d8370733d81f21ec8a76d04"
+        },
+        {
+          "kind": "branch",
+          "node": "REF_15",
+          "name": "topic/15",
+          "git_revision": "git:sha1:2acbe39a88a8dfe59d8370733d81f21ec8a76d04"
+        }
+      ]
+    },
+    {
+      "version": 1,
+      "index": 1,
+      "items": [
+        {
+          "kind": "pull",
+          "node": "PR_17",
+          "number": 17,
+          "state": "CLOSED",
+          "head_ref": "deleted-source",
+          "base_ref": "main",
+          "head_repository": null,
+          "head_revision": "git:sha1:4444444444444444444444444444444444444444",
+          "base_revision": "git:sha1:2acbe39a88a8dfe59d8370733d81f21ec8a76d04",
+          "merge_revision": null
+        }
+      ]
+    }
+  ],
+  "specification_sha256": "4f7b2c2041ca062a4b4b65b219909ba3fca5f8230fb7022887e3ebcbc41b8f2f",
+  "page_keys": [
+    "restore-inventory-page:529fd9a6604656e99a54e0ac150114dc157483a16aa1fc32aa268fe297af39ca:0",
+    "restore-inventory-page:529fd9a6604656e99a54e0ac150114dc157483a16aa1fc32aa268fe297af39ca:1"
+  ],
+  "seal_key": "restore-inventory-seal:529fd9a6604656e99a54e0ac150114dc157483a16aa1fc32aa268fe297af39ca"
+}

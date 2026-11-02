@@ -23,6 +23,7 @@ mod restore;
 mod restore_acquire;
 mod restore_check;
 mod restore_delivery;
+mod restore_inventory;
 mod restore_pull;
 mod restore_queue;
 
@@ -30,6 +31,7 @@ mod restore_queue;
 pub enum Action {
     /// Download, retain and verify one owner-selected revision after a restore.
     RestoreAcquireSource(restore_acquire::Options),
+    RestoreCaptureInventory(restore_inventory::Options),
     /// Capture and retain exact PR metadata after a restore, without publishing.
     RestoreInspectPull(restore_pull::Options),
     RestoreInspectQueue(restore_queue::Options),
@@ -389,6 +391,7 @@ fn matches_config(config: &Config, spec: &treeharbor_metadata::github::BindingSp
 pub async fn run(action: Action) -> Result<bool> {
     match action {
         Action::RestoreAcquireSource(options) => restore_acquire::run(options).await,
+        Action::RestoreCaptureInventory(options) => restore_inventory::run(options).await,
         Action::RestoreAssess(options) => restore::run(options).await,
         Action::RestoreInspectPull(options) => restore_pull::run(options).await,
         Action::RestoreInspectQueue(options) => restore_queue::run(options).await,

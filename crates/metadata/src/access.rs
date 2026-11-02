@@ -78,7 +78,10 @@ impl Permission {
                 Ok(Self::RepositoryWrite)
             }
             "github.inspection.report.v1" => Ok(Self::HostRead),
-            "github.restore.pull.v1" => Ok(Self::HostRead),
+            "github.restore.pull.v1"
+            | "github.restore.inventory.start.v1"
+            | "github.restore.inventory.page.v1"
+            | "github.restore.inventory.seal.v1" => Ok(Self::HostRead),
             "github.restore.queue.v1" => Ok(Self::HostRead),
             "github.restore.delivery.v1" | "github.restore.check.v1" => Ok(Self::HostRead),
             "github.pull.request.v1" | "github.pull.cancel.v1" => Ok(Self::RepositoryWrite),

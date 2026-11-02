@@ -56,7 +56,7 @@ pub(super) async fn run(o: Options) -> Result<bool> {
     Ok(inventory.token_revoked)
 }
 
-fn assess(
+pub(super) fn assess(
     before: &RestoreContext,
     after: &RestoreContext,
     inventory: &RestoreInventory,

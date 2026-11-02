@@ -5,6 +5,8 @@ Use this after [local restore configuration](restore-configure.md), with old
 publishers still fenced. It extends [host inventory](restore-github-inventory.md)
 by comparing live observations with the exact operations retained for one binding.
 It does not resolve discrepancies, reconnect the service or replay any write.
+Use [durable inventory and source coverage](restore-inventory-coverage.md) to retain
+an entire traversal and identify observed revisions still missing verified source.
 
 You need the independently retained backup manifest SHA-256, the old binding UUID
 and current repository epoch. Use the original private GitHub App configuration
