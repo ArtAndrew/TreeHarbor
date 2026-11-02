@@ -384,7 +384,9 @@ impl Metadata {
             .authorize(credential, &scope, request.command.permission())
             .await?;
         let result = match request.command {
-            Command::Github { request } => request.execute(self, &auth, backend).await?,
+            // GitHub reports retain large nested evidence. Do not inline that
+            // dispatcher state into every authenticated HTTP command future.
+            Command::Github { request } => Box::pin(request.execute(self, &auth, backend)).await?,
             Command::Native { request } => request.execute(self, &auth).await?,
             Command::RepositoryInfo {} => self.authorized_repository_info(&auth).await?,
             Command::ChangeBegin {

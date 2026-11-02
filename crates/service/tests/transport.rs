@@ -1106,9 +1106,16 @@ struct Fixture {
     scope: Scope,
     sql: tokio_postgres::Client,
     driver: tokio::task::JoinHandle<()>,
+    server_stack_bytes: Option<usize>,
 }
 impl Drop for Fixture {
     fn drop(&mut self) {
+        if self.server_stack_bytes.is_some()
+            && std::thread::panicking()
+            && let Ok(log) = fs::read_to_string(self.dir.path().join("server.log"))
+        {
+            eprintln!("server stack regression diagnostics: {log}");
+        }
         self.driver.abort();
     }
 }
@@ -1163,6 +1170,7 @@ impl Fixture {
             scope,
             sql,
             driver,
+            server_stack_bytes: None,
         };
         f.save_config();
         f.admin_ok(&["migrate"]);
@@ -1308,15 +1316,18 @@ impl Fixture {
     }
     async fn start(&self) -> Process {
         let log = fs::File::create(self.dir.path().join("server.log")).unwrap();
-        let child = Command::new(env!("CARGO_BIN_EXE_treeharbor"))
+        let mut command = Command::new(env!("CARGO_BIN_EXE_treeharbor"));
+        command
             .env("PATH", "/treeharbor-test-no-executables")
             .arg("serve")
             .arg("--config")
             .arg(&self.config_path)
             .stdout(log.try_clone().unwrap())
-            .stderr(log)
-            .spawn()
-            .unwrap();
+            .stderr(log);
+        if let Some(bytes) = self.server_stack_bytes {
+            command.env("RUST_MIN_STACK", bytes.to_string());
+        }
+        let child = command.spawn().unwrap();
         let mut process = Process(child);
         let deadline = Instant::now() + Duration::from_secs(10);
         loop {
