@@ -39,9 +39,12 @@ replay and revoked access. The Connected HTTP/CLI projection/export trial passed
 with a committed capture, missing local acknowledgment, server restart and two
 CLI retries with no App configuration. It verifies one receipt and unchanged old
 publication report. Host captures/quarantine are explicit fixtures, not live
-GitHub disaster-recovery acceptance. An initially observed debug-stack overflow
-was fixed by boxing the new handler futures at the shared dispatcher; the trial
-passed with unchanged thread-stack limits. The independent wire fixture, strict
+GitHub disaster-recovery acceptance. The trial pins server workers to a 2 MiB
+stack, so a developer's larger inherited setting cannot hide report-processing
+overflows. Large futures are boxed at the HTTP, GitHub command and queue-report
+boundaries; the local trial and timeout/transaction-rollback test passed.
+Linux CI exposed the need for these additional boundaries and must pass before
+merge. The independent wire fixture, strict
 GitHub/metadata/service all-target Clippy, formatting and changed file links passed.
 Required branch CI is pending; this is not in published 0.1.11 packages.
 

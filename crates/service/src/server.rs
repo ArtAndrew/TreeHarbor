@@ -453,14 +453,14 @@ async fn handle(
         Ok(session) => session,
         Err(_) => return error(StatusCode::SERVICE_UNAVAILABLE, "database_unavailable"),
     };
-    match session
-        .metadata
-        .execute_command_with_backend(
-            &credential,
-            &body,
-            backend.as_ref().map(|b| b.config.backend.as_str()),
-        )
-        .await
+    // The metadata dispatcher owns large asynchronous validation states. Keep
+    // them on the heap instead of embedding them in every HTTP request future.
+    match Box::pin(session.metadata.execute_command_with_backend(
+        &credential,
+        &body,
+        backend.as_ref().map(|b| b.config.backend.as_str()),
+    ))
+    .await
     {
         Ok(value) => response(StatusCode::OK, value),
         Err(failure) => {

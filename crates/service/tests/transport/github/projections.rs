@@ -24,6 +24,9 @@ fn raw_prepare(f: &Fixture, id: Uuid) -> Vec<u8> {
 #[ignore = "requires PostgreSQL; actual Connected CLI/export/Git, server kills, external API run (no live App)"]
 async fn external_api_projection_recovers_after_context_close_and_exports_exact_git_parent() {
     let mut f = Fixture::new_with_authority(Authority::Connected).await;
+    // Pin the normal worker stack so a developer's larger RUST_MIN_STACK cannot
+    // hide a regression in large nested queue/workflow reports.
+    f.server_stack_bytes = Some(2 * 1024 * 1024);
     f.importer();
     f.config.request_timeout_ms = 15000;
     f.config.pool_size = 3;

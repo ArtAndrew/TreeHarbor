@@ -1236,13 +1236,15 @@ impl WireCommand {
                 attempt,
                 report,
             } => {
-                db.report_github_queue(
+                // Workflow/candidate report validation has a large async state;
+                // keep it out of the shared GitHub dispatcher stack.
+                Box::pin(db.report_github_queue(
                     auth,
                     &Command { key, epoch },
                     id(&queue)?,
                     id(&attempt)?,
                     &report,
-                )
+                ))
                 .await
             }
             Self::QueueCancel { key, epoch, queue } => {
