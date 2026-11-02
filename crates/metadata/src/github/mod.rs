@@ -28,6 +28,8 @@ pub use restore_deliveries::{RestoreDeliveryContext, RestoreDeliveryEvidence};
 mod restore_decisions;
 mod restore_inventory;
 mod restore_reconnect;
+mod restore_target;
+pub use restore_target::RestoreTargetSpec;
 mod restore_review;
 pub use restore_reconnect::{RestoreActivateSpec, RestoreReconnectProbe, RestoreReconnectSpec};
 pub use restore_review::RestoreReviewSpec;

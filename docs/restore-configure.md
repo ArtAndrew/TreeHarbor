@@ -132,3 +132,9 @@ Development builds after 0.1.11 include a separate
 [operator-assisted reconnect protocol](restore-reconnect.md). It requires explicit
 external assertions, fresh probe/inventory and atomic local re-review. Configuration
 alone still cannot clear quarantine; the published 0.1.11 behavior is unchanged.
+
+If the restored Connected repository has no retained binding, development builds
+support [registering a discovery-only target](restore-first-target.md). It stays
+permanently disabled while host inventory, source preservation and the ordinary
+reconnect protocol establish the required local evidence. No direct bind bypass
+is provided for an empty local history.

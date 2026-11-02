@@ -2,7 +2,7 @@
 
 Development functionality after 0.1.11; not included in the published package.
 This owner-only inspection combines retained operations and source coverage across
-**every old GitHub binding** in the recovered TreeHarbor repository. It requires
+**every retained GitHub binding** in the recovered TreeHarbor repository. It requires
 quarantine and revoked bindings. It does not reconnect the service or send host
 requests, and its successful exit code means the inspection ran, not that recovery
 is complete.
@@ -10,6 +10,11 @@ is complete.
 Start after [local restore configuration](restore-configure.md). Use
 [durable inventory capture](restore-inventory-coverage.md) to retain GitHub heads
 and PRs. Keep old infrastructure fenced while investigating recovery.
+
+If the backup predates the first binding, [register a discovery target](restore-first-target.md)
+first. That permanently disabled record is new recovery configuration, not proof
+of a pre-backup connection. This review still requires complete host inventory and
+source preservation for it; zero local effects never bypass those obligations.
 
 ## Inspect
 

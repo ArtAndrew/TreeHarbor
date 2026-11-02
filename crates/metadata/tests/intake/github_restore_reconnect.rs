@@ -390,3 +390,195 @@ async fn restore_reconnect_rechecks_source_pins_and_operator_plan() {
     ));
     cleanup(&p.f.schema).await;
 }
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL; zero retained binding, serialized target registration, real source mapping and reconnect"]
+async fn restore_target_never_treats_missing_local_history_as_empty_github() {
+    use treeharbor_metadata::github::RestoreTargetSpec;
+    let mut p = Projection::unbound().await;
+    let spec: BindingSpec =
+        serde_json::from_str::<Value>(include_str!("../fixtures/github-bind-v1.json"))
+            .map(|v| serde_json::from_value(v["specification"].clone()).unwrap())
+            .unwrap();
+    let target = RestoreTargetSpec {
+        version: 1,
+        manifest_sha256: "91".repeat(32),
+        target: p.binding,
+        binding: spec.clone(),
+        evidence_sha256: "92".repeat(32),
+        prospective_target_confirmed: true,
+    };
+    assert!(matches!(
+        p.f.db
+            .register_github_restore_target(&p.owner, &cmd("before-quarantine"), &target)
+            .await,
+        Err(MetaError::HostRecoveryRequired)
+    ));
+    journal(&p, &target.manifest_sha256, None).await;
+    assert!(
+        p.f.db
+            .register_github_restore_target(&p.reader, &cmd("bridge-denied"), &target)
+            .await
+            .is_err()
+    );
+    let mut wrong = target.clone();
+    wrong.manifest_sha256 = "00".repeat(32);
+    assert!(
+        p.f.db
+            .register_github_restore_target(&p.owner, &cmd("wrong-manifest"), &wrong)
+            .await
+            .is_err()
+    );
+    wrong = target.clone();
+    wrong.binding.bridge = "not-provisioned".into();
+    assert!(
+        p.f.db
+            .register_github_restore_target(&p.owner, &cmd("wrong-bridge"), &wrong)
+            .await
+            .is_err()
+    );
+    let sql = connection(&p.f.schema).await;
+    assert_eq!(
+        sql.query_one("SELECT count(*) FROM th_github_bindings", &[])
+            .await
+            .unwrap()
+            .get::<_, i64>(0),
+        0
+    );
+    let mut peer = Metadata::new(connection(&p.f.schema).await).await.unwrap();
+    let mut other = target.clone();
+    other.target = Uuid::new_v4();
+    let left = cmd("target-left");
+    let right = cmd("target-right");
+    let (a, b) = tokio::join!(
+        p.f.db
+            .register_github_restore_target(&p.owner, &left, &target),
+        peer.register_github_restore_target(&p.owner, &right, &other)
+    );
+    assert_ne!(a.is_ok(), b.is_ok());
+    let (key, chosen, record) = if let Ok(v) = a {
+        ("target-left", target, v)
+    } else {
+        ("target-right", other, b.unwrap())
+    };
+    p.binding = chosen.target;
+    assert_eq!(record["historical_connection_asserted"], false);
+    assert_eq!(record["remote_history_empty_asserted"], false);
+    assert_eq!(record["binding_state"], "revoked");
+    assert_eq!(
+        sql.query_one(
+            "SELECT count(*) FROM th_github_bindings WHERE state='active'",
+            &[]
+        )
+        .await
+        .unwrap()
+        .get::<_, i64>(0),
+        0
+    );
+    assert_eq!(
+        peer.github_restore_target(&p.owner, key).await.unwrap(),
+        record
+    );
+    assert_eq!(
+        peer.register_github_restore_target(&p.owner, &cmd(key), &chosen)
+            .await
+            .unwrap(),
+        record
+    );
+    assert!(
+        sql.execute(
+            "UPDATE th_github_bindings SET state='active',revoked_at=NULL WHERE binding=$1",
+            &[&p.binding]
+        )
+        .await
+        .is_err()
+    );
+    assert!(matches!(
+        peer.bind_github(&p.owner, &cmd("no-bypass"), Uuid::new_v4(), &spec)
+            .await,
+        Err(MetaError::HostRecoveryRequired)
+    ));
+    let ctx: RestoreContext = serde_json::from_value(
+        p.f.db
+            .github_restore_context(&p.reader, 1, p.binding, &chosen.manifest_sha256)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert!(ctx.effects.is_empty());
+    let review = RestoreReviewSpec {
+        version: 1,
+        manifest_sha256: chosen.manifest_sha256.clone(),
+        inventory_keys: vec![],
+    };
+    assert_eq!(
+        p.f.db
+            .github_restore_review(&p.owner, 1, &review)
+            .await
+            .unwrap()["assessment"]["local_review_complete"],
+        false
+    );
+    capture(&mut p, &ctx, "unpreserved-inventory").await;
+    let with_capture = RestoreReviewSpec {
+        inventory_keys: vec!["unpreserved-inventory".into()],
+        ..review
+    };
+    let missing =
+        p.f.db
+            .github_restore_review(&p.owner, 1, &with_capture)
+            .await
+            .unwrap();
+    assert_eq!(
+        missing["assessment"]["bindings"][0]["sources"]["missing_git"]["count"],
+        1
+    );
+    assert_eq!(missing["assessment"]["local_review_complete"], false);
+    let s = RestoreReconnectSpec {
+        version: 1,
+        manifest_sha256: ctx.manifest_sha256.clone(),
+        source_binding: p.binding,
+        new_binding: Uuid::new_v4(),
+        binding: spec,
+        ttl_seconds: 300,
+        evidence_sha256: "93".repeat(32),
+        old_writers_and_runtimes_fenced: true,
+        old_credentials_cannot_mint: true,
+        old_tokens_revoked_or_expired: true,
+        prior_host_mutations_settled: true,
+        host_writes_controlled: true,
+        host_policy_reviewed: true,
+    };
+    let reporter = p.reader.clone();
+    let (_, activate) = ready(&mut p, &ctx, &s, &reporter).await;
+    let accepted =
+        p.f.db
+            .activate_github_restore_reconnect(&p.owner, &cmd("activated"), &activate)
+            .await
+            .unwrap();
+    assert_eq!(accepted["binding"], json!(s.new_binding));
+    assert_eq!(
+        sql.query_one(
+            "SELECT state FROM th_github_bindings WHERE binding=$1",
+            &[&p.binding]
+        )
+        .await
+        .unwrap()
+        .get::<_, String>(0),
+        "revoked"
+    );
+    assert_eq!(
+        sql.query_one("SELECT count(*) FROM th_github_publications", &[])
+            .await
+            .unwrap()
+            .get::<_, i64>(0),
+        0
+    );
+    // A later replay reports the original registration, never edits the target.
+    assert_eq!(
+        peer.register_github_restore_target(&p.owner, &cmd(key), &chosen)
+            .await
+            .unwrap(),
+        record
+    );
+    cleanup(&p.f.schema).await;
+}

@@ -76,6 +76,10 @@ async fn interrupt_activation(f: &mut Fixture, server: &mut Process, spec: &std:
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires PostgreSQL; actual CLI reconnect/lost activation ack/server restart; external probe/inventory/quarantine are explicit fixtures"]
 async fn restore_reconnect_cli_recovers_activation_without_app_or_duplicate_binding() {
+    exercise(false).await;
+    exercise(true).await;
+}
+async fn exercise(prospective: bool) {
     let mut f = Fixture::new_with_authority(Authority::Connected).await;
     f.importer();
     let owner = f.credential_path.clone();
@@ -85,11 +89,13 @@ async fn restore_reconnect_cli_recovers_activation_without_app_or_duplicate_bind
         "../../../../metadata/tests/fixtures/github-bind-v1.json"
     ))
     .unwrap();
-    result(request(&f, &bind));
-    result(request(
-        &f,
-        &json!({"action":"revoke","key":"revoke","epoch":1,"binding":bind["binding"]}),
-    ));
+    if !prospective {
+        result(request(&f, &bind));
+        result(request(
+            &f,
+            &json!({"action":"revoke","key":"revoke","epoch":1,"binding":bind["binding"]}),
+        ));
+    }
     let manifest = "97".repeat(32);
     let database: String = f
         .sql
@@ -102,6 +108,59 @@ async fn restore_reconnect_cli_recovers_activation_without_app_or_duplicate_bind
     ))
     .to_vec();
     f.sql.execute("INSERT INTO th_operations(tenant,repository,key,request_digest,principal,kind,result) VALUES($1,$2,$3,$4,'restore-quarantine','restore.quarantine.v1',$5)",&[&f.scope.tenant(),&f.scope.repository(),&format!("restore-quarantine:{manifest}"),&digest,&json!({"version":1,"status":"quarantined","manifest_sha256":manifest,"database":database})]).await.unwrap();
+    if prospective {
+        let target = json!({"version":1,"manifest_sha256":manifest,"target":bind["binding"],"binding":bind["specification"],"evidence_sha256":"96".repeat(32),"prospective_target_confirmed":true});
+        let path = f.dir.path().join("target.json");
+        files::write_private(&path, target.to_string().as_bytes()).unwrap();
+        let register = |f: &Fixture| {
+            let mut c = Command::new(env!("CARGO_BIN_EXE_treeharbor"));
+            c.env("PATH", "/no-executables")
+                .args([
+                    "github",
+                    "restore-register-target",
+                    "--epoch",
+                    "1",
+                    "--key",
+                    "target",
+                    "--socket",
+                ])
+                .arg(&f.config.socket)
+                .arg("--credential-file")
+                .arg(&f.credential_path)
+                .arg("--specification")
+                .arg(&path);
+            c
+        };
+        let registered = output(&mut register(&f));
+        assert_eq!(registered["historical_connection_asserted"], false);
+        assert_eq!(registered["publication_authorized"], false);
+        assert_eq!(
+            f.sql
+                .query_one(
+                    "SELECT count(*) FROM th_outbox WHERE kind='github.binding.configured'",
+                    &[]
+                )
+                .await
+                .unwrap()
+                .get::<_, i64>(0),
+            0
+        );
+        server.0.kill().unwrap();
+        server.0.wait().unwrap();
+        server = f.start().await;
+        assert_eq!(registered, output(&mut register(&f)));
+        assert_eq!(
+            f.sql
+                .query_one(
+                    "SELECT count(*) FROM th_github_bindings WHERE state='active'",
+                    &[]
+                )
+                .await
+                .unwrap()
+                .get::<_, i64>(0),
+            0
+        );
+    }
     let new_binding = Uuid::new_v4();
     let plan = json!({"version":1,"manifest_sha256":manifest,"source_binding":bind["binding"],"new_binding":new_binding,"binding":bind["specification"],"ttl_seconds":300,"evidence_sha256":"98".repeat(32),"old_writers_and_runtimes_fenced":true,"old_credentials_cannot_mint":true,"old_tokens_revoked_or_expired":true,"prior_host_mutations_settled":true,"host_writes_controlled":true,"host_policy_reviewed":true});
     let path = f.dir.path().join("reconnect-plan.json");

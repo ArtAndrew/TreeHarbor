@@ -46,6 +46,12 @@ struct Projection {
 }
 impl Projection {
     async fn new() -> Self {
+        Self::build(true).await
+    }
+    async fn unbound() -> Self {
+        Self::build(false).await
+    }
+    async fn build(initial_binding: bool) -> Self {
         let mut f = Fixture::new().await;
         let change = Uuid::new_v4();
         let prepared = f.prepare(b"accepted\0\xff").await;
@@ -78,9 +84,11 @@ impl Projection {
         )
         .unwrap();
         let binding = Uuid::new_v4();
-        f.db.bind_github(&owner, &cmd("bind"), binding, &spec)
-            .await
-            .unwrap();
+        if initial_binding {
+            f.db.bind_github(&owner, &cmd("bind"), binding, &spec)
+                .await
+                .unwrap();
+        }
         Self {
             f,
             owner,
