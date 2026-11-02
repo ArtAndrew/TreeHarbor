@@ -64,6 +64,7 @@ impl Permission {
             | "github.managed_check.collect.v1"
             | "github.managed_check.release.v1" => Ok(Self::ValidationReport),
             "github.policy.set.v1" | "github.admission_policy.set.v1" => Ok(Self::PolicyWrite),
+            "github.restore.target.v1" => Ok(Self::RepositoryWrite),
             "github.restore.reconnect.plan.v1"
             | "github.restore.reconnect.cancel.v1"
             | "github.restore.reconnect.activate.v1" => Ok(Self::RepositoryWrite),

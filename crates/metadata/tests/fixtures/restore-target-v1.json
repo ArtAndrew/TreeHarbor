@@ -1,0 +1,28 @@
+{
+  "request": {
+    "action": "restore_target_register",
+    "key": "restore-target-example",
+    "epoch": 1,
+    "specification": {
+      "version": 1,
+      "manifest_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+      "target": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      "binding": {
+        "version": 1,
+        "app_id": 7,
+        "client_id": "Iv1_public_test",
+        "bridge": "bridge",
+        "upstream": {
+          "installation_id": 9,
+          "repository_id": 11,
+          "owner_id": 13,
+          "owner": "example-org",
+          "name": "demo"
+        }
+      },
+      "evidence_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+      "prospective_target_confirmed": true
+    }
+  },
+  "specification_sha256": "99cfd65e883a4fb914e66b64672bc5dc1497b6f1f6c43f11c10aa22c6ac086ed"
+}

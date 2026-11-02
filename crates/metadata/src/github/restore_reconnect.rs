@@ -114,7 +114,7 @@ pub(super) async fn reconciliation_required(tx: &Transaction<'_>, s: &Scope) -> 
     };
     Ok(!tx.query_one("SELECT EXISTS(SELECT 1 FROM th_operations WHERE tenant=$1 AND repository=$2 AND kind=$3 AND result->>'quarantine_sha256'=$4)",&[&s.tenant(),&s.repository(),&ACTIVATE,&hash]).await?.get::<_,bool>(0))
 }
-async fn bridge(tx: &Transaction<'_>, s: &Scope, spec: &BindingSpec) -> Result<()> {
+pub(super) async fn bridge(tx: &Transaction<'_>, s: &Scope, spec: &BindingSpec) -> Result<()> {
     let row=tx.query_opt("SELECT p.kind,p.enabled,a.permissions FROM th_principals p JOIN th_repository_access a USING(tenant,principal) WHERE p.tenant=$1 AND p.principal=$2 AND a.repository=$3 FOR SHARE OF p,a",&[&s.tenant(),&spec.bridge,&s.repository()]).await?.ok_or(Error::Forbidden)?;
     if row.get::<_, String>(0) != "bridge"
         || !row.get::<_, bool>(1)

@@ -129,23 +129,7 @@ pub(super) async fn retained_context(
     if b.get::<_, i64>("epoch") != epoch || b.get::<_, String>("state") != "revoked" {
         return Err(Error::HostBindingState);
     }
-    let key = format!("restore-quarantine:{manifest}");
-    let journal = tx.query_opt("SELECT result,request_digest,current_database()::text AS database FROM th_operations WHERE tenant=$1 AND repository=$2 AND key=$3 AND kind='restore.quarantine.v1' AND principal='restore-quarantine'",
-        &[&s.tenant(),&s.repository(),&key]).await?.ok_or(Error::HostRecoveryRequired)?;
-    let receipt: Value = journal.get("result");
-    let database: String = journal.get("database");
-    let digest = Sha256::digest(format!(
-        "treeharbor-restore-quarantine\0v1\0{manifest}\0{database}"
-    ))
-    .to_vec();
-    if receipt["version"] != 1
-        || receipt["status"] != "quarantined"
-        || receipt["manifest_sha256"] != manifest
-        || receipt["database"] != database
-        || journal.get::<_, Vec<u8>>("request_digest") != digest
-    {
-        return Err(Error::HostRecoveryRequired);
-    }
+    let (receipt, database) = quarantine_receipt(tx, s, manifest).await?;
     let bindings = tx.query("SELECT binding,state FROM th_github_bindings WHERE tenant=$1 AND repository=$2 ORDER BY binding LIMIT $3",
         &[&s.tenant(),&s.repository(),&(MAX_EFFECTS+1)]).await?;
     if bindings.len() > MAX_EFFECTS as usize {
@@ -242,6 +226,34 @@ pub(super) async fn retained_context(
         return Err(Error::RestoreContextLimit);
     }
     Ok(result)
+}
+
+// Shared by discovery-only target registration and retained-binding inspection.
+// A caller has already checked current authority/epoch and holds the repository lock.
+pub(super) async fn quarantine_receipt(
+    tx: &Transaction<'_>,
+    s: &Scope,
+    manifest: &str,
+) -> Result<(Value, String)> {
+    digest_valid(manifest)?;
+    let key = format!("restore-quarantine:{manifest}");
+    let journal = tx.query_opt("SELECT result,request_digest,current_database()::text AS database FROM th_operations WHERE tenant=$1 AND repository=$2 AND key=$3 AND kind='restore.quarantine.v1' AND principal='restore-quarantine'",
+        &[&s.tenant(),&s.repository(),&key]).await?.ok_or(Error::HostRecoveryRequired)?;
+    let receipt: Value = journal.get("result");
+    let database: String = journal.get("database");
+    let digest = Sha256::digest(format!(
+        "treeharbor-restore-quarantine\0v1\0{manifest}\0{database}"
+    ))
+    .to_vec();
+    if receipt["version"] != 1
+        || receipt["status"] != "quarantined"
+        || receipt["manifest_sha256"] != manifest
+        || receipt["database"] != database
+        || journal.get::<_, Vec<u8>>("request_digest") != digest
+    {
+        return Err(Error::HostRecoveryRequired);
+    }
+    Ok((receipt, database))
 }
 
 pub(super) fn digest_valid(value: &str) -> Result<()> {

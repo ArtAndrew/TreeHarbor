@@ -100,7 +100,7 @@ contacting GitHub. A receipt recovered after expiry is still historical evidence
 not fresh permission; use a new plan/journal and fresh observations when required.
 
 After `observe_after_unix`, run [inventory capture](restore-inventory-coverage.md)
-for **every old binding**, with each old binding's assigned freshly provisioned
+for **every retained binding**, including a registered recovery target, with each old binding's assigned freshly provisioned
 recovery bridge credential. Capture does not un-revoke those bindings. Complete
 source preservation and current `do_not_replay` decisions, then run
 `github restore-review` with every selected sealed inventory key. If preserving
@@ -177,7 +177,9 @@ reviewed intent. Expiry does not refresh on replay.
 This increment supports 1–256 retained bindings and the existing review/inventory
 bounds. It requires the same App/client/installation/upstream identity as a selected
 old binding; key rotation and a replacement bridge principal are supported.
-Restores with no retained binding and migration to another App remain fenced.
+When no binding survived the backup, first register a permanently disabled
+[discovery target](restore-first-target.md); inventory/source review still applies.
+Migration of an existing retained binding to another App remains unsupported.
 Unavailable post-backup/deleted history and external mutations must be investigated
 outside this protocol. Live installed full-disaster acceptance remains unfinished.
 

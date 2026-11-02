@@ -21,6 +21,26 @@ These correctness checks do not establish complete mode readiness or performance
 superiority. The installed native workload includes deliberate replacement-node
 recovery; live GitHub recovery remains a separate release gate.
 
+## Discovery target for a backup without bindings — development
+
+Not included in published 0.1.11-alpha.1. The owner can
+[register one prospective recovery target](restore-first-target.md) only when no
+GitHub binding survived the backup. The server validates current quarantine,
+authority/epoch and assigned bridge, then atomically records a permanently revoked
+configuration and explicit prospective provenance. It creates no configured event,
+active interval, host operation or assertion that remote history is empty.
+Concurrent registration has one winner; restart/replay cannot replace the target.
+A mistaken selection requires a fresh staging restore, preserving immutable rows.
+
+The existing inventory/acquisition/Git-proof/source-pin/review/reconnect workflow
+then applies to this target. A new active binding requires another UUID and every
+normal admission predicate. Tests exercise missing inventory/source, actual Rust
+source mapping, competing registration and reconnection, plus real CLI/service
+restart and lost activation acknowledgment for both retained and prospective inputs.
+Host/quarantine fixtures do not establish live disaster acceptance or external
+operator assertions. Both-mode release gates remain open.
+
+
 ## Operator-assisted restored GitHub reconnection — development
 
 Not included in published 0.1.11-alpha.1. The new
@@ -42,8 +62,8 @@ cancellation, concurrent admission, reconnect, changed quarantine and revoked-ID
 reuse. A real CLI/service process-loss trial covers plan/cancel, saved probe
 reporting, activation commit before lost response, worker/server restart and
 same-key retry without App files. Host observations and quarantine in these tests
-are fixtures; live installed disaster acceptance is still open. Zero-retained-binding
-restores and another-App migration remain explicitly blocked. No new release,
+are fixtures; live installed disaster acceptance is still open. A zero-retained-binding
+restore first needs the discovery-target registration described above; another-App migration remains explicitly blocked. No new release,
 App grant, external credential or live host-policy change accompanies this increment.
 
 

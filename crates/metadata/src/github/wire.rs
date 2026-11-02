@@ -4,6 +4,14 @@ use serde::Deserialize;
 #[derive(Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
 pub enum WireCommand {
+    RestoreTargetRegister {
+        key: String,
+        epoch: i64,
+        specification: Box<RestoreTargetSpec>,
+    },
+    RestoreTargetStatus {
+        key: String,
+    },
     RestoreReconnectPlan {
         key: String,
         epoch: i64,
@@ -651,6 +659,9 @@ pub(super) fn id(s: &str) -> Result<Uuid> {
 impl WireCommand {
     pub fn permission(&self) -> Permission {
         match self {
+            Self::RestoreTargetRegister { .. } | Self::RestoreTargetStatus { .. } => {
+                Permission::RepositoryWrite
+            }
             Self::RestoreReconnectPlan { .. }
             | Self::RestoreReconnectCancel { .. }
             | Self::RestoreReconnectStatus { .. }
@@ -875,6 +886,15 @@ impl WireCommand {
                     .await
             }
             Self::RestoreQueueStatus { key } => db.github_restore_queue(auth, &key).await,
+            Self::RestoreTargetRegister {
+                key,
+                epoch,
+                specification,
+            } => {
+                db.register_github_restore_target(auth, &Command { key, epoch }, &specification)
+                    .await
+            }
+            Self::RestoreTargetStatus { key } => db.github_restore_target(auth, &key).await,
             Self::RestoreReconnectPlan {
                 key,
                 epoch,
