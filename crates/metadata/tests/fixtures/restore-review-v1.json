@@ -1,0 +1,15 @@
+{
+  "request": {
+    "action": "restore_review",
+    "epoch": 1,
+    "specification": {
+      "version": 1,
+      "manifest_sha256": "5555555555555555555555555555555555555555555555555555555555555555",
+      "inventory_keys": [
+        "restore-inventory:first",
+        "restore-inventory:second"
+      ]
+    }
+  },
+  "specification_sha256": "12727fe23e8043c24b04770e48bf072eb01513ecda67d9a88869b8d87ea209f3"
+}

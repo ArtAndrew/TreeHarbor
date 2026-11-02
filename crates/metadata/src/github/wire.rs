@@ -4,6 +4,10 @@ use serde::Deserialize;
 #[derive(Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
 pub enum WireCommand {
+    RestoreReview {
+        epoch: i64,
+        specification: RestoreReviewSpec,
+    },
     RestoreInventoryStart {
         key: String,
         epoch: i64,
@@ -622,9 +626,9 @@ impl WireCommand {
             Self::RestoreInventoryStart { .. }
             | Self::RestoreInventoryPage { .. }
             | Self::RestoreInventorySeal { .. } => Permission::HostRead,
-            Self::RestoreInventoryCoverage { .. } | Self::RestoreAcquisitionContext { .. } => {
-                Permission::RepositoryWrite
-            }
+            Self::RestoreReview { .. }
+            | Self::RestoreInventoryCoverage { .. }
+            | Self::RestoreAcquisitionContext { .. } => Permission::RepositoryWrite,
             Self::RestoreDeliveryContext { .. }
             | Self::RestoreDeliveryRecord { .. }
             | Self::RestoreCheckContext { .. }
@@ -836,6 +840,10 @@ impl WireCommand {
                     .await
             }
             Self::RestoreQueueStatus { key } => db.github_restore_queue(auth, &key).await,
+            Self::RestoreReview {
+                epoch,
+                specification,
+            } => db.github_restore_review(auth, epoch, &specification).await,
             Self::RestoreInventoryStart {
                 key,
                 epoch,

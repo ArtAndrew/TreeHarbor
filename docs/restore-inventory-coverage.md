@@ -58,6 +58,10 @@ and start a new capture in a new directory. Preserve the old directory for audit
 never edit its hashes to force acceptance. A historical seal replay is not current
 host evidence. No page retransmission extends the original capture's timestamp.
 
+For a single local review across every old binding, selected inventory and retained
+operation, use [repository restore review](restore-review.md). Per-page inspection
+below remains useful for finding individual missing revisions.
+
 ## Inspect source coverage
 
 Use a recovery-owner credential with `repository.write`. Save the following
