@@ -213,6 +213,14 @@ async fn import_to_node_files_and_reopen(git_history: bool) {
     assert_eq!(prepared["state"], "files_ready");
     assert_eq!(prepared["workspace"], workspace);
     assert!(prepared["runtime"].is_null());
+    assert_eq!(prepared["recovered_baseline"], false);
+    let stats = &prepared["preparation_statistics"];
+    assert!(stats["source_objects"].as_u64().unwrap() >= 3);
+    assert!(stats["source_encoded_bytes"].as_u64().unwrap() > 13);
+    assert_eq!(stats["source_bytes_written"], 13);
+    assert_eq!(stats["local_bytes_copied"], 0);
+    assert_eq!(stats["workspace_bytes"], 13);
+    assert_eq!(stats["filesystem_entries"], 1);
     let files = PathBuf::from(prepared["path"].as_str().unwrap());
     assert_eq!(fs::read(files.join("main.rs")).unwrap(), b"fn main() {}\n");
     fs::write(files.join("main.rs"), b"saved edit").unwrap();
@@ -221,6 +229,13 @@ async fn import_to_node_files_and_reopen(git_history: bool) {
     let reopened: Value = serde_json::from_slice(&reopened.stdout).unwrap();
     assert_eq!(reopened["path"], prepared["path"]);
     assert_eq!(reopened["recovered_baseline"], true);
+    assert!(
+        reopened
+            .as_object()
+            .unwrap()
+            .contains_key("preparation_statistics")
+    );
+    assert!(reopened["preparation_statistics"].is_null());
     assert_eq!(fs::read(files.join("main.rs")).unwrap(), b"saved edit");
     let idle = node_cli("prepare-once", &[], &node_credential);
     assert!(idle.status.success());

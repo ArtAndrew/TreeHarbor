@@ -347,7 +347,15 @@ pub async fn run(action: Action) -> Result<bool> {
         "{}",
         json!({"workspace":workspace.to_string(),"state":"files_ready","runtime":null,
         "path":tree.path(),"manifest":tree.manifest_path(),"snapshot":tree.snapshot().to_string(),
-        "recovered_baseline":tree.statistics().is_none()})
+        "recovered_baseline":tree.statistics().is_none(),
+        "preparation_statistics":tree.statistics().map(|stats| json!({
+            "source_objects":stats.source_objects,
+            "source_encoded_bytes":stats.source_encoded_bytes,
+            "source_bytes_written":stats.source_bytes_written,
+            "local_bytes_copied":stats.local_bytes_copied,
+            "workspace_bytes":stats.workspace_bytes,
+            "filesystem_entries":stats.filesystem_entries
+        }))})
     );
     Ok(true)
 }

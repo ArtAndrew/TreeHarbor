@@ -8,6 +8,10 @@
 - Publish an opt-in file-preparation comparison with Git worktree, a deterministic
   fixture and raw observations. The first small macOS sample favors Git worktree;
   it does not establish large-repository or end-to-end performance.
+- Expose materialization counters in `node prepare-once` JSON: source reads/bytes,
+  content written, copied local bytes, logical workspace bytes and filesystem entries.
+  Reopened/recovered placements report `preparation_statistics: null`, rather than
+  inventing historical measurements. See [node diagnostics](docs/local-node.md).
 
 ## 0.1.12-alpha.1 — operator-assisted Connected recovery — 2026-11-02
 
