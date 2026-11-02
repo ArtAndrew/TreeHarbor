@@ -23,6 +23,17 @@ recovery; live GitHub recovery remains a separate release gate.
 
 ## 0.1.12-alpha.1 release scope
 
+Current documentation additions: [first-run checkpoints](try-treeharbor.md), a
+[36-second illustration of the recorded trial](demo.md), and a
+[file-preparation comparison](benchmark-preparation.md) with a deterministic
+131-entry fixture. Five randomized waves per system passed byte/mode/path
+verification and cleanup. Median first read was 410 ms for TreeHarbor and 44 ms
+for Git worktree on the sampled macOS ARM64 host. The probe uses a local optimized
+build, loaded objects and uncontrolled OS caches; it is not a release package,
+cold-cache, LLM, throughput or full-cost benchmark. The fixture was independently
+regenerated with the same commit ID; both Python helpers passed syntax checks.
+The walkthrough illustrates the existing 0.1.0-alpha.1 trial, not a new execution.
+
 Published [0.1.12-alpha.1](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.12-alpha.1)
 packages the operator-assisted recovery additions described below. Use the [Connected recovery guide](connected-recovery.md) for their order,
 roles, upgrade boundary and limitations. The development trial keeps its actual

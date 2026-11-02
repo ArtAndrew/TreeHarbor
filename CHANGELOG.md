@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Add a first-run guide with installation checkpoints and an illustrated walkthrough
+  of the recorded two-task GitHub PR trial. Add community entry points for setup
+  questions and pilot feedback.
+- Publish an opt-in file-preparation comparison with Git worktree, a deterministic
+  fixture and raw observations. The first small macOS sample favors Git worktree;
+  it does not establish large-repository or end-to-end performance.
+
 ## 0.1.12-alpha.1 — operator-assisted Connected recovery — 2026-11-02
 
 - Enforce durable quarantine before any new GitHub connection. Discover all host

@@ -29,6 +29,20 @@ TreeHarbor is an independent implementation and is not affiliated with Anthropic
 > [Install and set up](docs/connected-pr-preview.md) · [Agent integration](#integrate-an-agent-or-controller) ·
 > [Detailed evidence](docs/implementation-status.md)
 
+## Try TreeHarbor
+
+[**Start a pilot**](docs/try-treeharbor.md) · [**Watch the recorded trial**](docs/demo.md) ·
+[**Ask a setup question**](https://github.com/ArtAndrew/TreeHarbor/discussions/categories/q-a)
+
+Two tasks change the same file, publish two real GitHub PRs, and keep their proposals
+after workspace cleanup. The [36-second walkthrough](docs/demo.md) shows a recorded
+trial with scripted agents, not LLMs. Setup is manual today; the
+[first-run guide](docs/try-treeharbor.md) lists prerequisites and checkpoints before
+you invest time. We are looking for the first five external pilot reports, including
+failed installs and reasons you chose another tool.
+
+[![36-second walkthrough of the recorded two-scripted-agent trial; real draft PRs and Git export after cleanup, not live footage](docs/assets/connected-trial.gif)](docs/demo.md)
+
 ## Who is it for?
 
 - **Platform and developer productivity teams** running repeated code migrations,
@@ -53,7 +67,8 @@ checkout need a separate integration path.
 The intended benefit is lower workspace preparation cost and less coordination
 between an agent's edit and accepted code. **A performance advantage has not yet
 been measured.** Tuned Git worktrees, partial/sparse checkout and caches remain
-the comparison baseline.
+the comparison baseline. A [small local preparation probe](docs/benchmark-preparation.md)
+currently favors Git worktree; raw observations and limitations are published.
 
 ## The workflow
 
