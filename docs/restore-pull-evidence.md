@@ -1,6 +1,6 @@
 # Capture an exact PR during recovery
 
-Development command after 0.1.11; not included in the published 0.1.11 package.
+Introduced in 0.1.12-alpha.1; not included in 0.1.11 or earlier packages.
 Use it after [restore assessment](restore-github-assessment.md) to compare one
 retained PR intent with an explicitly selected GitHub PR. It reads the PR twice
 and saves the full observations, including title, body, draft status and exact
@@ -21,7 +21,7 @@ response URLs cannot redirect requests to another host.
 ```sh
 umask 077
 mkdir -m 700 /absolute/private/treeharbor/pr-capture-001
-cargo run -p treeharbor-service --locked -- github restore-inspect-pull \
+treeharbor github restore-inspect-pull \
   --config /absolute/private/treeharbor/github-app.json \
   --socket /srv/treeharbor-recovery/stage-001/active/service.sock \
   --credential-file /absolute/private/treeharbor/recovery-bridge.json \

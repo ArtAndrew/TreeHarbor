@@ -1,6 +1,6 @@
 # Review the whole recovered GitHub repository
 
-Development functionality after 0.1.11; not included in the published package.
+Introduced in 0.1.12-alpha.1; not included in 0.1.11 or earlier packages.
 This owner-only inspection combines retained operations and source coverage across
 **every retained GitHub binding** in the recovered TreeHarbor repository. It requires
 quarantine and revoked bindings. It does not reconnect the service or send host
@@ -24,7 +24,7 @@ GitHub. Run without `--inventory` first to discover the retained binding IDs and
 local blockers. Then select one capture per binding using repeated options:
 
 ```sh
-cargo run -p treeharbor-service --locked -- github restore-review \
+treeharbor github restore-review \
   --socket /srv/treeharbor-recovery/stage-001/active/service.sock \
   --credential-file /absolute/private/treeharbor/recovery-owner.json \
   --epoch 1 --manifest-sha256 "$TH_BACKUP_MANIFEST_SHA256" \

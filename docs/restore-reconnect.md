@@ -1,6 +1,6 @@
 # Reconnect after an operator-assisted restore
 
-Development functionality after 0.1.11; not included in the published package.
+Introduced in 0.1.12-alpha.1; not included in 0.1.11 or earlier packages.
 This protocol creates **one new GitHub binding** after a quarantined restore. It
 never reactivates the old binding or replays its PR, queue or check operations.
 It is not automatic disaster recovery or a production certification.

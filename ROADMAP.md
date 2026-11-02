@@ -43,6 +43,14 @@ operator fencing. Fresh credentials/startup and Connected reconciliation remain
 separate responsibilities. Both installed Linux architectures passed the scoped
 recovery path before the original tested packages were signed and published.
 
+**0.1.12-alpha.1** adds an [operator-assisted Connected recovery path](docs/connected-recovery.md):
+retain a full host inventory, recover exact source, review old operations and admit
+one new connection after fresh observations and explicit external fencing.
+An [ARM64 development trial](docs/evidence/connected-restore-live-20261102.json)
+verified cold restore, real GitHub reads and retained/new source export. Its exact
+source is recorded separately from release builds. Full uncertain-publication/
+queue recovery, runtime replacement and automated fencing remain later gates.
+
 ## First preview acceptance
 
 Verify a clean installation and the complete packaged two-agent-to-PR demo,

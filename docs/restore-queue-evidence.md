@@ -1,6 +1,6 @@
 # Observe queue membership during recovery
 
-Development command after 0.1.11; not in the published 0.1.11 package.
+Introduced in 0.1.12-alpha.1; not included in 0.1.11 or earlier packages.
 After [restore assessment](restore-github-assessment.md), this command reads the
 exact PR associated with a retained queue or dequeue operation twice. It saves
 the observations without enqueueing, removing, merging or reconnecting anything.
@@ -15,7 +15,7 @@ request to grant extra permissions to an installed App automatically.
 ```sh
 umask 077
 mkdir -m 700 /absolute/private/treeharbor/queue-capture-001
-cargo run -p treeharbor-service --locked -- github restore-inspect-queue \
+treeharbor github restore-inspect-queue \
   --config /absolute/private/treeharbor/github-app.json \
   --socket /srv/treeharbor-recovery/stage-001/active/service.sock \
   --credential-file /absolute/private/treeharbor/recovery-bridge.json \

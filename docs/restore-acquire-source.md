@@ -1,6 +1,6 @@
 # Recover source missing from a backup
 
-Development command after 0.1.11; not included in that published package.
+Introduced in 0.1.12-alpha.1; not included in 0.1.11 or earlier packages.
 `github restore-acquire-source` downloads one explicitly selected Git commit,
 imports its complete reachable history, preserves an independent root pin and
 asks the server to verify the exact Git/native mapping. It works while the old
@@ -53,7 +53,7 @@ for `acquire_source`; v1/v2 keep their previous dispositions.
 
 ## Acquire and verify
 
-Use a development binary with the new command, the original private App
+Use a 0.1.12-alpha.1 or newer binary, the original private App
 configuration and a private, capacity-bounded directory:
 
 ```sh

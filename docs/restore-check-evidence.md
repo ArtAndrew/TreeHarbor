@@ -1,6 +1,6 @@
 # Capture an exact check during recovery
 
-Development command after 0.1.11, not included in that published package.
+Introduced in 0.1.12-alpha.1; not included in 0.1.11 or earlier packages.
 After [restore assessment](restore-github-assessment.md), compare one retained
 TreeHarbor check-publication intent with an explicitly selected GitHub check run.
 The command reads its numeric ID twice and verifies its opaque node ID. It never
@@ -14,7 +14,7 @@ permissions. No write or administration permission is requested by this capture.
 ```sh
 umask 077
 mkdir -m 700 /absolute/private/treeharbor/check-capture-001
-cargo run -p treeharbor-service --locked -- github restore-inspect-check \
+treeharbor github restore-inspect-check \
   --config /absolute/private/treeharbor/github-app.json \
   --socket /srv/treeharbor-recovery/stage-001/active/service.sock \
   --credential-file /absolute/private/treeharbor/recovery-bridge.json \

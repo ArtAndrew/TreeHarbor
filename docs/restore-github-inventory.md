@@ -1,6 +1,6 @@
 # Inspect GitHub after a restore
 
-Development command after 0.1.11; not available in the published 0.1.11 package.
+Introduced in 0.1.12-alpha.1; not included in 0.1.11 or earlier packages.
 This collects current branch and PR identities for an operator investigating a
 restored Connected installation. It does **not** reconnect the service or complete
 disaster recovery. Keep old publishers fenced and retain the restored operation
@@ -17,7 +17,7 @@ administration permission or TreeHarbor service credential is requested.
 # Run from a source checkout until a package containing this command is released.
 # The output can contain private repository metadata; keep the file private.
 umask 077
-cargo run -p treeharbor-service --locked -- github restore-inventory \
+treeharbor github restore-inventory \
   --config /absolute/private/treeharbor/github-app.json \
   > /absolute/private/treeharbor/restore-inventory.json
 ```
@@ -64,6 +64,6 @@ and [cursor pagination](https://docs.github.com/en/graphql/guides/using-paginati
 checked 2026-11-01.
 
 To compare this discovery with a restored binding's retained operations, use the
-development [restore assessment command](restore-github-assessment.md). It requires
+[restore assessment command](restore-github-assessment.md). It requires
 fresh assigned-bridge access and the exact manifest identity; it still does not
 authorize reconnection.
