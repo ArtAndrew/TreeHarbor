@@ -1,5 +1,7 @@
 #[path = "github_admission_policy.rs"]
 mod admission_policy;
+#[path = "github_restore_checks.rs"]
+mod restore_checks;
 use super::*;
 use sha2::{Digest, Sha256};
 use treeharbor_github_contract::{PullState, RequiredCheck, check_publication as cp};

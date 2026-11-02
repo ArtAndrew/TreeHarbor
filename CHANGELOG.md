@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add `github restore-inspect-check`: capture one exact GitHub check twice and
+  retain its identity, revision and metadata against the original publication
+  intent. Retry preserves the receipt across restart without a new host read.
+  Matching an old result grants no validation or publication authority.
+
 - Add `github restore-inspect-queue` for retained queue/removal operations:
   capture two read-only membership snapshots and retain them through the assigned
   bridge with durable retry. Absent or merged PR observations do not settle old

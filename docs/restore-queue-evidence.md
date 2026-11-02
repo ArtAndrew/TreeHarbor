@@ -91,3 +91,4 @@ An ordinary repository `read` credential can retrieve a committed receipt:
 These operations leave old attempts, reports, source pins, bindings and dispatch
 queues unchanged. Full recovery still requires check/delivery facts, discovery
 and preservation of post-backup work, external fencing and verified reconnection.
+For retained managed-check publications, see [exact check captures](restore-check-evidence.md).

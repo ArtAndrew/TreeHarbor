@@ -1,6 +1,6 @@
 # Implementation status
 
-Updated: 2026-11-01. This file describes implemented behavior and remaining release
+Updated: 2026-11-02. This file describes implemented behavior and remaining release
 gates. A foundation milestone does not complete either mode.
 
 For a concise current overview, see [what works today](../README.md#what-works-today)
@@ -20,6 +20,30 @@ managed/native workloads on x86-64 and ARM64, and webhook TLS/failure tests.
 These correctness checks do not establish complete mode readiness or performance
 superiority. The installed native workload includes deliberate replacement-node
 recovery; live GitHub recovery remains a separate release gate.
+
+## Unreleased exact check recovery evidence
+
+`github restore-inspect-check` reads one explicitly selected GitHub check twice
+and compares its App, name, exact head, external marker and conclusion with the
+retained managed-check publication target. Previously retained numeric/node IDs
+must match. Changed or pending metadata is preserved as a mismatch; even matching
+metadata grants no current validation/publication authority. The assigned read
+bridge records immutable evidence without rewriting old attempts or preflights.
+See [the guide](restore-check-evidence.md).
+
+Fifteen check-publication transport tests passed, including changed conclusions,
+pending/null fields, wrong revisions, missing requested fields and exact identity
+refusals. The real PostgreSQL contract passed both unattempted and previously
+observed publications, identity/time/scope checks, stale contexts, historical
+replay and revoked access. The Connected HTTP/CLI projection/export trial passed
+with a committed capture, missing local acknowledgment, server restart and two
+CLI retries with no App configuration. It verifies one receipt and unchanged old
+publication report. Host captures/quarantine are explicit fixtures, not live
+GitHub disaster-recovery acceptance. An initially observed debug-stack overflow
+was fixed by boxing the new handler futures at the shared dispatcher; the trial
+passed with unchanged thread-stack limits. The independent wire fixture, strict
+GitHub/metadata/service all-target Clippy, formatting and changed file links passed.
+Required branch CI is pending; this is not in published 0.1.11 packages.
 
 ## Unreleased queue/removal recovery evidence
 
@@ -41,8 +65,9 @@ acknowledgment, service restart and two retries without App configuration or
 duplicate receipts. Its quarantine and host captures are explicit fixtures;
 this is not a live GitHub disaster-recovery acceptance result. The independent
 wire fixture, strict GitHub/metadata/service all-target Clippy, formatting and
-changed documentation links passed. Required branch CI remains pending; this component is not
-included in published 0.1.11 packages.
+changed documentation links passed. All six required checks passed and
+[PR131](https://github.com/ArtAndrew/TreeHarbor/pull/131) was merged. This component
+is not included in published 0.1.11 packages.
 
 ## Unreleased exact PR recovery evidence
 

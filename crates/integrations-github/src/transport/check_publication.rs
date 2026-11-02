@@ -4,7 +4,14 @@ use crate::MutationFailure;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use std::sync::atomic::{AtomicBool, Ordering};
+use treeharbor_github_contract::restore_check::{CheckIdentity, CheckSnapshot, RestoreCheckReport};
 use treeharbor_github_contract::{RequiredCheck, check_publication::*};
+
+pub struct ObservedRestoreCheck {
+    pub binding: RepositoryBinding,
+    pub report: RestoreCheckReport,
+    pub token_expires_at: String,
+}
 
 pub struct ObservedCheckPublication {
     pub binding: RepositoryBinding,
@@ -22,9 +29,18 @@ struct Run {
     app: App,
     name: String,
     head_sha: String,
+    #[serde(deserialize_with = "required_nullable")]
     external_id: Option<String>,
     status: String,
+    #[serde(deserialize_with = "required_nullable")]
     conclusion: Option<String>,
+}
+fn required_nullable<'de, D, T>(d: D) -> std::result::Result<Option<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: serde::Deserialize<'de>,
+{
+    Option::<T>::deserialize(d)
 }
 #[derive(Deserialize)]
 struct Runs {
@@ -110,6 +126,89 @@ fn protection(v: Value) -> Result<Protection> {
     })
 }
 impl Connection {
+    /// Read only the selected check; no check creation, update or rerun.
+    pub async fn observe_restore_check(
+        &self,
+        b: &RepositoryBinding,
+        t: &Target,
+        identity: &CheckIdentity,
+    ) -> Result<ObservedRestoreCheck> {
+        self.check_target(b, t)?;
+        identity.validate().map_err(|_| Error::Evidence)?;
+        let _slot = tokio::time::timeout(PROBE_TIMEOUT, self.slots.acquire())
+            .await
+            .map_err(|_| Error::Deadline)?
+            .map_err(|_| Error::Configuration)?;
+        let capability = wire::Capability::Evidence;
+        let (installation, token) =
+            tokio::time::timeout(PROBE_TIMEOUT, self.mint_for(b, capability))
+                .await
+                .map_err(|_| Error::Deadline)??;
+        let result = tokio::time::timeout(PROBE_TIMEOUT, async {
+            let started = now()? as i64 * 1000;
+            let probe = self
+                .observe_for(b, &installation, &token, capability)
+                .await?;
+            if now()?.saturating_add(PROBE_TIMEOUT.as_secs() + 30)
+                >= token.check_for(b.repository_id, now()?, capability)?
+            {
+                return Err(Error::TokenLifetime);
+            }
+            let read = || async {
+                let r: Run = self
+                    .json(
+                        Stage::CheckPublication,
+                        Method::GET,
+                        &format!("repos/{}/{}/check-runs/{}", b.owner, b.name, identity.id),
+                        token.token.header()?,
+                        None,
+                        StatusCode::OK,
+                    )
+                    .await?;
+                let snapshot = CheckSnapshot {
+                    identity: CheckIdentity {
+                        id: r.id,
+                        node_id: r.node_id,
+                    },
+                    app_id: r.app.id,
+                    name: r.name,
+                    head_revision: format!("git:sha1:{}", r.head_sha),
+                    external_id: r.external_id,
+                    status: r.status,
+                    conclusion: r.conclusion,
+                };
+                snapshot.validate(identity).map_err(|_| Error::Evidence)?;
+                Ok::<_, Error>(snapshot)
+            };
+            let before = read().await?;
+            let after = read().await?;
+            let report = RestoreCheckReport {
+                version: 1,
+                app_id: probe.app_id,
+                installation_id: b.installation_id,
+                repository_id: b.repository_id,
+                started_at_unix_ms: started,
+                finished_at_unix_ms: now()? as i64 * 1000,
+                before,
+                after,
+                token_revoked: false,
+            };
+            report.validate(t, identity).map_err(|_| Error::Evidence)?;
+            Ok(report)
+        })
+        .await
+        .map_err(|_| Error::Deadline)
+        .and_then(|r| r);
+        let revoked = self.revoke(&token).await.is_ok();
+        let mut report = result?;
+        report.token_revoked = revoked;
+        Ok(ObservedRestoreCheck {
+            binding: b.clone(),
+            report,
+            token_expires_at: token.expires_at.clone(),
+        })
+    }
+
     async fn check_source(
         &self,
         b: &RepositoryBinding,

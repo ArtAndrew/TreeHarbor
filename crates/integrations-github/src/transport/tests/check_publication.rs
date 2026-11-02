@@ -1,6 +1,8 @@
 use super::*;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use treeharbor_github_contract::check_publication::*;
+#[path = "restore_check.rs"]
+mod restore_check;
 
 pub(super) fn fixture() -> Value {
     serde_json::from_str(include_str!(concat!(
