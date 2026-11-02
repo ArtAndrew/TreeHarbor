@@ -1,0 +1,52 @@
+{
+  "request": {
+    "action": "restore_check_record",
+    "key": "check-capture",
+    "epoch": 1,
+    "specification": {
+      "version": 1,
+      "binding": "00000000-0000-4000-8000-000000000001",
+      "manifest_sha256": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+      "context_sha256": "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+      "operation": "12121212-1212-4212-8212-121212121212",
+      "identity": {
+        "id": 73,
+        "node_id": "check-73"
+      },
+      "report": {
+        "version": 1,
+        "app_id": 7,
+        "installation_id": 9,
+        "repository_id": 11,
+        "started_at_unix_ms": 1,
+        "finished_at_unix_ms": 2,
+        "before": {
+          "identity": {
+            "id": 73,
+            "node_id": "check-73"
+          },
+          "app_id": 7,
+          "name": "TreeHarbor/e1/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "head_revision": "git:sha1:1111111111111111111111111111111111111111",
+          "external_id": "treeharbor:v1:12121212-1212-4212-8212-121212121212:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        "after": {
+          "identity": {
+            "id": 73,
+            "node_id": "check-73"
+          },
+          "app_id": 7,
+          "name": "TreeHarbor/e1/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "head_revision": "git:sha1:1111111111111111111111111111111111111111",
+          "external_id": "treeharbor:v1:12121212-1212-4212-8212-121212121212:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        "token_revoked": true
+      }
+    }
+  },
+  "specification_sha256": "5d128b3f2cbf40a3c8d13752a72211f4b0125357ada79332efacbe259dd1f953"
+}

@@ -4,6 +4,7 @@
 mod auth;
 mod transport;
 pub use transport::check_publication::ObservedCheckPublication;
+pub use transport::check_publication::ObservedRestoreCheck;
 pub use transport::evidence::ObservedInspection;
 pub use transport::queue::ObservedRestoreQueue;
 pub use transport::queue::{MutationFailure, ObservedDequeue, ObservedQueue};

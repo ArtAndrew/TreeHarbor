@@ -4,6 +4,21 @@ use serde::Deserialize;
 #[derive(Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
 pub enum WireCommand {
+    RestoreCheckContext {
+        epoch: i64,
+        binding: String,
+        manifest_sha256: String,
+        operation: String,
+        identity: treeharbor_github_contract::restore_check::CheckIdentity,
+    },
+    RestoreCheckRecord {
+        key: String,
+        epoch: i64,
+        specification: Box<RestoreCheckEvidence>,
+    },
+    RestoreCheckStatus {
+        key: String,
+    },
     RestoreQueueContext {
         epoch: i64,
         binding: String,
@@ -566,6 +581,10 @@ pub(super) fn id(s: &str) -> Result<Uuid> {
 impl WireCommand {
     pub fn permission(&self) -> Permission {
         match self {
+            Self::RestoreCheckContext { .. } | Self::RestoreCheckRecord { .. } => {
+                Permission::HostRead
+            }
+            Self::RestoreCheckStatus { .. } => Permission::Read,
             Self::RestoreQueueContext { .. } | Self::RestoreQueueRecord { .. } => {
                 Permission::HostRead
             }
@@ -680,6 +699,38 @@ impl WireCommand {
         backend: Option<&str>,
     ) -> Result<Value> {
         match self {
+            Self::RestoreCheckContext {
+                epoch,
+                binding,
+                manifest_sha256,
+                operation,
+                identity,
+            } => {
+                // Keep the restore capture's context/target future off the
+                // shared dispatcher stack, including for unrelated commands.
+                Box::pin(db.github_restore_check_context(
+                    auth,
+                    epoch,
+                    id(&binding)?,
+                    &manifest_sha256,
+                    id(&operation)?,
+                    &identity,
+                ))
+                .await
+            }
+            Self::RestoreCheckRecord {
+                key,
+                epoch,
+                specification,
+            } => {
+                Box::pin(db.record_github_restore_check(
+                    auth,
+                    &Command { key, epoch },
+                    &specification,
+                ))
+                .await
+            }
+            Self::RestoreCheckStatus { key } => db.github_restore_check(auth, &key).await,
             Self::RestoreQueueContext {
                 epoch,
                 binding,
