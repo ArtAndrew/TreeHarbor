@@ -9,7 +9,9 @@ an independent permanent root pin in the same transaction as its receipt.
 This is part of recovery, **not permission to reconnect GitHub**. The old binding
 stays revoked, and the restore journal stays intact. Decisions neither send host
 requests nor change old dispatch attempts, observations or checks. Full host
-reconciliation and new-binding admission remain unfinished.
+reconciliation is not established by these decisions. The separate
+[operator-assisted reconnect protocol](restore-reconnect.md) adds fresh
+observations and atomic new-binding admission; live recovery acceptance is open.
 
 ## Save a reviewed decision
 

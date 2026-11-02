@@ -102,8 +102,10 @@ state invalidate earlier conclusions; the next review exposes the change.
 ## Remaining recovery work and bounds
 
 External runtime/publisher/token fencing, settlement of unknown host writes,
-final provider reobservation, policy reconciliation and atomic admission of a fresh
-binding remain separate unfinished work. The review does not attest disk health,
+final provider reobservation and policy review remain external responsibilities.
+The separate [operator-assisted reconnect protocol](restore-reconnect.md) now
+re-evaluates this review atomically when creating a fresh binding. Live full-disaster
+acceptance remains unfinished. The review does not attest disk health,
 restore missing post-backup operation metadata, recover unavailable deleted host
 history or certify all native-mode recovery. Existing bindings stay revoked.
 

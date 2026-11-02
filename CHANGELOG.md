@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Add `github restore-reconnect plan/probe/activate/status/cancel`: admit one
+  fresh binding after operator-confirmed external fencing, a fresh read-only
+  probe and atomic re-review of every retained binding and source dependency.
+  Preserve old revoked bindings and same-key recovery after a lost response.
+  External assertions are not independently verified; live full-disaster
+  acceptance and zero-retained-binding recovery remain unfinished.
+
 - Add owner-only `github restore-review`: inspect every retained binding, latest
   decisions, complete inventory coverage and independent source pins together.
   Missing selections and changed dependencies remain visible; this local review

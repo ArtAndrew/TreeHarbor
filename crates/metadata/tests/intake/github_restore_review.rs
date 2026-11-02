@@ -4,7 +4,7 @@ use treeharbor_metadata::github::{
 };
 const BASE_GIT: &str = "git:sha1:2acbe39a88a8dfe59d8370733d81f21ec8a76d04";
 
-async fn capture(p: &mut Projection, ctx: &RestoreContext, key: &str) {
+pub(super) async fn capture(p: &mut Projection, ctx: &RestoreContext, key: &str) {
     let page = RestoreInventoryPage {
         version: 1,
         index: 0,
@@ -57,7 +57,7 @@ fn binding(r: &Value, id: Uuid) -> &Value {
         .find(|v| v["binding"] == json!(id))
         .unwrap()
 }
-async fn verify_base(p: &mut Projection, ctx: &RestoreContext, key: &str) {
+pub(super) async fn verify_base(p: &mut Projection, ctx: &RestoreContext, key: &str) {
     let RevisionRef::Native(root) = p.f.revision else {
         panic!()
     };

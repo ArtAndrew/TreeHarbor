@@ -21,6 +21,32 @@ These correctness checks do not establish complete mode readiness or performance
 superiority. The installed native workload includes deliberate replacement-node
 recovery; live GitHub recovery remains a separate release gate.
 
+## Operator-assisted restored GitHub reconnection — development
+
+Not included in published 0.1.11-alpha.1. The new
+[reconnect workflow](restore-reconnect.md) records a bounded owner plan with explicit
+external-fencing/settlement assertions, an assigned bridge's fresh read-only probe,
+and atomic owner activation. The server re-evaluates the full repository review
+inside the binding-insertion transaction; current pins/contexts/inventories and
+latest dispositions cannot be replaced with a cached passing hash. Old bindings
+remain revoked, old work is not replayed, and checks/policy do not transfer.
+External fencing is explicitly not independently verified. The quarantine guard
+only recognizes admission for the exact current database/schema/epoch and full
+journal fingerprint. Lost acknowledgments and later binding revocation do not
+make an activation replay insert another binding. Cancellation and expiry block
+new work, while historical receipts remain historical.
+
+Local PostgreSQL trials exercise nonempty source coverage with actual Rust Git
+projection, missing live recovery pins after passing review, wrong/old probes, pre-plan inventory, replacement bridge assignment,
+cancellation, concurrent admission, reconnect, changed quarantine and revoked-ID
+reuse. A real CLI/service process-loss trial covers plan/cancel, saved probe
+reporting, activation commit before lost response, worker/server restart and
+same-key retry without App files. Host observations and quarantine in these tests
+are fixtures; live installed disaster acceptance is still open. Zero-retained-binding
+restores and another-App migration remain explicitly blocked. No new release,
+App grant, external credential or live host-policy change accompanies this increment.
+
+
 ## Unreleased repository-wide restore review
 
 The owner-only `github restore-review` command evaluates all retained bindings

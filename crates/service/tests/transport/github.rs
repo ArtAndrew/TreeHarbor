@@ -19,6 +19,8 @@ mod restore_inventory;
 mod restore_pull;
 #[path = "github/restore_queue.rs"]
 mod restore_queue;
+#[path = "github/restore_reconnect.rs"]
+mod restore_reconnect;
 #[path = "github/restore_source.rs"]
 mod restore_source;
 

@@ -2,6 +2,8 @@ use super::*;
 use sha2::{Digest, Sha256};
 use treeharbor_metadata::github::{RestoreContext, RestoreEffectKind};
 
+#[path = "github_restore_reconnect.rs"]
+mod reconnect;
 #[path = "github_restore_review.rs"]
 mod repository_review;
 

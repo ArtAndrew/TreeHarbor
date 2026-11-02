@@ -26,6 +26,7 @@ mod restore_delivery;
 mod restore_inventory;
 mod restore_pull;
 mod restore_queue;
+mod restore_reconnect;
 mod restore_review;
 
 #[derive(Subcommand)]
@@ -34,6 +35,7 @@ pub enum Action {
     RestoreAcquireSource(restore_acquire::Options),
     RestoreCaptureInventory(restore_inventory::Options),
     RestoreReview(restore_review::Options),
+    RestoreReconnect(restore_reconnect::Options),
     /// Capture and retain exact PR metadata after a restore, without publishing.
     RestoreInspectPull(restore_pull::Options),
     RestoreInspectQueue(restore_queue::Options),
@@ -395,6 +397,7 @@ pub async fn run(action: Action) -> Result<bool> {
         Action::RestoreAcquireSource(options) => restore_acquire::run(options).await,
         Action::RestoreCaptureInventory(options) => restore_inventory::run(options).await,
         Action::RestoreReview(options) => restore_review::run(options).await,
+        Action::RestoreReconnect(options) => restore_reconnect::run(options).await,
         Action::RestoreAssess(options) => restore::run(options).await,
         Action::RestoreInspectPull(options) => restore_pull::run(options).await,
         Action::RestoreInspectQueue(options) => restore_queue::run(options).await,
