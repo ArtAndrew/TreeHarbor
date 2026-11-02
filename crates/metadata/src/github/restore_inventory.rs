@@ -182,7 +182,7 @@ fn seal_key(key: &str) -> Result<String> {
         restore_digest(&json!([1, key]))?
     ))
 }
-async fn inventory(
+pub(super) async fn inventory(
     tx: &Transaction<'_>,
     s: &Scope,
     key: &str,
@@ -222,7 +222,7 @@ async fn current(
     }
     Ok(())
 }
-async fn page(
+pub(super) async fn page(
     tx: &Transaction<'_>,
     s: &Scope,
     key: &str,
@@ -232,6 +232,33 @@ async fn page(
     let v:Value=tx.query_opt("SELECT result FROM th_operations WHERE tenant=$1 AND repository=$2 AND key=$3 AND kind=$4", &[&s.tenant(),&s.repository(),&k,&PAGE]).await?.ok_or(Error::NotFound)?.get(0);
     serde_json::from_value(v["page"].clone()).map_err(|_| Error::SchemaMismatch)
 }
+pub(super) async fn sealed(tx: &Transaction<'_>, s: &Scope, key: &str) -> Result<bool> {
+    let key = seal_key(key)?;
+    Ok(tx.query_one("SELECT EXISTS(SELECT 1 FROM th_operations WHERE tenant=$1 AND repository=$2 AND key=$3 AND kind=$4)", &[&s.tenant(),&s.repository(),&key,&SEAL]).await?.get(0))
+}
+
+/// The trusted projector receipt and live permanent holder are evaluated together.
+/// Batching preserves the predicate used by per-page inspection without N queries.
+pub(super) async fn verified_mappings(
+    tx: &Transaction<'_>,
+    s: &Scope,
+    epoch: i64,
+    manifest: &str,
+    binding: Uuid,
+    revisions: &[String],
+) -> Result<BTreeMap<String, Value>> {
+    let rows=tx.query("SELECT DISTINCT ON (m.result->>'git_revision') m.result->>'git_revision',m.key,m.result FROM th_operations m JOIN th_operations d ON d.tenant=m.tenant AND d.repository=m.repository AND d.key=m.result->>'decision_key' AND d.kind='github.restore.decision.v1' JOIN th_object_pins p ON p.tenant=m.tenant AND p.repository=m.repository AND p.holder=m.result->>'source_holder' AND p.generation=(m.result->>'generation')::bigint JOIN th_objects o ON o.tenant=p.tenant AND o.digest=p.digest AND o.generation=p.generation WHERE m.tenant=$1 AND m.repository=$2 AND m.kind='github.restore.mapping.v1' AND m.result->>'git_revision'=ANY($3) AND (m.result->>'epoch')::bigint=$4 AND m.result->>'verifier'='rust-git-projection-v1' AND m.result->>'git_mapping_verified'='true' AND d.result->'specification'->>'manifest_sha256'=$5 AND d.result->'specification'->>'binding'=$6 AND 'native:sha256:'||encode(p.digest,'hex')=m.result->>'native_revision' AND o.kind=5 AND o.state='live' ORDER BY m.result->>'git_revision',m.key",&[&s.tenant(),&s.repository(),&revisions,&epoch,&manifest,&binding.to_string()]).await?;
+    Ok(rows
+        .into_iter()
+        .map(|r| {
+            (
+                r.get::<_, String>(0),
+                json!({"key":r.get::<_,String>(1),"receipt":r.get::<_,Value>(2)}),
+            )
+        })
+        .collect())
+}
+
 impl Metadata {
     pub async fn start_github_restore_inventory(
         &mut self,
@@ -372,14 +399,18 @@ impl Metadata {
                 }
             }
         }
+        let mappings = verified_mappings(
+            &tx,
+            s,
+            epoch,
+            &spec.manifest_sha256,
+            spec.binding,
+            &revisions.keys().cloned().collect::<Vec<_>>(),
+        )
+        .await?;
         let mut sources = Vec::new();
         for (git_revision, origins) in revisions {
-            // Only server-produced projector receipts backed by the same restored
-            // scope and a still-live permanent pin count. No caller-supplied flags.
-            let row=tx.query_opt("SELECT m.key,m.result FROM th_operations m JOIN th_operations d ON d.tenant=m.tenant AND d.repository=m.repository AND d.key=m.result->>'decision_key' AND d.kind='github.restore.decision.v1' JOIN th_object_pins p ON p.tenant=m.tenant AND p.repository=m.repository AND p.holder=m.result->>'source_holder' AND p.generation=(m.result->>'generation')::bigint JOIN th_objects o ON o.tenant=p.tenant AND o.digest=p.digest AND o.generation=p.generation WHERE m.tenant=$1 AND m.repository=$2 AND m.kind='github.restore.mapping.v1' AND m.result->>'git_revision'=$3 AND (m.result->>'epoch')::bigint=$4 AND m.result->>'verifier'='rust-git-projection-v1' AND m.result->>'git_mapping_verified'='true' AND d.result->'specification'->>'manifest_sha256'=$5 AND d.result->'specification'->>'binding'=$6 AND 'native:sha256:'||encode(p.digest,'hex')=m.result->>'native_revision' AND o.kind=5 AND o.state='live' ORDER BY m.key LIMIT 1",
-                &[&s.tenant(),&s.repository(),&git_revision,&epoch,&spec.manifest_sha256,&spec.binding.to_string()]).await?;
-            let mapping =
-                row.map(|r| json!({"key":r.get::<_,String>(0),"receipt":r.get::<_,Value>(1)}));
+            let mapping = mappings.get(&git_revision).cloned();
             sources.push(json!({"git_revision":git_revision,"origins":origins,"classification":if mapping.is_some(){"preserved"}else{"missing_verified_source"},"mapping":mapping}));
         }
         let missing = sources

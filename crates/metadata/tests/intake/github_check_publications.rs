@@ -687,6 +687,44 @@ async fn check_publication_preserves_failure_and_combined_group_identity() {
         status(&mut f.p, owner.principal(), id).await["state"],
         "observed"
     );
+    f.p.f
+        .db
+        .revoke_github(&f.p.owner, &cmd("restore-revoke"), f.p.binding)
+        .await
+        .unwrap();
+    let manifest = "99".repeat(32);
+    crate::github_projection::restore::journal(&f.p, &manifest, None).await;
+    let reviewed =
+        f.p.f
+            .db
+            .github_restore_review(
+                &f.p.owner,
+                1,
+                &treeharbor_metadata::github::RestoreReviewSpec {
+                    version: 1,
+                    manifest_sha256: manifest,
+                    inventory_keys: vec![],
+                },
+            )
+            .await
+            .unwrap();
+    let binding = &reviewed["assessment"]["bindings"][0];
+    assert_eq!(binding["inventory_status"], "missing");
+    let missing = binding["sources"]["missing_git"]["sample"]
+        .as_array()
+        .unwrap();
+    for revision in [
+        t.source.head().unwrap(),
+        t.source.pull().head_revision.as_str(),
+        f.target.expected_base_revision.as_str(),
+    ] {
+        assert!(
+            missing.contains(&json!(revision)),
+            "missing retained source {revision}: {missing:?}"
+        );
+    }
+    assert!(binding["decisions"]["required"].as_u64().unwrap() >= 4);
+    assert_eq!(reviewed["assessment"]["publication_authorized"], false);
     cleanup(&f.p.f.schema).await;
 }
 

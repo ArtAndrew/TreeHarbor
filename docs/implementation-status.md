@@ -21,6 +21,35 @@ These correctness checks do not establish complete mode readiness or performance
 superiority. The installed native workload includes deliberate replacement-node
 recovery; live GitHub recovery remains a separate release gate.
 
+## Unreleased repository-wide restore review
+
+The owner-only `github restore-review` command evaluates all retained bindings
+under one local repository lock. Omitted inventories remain blockers. It combines
+sealed capture freshness, latest current-context `do_not_replay` decisions, every
+observed Git revision, known retained targets (including queue bases and combined
+check candidates), and independent native recovery pins. See [the guide](restore-review.md).
+Bounded samples do not limit evaluation: counts/hashes cover complete dependency
+lists. A later decision, changed context or missing pin changes the result.
+
+`local_review_complete` is a limited local predicate, never authorization. Old
+bindings remain revoked and ordinary binding creation still fails after a passing
+review. External fencing, unknown host-write settlement, final provider evidence
+and atomic activation remain unfinished. The API is read-only, uses existing roles,
+and adds no schema migration or external permission. Git mapping queries are now
+batched with the same verified-receipt/live-pin predicate as per-page coverage.
+
+Local validation passed 11 restore wire/format tests and 14 PostgreSQL restore
+contracts, including a new two-binding contract with real Rust mapping proofs,
+independent native retention, restart, omission, superseded decisions, lost pins
+and unchanged publication fences. An additional real PostgreSQL combined-check
+trial confirms its candidate and queue base remain source obligations even without
+an inventory. The actual CLI/service process-loss inventory trial now also runs
+the owner review without App configuration and verifies global deduplication and
+no operation writes. Provider/quarantine/runtime inputs in these fixtures remain
+explicitly synthetic; this is not full live disaster acceptance.
+Strict metadata/service all-target Clippy, formatting and changed documentation
+links passed. Required branch CI is pending; this is not in the 0.1.11 package.
+
 ## Unreleased durable inventory and source coverage
 
 `github restore-capture-inventory` retains a completed heads/all-state-PR traversal
@@ -48,7 +77,11 @@ and quarantine are explicit fixtures; fresh host collection reuses the tested
 read-only adapter and is not new live installed-App acceptance. Twelve service
 GitHub/journal unit tests passed, including full normalization across pages.
 Strict metadata/service all-target Clippy, formatting and changed documentation
-links passed. Required branch CI remains pending; this functionality is not in 0.1.11.
+links passed. All six required checks passed on
+[PR135](https://github.com/ArtAndrew/TreeHarbor/pull/135):
+[CI](https://github.com/ArtAndrew/TreeHarbor/actions/runs/41413772892) and
+[contribution rights](https://github.com/ArtAndrew/TreeHarbor/actions/runs/41413772992).
+This functionality is not in 0.1.11.
 
 ## Unreleased exact source acquisition during recovery
 

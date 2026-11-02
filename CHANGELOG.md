@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add owner-only `github restore-review`: inspect every retained binding, latest
+  decisions, complete inventory coverage and independent source pins together.
+  Missing selections and changed dependencies remain visible; this local review
+  cannot reactivate publishing. Batch source-mapping lookup per binding.
+
 - Add `github restore-capture-inventory` and owner source-coverage inspection:
   retain all observed heads/PRs through hashed pages, resume interrupted uploads,
   and expose exact revisions missing verified, permanently pinned source.

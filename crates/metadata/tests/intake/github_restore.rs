@@ -2,6 +2,9 @@ use super::*;
 use sha2::{Digest, Sha256};
 use treeharbor_metadata::github::{RestoreContext, RestoreEffectKind};
 
+#[path = "github_restore_review.rs"]
+mod repository_review;
+
 #[tokio::test]
 #[ignore = "requires PostgreSQL; complete paged inventory, restart, real mapping coverage and unchanged host intents"]
 async fn restore_inventory_requires_all_pages_and_live_verified_source() {

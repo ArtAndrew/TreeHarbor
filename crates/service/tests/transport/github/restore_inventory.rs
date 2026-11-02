@@ -189,6 +189,47 @@ async fn restore_inventory_cli_recovers_a_partial_upload_without_app_access() {
         sealed
     );
     f.credential_path = owner;
+    let before_review: i64 = f
+        .sql
+        .query_one("SELECT count(*) FROM th_operations", &[])
+        .await
+        .unwrap()
+        .get(0);
+    let reviewed = Command::new(env!("CARGO_BIN_EXE_treeharbor"))
+        .env("PATH", "/no-executables")
+        .args(["github", "restore-review", "--epoch", "1", "--socket"])
+        .arg(&f.config.socket)
+        .arg("--credential-file")
+        .arg(&f.credential_path)
+        .arg("--manifest-sha256")
+        .arg(&manifest)
+        .args(["--inventory", "inventory-fixture"])
+        .output()
+        .unwrap();
+    assert!(
+        reviewed.status.success(),
+        "{}",
+        String::from_utf8_lossy(&reviewed.stderr)
+    );
+    let review: Value = serde_json::from_slice(&reviewed.stdout).unwrap();
+    assert_eq!(
+        review["assessment"]["bindings"].as_array().unwrap().len(),
+        1
+    );
+    assert_eq!(
+        review["assessment"]["bindings"][0]["sources"]["missing_git"]["count"],
+        2
+    );
+    assert_eq!(review["assessment"]["local_review_complete"], false);
+    assert_eq!(review["assessment"]["publication_authorized"], false);
+    assert_eq!(
+        before_review,
+        f.sql
+            .query_one("SELECT count(*) FROM th_operations", &[])
+            .await
+            .unwrap()
+            .get::<_, i64>(0)
+    );
     for page in 0..2 {
         let coverage = result(request(
             &f,
