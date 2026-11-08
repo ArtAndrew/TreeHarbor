@@ -12,6 +12,9 @@
   content written, copied local bytes, logical workspace bytes and filesystem entries.
   Reopened/recovered placements report `preparation_statistics: null`, rather than
   inventing historical measurements. See [node diagnostics](docs/local-node.md).
+- Split the preparation probe into workspace request and node command timings.
+  Record available materialization counters and support reproducible fixture sizes.
+- Add a playable MP4 and a static storyboard to the recorded Connected trial.
 
 ## 0.1.12-alpha.1 — operator-assisted Connected recovery — 2026-11-02
 
