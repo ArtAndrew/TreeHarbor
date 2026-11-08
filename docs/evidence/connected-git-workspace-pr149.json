@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "date": "2026-11-08",
+  "scope": "Installed Linux ARM64 development archive with local PostgreSQL, actual Git and gVisor, and fixture GitHub authority",
+  "pull_request": "https://github.com/ArtAndrew/TreeHarbor/pull/149",
+  "ci_run": "https://github.com/ArtAndrew/TreeHarbor/actions/runs/42509828327/attempts/1",
+  "ci_job": "https://github.com/ArtAndrew/TreeHarbor/actions/runs/42509828327/job/128820253600",
+  "pr_head": "1b4c5456c7cad75a7722ea41c6f65d2ebc51b2e1",
+  "tested_archive_source": "d3875ed3d5a292b68f5168fe0f2871bd2c239b0d",
+  "tested_tree": "2c829ed0b85405a5c13cc1f294a1de04043accd1",
+  "merged_main": "5e10cfd05712a4a3c7554679a3745a9e22177ef3",
+  "archive": {
+    "target": "aarch64-unknown-linux-musl",
+    "embedded_version": "0.1.12-alpha.1",
+    "sha256": "ef40e2ff0be1896be787dd80a0fa6f3e31c5cfeaabaf747f3cdf579037f52c80",
+    "treeharbor_sha256": "16fd7787b56dc22e26021bb3e6c760810d022b5d102c04081eaa3fd3cb7a72bb",
+    "runtime_init_sha256": "a97b97e5fff715847e251e7eb72ea01a3ad06304555149a8f3c8e5d72ec2e4d8",
+    "signed_release_artifact": false
+  },
+  "observations": [
+    "The offline installer ran in an empty prefix and both installed binaries matched the archive member digests.",
+    "The real Git sandbox started at the imported commit, ran hard reset and index writes, and deliberately damaged the private Git config.",
+    "Capture rejected selection of .git/config and accepted the selected file against the original imported snapshot.",
+    "The same acceptance result was returned after workspace cleanup.",
+    "The separate file-placement phase recovered the same workspace after an injected acknowledgement failure."
+  ],
+  "live_github_publication": false
+}

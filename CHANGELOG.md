@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.13-alpha.1 — Git-compatible Connected workspaces
+
 - Prepare full Connected workspaces with private Git metadata for agents that
   use Git locally. The checkout starts at the exact imported commit. Managed
   capture keeps selected file changes against that base after the runtime stops,

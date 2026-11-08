@@ -1,6 +1,6 @@
 # Implementation status
 
-Updated: 2026-11-02. This file describes implemented behavior and remaining release
+Updated: 2026-11-08. This file describes implemented behavior and remaining release
 gates. A foundation milestone does not complete either mode.
 
 For a concise current overview, see [what works today](../README.md#what-works-today)
@@ -21,7 +21,7 @@ These correctness checks do not establish complete mode readiness or performance
 superiority. The installed native workload includes deliberate replacement-node
 recovery; live GitHub recovery remains a separate release gate.
 
-## Unreleased Git workspace foundation
+## Git-compatible Connected workspaces
 
 The Git bridge can seed private Git metadata for a trusted, already prepared
 full tree. It checks the projected commit against the pinned Git identity,
@@ -53,7 +53,13 @@ agent, changes HEAD and the index, corrupts `.git/config`, and accepts the file
 edit as a ChangeSet against the exact imported base. Its acceptance result replays
 after workspace cleanup. The test uses actual PostgreSQL and fixture GitHub
 authority evidence. Managed validation retains separate pristine native inputs.
-This workflow is in development builds.
+
+[PR #149](https://github.com/ArtAndrew/TreeHarbor/pull/149) passed all six required
+checks. A separate installation of the exact ARM64 archive from that PR also
+passed the Git-compatible gVisor scenario. See the [test receipt](evidence/connected-git-workspace-pr149.json)
+for the archive digest, source revision and verification scope. The test covers a
+development archive. Signed package verification and publication to a live
+GitHub repository from this format are separate gates.
 
 ## Unreleased node preparation diagnostics
 
