@@ -21,6 +21,20 @@ Repository authority and epoch come with the mutation. Client JSON cannot select
 a host mount, Engine socket, image, node, identity or unrestricted runtime flags.
 The profile is distinct from the workspace's full/sparse source-delivery profile.
 
+In development builds, Connected agent runs also accept an explicitly prepared
+[Git-compatible workspace](local-node.md). Use the imported native base, a full
+source profile, and the same registered volume and runtime profile as for ordinary
+managed runs. The workspace starts at the exact imported Git commit with private
+Git objects, refs and index. Include Git in the approved runtime image if the agent
+uses it. The runtime isolation policy is the same in both formats.
+
+For this workflow use `--authority connected` and the current repository epoch
+on run, seal and cleanup mutations. After verified runtime removal, capture takes
+the selected working files against the original native snapshot. Local commits,
+index changes and `.git` configuration do not change that baseline or become
+proposal content. Managed validation checks still prepare and verify separate
+pristine native workspaces.
+
 A trusted operator approves a canonical [runtime profile](runtime-controller.md)
 and registers an existing independent bounded ext4 volume to a node storage UUID
 and one slot UUID. Registration requires an empty private placement directory
@@ -160,6 +174,23 @@ After killing a worker the fixture explicitly expires its database lease to exer
 reclaim without waiting a full minute. This is disclosed fault injection, not a
 production lease-bypass feature. Different node roots enable CLI concurrency;
 `run-once` is a single-job worker, and two processes cannot own the same node root.
+
+To exercise the Git-compatible path, use a disposable Linux host with a local
+gVisor Engine, an empty private 128 MiB ext4 mount and an approved test image
+containing the TreeHarbor runtime init at `/init`, `/bin/sh` and `/usr/bin/git`.
+Set `TH_TEST_GIT_WORKSPACE_SANDBOX` to a JSON file with `engine_socket`, `mount`
+and `image` (the local image ID). Use a disposable PostgreSQL connection in
+`TH_SERVICE_TEST_DATABASE_URL` and run the exact transport test:
+
+```sh
+cargo test -p treeharbor-service --test transport --locked \
+  github_source_http_preserves_exact_git_history_after_partial_upload_and_server_death \
+  -- --ignored --nocapture
+```
+
+The sandbox phase prints a separate `PASS` marker. It uses a local Git source
+and fixture GitHub authority evidence; it requires no GitHub App credentials.
+
 For a bounded operator flow that must execute a particular task, add
 `--run RUN_UUID` to `node run-once`. Selection stays within the authenticated
 repository, node and storage identity. An unknown, foreign-node, actively leased

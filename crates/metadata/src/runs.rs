@@ -6,7 +6,7 @@ use crate::{
     catalog::settings,
     identifier,
     intake::CommandContext,
-    preparations::{PreparedWorkspace, StorageSlot},
+    preparations::{PreparedWorkspace, StorageSlot, placement_git_revision},
     ttl_valid,
 };
 use serde_json::{Value, json};
@@ -496,9 +496,10 @@ pub(crate) async fn load_context(
 ) -> Result<RunContext> {
     let s = auth.scope();
     let row=tx.query_opt(r#"SELECT m.attempt,m.preparation,m.binding,m.volume_digest,m.authority,m.profile,m.argv,f.definition AS runtime_profile,
-        p.workspace,p.generation,p.epoch,p.slot,p.base_revision,p.snapshot,p.profile AS source_digest,q.definition AS source_profile,p.manifest_digest,r.principal,v.limit_bytes,m.engine,m.container
+        p.workspace,p.generation,p.epoch,p.slot,p.base_revision,p.snapshot,p.profile AS source_digest,q.definition AS source_profile,p.manifest_digest,r.principal,v.limit_bytes,m.engine,m.container,w.format
         FROM th_managed_runs m JOIN th_agent_runs r USING(tenant,repository,run)
         JOIN th_workspace_preparations p ON p.attempt=m.preparation
+        JOIN th_workspaces w ON w.tenant=p.tenant AND w.repository=p.repository AND w.workspace=p.workspace
         JOIN th_runtime_profiles f ON f.tenant=m.tenant AND f.repository=m.repository AND f.digest=m.profile
         JOIN th_source_profiles q ON q.tenant=p.tenant AND q.repository=p.repository AND q.digest=p.profile
         JOIN th_node_volumes v ON v.storage_instance=m.storage_instance AND v.slot=m.slot AND v.identity_digest=m.volume_digest
@@ -541,8 +542,14 @@ pub(crate) async fn load_context(
     {
         return Err(Error::SchemaMismatch);
     }
+    let revision = row.get::<_, String>("base_revision").parse()?;
+    let git_revision =
+        placement_git_revision(tx, s, epoch, &row.get::<_, String>("format"), revision).await?;
+    if git_revision.is_some() && (mode != Authority::Connected || source.paths().is_some()) {
+        return Err(Error::SchemaMismatch);
+    }
     let prepared = PreparedWorkspace {
-        git_revision: None,
+        git_revision,
         volume_digest: Some(volume_digest),
         scope: s.clone(),
         attempt: preparation,
@@ -555,7 +562,7 @@ pub(crate) async fn load_context(
             storage,
             slot: row.get("slot"),
         },
-        revision: row.get::<_, String>("base_revision").parse()?,
+        revision,
         snapshot: ObjectId::from_bytes(digest(row.get("snapshot"))?),
         profile: source,
         manifest_digest: digest(row.get("manifest_digest"))?,
@@ -834,11 +841,12 @@ impl crate::Mutation<'_> {
             JOIN th_node_volumes v ON v.storage_instance=p.storage_instance AND v.slot=p.slot AND v.tenant=p.tenant AND v.node=p.node
             JOIN th_runtime_profiles f ON f.tenant=w.tenant AND f.repository=w.repository AND f.digest=$7
             WHERE w.tenant=$1 AND w.repository=$2 AND w.workspace=$3 AND w.generation=$4 AND w.epoch=$5 AND w.principal=$6
-            AND w.state='ready' AND w.runtime IS NULL AND w.format='native'
+            AND w.state='ready' AND w.runtime IS NULL
+            AND (w.format='native' OR (w.format='git-compatible' AND $8='connected'))
             AND p.state='prepared' AND p.epoch=w.epoch AND p.node=w.node
             AND p.base_revision=w.base_revision AND p.profile=w.resolved_profile
             AND NOT EXISTS(SELECT 1 FROM th_runtime_profile_revocations x WHERE x.tenant=f.tenant AND x.repository=f.repository AND x.digest=f.digest)"#,
-            &[&s.tenant(),&s.repository(),&input.workspace,&input.generation,&ctx.epoch,&ctx.principal,&input.profile.as_slice()]).await?.ok_or(Error::ExecutionState)?;
+            &[&s.tenant(),&s.repository(),&input.workspace,&input.generation,&ctx.epoch,&ctx.principal,&input.profile.as_slice(),&ctx.authority.as_str()]).await?.ok_or(Error::ExecutionState)?;
         let p = profile(row.get(6))?;
         if p.digest() != input.profile
             || p.definition().workspace_bytes != row.get::<_, i64>(5) as u64

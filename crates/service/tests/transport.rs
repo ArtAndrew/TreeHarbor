@@ -1319,12 +1319,15 @@ impl Fixture {
         serde_json::from_slice(&output.stdout).unwrap()
     }
     fn cli(&self, args: &[&str]) -> Output {
+        self.cli_with_credential(&self.credential_path, args)
+    }
+    fn cli_with_credential(&self, credential: &std::path::Path, args: &[&str]) -> Output {
         Command::new(env!("CARGO_BIN_EXE_treeharbor"))
             .env("PATH", "/treeharbor-test-no-executables")
             .args(["client", "--socket"])
             .arg(&self.config.socket)
             .arg("--credential-file")
-            .arg(&self.credential_path)
+            .arg(credential)
             .args(args)
             .output()
             .unwrap()

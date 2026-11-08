@@ -45,8 +45,15 @@ Development builds can explicitly request and prepare this format with
 together. A versioned receipt binds the exact Git origin to the placement. An
 actual Git/PostgreSQL transport test recovered the same placement after an injected
 database acknowledgement failure, reopened it with edited files and `.git` metadata,
-and cleaned it up. This covers file placement and recovery. Managed execution and
-stopped-file capture for this format are still pending.
+and cleaned it up.
+
+Managed Connected agent execution and stopped-file capture also use the original
+placement binding. A local Linux/gVisor transport test runs real Git inside the
+agent, changes HEAD and the index, corrupts `.git/config`, and accepts the file
+edit as a ChangeSet against the exact imported base. Its acceptance result replays
+after workspace cleanup. The test uses actual PostgreSQL and fixture GitHub
+authority evidence. Managed validation retains separate pristine native inputs.
+This workflow is in development builds.
 
 ## Unreleased node preparation diagnostics
 

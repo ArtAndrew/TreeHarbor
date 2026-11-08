@@ -3,6 +3,9 @@ use super::*;
 mod admission_policy;
 #[path = "github/events.rs"]
 mod events;
+#[cfg(target_os = "linux")]
+#[path = "github/git_workspace_runtime.rs"]
+mod git_workspace_runtime;
 #[path = "github/projections.rs"]
 mod projections;
 #[path = "github/recovery.rs"]
@@ -343,6 +346,16 @@ async fn prepare_and_recover_git_workspace(
         "--output",
         credential.to_str().unwrap(),
     ]);
+    #[cfg(target_os = "linux")]
+    git_workspace_runtime::exercise_if_configured(
+        f,
+        root,
+        revision,
+        &node_root,
+        &credential,
+        storage,
+        profile["profile_digest"].as_str().unwrap(),
+    );
     let node = |action: &str, extra: &[&str]| {
         Command::new(env!("CARGO_BIN_EXE_treeharbor"))
             .env("PATH", "/treeharbor-test-no-executables")
