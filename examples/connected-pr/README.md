@@ -42,7 +42,7 @@ this helper does not implement another source engine.
    Metadata-read on the selected repository for branch/PR delivery. Queue, Checks,
    Actions and Administration grants are not required for this helper.
 
-The development build can also prepare
+Starting with 0.1.13-alpha.1, you can also prepare
 [Git-compatible workspaces](../../docs/local-node.md) for this operator flow.
 Request `workspace-create --git-compatible` with a full source profile and
 add `--git /path/to/git` to each `node prepare-once` invocation. Use the same

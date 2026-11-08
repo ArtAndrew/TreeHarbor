@@ -39,7 +39,7 @@ batch checks authorization, workspace generation and the live worker when
 opening the source objects. The PostgreSQL contract covers expiration, reclaim,
 draining and rejection of a file-only readiness acknowledgement.
 
-Development builds can explicitly request and prepare this format with
+Connected 0.1.13-alpha.1 can explicitly request and prepare this format with
 `workspace-create --git-compatible` and `node prepare-once --git /path/to/git
 --workspace WORKSPACE_UUID`. The node publishes the full files and private `.git`
 together. A versioned receipt binds the exact Git origin to the placement. An
@@ -55,11 +55,14 @@ after workspace cleanup. The test uses actual PostgreSQL and fixture GitHub
 authority evidence. Managed validation retains separate pristine native inputs.
 
 [PR #149](https://github.com/ArtAndrew/TreeHarbor/pull/149) passed all six required
-checks. A separate installation of the exact ARM64 archive from that PR also
-passed the Git-compatible gVisor scenario. See the [test receipt](evidence/connected-git-workspace-pr149.json)
-for the archive digest, source revision and verification scope. The test covers a
-development archive. Signed package verification and publication to a live
-GitHub repository from this format are separate gates.
+checks and the Git-compatible gVisor scenario on an installed development
+archive. The [signed 0.1.13-alpha.1 preview](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.13-alpha.1)
+passed installed runtime checks on both architectures. Independent attestation
+verification matched the exact release source and all signed subjects. A separate
+installation of the signed ARM64 archive passed the Git-compatible gVisor scenario
+with fixture GitHub authority. See the [signed release receipt](evidence/connected-git-workspace-release-20261108.json)
+and the earlier [development receipt](evidence/connected-git-workspace-pr149.json).
+Publication to a live GitHub repository from this workspace format remains open.
 
 ## Unreleased node preparation diagnostics
 

@@ -56,9 +56,9 @@ snapshot, and `runtime: null`. No eligible job returns `idle`. After process los
 a running job becomes reclaimable when its 60-second lease expires; a live worker
 renews every 15 seconds. `idle` does not mean every queued workspace is complete.
 
-Development builds after 0.1.12-alpha.1 also return `preparation_statistics` for
-newly materialized files. These counters describe that preparation, not live disk
-usage or the complete cost of an agent task:
+Starting with 0.1.13-alpha.1, `prepare-once` also returns `preparation_statistics`
+for newly materialized files. These counters describe that preparation. Measure
+live disk usage and complete agent task cost separately.
 
 | Field | Meaning |
 | --- | --- |
@@ -68,8 +68,8 @@ usage or the complete cost of an agent task:
 | `local_bytes_copied` | Bytes copied from preserved local files during materialization |
 | `workspace_bytes` | Logical content bytes accounted for the prepared tree; not allocated disk blocks |
 | `filesystem_entries` | Prepared filesystem entries, including directories and symlinks |
-| `read_batches` | Source read batches opened for the materialized tree |
-| `phase_seconds` | Wall-clock durations within successful materialization |
+| `read_batches` (development build) | Source read batches opened for the materialized tree |
+| `phase_seconds` (development build) | Wall-clock durations within successful materialization |
 
 The phase probe reports `open_read_batches` for catalog checks and opening
 object descriptors, and `build_batches` for verifying/decoding the objects
@@ -107,8 +107,8 @@ override authorization, authority epochs, drain or lease checks. Use `prepared`
 below to reopen acknowledged files; selecting a completed preparation does not
 rebuild it or restart a task.
 
-Development builds also expose explicit Git-compatible file placement in
-Connected. Add `--git-compatible` to `client workspace-create` with the native
+Connected 0.1.13-alpha.1 also supports explicit Git-compatible file placement.
+Add `--git-compatible` to `client workspace-create` with the native
 base from a completed GitHub import in the current epoch and a full source profile.
 Prepare the exact workspace using `node prepare-once --workspace WORKSPACE_UUID
 --git /path/to/git` with the same config, credential, root and storage arguments

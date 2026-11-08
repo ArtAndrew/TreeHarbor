@@ -22,7 +22,7 @@ TreeHarbor is an independent implementation and is not affiliated with Anthropic
 
 > **The Connected PR Preview is available in [signed alpha releases](https://github.com/ArtAndrew/TreeHarbor/releases).**
 > Signed Linux packages and the exact tested scope are in the release notes.
-> Latest: [0.1.12-alpha.1 — operator-assisted recovery](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.12-alpha.1).
+> Latest preview: [0.1.13-alpha.1 — Git-compatible Connected workspaces](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.13-alpha.1).
 > Evaluate on disposable pilot repositories. The full Connected and Standalone
 > releases remain incomplete; production use is not supported.
 > [What works](#what-works-today) · [What remains](#what-remains-before-a-full-release) ·
@@ -60,10 +60,10 @@ proposal identities needed to inspect what each agent changed.
 
 If you only need a few local working directories, start with Git worktrees.
 Evaluate TreeHarbor when your controller needs durable change submissions, exact
-source identities and recoverable task state across disposable workers. The
-released preview uses native file workspaces. For tools that need `.git`, the
-development build offers a [Git-compatible Connected workspace](docs/local-node.md)
-with a private checkout pinned to the imported commit.
+source identities and recoverable task state across disposable workers. Native
+file workspaces are the default. For tools that need `.git`, the Connected preview
+offers an optional [Git-compatible workspace](docs/local-node.md) with a private
+checkout pinned to the imported commit.
 
 The intended benefit is lower workspace preparation cost and less coordination
 between an agent's edit and accepted code. **A performance advantage has not yet
@@ -142,7 +142,7 @@ available in signed packages.
 | Area | Implemented and tested | Still incomplete |
 | --- | --- | --- |
 | Rust source engine | Immutable objects, snapshots, history, versioned changes and exact revision identities | Larger-repository performance and compatibility coverage |
-| Workspaces | Full/sparse native file preparation, expansion preserving edits, explicit drain/cleanup and recovery. Development builds can prepare full Connected workspaces with private `.git` metadata. | Optimized caching, automatic scheduling and release verification of Git-compatible workspaces |
+| Workspaces | Full/sparse native file preparation, expansion preserving edits, explicit drain/cleanup and recovery. Connected 0.1.13 can also prepare full workspaces with private `.git` metadata. | Optimized caching, automatic scheduling and live GitHub PR verification of Git-compatible workspaces |
 | Agent execution | Managed Linux tasks through external gVisor, resource limits, capture after runtime removal and process-loss recovery | Automated runtime provisioning and node replacement |
 | Developer interfaces | Local authenticated API/CLI, external task contexts and an experimental MCP stdio adapter | Packaged onboarding and remote service transport |
 | Connected | Real GitHub import, branch/PR publication, managed required checks, versioned branch-policy fences, queue requests, candidate/final-history evidence and signed events | Complete host-policy/admission certification and unattended operation |
