@@ -848,6 +848,9 @@ enum Agent {
         base: String,
         #[arg(long)]
         profile_digest: String,
+        /// Request a full Connected tree with private Git metadata.
+        #[arg(long)]
+        git_compatible: bool,
     },
     WorkspaceStatus {
         #[arg(long)]
@@ -1072,8 +1075,13 @@ impl Agent {
                 workspace,
                 base,
                 profile_digest,
+                git_compatible,
             } => {
-                json!({"method":"workspace_create","key":mutation.key,"authority":Authority::from(mutation.authority).as_str(),"epoch":mutation.epoch,"workspace":workspace.to_string(),"base":base,"profile_digest":profile_digest})
+                let mut request = json!({"method":"workspace_create","key":mutation.key,"authority":Authority::from(mutation.authority).as_str(),"epoch":mutation.epoch,"workspace":workspace.to_string(),"base":base,"profile_digest":profile_digest});
+                if git_compatible {
+                    request["git_compatible"] = json!(true);
+                }
+                request
             }
             Self::WorkspaceDelete {
                 mutation,

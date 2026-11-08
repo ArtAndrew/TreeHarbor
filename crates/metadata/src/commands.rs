@@ -144,6 +144,8 @@ enum Command {
         workspace: String,
         base: String,
         profile_digest: String,
+        #[serde(default)]
+        git_compatible: bool,
     },
     WorkspaceStatus {
         workspace: String,
@@ -638,10 +640,10 @@ impl Metadata {
                 workspace,
                 base,
                 profile_digest,
+                git_compatible,
             } => {
                 let base: RevisionRef = base.parse().map_err(|_| CommandError::InvalidRequest)?;
-                // Git import and Git-compatible materialization are not available
-                // through this boundary yet; never accept an unimplemented mode.
+                // Both formats use the registered native revision as the base.
                 if !matches!(base, RevisionRef::Native(_)) {
                     return Err(CommandError::InvalidRequest);
                 }
@@ -652,7 +654,11 @@ impl Metadata {
                     id: uuid(&workspace)?,
                     base,
                     profile: *profile.as_bytes(),
-                    format: WorkspaceFormat::Native,
+                    format: if git_compatible {
+                        WorkspaceFormat::GitCompatible
+                    } else {
+                        WorkspaceFormat::Native
+                    },
                 };
                 self.create_workspace(&auth.context(key, authority.into(), epoch), &spec)
                     .await?

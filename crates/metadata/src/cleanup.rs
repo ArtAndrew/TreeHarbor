@@ -5,18 +5,19 @@ use crate::{
     Authority, Error, Event, Metadata, Mutation, Request, Result, Scope,
     access::{Authorization, repository_lock},
     catalog::settings,
-    preparations::StorageSlot,
+    preparations::{StorageSlot, placement_git_revision},
     runs::{RunContext, load_context, node_auth},
     ttl_valid,
 };
 use serde_json::{Value, json};
 use tokio_postgres::{Row, Transaction};
-use treeharbor_core::{ObjectId, RevisionRef, SourceProfile};
+use treeharbor_core::{GitOid, ObjectId, RevisionRef, SourceProfile};
 use uuid::Uuid;
 
 /// Original placement, including reservations which never completed preparation.
 /// A missing manifest does not mean that its directory is empty or safe to adopt.
 pub struct CleanupPlacement {
+    pub git_revision: Option<GitOid>,
     pub attempt: Uuid,
     pub generation: i64,
     pub slot: StorageSlot,
@@ -120,7 +121,7 @@ async fn context(
     storage: Uuid,
 ) -> Result<(Row, Option<CleanupPlacement>, Option<RunContext>)> {
     let s = auth.scope();
-    let w = tx.query_opt("SELECT * FROM th_workspaces WHERE tenant=$1 AND repository=$2 AND workspace=$3 AND state='draining' AND format='native'", &[&s.tenant(),&s.repository(),&workspace]).await?.ok_or(Error::ExecutionState)?;
+    let w = tx.query_opt("SELECT * FROM th_workspaces WHERE tenant=$1 AND repository=$2 AND workspace=$3 AND state='draining'", &[&s.tenant(),&s.repository(),&workspace]).await?.ok_or(Error::ExecutionState)?;
     let epoch = w.get::<_, i64>("epoch");
     let generation = w.get::<_, i64>("generation");
     let rows = tx.query(r#"SELECT p.*,q.definition,b.snapshot AS base_snapshot,v.identity_digest
@@ -151,14 +152,18 @@ async fn context(
         if profile.id().as_bytes() != &digest(p.get("profile"))? {
             return Err(Error::SchemaMismatch);
         }
+        let revision = p.get::<_, String>("base_revision").parse()?;
+        let git_revision =
+            placement_git_revision(tx, s, epoch, &w.get::<_, String>("format"), revision).await?;
         Some(CleanupPlacement {
+            git_revision,
             attempt: p.get("attempt"),
             generation: old_generation,
             slot: StorageSlot {
                 storage,
                 slot: p.get("slot"),
             },
-            revision: p.get::<_, String>("base_revision").parse()?,
+            revision,
             snapshot: ObjectId::from_bytes(digest(p.get("snapshot"))?),
             profile,
             manifest_digest: p

@@ -87,7 +87,7 @@ impl Stage {
         }
         Ok(stage)
     }
-    fn files(&self) -> PathBuf {
+    pub(crate) fn files(&self) -> PathBuf {
         self.temp.path().join("files")
     }
     fn path(&self, relative: &[u8]) -> PathBuf {

@@ -37,9 +37,16 @@ repository epoch. The node's source access is tied to the exact preparation
 lease. It cannot use that permission for ordinary repository exports. Each
 batch checks authorization, workspace generation and the live worker when
 opening the source objects. The PostgreSQL contract covers expiration, reclaim,
-draining and rejection of a file-only readiness acknowledgement. The CLI and
-node lifecycle still select the native format while placement integration is
-in progress.
+draining and rejection of a file-only readiness acknowledgement.
+
+Development builds can explicitly request and prepare this format with
+`workspace-create --git-compatible` and `node prepare-once --git /path/to/git
+--workspace WORKSPACE_UUID`. The node publishes the full files and private `.git`
+together. A versioned receipt binds the exact Git origin to the placement. An
+actual Git/PostgreSQL transport test recovered the same placement after an injected
+database acknowledgement failure, reopened it with edited files and `.git` metadata,
+and cleaned it up. This covers file placement and recovery. Managed execution and
+stopped-file capture for this format are still pending.
 
 ## Unreleased node preparation diagnostics
 
