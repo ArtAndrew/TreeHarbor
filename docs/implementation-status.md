@@ -21,6 +21,17 @@ These correctness checks do not establish complete mode readiness or performance
 superiority. The installed native workload includes deliberate replacement-node
 recovery; live GitHub recovery remains a separate release gate.
 
+## Unreleased Git workspace foundation
+
+The Git bridge can seed private Git metadata for a trusted, already prepared
+full tree. It checks the projected commit against the pinned Git identity,
+builds and checks an independent object database and index, then installs
+`.git` atomically. Git does not check out or filter the prepared files. The
+bridge tests use real SHA-1 and SHA-256 repositories and verify that a local
+commit, hard reset and garbage collection in one checkout leave the other
+checkout and the imported source intact. Workspace creation and the node
+lifecycle still select the native format.
+
 ## Unreleased node preparation diagnostics
 
 `node prepare-once` now exposes the materializer's existing counters in

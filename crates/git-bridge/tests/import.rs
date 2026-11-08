@@ -366,3 +366,89 @@ fn unsupported_lfs_submodule_and_non_utf8_metadata_fail_explicitly() {
     let bundle = f.bundle(&head, "encoding.bundle");
     assert!(import(&f.store("encoding"), f.request(&bundle, &head)).is_err());
 }
+
+#[test]
+fn workspace_seed_keeps_exact_head_and_private_git_mutations() {
+    use treeharbor_git_bridge::{Error, WorkspaceSeed, seed_workspace};
+
+    for algorithm in [HashAlgorithm::Sha1, HashAlgorithm::Sha256] {
+        let f = Fixture::new(algorithm);
+        let parent_tree = f.tree(&[]);
+        let parent = f.commit(&parent_tree, &[], "parent\n");
+        let body = b"baseline\n";
+        let blob = f.blob(body);
+        let tree = f.tree(&[(0o100644, &blob, b"file")]);
+        let head = f.commit(&tree, &[&parent], "baseline\n");
+        let bundle = f.bundle(&head, "workspace.bundle");
+        let store = f.store("workspace-store");
+        let imported = import(&store, f.request(&bundle, &head)).unwrap();
+        let first = f.dir.path().join("first");
+        let second = f.dir.path().join("second");
+        for files in [&first, &second] {
+            fs::create_dir(files).unwrap();
+            fs::set_permissions(files, fs::Permissions::from_mode(0o700)).unwrap();
+            fs::write(files.join("file"), body).unwrap();
+        }
+        let seed = |files: &Path, expected: &str| {
+            seed_workspace(
+                &store,
+                WorkspaceSeed {
+                    git: Path::new("/usr/bin/git"),
+                    files,
+                    native: imported.commit,
+                    expected: oid(expected, algorithm),
+                    limits: Limits::default(),
+                },
+            )
+        };
+        assert!(matches!(
+            seed(&first, &parent),
+            Err(Error::InvalidProjection)
+        ));
+        assert!(!first.join(".git").exists());
+        assert_eq!(fs::read_dir(&first).unwrap().count(), 1);
+        for files in [&first, &second] {
+            seed(files, &head).unwrap();
+            assert_eq!(text(git(files, &["rev-parse", "HEAD"], b"")), head);
+            assert_eq!(text(git(files, &["rev-parse", "HEAD^"], b"")), parent);
+            assert_eq!(
+                text(git(files, &["rev-parse", "--abbrev-ref", "HEAD"], b"")),
+                "HEAD"
+            );
+            assert!(git(files, &["status", "--porcelain"], b"").is_empty());
+            assert!(git(files, &["remote"], b"").is_empty());
+            assert!(!files.join(".git/objects/info/alternates").exists());
+        }
+
+        fs::write(first.join("file"), b"agent edit\n").unwrap();
+        git(&first, &["add", "file"], b"");
+        git(
+            &first,
+            &[
+                "-c",
+                "user.name=Agent",
+                "-c",
+                "user.email=agent@example.invalid",
+                "commit",
+                "-m",
+                "agent edit",
+            ],
+            b"",
+        );
+        assert_ne!(text(git(&first, &["rev-parse", "HEAD"], b"")), head);
+        assert_eq!(text(git(&second, &["rev-parse", "HEAD"], b"")), head);
+        assert_eq!(fs::read(second.join("file")).unwrap(), body);
+        assert!(matches!(seed(&first, &head), Err(Error::Configuration)));
+        assert_eq!(fs::read(first.join("file")).unwrap(), b"agent edit\n");
+        git(&first, &["reset", "--hard", &parent], b"");
+        git(&first, &["gc", "--prune=now"], b"");
+        assert!(!first.join("file").exists());
+        assert_eq!(text(git(&second, &["rev-parse", "HEAD"], b"")), head);
+        git(&second, &["fsck", "--strict"], b"");
+        assert_eq!(fs::read(second.join("file")).unwrap(), body);
+        assert!(matches!(
+            store.get(imported.commit).unwrap(),
+            Object::NativeCommit(c) if c.git_origin.as_deref().is_some_and(|origin| origin.oid == oid(&head, algorithm))
+        ));
+    }
+}
