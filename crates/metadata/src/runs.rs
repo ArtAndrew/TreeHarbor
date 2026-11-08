@@ -542,6 +542,7 @@ pub(crate) async fn load_context(
         return Err(Error::SchemaMismatch);
     }
     let prepared = PreparedWorkspace {
+        git_revision: None,
         volume_digest: Some(volume_digest),
         scope: s.clone(),
         attempt: preparation,
@@ -888,6 +889,7 @@ mod tests {
             binding: [3; 32],
             volume_digest: [4; 32],
             prepared: PreparedWorkspace {
+                git_revision: None,
                 volume_digest: Some([4; 32]),
                 scope: scope.clone(),
                 attempt: Uuid::from_u128(4),

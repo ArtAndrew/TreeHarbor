@@ -92,6 +92,21 @@ override authorization, authority epochs, drain or lease checks. Use `prepared`
 below to reopen acknowledged files; selecting a completed preparation does not
 rebuild it or restart a task.
 
+Development builds also expose explicit Git-compatible file placement in
+Connected. Add `--git-compatible` to `client workspace-create` with the native
+base from a completed GitHub import in the current epoch and a full source profile.
+Prepare the exact workspace using `node prepare-once --workspace WORKSPACE_UUID
+--git /path/to/git` with the same config, credential, root and storage arguments
+shown above. Without `--git`, preparation still selects only native workspaces.
+
+The node stages the authorized history privately, checks the detached Git HEAD
+against the original imported commit and publishes the working files and their
+independent `.git` together. The history spool and Git projection have separate
+object, byte and edge limits. `preparation_statistics` only accounts for file
+materialization. Recovery verifies the durable receipt and can reopen the same
+placement without invoking Git or inspecting agent-edited Git metadata. Managed
+execution and stopped-file capture for this format are still pending.
+
 Reopen an already acknowledged workspace in a new process:
 
 ```sh
@@ -175,6 +190,14 @@ without a trailing newline. Integers are decimal; UUIDs are canonical lowercase;
 IDs use their explicit type prefixes. The binding is SHA-256 of those exact bytes.
 The independent fixture digest is
 `bf3f38a95aac00da06f5185ae8a100b49fb9c0b313700b36d94547b90f02e6bd`.
+
+Version 2 appends `volume` for volume-backed native placements, as in the
+[v2 fixture](../crates/node/tests/fixtures/intent-v2.json). Version 3 binds
+Git-compatible placements by appending `git_revision` after `volume`, or after
+`profile` when there is no volume. Its value is the canonical typed Git revision
+(`git:sha1:…` or `git:sha256:…`). The [v3 fixture](../crates/node/tests/fixtures/intent-v3.json)
+and [digest](../crates/node/tests/fixtures/intent-v3.sha256) specify the encoding.
+Native placement bytes and the publication record format are unchanged.
 
 `publication.json` is compact JSON with `version: 1`, `binding: "sha256:…"` and
 `manifest: "sha256:…"`, followed by a newline. It records the exact manifest hash,

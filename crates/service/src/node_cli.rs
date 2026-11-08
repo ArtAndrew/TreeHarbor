@@ -19,7 +19,7 @@ pub enum Action {
         #[arg(long)]
         principal: String,
     },
-    /// Prepare one queued native workspace and acknowledge durable file readiness.
+    /// Prepare one queued workspace and acknowledge durable file readiness.
     PrepareOnce {
         #[command(flatten)]
         node: Arguments,
@@ -31,6 +31,9 @@ pub enum Action {
         /// Claim only this workspace; unavailable work returns idle without fallback.
         #[arg(long)]
         workspace: Option<Uuid>,
+        /// Use this trusted absolute Git executable for an explicitly selected Git workspace.
+        #[arg(long, requires = "workspace")]
+        git: Option<PathBuf>,
     },
     /// Reopen an acknowledged placement without changing agent files.
     Prepared {
@@ -295,6 +298,7 @@ pub async fn run(action: Action) -> Result<bool> {
             max_workspace_bytes,
             slot,
             workspace,
+            git,
             ..
         } => {
             let max_workspace_bytes = if let Some(slot) = slot {
@@ -314,7 +318,15 @@ pub async fn run(action: Action) -> Result<bool> {
             )
             .map_err(|_| Error::Config)?;
             let mut heartbeat = database.connect(true).await?;
-            let claimed = if let Some(workspace) = workspace {
+            let claimed = if git.is_some() {
+                node.claim_git_for(
+                    &mut session.metadata,
+                    &auth,
+                    workspace.ok_or(Error::Config)?,
+                    slot,
+                )
+                .await?
+            } else if let Some(workspace) = workspace {
                 node.claim_for(&mut session.metadata, &auth, workspace, slot)
                     .await?
             } else if let Some(slot) = slot {
@@ -327,18 +339,24 @@ pub async fn run(action: Action) -> Result<bool> {
                 println!("{}", json!({"state":"idle"}));
                 return Ok(true);
             };
-            let tree = node
-                .prepare(
+            let request = Prepare {
+                authorization: &auth,
+                plan: &plan,
+                store: &store,
+                limits,
+            };
+            let tree = if let Some(git) = git {
+                node.prepare_git(
                     &mut session.metadata,
                     &mut heartbeat.metadata,
-                    Prepare {
-                        authorization: &auth,
-                        plan: &plan,
-                        store: &store,
-                        limits,
-                    },
+                    request,
+                    &git,
                 )
-                .await?;
+                .await?
+            } else {
+                node.prepare(&mut session.metadata, &mut heartbeat.metadata, request)
+                    .await?
+            };
             (plan.workspace(), tree)
         }
         Action::Initialize { .. } => unreachable!(),

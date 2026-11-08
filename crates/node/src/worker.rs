@@ -7,7 +7,7 @@ use std::{
     sync::Arc,
     time::Duration,
 };
-use treeharbor_core::SourceProfile;
+use treeharbor_core::{RevisionRef, SourceProfile};
 use treeharbor_materializer::{
     BaselineExpectation, Limits, MaterializedTree, Materializer, Publication, PublicationReceipt,
     Selection,
@@ -46,12 +46,23 @@ struct Intent {
     profile: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     volume: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    git_revision: Option<String>,
 }
 impl Intent {
     fn cleanup(p: &treeharbor_metadata::cleanup::CleanupPlan) -> Result<Self> {
         let source = p.placement().ok_or(Error::Identity)?;
         Ok(Self {
-            version: if source.volume_digest.is_some() { 2 } else { 1 },
+            version: if source.git_revision.is_some() {
+                3
+            } else if source.volume_digest.is_some() {
+                2
+            } else {
+                1
+            },
+            git_revision: source
+                .git_revision
+                .map(|oid| RevisionRef::Git(oid).to_string()),
             tenant: p.scope().tenant().into(),
             repository: p.scope().repository().to_string(),
             node: p.node().into(),
@@ -72,7 +83,16 @@ impl Intent {
     }
     fn plan(p: &Preparation) -> Self {
         Self {
-            version: if p.volume_digest().is_some() { 2 } else { 1 },
+            version: if p.git_revision().is_some() {
+                3
+            } else if p.volume_digest().is_some() {
+                2
+            } else {
+                1
+            },
+            git_revision: p
+                .git_revision()
+                .map(|oid| RevisionRef::Git(oid).to_string()),
             tenant: p.scope().tenant().into(),
             repository: p.scope().repository().to_string(),
             node: p.node().into(),
@@ -93,7 +113,14 @@ impl Intent {
     }
     fn ready(p: &PreparedWorkspace) -> Self {
         Self {
-            version: if p.volume_digest.is_some() { 2 } else { 1 },
+            version: if p.git_revision.is_some() {
+                3
+            } else if p.volume_digest.is_some() {
+                2
+            } else {
+                1
+            },
+            git_revision: p.git_revision.map(|oid| RevisionRef::Git(oid).to_string()),
             tenant: p.scope.tenant().into(),
             repository: p.scope.repository().to_string(),
             node: p.node.clone(),
@@ -138,7 +165,7 @@ impl Node {
         db: &mut Metadata,
         auth: &Authorization,
     ) -> Result<Option<Preparation>> {
-        self.claim_selected(db, auth, None, None).await
+        self.claim_selected(db, auth, None, None, false).await
     }
     pub async fn claim_on_slot(
         &self,
@@ -150,7 +177,7 @@ impl Node {
         if owned.volume.is_none() {
             return Err(Error::Configuration);
         }
-        self.claim_selected(db, auth, Some(slot), None).await
+        self.claim_selected(db, auth, Some(slot), None, false).await
     }
     /// Select one exact workspace, optionally using a registered bounded slot.
     /// Slot selection alone never selects a workspace.
@@ -167,19 +194,43 @@ impl Node {
                 return Err(Error::Configuration);
             }
         }
-        self.claim_selected(db, auth, slot, Some(workspace)).await
+        self.claim_selected(db, auth, slot, Some(workspace), false)
+            .await
     }
+    /// Explicit Connected Git preparation, never a fallback for native claims.
+    pub async fn claim_git_for(
+        &self,
+        db: &mut Metadata,
+        auth: &Authorization,
+        workspace: Uuid,
+        slot: Option<Uuid>,
+    ) -> Result<Option<Preparation>> {
+        if let Some(slot) = slot {
+            let owned = self.operation(slot).await?;
+            if owned.volume.is_none() {
+                return Err(Error::Configuration);
+            }
+        }
+        self.claim_selected(db, auth, slot, Some(workspace), true)
+            .await
+    }
+
     async fn claim_selected(
         &self,
         db: &mut Metadata,
         auth: &Authorization,
         selected: Option<Uuid>,
         workspace: Option<Uuid>,
+        git: bool,
     ) -> Result<Option<Preparation>> {
         self.check_auth(auth)?;
         self.storage.verify()?;
         let worker = Uuid::new_v4();
-        let job = if let Some(workspace) = workspace {
+        let job = if git {
+            let workspace = workspace.ok_or(Error::Configuration)?;
+            db.claim_git_preparation_for(auth, self.identity().storage(), worker, 60, workspace)
+                .await?
+        } else if let Some(workspace) = workspace {
             db.claim_preparation_for(auth, self.identity().storage(), worker, 60, workspace)
                 .await?
         } else {
@@ -204,17 +255,16 @@ impl Node {
         if selected.is_some_and(|id| id != slot) {
             return Err(Error::Identity);
         }
-        Ok(Some(
-            db.reserve_preparation(
-                auth,
-                &job,
-                StorageSlot {
-                    storage: self.identity().storage(),
-                    slot,
-                },
-            )
-            .await?,
-        ))
+        let slot = StorageSlot {
+            storage: self.identity().storage(),
+            slot,
+        };
+        let preparation = if git {
+            db.reserve_git_preparation(auth, &job, slot).await?
+        } else {
+            db.reserve_preparation(auth, &job, slot).await?
+        };
+        Ok(Some(preparation))
     }
 
     /// Both database connections must refer to the same deployment/schema.
@@ -227,6 +277,26 @@ impl Node {
         heartbeat: &mut Metadata,
         request: Prepare<'_>,
     ) -> Result<MaterializedTree> {
+        self.prepare_inner(db, heartbeat, request, None).await
+    }
+
+    pub async fn prepare_git(
+        &self,
+        db: &mut Metadata,
+        heartbeat: &mut Metadata,
+        request: Prepare<'_>,
+        git: &Path,
+    ) -> Result<MaterializedTree> {
+        self.prepare_inner(db, heartbeat, request, Some(git)).await
+    }
+
+    async fn prepare_inner(
+        &self,
+        db: &mut Metadata,
+        heartbeat: &mut Metadata,
+        request: Prepare<'_>,
+        git: Option<&Path>,
+    ) -> Result<MaterializedTree> {
         let Prepare {
             authorization: auth,
             plan,
@@ -234,6 +304,9 @@ impl Node {
             limits,
         } = request;
         self.check_auth(auth)?;
+        if plan.git_revision().is_some() != git.is_some() {
+            return Err(Error::Configuration);
+        }
         let intent = Intent::plan(plan);
         intent.check(self)?;
         // A previous response may have been lost after DB commit. This is an
@@ -294,42 +367,57 @@ impl Node {
                 let owned = operation.clone();
                 let staging = root.join("staging");
                 let tenant = plan.scope().tenant().to_owned();
+                let staging_tenant = staging.join(&tenant);
                 let materializer = tokio::task::spawn_blocking(move || {
                     clear_unpublished(&owned, &staging, &tenant)?;
                     Materializer::open(staging, 1).map_err(Error::from)
                 })
                 .await??;
                 let publication = Publication::new(tree_path, binding, operation.clone());
-                materializer
-                    .prepare_published(
+                let files = treeharbor_materializer::Preparation {
+                    scope: plan.scope(),
+                    holder: plan.source_holder(),
+                    snapshot: plan.snapshot(),
+                    selection: Selection::from_profile(plan.profile()),
+                    limits,
+                };
+                if let Some(git) = git {
+                    private::make_directory(&staging_tenant)?;
+                    let source = crate::git_source::GitSource::stage(
                         db,
-                        store,
-                        treeharbor_materializer::Preparation {
-                            scope: plan.scope(),
-                            holder: plan.source_holder(),
-                            snapshot: plan.snapshot(),
-                            selection: Selection::from_profile(plan.profile()),
-                            limits,
-                        },
-                        publication,
+                        &request,
+                        operation.clone(),
+                        &staging_tenant,
+                        git,
                     )
-                    .await?
+                    .await?;
+                    materializer
+                        .prepare_published_with(db, store, files, publication, move |files| {
+                            source.seed(files)
+                        })
+                        .await?
+                } else {
+                    materializer
+                        .prepare_published(db, store, files, publication)
+                        .await?
+                }
             };
             operation.verify()?;
             let receipt = PublicationReceipt::load(
                 tree.manifest_path().parent().ok_or(Error::Incomplete)?,
                 binding,
             )?;
-            db.complete_preparation(
-                auth,
-                plan,
-                &PreparedFiles {
-                    snapshot: plan.snapshot(),
-                    profile: plan.profile().id(),
-                    manifest_digest: receipt.manifest_digest()?,
-                },
-            )
-            .await?;
+            let observed = PreparedFiles {
+                snapshot: plan.snapshot(),
+                profile: plan.profile().id(),
+                manifest_digest: receipt.manifest_digest()?,
+            };
+            if let Some(origin) = plan.git_revision() {
+                db.complete_git_preparation(auth, plan, &observed, origin)
+                    .await?;
+            } else {
+                db.complete_preparation(auth, plan, &observed).await?;
+            }
             Ok(tree)
         };
         // Keep polling filesystem/DB work while renewal waits on database locks.
@@ -606,6 +694,7 @@ mod tests {
             snapshot: format!("sha256:{}", "22".repeat(32)),
             profile: format!("sha256:{}", "33".repeat(32)),
             volume: None,
+            git_revision: None,
         };
         assert_eq!(
             serde_json::to_vec(&intent).unwrap(),
@@ -629,6 +718,20 @@ mod tests {
             format!(
                 "sha256:{}",
                 include_str!("../tests/fixtures/intent-v2.sha256").trim()
+            )
+        );
+        intent.version = 3;
+        intent.authority = "connected".into();
+        intent.git_revision = Some(format!("git:sha1:{}", "44".repeat(20)));
+        assert_eq!(
+            serde_json::to_vec(&intent).unwrap(),
+            include_bytes!("../tests/fixtures/intent-v3.json")
+        );
+        assert_eq!(
+            treeharbor_core::ObjectId::from_bytes(intent.binding().unwrap()).to_string(),
+            format!(
+                "sha256:{}",
+                include_str!("../tests/fixtures/intent-v3.sha256").trim()
             )
         );
     }

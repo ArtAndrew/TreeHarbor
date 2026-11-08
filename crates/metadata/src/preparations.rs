@@ -95,6 +95,7 @@ pub struct PreparedFiles {
 /// Authorized current file-ready placement. This is inspection, not a job lease
 /// or permission to start an execution. Runtime binding must still be absent.
 pub struct PreparedWorkspace {
+    pub git_revision: Option<GitOid>,
     pub volume_digest: Option<[u8; 32]>,
     pub scope: Scope,
     pub attempt: Uuid,
@@ -225,6 +226,22 @@ pub(crate) async fn completed_git_import(
     }
 }
 
+pub(crate) async fn placement_git_revision(
+    tx: &Transaction<'_>,
+    scope: &Scope,
+    epoch: i64,
+    format: &str,
+    revision: RevisionRef,
+) -> Result<Option<GitOid>> {
+    match (format, revision) {
+        ("native", _) => Ok(None),
+        ("git-compatible", RevisionRef::Native(native)) => {
+            Ok(Some(completed_git_import(tx, scope, epoch, native).await?))
+        }
+        _ => Err(Error::SchemaMismatch),
+    }
+}
+
 pub(crate) async fn git_source_context(
     tx: &Transaction<'_>,
     auth: &Authorization,
@@ -274,7 +291,7 @@ impl Metadata {
         repository_lock(&tx, scope, false).await?;
         authorize(&tx, auth).await?;
         let storage = registered_storage(&tx, auth).await?;
-        let row = tx.query_opt(r#"SELECT p.attempt,p.generation,p.epoch,p.slot,p.base_revision,p.snapshot,p.profile,f.definition,p.manifest_digest,v.identity_digest
+        let row = tx.query_opt(r#"SELECT p.attempt,p.generation,p.epoch,p.slot,p.base_revision,p.snapshot,p.profile,f.definition,p.manifest_digest,v.identity_digest,w.format
             FROM th_workspace_preparations p
             JOIN th_workspaces w ON w.tenant=p.tenant AND w.repository=p.repository AND w.workspace=p.workspace
             JOIN th_bases b ON b.tenant=p.tenant AND b.repository=p.repository AND b.revision=p.base_revision
@@ -292,7 +309,11 @@ impl Metadata {
         if profile.id().as_bytes() != &digest(row.get(6))? {
             return Err(Error::SchemaMismatch);
         }
+        let revision = row.get::<_, String>(4).parse()?;
+        let git_revision =
+            placement_git_revision(&tx, scope, epoch, &row.get::<_, String>(10), revision).await?;
         let result = PreparedWorkspace {
+            git_revision,
             scope: scope.clone(),
             attempt: row.get(0),
             workspace,
@@ -304,7 +325,7 @@ impl Metadata {
                 storage,
                 slot: row.get(3),
             },
-            revision: row.get::<_, String>(4).parse()?,
+            revision,
             snapshot: ObjectId::from_bytes(digest(row.get(5))?),
             profile,
             manifest_digest: digest(row.get(8))?,
@@ -659,6 +680,30 @@ impl Metadata {
         plan: &Preparation,
         observed: &PreparedFiles,
     ) -> Result<Value> {
+        self.complete_preparation_with_origin(auth, plan, observed, None)
+            .await
+    }
+
+    /// Acknowledge the atomic publication of a full tree and exact private Git
+    /// metadata. The trusted node supplies this only from its durable receipt.
+    pub async fn complete_git_preparation(
+        &mut self,
+        auth: &Authorization,
+        plan: &Preparation,
+        observed: &PreparedFiles,
+        origin: GitOid,
+    ) -> Result<Value> {
+        self.complete_preparation_with_origin(auth, plan, observed, Some(origin))
+            .await
+    }
+
+    async fn complete_preparation_with_origin(
+        &mut self,
+        auth: &Authorization,
+        plan: &Preparation,
+        observed: &PreparedFiles,
+        origin: Option<GitOid>,
+    ) -> Result<Value> {
         if auth.scope().tenant() != plan.scope().tenant()
             || auth.scope().repository() != plan.scope().repository()
             || auth.principal() != plan.node
@@ -666,7 +711,7 @@ impl Metadata {
             return Err(Error::Forbidden);
         }
         // File-only acknowledgements cannot publish a Git-compatible placement.
-        if plan.git_revision.is_some() {
+        if plan.git_revision != origin {
             return Err(Error::ReceiptMismatch);
         }
         if observed.snapshot != plan.snapshot || observed.profile != plan.profile.id() {

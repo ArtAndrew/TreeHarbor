@@ -44,9 +44,11 @@ token revocation/expiry and relevant fences inside their transactions.
 
 Claims use the actual stored event, including worker, generation, payload and
 database-time lease. An expired or modified caller-side `Job` is insufficient.
-Git-compatible workspaces, unresolved profiles and old repository epochs are not
-claimed by this native worker interface. Their events remain available for their
-appropriate future handler or explicit reconciliation.
+The native worker interface skips Git-compatible workspaces. For Connected
+repositories, `claim_git_preparation_for` selects one explicit Git-compatible
+workspace whose full profile and exact completed import belong to the current
+epoch. Its source lease authorizes bounded graph reads for that preparation.
+Unresolved profiles and old repository epochs remain ineligible.
 
 A worker reconnecting after an unknown reservation result inspects the stored
 assignment and reserves the **same slot** under its current claim. It receives the
@@ -62,6 +64,8 @@ The node supplies the exact snapshot and profile plus SHA-256 of the durable
 The manifest hash is an observation of a local file, not a canonical source object
 in the object store. The metadata layer does not read or validate that file itself.
 Only the trusted materializer/controller may supply this observation.
+For a Git-compatible placement, `complete_git_preparation` also requires the
+exact original Git identity bound to the node's durable publication receipt.
 
 Completion moves the reservation from `reserved` to `prepared`, records the
 completing worker generation, marks the workspace `ready` and completes the outbox

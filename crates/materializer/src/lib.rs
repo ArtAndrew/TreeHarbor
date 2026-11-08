@@ -145,6 +145,8 @@ pub struct Materializer {
     root: PathBuf,
     slots: Arc<Semaphore>,
 }
+type PrepareFiles = Box<dyn FnOnce(&Path) -> std::io::Result<()> + Send>;
+
 impl Materializer {
     pub fn open(root: impl AsRef<Path>, concurrent_jobs: usize) -> Result<Self> {
         if !(1..=64).contains(&concurrent_jobs) {
@@ -165,7 +167,7 @@ impl Materializer {
         store: &ManagedStore,
         request: Preparation<'_>,
     ) -> Result<MaterializedTree> {
-        self.build(db, store, request, None, None).await
+        self.build(db, store, request, None, None, None).await
     }
 
     /// Trusted controller path. The supplied lifetime guard stays alive in all
@@ -179,8 +181,30 @@ impl Materializer {
         request: Preparation<'_>,
         publication: Publication,
     ) -> Result<MaterializedTree> {
-        self.build(db, store, request, None, Some(publication))
+        self.build(db, store, request, None, Some(publication), None)
             .await
+    }
+
+    /// Complete trusted metadata preparation before publishing a placement.
+    /// The callback runs with the same staging directory and operation guard;
+    /// a failure leaves the destination unpublished.
+    pub async fn prepare_published_with(
+        &self,
+        db: &mut Metadata,
+        store: &ManagedStore,
+        request: Preparation<'_>,
+        publication: Publication,
+        prepare_files: impl FnOnce(&Path) -> std::io::Result<()> + Send + 'static,
+    ) -> Result<MaterializedTree> {
+        self.build(
+            db,
+            store,
+            request,
+            None,
+            Some(publication),
+            Some(Box::new(prepare_files)),
+        )
+        .await
     }
 
     /// Internal controller operation. ALL writers to `previous` must already be
@@ -200,7 +224,7 @@ impl Materializer {
         {
             return Err(Error::WrongSnapshot);
         }
-        self.build(db, store, request, Some(previous.clone()), None)
+        self.build(db, store, request, Some(previous.clone()), None, None)
             .await
     }
 
@@ -211,6 +235,7 @@ impl Materializer {
         request: Preparation<'_>,
         previous: Option<MaterializedTree>,
         publication: Option<Publication>,
+        prepare_files: Option<PrepareFiles>,
     ) -> Result<MaterializedTree> {
         let limits = request.limits.validate()?;
         let selection = match &previous {
@@ -245,7 +270,13 @@ impl Materializer {
         if stage.publication.is_some() {
             // A controller-owned publisher retains its lifetime guard and has a
             // deterministic recovery path, including a cancelled awaiting task.
-            tokio::task::spawn_blocking(move || stage.publish()).await?
+            tokio::task::spawn_blocking(move || {
+                if let Some(prepare_files) = prepare_files {
+                    prepare_files(&stage.files())?;
+                }
+                stage.publish()
+            })
+            .await?
         } else {
             // Legacy unregistered results have no recovery identity; never leave
             // an unobserved background publisher behind on this path.

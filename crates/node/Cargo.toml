@@ -10,6 +10,7 @@ publish.workspace = true
 
 [dependencies]
 treeharbor-core.workspace = true
+treeharbor-git-bridge.workspace = true
 treeharbor-storage.workspace = true
 treeharbor-metadata.workspace = true
 treeharbor-materializer.workspace = true

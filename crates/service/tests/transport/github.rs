@@ -247,8 +247,204 @@ async fn github_source_http_preserves_exact_git_history_after_partial_upload_and
             .get::<_, i64>(0),
         0
     );
+    prepare_and_recover_git_workspace(&f, root, &revision).await;
     drop(server);
     f.cleanup().await;
+}
+
+async fn prepare_and_recover_git_workspace(
+    f: &Fixture,
+    root: treeharbor_core::ObjectId,
+    revision: &str,
+) {
+    let profile = result(f.cli(&[
+        "profile-put",
+        "--key",
+        "git-full",
+        "--authority",
+        "connected",
+        "--epoch",
+        "1",
+        "--full",
+    ]));
+    let workspace = Uuid::new_v4().to_string();
+    result(f.cli(&[
+        "workspace-create",
+        "--key",
+        "git-workspace",
+        "--authority",
+        "connected",
+        "--epoch",
+        "1",
+        "--workspace",
+        &workspace,
+        "--base",
+        &RevisionRef::Native(root).to_string(),
+        "--profile-digest",
+        profile["profile_digest"].as_str().unwrap(),
+        "--git-compatible",
+    ]));
+    let node_root = f.dir.path().join("git-node");
+    let node_init = Command::new(env!("CARGO_BIN_EXE_treeharbor"))
+        .args(["node", "initialize", "--root"])
+        .arg(&node_root)
+        .args(["--tenant", f.scope.tenant(), "--principal", "git-node"])
+        .output()
+        .unwrap();
+    assert!(
+        node_init.status.success(),
+        "{}",
+        String::from_utf8_lossy(&node_init.stderr)
+    );
+    let identity: Value = serde_json::from_slice(&node_init.stdout).unwrap();
+    let storage = identity["storage"].as_str().unwrap();
+    let repo = f.scope.repository().to_string();
+    let tenant = f.scope.tenant();
+    f.admin_ok(&[
+        "principal-create",
+        "--tenant",
+        tenant,
+        "--principal",
+        "git-node",
+        "--kind",
+        "node",
+    ]);
+    f.admin_ok(&[
+        "node-register",
+        "--tenant",
+        tenant,
+        "--principal",
+        "git-node",
+        "--storage",
+        storage,
+    ]);
+    f.admin_ok(&[
+        "access-set",
+        "--tenant",
+        tenant,
+        "--repository",
+        &repo,
+        "--principal",
+        "git-node",
+        "--permission",
+        "runtime.control",
+    ]);
+    let credential = f.dir.path().join("git-node-token.json");
+    f.admin_ok(&[
+        "token-issue",
+        "--tenant",
+        tenant,
+        "--repository",
+        &repo,
+        "--principal",
+        "git-node",
+        "--permission",
+        "runtime.control",
+        "--output",
+        credential.to_str().unwrap(),
+    ]);
+    let node = |action: &str, extra: &[&str]| {
+        Command::new(env!("CARGO_BIN_EXE_treeharbor"))
+            .env("PATH", "/treeharbor-test-no-executables")
+            .args(["node", action, "--config"])
+            .arg(&f.config_path)
+            .arg("--credential-file")
+            .arg(&credential)
+            .arg("--root")
+            .arg(&node_root)
+            .args(["--storage", storage, "--workspace", &workspace])
+            .args(extra)
+            .output()
+            .unwrap()
+    };
+    let output = |response: Output| -> Value {
+        assert!(
+            response.status.success(),
+            "{}",
+            String::from_utf8_lossy(&response.stderr)
+        );
+        serde_json::from_slice(&response.stdout).unwrap()
+    };
+    assert_eq!(output(node("prepare-once", &[]))["state"], "idle");
+    assert!(
+        !node("prepare-once", &["--git", "/usr/bin/false"])
+            .status
+            .success()
+    );
+    let slot: Uuid = f
+        .sql
+        .query_one(
+            "SELECT slot FROM th_workspace_preparations WHERE workspace::text=$1",
+            &[&workspace],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    let placement = node_root.join("slots").join(slot.to_string()).join("tree");
+    assert!(!placement.exists());
+    let expire = || async {
+        f.sql.execute("UPDATE th_outbox SET lease_until=clock_timestamp()-interval '1 second' WHERE kind='workspace.prepare' AND payload->>'workspace'=$1", &[&workspace]).await.unwrap();
+    };
+    expire().await;
+    f.sql.batch_execute(
+        "CREATE FUNCTION reject_git_ack() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.state='prepared' THEN RAISE EXCEPTION 'injected acknowledgement failure'; END IF; RETURN NEW; END; $$; CREATE TRIGGER reject_git_ack BEFORE UPDATE ON th_workspace_preparations FOR EACH ROW EXECUTE FUNCTION reject_git_ack();"
+    ).await.unwrap();
+    assert!(
+        !node("prepare-once", &["--git", "/usr/bin/git"])
+            .status
+            .success()
+    );
+    let files = placement.join("files");
+    assert!(files.join(".git/index").is_file());
+    assert!(placement.join("publication.json").is_file());
+    assert_eq!(fs::read(files.join("main.rs")).unwrap(), b"fn main() {}\n");
+    let head = git_reference::git(&files, &["rev-parse", "HEAD"], b"");
+    assert_eq!(
+        String::from_utf8_lossy(&head).trim(),
+        revision.strip_prefix("git:sha1:").unwrap()
+    );
+    assert!(git_reference::git(&files, &["status", "--porcelain"], b"").is_empty());
+    f.sql
+        .batch_execute("DROP TRIGGER reject_git_ack ON th_workspace_preparations")
+        .await
+        .unwrap();
+    expire().await;
+    let recovered = output(node("prepare-once", &["--git", "/usr/bin/false"]));
+    assert_eq!(recovered["state"], "files_ready");
+    assert_eq!(recovered["recovered_baseline"], true);
+    assert_eq!(
+        PathBuf::from(recovered["path"].as_str().unwrap()),
+        files.canonicalize().unwrap()
+    );
+
+    // Once acknowledged, neither Git metadata nor working edits are regenerated.
+    fs::write(files.join("main.rs"), b"agent edit").unwrap();
+    fs::write(files.join(".git/config"), b"invalid agent metadata").unwrap();
+    assert_eq!(output(node("prepared", &[]))["state"], "files_ready");
+    assert_eq!(fs::read(files.join("main.rs")).unwrap(), b"agent edit");
+    assert_eq!(
+        fs::read(files.join(".git/config")).unwrap(),
+        b"invalid agent metadata"
+    );
+    result(f.cli(&[
+        "workspace-delete",
+        "--key",
+        "drain-git-workspace",
+        "--authority",
+        "connected",
+        "--epoch",
+        "1",
+        "--workspace",
+        &workspace,
+        "--generation",
+        "1",
+    ]));
+    output(node("cleanup-once", &[]));
+    assert!(!files.exists());
+    assert_eq!(
+        result(f.cli(&["workspace-status", "--workspace", &workspace]))["state"],
+        "deleted"
+    );
 }
 
 fn request(f: &Fixture, value: &Value) -> Output {
