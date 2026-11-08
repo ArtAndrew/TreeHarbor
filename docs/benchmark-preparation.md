@@ -1,9 +1,9 @@
-# File preparation versus Git worktree
+# File preparation versus Git worktree and clone
 
 This opt-in probe measures one narrow task: prepare all files from already loaded
 source, read one pinned file, verify the tree, then clean up. It uses the real
-TreeHarbor CLI, local service, PostgreSQL and object store, and compares them with
-`git worktree add --detach` from a private bare mirror. No agent code runs.
+TreeHarbor CLI, local service, PostgreSQL and object store. The Git cases use the
+same private bare mirror and exact commit. No agent code runs.
 
 **The first small-workload sample favors Git worktree.** There is no demonstrated
 TreeHarbor speed advantage. The useful question is whether retaining proposals and
@@ -16,7 +16,7 @@ local PostgreSQL database with matching `psql`. Signed product packages are Linu
 the sample below used a local optimized macOS build. Do not use a debug build for
 performance conclusions. Do not point the script at a production database.
 
-The script creates its own uniquely named schema, repository and two temporary
+The script creates its own uniquely named schema, repository and temporary
 local service credentials, starts a local service, and removes that schema and
 its temporary files afterwards. It does not change the input Git repository or
 contact GitHub. Unexpected process/machine termination can leave test resources;
@@ -43,22 +43,33 @@ python3 scripts/benchmark-workspace-preparation.py \
   --database-url-file /absolute/path/to/private-database.url \
   --repository /absolute/path/to/new-fixture \
   --revision FULL_COMMIT_ID_FROM_THE_GENERATOR \
-  --iterations 5 --seed 42 --git-checkout-workers 0 \
+  --iterations 5 --concurrency 1 --seed 42 --git-checkout-workers 1 \
   --output /absolute/path/to/new-result.json
 ```
 
-An existing result is never replaced. `checkout.workers=0` lets Git choose parallel
-checkout workers; its own size threshold still applies. Set the flag explicitly
-if your usual Git configuration differs. Full UTF-8 trees are supported within the
-64 MiB input limit; submodules are rejected. Filters that change checkout bytes
-will fail the comparison rather than silently compare different trees.
+An existing result is never replaced. `--concurrency` accepts 1–16 simultaneous
+preparations in this probe. `checkout.workers=1` fixes one checkout worker per
+Git task; `0` lets Git choose parallel checkout workers. Full UTF-8 trees are
+supported within the 64 MiB default input limit. Submodules are rejected and
+checkout filters that change the bytes fail verification.
+
+| Case | Measured preparation |
+| --- | --- |
+| TreeHarbor | Request an exact full native workspace and wait for its durable readiness on a selected node. |
+| Git worktree | `git worktree add --detach` against the loaded mirror. |
+| Git shared clone | `git clone --shared --no-checkout` from the mirror, then a detached checkout. Each clone has its own metadata and borrows the mirror's objects. |
+| Git full clone | `git clone --no-local --no-checkout` from the mirror, then a detached checkout. The local Git transfer creates an independent object database. |
 
 ## Measurement boundary
 
-- Concurrency is one. Each wave randomizes which system runs first.
+- Each wave randomizes the order of systems. For each system, all lanes start as
+  one batch and finish the first useful read before verification or cleanup
+  starts. TreeHarbor gives each lane a different node/storage identity on the same
+  host. Git cases use the same mirror and different destination directories.
 - TreeHarbor timing starts before the authenticated workspace request and includes
   node process startup, preparation, durable readiness and the first useful read.
-  Git timing starts before worktree creation and includes the same file read.
+  Git timing starts before worktree creation or clone and includes the same file
+  read. Version 3 also records time until all useful reads in each batch finish.
 - Version 2 observations split TreeHarbor preparation into the workspace request
   and the `node prepare-once` command. The latter includes process startup,
   database connections, job claim, file preparation and readiness publication.
@@ -66,16 +77,22 @@ will fail the comparison rather than silently compare different trees.
   measurement is `null`, and encoded object bytes are local reads in this probe.
 - All file bytes, executable bits, relative symlink targets and the complete leaf
   path set are checked afterwards. Private permission bits differ by design.
-- Cleanup is timed separately: TreeHarbor drain/physical cleanup and Git worktree
-  removal. No mutable agent work is generated or discarded.
+- Cleanup is timed separately: TreeHarbor drain/physical cleanup, Git worktree
+  removal or clone directory deletion. The probe verifies the directories are
+  gone. No mutable agent work is generated or discarded.
 - Source preparation is recorded separately. TreeHarbor imports a snapshot while
   the Git mirror retains history, so those setup phases are not equivalent work.
 - Objects are already present and no prepared tree is reused. OS caches are
   uncontrolled; this is **not** a cold-cache measurement. Verification reads can
   warm later waves for either system.
-- Disk observations use allocated blocks under the measured paths. Workspace
-  counts exclude Git metadata. PostgreSQL storage, whole-system CPU/RAM, network,
-  runtime/build/CI cost and daily retention are not measured.
+- Disk observations use allocated blocks under the measured paths. Version 3
+  records per-task Git metadata separately, including the private clone object
+  database. Shared mirror and TreeHarbor object-store blocks are recorded once.
+  PostgreSQL storage, whole-system CPU/RAM, actual transport bytes, runtime/build/CI
+  cost and daily retention are outside this measurement.
+- Version 3 reports sample medians and nearest-rank p95 when at least 20 individual
+  observations exist for a system. Concurrent observations within one batch
+  share host resources, so these sample p95s do not establish latency SLOs.
 
 ## Initial sample — 2 November 2026
 
@@ -122,3 +139,36 @@ The node command accounts for most of the measured delay, and grows with the
 larger fixture. Its timing includes process startup, database operations and
 file preparation. Isolating those costs requires a finer measurement. These
 sample medians describe one local setup with no agent execution or concurrent jobs.
+
+## Clone baselines and concurrent preparations — 8 November 2026
+
+Four runs used the same optimized macOS ARM64 binary as the phase probe and the
+same two deterministic fixtures. Each Git task used one checkout worker. All 260
+preparations passed file verification and cleanup. The raw reports record separate
+setup, per-task and batch timings, disk blocks and available materialization counters.
+
+| Fixture and concurrency | TreeHarbor | Git worktree | Shared clone | Full clone |
+| --- | ---: | ---: | ---: | ---: |
+| [131 entries, 1 task](benchmarks/preparation-clone-macos-arm64-small-c1.json) | 409 ms | 38 ms | 62 ms | 82 ms |
+| [131 entries, 4 tasks](benchmarks/preparation-clone-macos-arm64-small-c4.json) | 1,443 ms | 58 ms | 89 ms | 116 ms |
+| [2,051 entries, 1 task](benchmarks/preparation-clone-macos-arm64-2k-c1.json) | 5,190 ms | 190 ms | 219 ms | 233 ms |
+| [2,051 entries, 4 tasks](benchmarks/preparation-clone-macos-arm64-2k-c4.json) | 18,979 ms | 366 ms | 389 ms | 374 ms |
+
+The table shows the median time to the first file read per task. At four tasks
+on the larger fixture, TreeHarbor's sample p95 was 20,414 ms. The Git cases
+ranged from 454 to 649 ms. Each of those p95s uses 20 observations across five
+batches. The larger fixture with one task uses five observations per system and
+reports no p95.
+
+On the larger fixture with four tasks, median cleanup took 717 ms for TreeHarbor
+and 187–265 ms for Git. The measured working files occupied 8,396,800 allocated
+bytes per task for each system. The per-task Git metadata medians were 204,800
+bytes for worktree, 221,184 for shared clone and 421,888 for full clone. The
+shared mirror and TreeHarbor object store are recorded separately. In that run,
+the TreeHarbor snapshot pack and import took 19.2 s and 38.2 s before any timed
+preparation. The local mirror setup took 62 ms and covers different work.
+
+The TreeHarbor results cover native file workspaces. They show where to profile
+the node preparation path under concurrent load. Comparisons for Git-compatible
+workspaces, sparse/partial delivery, cold caches, measured network traffic,
+server cost and the complete agent-to-integration path remain open.
