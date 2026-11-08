@@ -9,6 +9,7 @@ use std::{
     },
     path::{Path, PathBuf},
     sync::Arc,
+    time::Instant,
 };
 use tempfile::TempDir;
 use tokio::sync::OwnedSemaphorePermit;
@@ -31,7 +32,7 @@ pub(crate) struct Stage {
     pub manifest: Manifest,
     previous: Option<Arc<Manifest>>,
     limits: Limits,
-    stats: Statistics,
+    pub(crate) stats: Statistics,
     planned_path_bytes: u64,
     actual_path_bytes: u64,
     actual: BTreeSet<Vec<u8>>,
@@ -102,6 +103,10 @@ impl Stage {
             return Err(Error::Limit);
         }
         Ok(remaining.min(treeharbor_metadata::reads::MAX_READ_BYTES))
+    }
+    pub(crate) fn record_read_batch(&mut self, started: Instant) {
+        self.stats.read_batches += 1;
+        self.stats.open_read_batches += started.elapsed();
     }
     pub fn account_source(&mut self, object: &ReadObject) -> Result<()> {
         self.stats.source_objects = self
@@ -331,6 +336,7 @@ impl Stage {
         Ok(())
     }
     fn flush_files(&mut self) -> Result<()> {
+        let started = Instant::now();
         std::thread::scope(|scope| -> std::io::Result<()> {
             let mut workers = Vec::new();
             for chunk in self.pending_sync.chunks(8) {
@@ -352,9 +358,11 @@ impl Stage {
             Ok(())
         })?;
         self.pending_sync.clear();
+        self.stats.file_sync += started.elapsed();
         Ok(())
     }
     pub fn finish(&mut self) -> Result<()> {
+        let started = Instant::now();
         self.flush_files()?;
         if let Some(paths) = &self.manifest.selection.paths {
             for path in paths {
@@ -406,9 +414,11 @@ impl Stage {
         }
         File::open(self.temp.path())?.sync_all()?;
         File::open(self.temp.path().parent().ok_or(Error::Configuration)?)?.sync_all()?;
+        self.stats.finalize = started.elapsed();
         Ok(())
     }
-    pub fn publish(self) -> Result<MaterializedTree> {
+    pub fn publish(mut self) -> Result<MaterializedTree> {
+        let started = Instant::now();
         // No node registry or runtime can discover this directory through a
         // returned receipt before completion. Parent fsync precedes that receipt.
         let root = if let Some(publication) = &self.publication {
@@ -418,6 +428,7 @@ impl Stage {
         } else {
             self.temp.keep()
         };
+        self.stats.publish = started.elapsed();
         Ok(MaterializedTree {
             root,
             manifest: Arc::new(self.manifest),

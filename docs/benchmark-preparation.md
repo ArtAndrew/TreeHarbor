@@ -172,3 +172,27 @@ The TreeHarbor results cover native file workspaces. They show where to profile
 the node preparation path under concurrent load. Comparisons for Git-compatible
 workspaces, sparse/partial delivery, cold caches, measured network traffic,
 server cost and the complete agent-to-integration path remain open.
+
+## Within the node preparation command — 8 November 2026
+
+A separate optimized development build adds monotonic phase timings to
+[`preparation_statistics`](local-node.md). The timings cover the same 2,051-entry
+native fixture on macOS ARM64, using three waves at each concurrency. All 60
+TreeHarbor and Git preparations passed file verification and cleanup.
+
+| Median per TreeHarbor task | [1 concurrent task](benchmarks/preparation-timing-macos-arm64-2k-c1.json) | [4 concurrent tasks](benchmarks/preparation-timing-macos-arm64-2k-c4.json) |
+| --- | ---: | ---: |
+| Node prepare command | 5.152 s | 18.392 s |
+| Catalog checks and opening object descriptors | 0.273 s | 0.177 s |
+| Verify, decode and materialize batches | 4.689 s | 17.703 s |
+| Regular-file sync wait, included in materialization and finalization | 4.209 s | 6.190 s |
+| Finalize files, manifest and directories | 0.100 s | 0.286 s |
+| Publish the tree | 0.009 s | 0.022 s |
+
+The median task spent 81% of node command time waiting for explicit file syncs
+at concurrency one and 34% at concurrency four. The batch phase grew more than
+the measured sync wait, while descriptor opening stayed below 0.3 s in both
+samples. The next measurement should separate source verification from writing
+files inside that phase. Individual medians need not sum to the median command
+time. These small samples give direction for profiling this macOS setup; the
+Linux runtime and filesystem still need separate measurements.

@@ -68,14 +68,29 @@ usage or the complete cost of an agent task:
 | `local_bytes_copied` | Bytes copied from preserved local files during materialization |
 | `workspace_bytes` | Logical content bytes accounted for the prepared tree; not allocated disk blocks |
 | `filesystem_entries` | Prepared filesystem entries, including directories and symlinks |
+| `read_batches` | Source read batches opened for the materialized tree |
+| `phase_seconds` | Wall-clock durations within successful materialization |
+
+The phase probe reports `open_read_batches` for catalog checks and opening
+object descriptors, and `build_batches` for verifying/decoding the objects
+and applying them to the staging files. `build_batches` includes the wait for
+each blocking worker. `finalize` covers the remaining file flush, manifest and
+directory sync. `publish` covers physical publication. The `file_sync` duration
+measures the wait for batched source-file syncs and is included in
+`build_batches` and `finalize`. Keep it separate when totaling phases.
+
+These timings exclude workspace requests, job claim, process startup, session
+setup/teardown, Git metadata preparation and the readiness transaction. They
+describe intervals spent by this preparation, including contention, rather
+than CPU time.
 
 After `node prepared` reopens an existing placement, or preparation recovers an
 already published tree, `preparation_statistics` is `null`. Those observations
 are not persisted, and the files may have changed. `recovered_baseline: true`
 distinguishes this case from a newly measured preparation; missing observations
 are never reported as zero. The `idle` response has no preparation statistics.
-These fields do not measure latency, OS cache state, server CPU, cleanup or build
-cost. Collect those separately for comparisons with Git.
+Collect end-to-end latency, OS cache state, server CPU, cleanup and build costs
+separately for comparisons with Git.
 
 To prepare one exact workspace, add `--workspace WORKSPACE_UUID` to
 `node prepare-once`. It can be combined with `--slot SLOT_UUID`; the workspace

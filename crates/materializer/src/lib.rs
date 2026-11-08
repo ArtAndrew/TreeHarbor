@@ -101,6 +101,12 @@ pub struct Statistics {
     pub local_bytes_copied: u64,
     pub workspace_bytes: u64,
     pub filesystem_entries: usize,
+    pub read_batches: usize,
+    pub open_read_batches: Duration,
+    pub build_batches: Duration,
+    pub file_sync: Duration,
+    pub finalize: Duration,
+    pub publish: Duration,
 }
 
 /// A prepared filesystem result, not an active workspace or sandbox. The sibling
@@ -307,12 +313,16 @@ async fn read_one(
     node: ReadNode,
     mut stage: Stage,
 ) -> Result<(Stage, ReadObject)> {
+    let started = Instant::now();
     let batch = db
         .open_read_batch(session, store, &[node], stage.read_budget()?)
         .await?;
+    stage.record_read_batch(started);
+    let started = Instant::now();
     tokio::task::spawn_blocking(move || {
         let read = batch.read()?.remove(0);
         stage.account_source(&read)?;
+        stage.stats.build_batches += started.elapsed();
         Ok((stage, read))
     })
     .await?
@@ -368,9 +378,11 @@ async fn build_source(
                 renewed = Instant::now();
             }
             let frontier: Vec<_> = nodes.iter().cloned().collect();
+            let started = Instant::now();
             let batch = db
                 .open_read_prefix(session, store, &frontier, stage.read_budget()?)
                 .await?;
+            stage.record_read_batch(started);
             for _ in 0..batch.len() {
                 nodes.pop_front();
             }
@@ -384,6 +396,7 @@ async fn build_source(
                     )
                 })
                 .collect();
+            let started = Instant::now();
             let (next_stage, added) = tokio::task::spawn_blocking(move || -> Result<_> {
                 let mut added = Vec::new();
                 for read in batch.read()? {
@@ -426,6 +439,7 @@ async fn build_source(
                         }
                     }
                 }
+                stage.stats.build_batches += started.elapsed();
                 Ok((stage, added))
             })
             .await??;

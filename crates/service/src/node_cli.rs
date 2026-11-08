@@ -372,7 +372,15 @@ pub async fn run(action: Action) -> Result<bool> {
             "source_bytes_written":stats.source_bytes_written,
             "local_bytes_copied":stats.local_bytes_copied,
             "workspace_bytes":stats.workspace_bytes,
-            "filesystem_entries":stats.filesystem_entries
+            "filesystem_entries":stats.filesystem_entries,
+            "read_batches":stats.read_batches,
+            "phase_seconds":{
+                "open_read_batches":stats.open_read_batches.as_secs_f64(),
+                "build_batches":stats.build_batches.as_secs_f64(),
+                "file_sync":stats.file_sync.as_secs_f64(),
+                "finalize":stats.finalize.as_secs_f64(),
+                "publish":stats.publish.as_secs_f64()
+            }
         }))})
     );
     Ok(true)

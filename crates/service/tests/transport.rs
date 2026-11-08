@@ -221,6 +221,22 @@ async fn import_to_node_files_and_reopen(git_history: bool) {
     assert_eq!(stats["local_bytes_copied"], 0);
     assert_eq!(stats["workspace_bytes"], 13);
     assert_eq!(stats["filesystem_entries"], 1);
+    let batches = stats["read_batches"].as_u64().unwrap();
+    assert!((3..=stats["source_objects"].as_u64().unwrap()).contains(&batches));
+    let phases = &stats["phase_seconds"];
+    for key in [
+        "open_read_batches",
+        "build_batches",
+        "file_sync",
+        "finalize",
+        "publish",
+    ] {
+        assert!(phases[key].as_f64().is_some_and(|seconds| seconds >= 0.0));
+    }
+    assert!(
+        phases["file_sync"].as_f64().unwrap()
+            <= phases["build_batches"].as_f64().unwrap() + phases["finalize"].as_f64().unwrap()
+    );
     let files = PathBuf::from(prepared["path"].as_str().unwrap());
     assert_eq!(fs::read(files.join("main.rs")).unwrap(), b"fn main() {}\n");
     fs::write(files.join("main.rs"), b"saved edit").unwrap();
