@@ -68,7 +68,10 @@ fn provision_bridge(f: &Fixture) -> PathBuf {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires PostgreSQL; actual Git history, bridge HTTP, restart and export (no live App)"]
 async fn github_source_http_preserves_exact_git_history_after_partial_upload_and_server_death() {
-    let mut f = Fixture::new_with_authority(Authority::Connected).await;
+    let mut f = match std::env::var_os("TH_TEST_GIT_WORKSPACE_BINARY") {
+        Some(path) => Fixture::new_with_binary(Authority::Connected, PathBuf::from(path)).await,
+        None => Fixture::new_with_authority(Authority::Connected).await,
+    };
     f.importer();
     let owner = f.credential_path.clone();
     let bridge = provision_bridge(&f);
@@ -178,7 +181,7 @@ async fn github_source_http_preserves_exact_git_history_after_partial_upload_and
     let server = f.start().await;
     assert_eq!(result(request(&f, &finish)), completed);
     // A completed actual CLI import does not require its App key or local spool.
-    let replay = Command::new(env!("CARGO_BIN_EXE_treeharbor"))
+    let replay = Command::new(&f.binary)
         .env("PATH", "/no-executables")
         .args(["github", "import", "--config"])
         .arg(f.dir.path().join("absent.json"))
@@ -223,7 +226,7 @@ async fn github_source_http_preserves_exact_git_history_after_partial_upload_and
         assert_eq!(restored_pack.frame(id).unwrap(), bytes);
     }
     let git_output = f.dir.path().join("restored-git");
-    let exported = Command::new(env!("CARGO_BIN_EXE_treeharbor"))
+    let exported = Command::new(&f.binary)
         .args(["git-export", "--pack"])
         .arg(&restored)
         .arg("--output")
@@ -288,7 +291,7 @@ async fn prepare_and_recover_git_workspace(
         "--git-compatible",
     ]));
     let node_root = f.dir.path().join("git-node");
-    let node_init = Command::new(env!("CARGO_BIN_EXE_treeharbor"))
+    let node_init = Command::new(&f.binary)
         .args(["node", "initialize", "--root"])
         .arg(&node_root)
         .args(["--tenant", f.scope.tenant(), "--principal", "git-node"])
@@ -357,7 +360,7 @@ async fn prepare_and_recover_git_workspace(
         profile["profile_digest"].as_str().unwrap(),
     );
     let node = |action: &str, extra: &[&str]| {
-        Command::new(env!("CARGO_BIN_EXE_treeharbor"))
+        Command::new(&f.binary)
             .env("PATH", "/treeharbor-test-no-executables")
             .args(["node", action, "--config"])
             .arg(&f.config_path)

@@ -37,7 +37,7 @@ pub(super) fn exercise_if_configured(
     let run = Uuid::new_v4().to_string();
     let seal = Uuid::new_v4().to_string();
     let node = |action: &str, args: &[&str]| {
-        let output = Command::new(env!("CARGO_BIN_EXE_treeharbor"))
+        let output = Command::new(&f.binary)
             .env("PATH", "/treeharbor-test-no-executables")
             .args(["node", action, "--config"])
             .arg(&f.config_path)
