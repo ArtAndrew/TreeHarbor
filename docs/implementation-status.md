@@ -29,8 +29,17 @@ builds and checks an independent object database and index, then installs
 `.git` atomically. Git does not check out or filter the prepared files. The
 bridge tests use real SHA-1 and SHA-256 repositories and verify that a local
 commit, hard reset and garbage collection in one checkout leave the other
-checkout and the imported source intact. Workspace creation and the node
-lifecycle still select the native format.
+checkout and the imported source intact.
+
+The metadata layer can reserve a Git-compatible preparation for a full Connected
+tree whose original Git identity comes from a completed import in the current
+repository epoch. The node's source access is tied to the exact preparation
+lease. It cannot use that permission for ordinary repository exports. Each
+batch checks authorization, workspace generation and the live worker when
+opening the source objects. The PostgreSQL contract covers expiration, reclaim,
+draining and rejection of a file-only readiness acknowledgement. The CLI and
+node lifecycle still select the native format while placement integration is
+in progress.
 
 ## Unreleased node preparation diagnostics
 

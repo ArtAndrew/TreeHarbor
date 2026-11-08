@@ -712,3 +712,224 @@ async fn upgrade(version: i32) {
         .unwrap();
     cleanup(&f.schema).await;
 }
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL; Git workspace source stays bound to the current worker lease"]
+async fn git_workspace_history_read_is_fenced_by_its_preparation_lease() {
+    use treeharbor_core::SourceProfile;
+    use treeharbor_metadata::{
+        exports::ExportFence,
+        intake::{CommandContext, WorkspaceFormat, WorkspaceSpec},
+        preparations::{PreparedFiles, StorageSlot},
+    };
+
+    let mut f = Fixture::new().await;
+    f.bind().await;
+    let id = Uuid::new_v4();
+    let spec = spec_import();
+    request(&mut f, id, &spec).await;
+    let graph = graph();
+    let bridge = begin(&mut f, id, &graph).await;
+    let (_dir, store) = store(&f);
+    for object in &graph {
+        put(&mut f, &bridge, id, &store, object).await;
+    }
+    f.db.finish_github_import(&bridge, &cmd("finish-git-workspace-base"), id)
+        .await
+        .unwrap();
+    let native = graph.last().unwrap().id().unwrap();
+    let snapshot = graph[2].id().unwrap();
+    let scope = f.scope.clone();
+    let ctx = |key: &str| {
+        CommandContext::trusted(
+            scope.clone(),
+            key.into(),
+            "owner".into(),
+            Authority::Connected,
+            1,
+        )
+    };
+    let profile = SourceProfile::full();
+    f.db.put_source_profile(&ctx("full-git-profile"), &profile)
+        .await
+        .unwrap();
+    let sparse = SourceProfile::sparse(vec![
+        treeharbor_core::RepoPath::new(b"src".to_vec()).unwrap(),
+    ])
+    .unwrap();
+    f.db.put_source_profile(&ctx("sparse-git-profile"), &sparse)
+        .await
+        .unwrap();
+    assert!(matches!(
+        f.db.create_workspace(
+            &ctx("reject-sparse-git-workspace"),
+            &WorkspaceSpec {
+                id: Uuid::new_v4(),
+                base: RevisionRef::Native(native),
+                profile: *sparse.id().as_bytes(),
+                format: WorkspaceFormat::GitCompatible,
+            }
+        )
+        .await,
+        Err(Error::Invalid(_))
+    ));
+    let workspace = Uuid::new_v4();
+    f.db.create_workspace(
+        &ctx("request-git-workspace"),
+        &WorkspaceSpec {
+            id: workspace,
+            base: RevisionRef::Native(native),
+            profile: *profile.id().as_bytes(),
+            format: WorkspaceFormat::GitCompatible,
+        },
+    )
+    .await
+    .unwrap();
+    let node_token = token(
+        &mut f.db,
+        &f.scope,
+        "git-node",
+        K::Node,
+        &[P::RuntimeControl],
+    )
+    .await;
+    let node =
+        f.db.authorize(&node_token.secret, &f.scope, P::RuntimeControl)
+            .await
+            .unwrap();
+    let slot = StorageSlot {
+        storage: Uuid::new_v4(),
+        slot: Uuid::new_v4(),
+    };
+    f.db.register_node_storage(f.scope.tenant(), node.principal(), slot.storage, "operator")
+        .await
+        .unwrap();
+    assert!(
+        f.db.claim_preparation_for(&node, slot.storage, Uuid::new_v4(), 60, workspace)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(matches!(
+        f.db.open_source_export(
+            &node,
+            ExportFence {
+                authority: Authority::Connected,
+                epoch: 1,
+                revision: native,
+            },
+            60
+        )
+        .await,
+        Err(Error::Forbidden)
+    ));
+    let job =
+        f.db.claim_git_preparation_for(&node, slot.storage, Uuid::new_v4(), 60, workspace)
+            .await
+            .unwrap()
+            .unwrap();
+    assert!(matches!(
+        f.db.reserve_preparation(&node, &job, slot).await,
+        Err(Error::ExecutionState)
+    ));
+    let plan =
+        f.db.reserve_git_preparation(&node, &job, slot)
+            .await
+            .unwrap();
+    assert_eq!(plan.git_revision(), Some(GitOid::Sha1([7; 20])));
+    assert!(matches!(
+        f.db.complete_preparation(
+            &node,
+            &plan,
+            &PreparedFiles {
+                snapshot,
+                profile: profile.id(),
+                manifest_digest: [8; 32],
+            }
+        )
+        .await,
+        Err(Error::ReceiptMismatch)
+    ));
+    let reader = f.reader().await;
+    assert!(matches!(
+        f.db.open_git_preparation_source(&reader, &plan, 60).await,
+        Err(Error::Forbidden)
+    ));
+
+    let read =
+        f.db.open_git_preparation_source(&node, &plan, 60)
+            .await
+            .unwrap();
+    assert_eq!(read.snapshot(), snapshot);
+    let root = read.root();
+    let mut objects =
+        f.db.read_source_export(&read, &store, std::slice::from_ref(&root), 1024 * 1024)
+            .await
+            .unwrap()
+            .read()
+            .unwrap();
+    assert_eq!(objects[0].id(), native);
+    let children: Vec<_> = objects.pop().unwrap().children().collect();
+    assert!(children.iter().any(|child| child.id() == snapshot));
+    assert_eq!(
+        f.db.read_source_export(&read, &store, &children, 1024 * 1024)
+            .await
+            .unwrap()
+            .len(),
+        children.len()
+    );
+
+    let raw = connection(&f.schema).await;
+    raw.execute(
+        "UPDATE th_outbox SET lease_until=clock_timestamp()-interval '1 second' WHERE id=$1",
+        &[&job.id],
+    )
+    .await
+    .unwrap();
+    assert!(matches!(
+        f.db.read_source_export(&read, &store, std::slice::from_ref(&root), 1024 * 1024)
+            .await,
+        Err(Error::StaleLease)
+    ));
+    assert!(matches!(
+        f.db.finish_source_export(read).await,
+        Err(Error::StaleLease)
+    ));
+    let replacement =
+        f.db.claim_git_preparation_for(&node, slot.storage, Uuid::new_v4(), 60, workspace)
+            .await
+            .unwrap()
+            .unwrap();
+    let resumed =
+        f.db.reserve_git_preparation(&node, &replacement, slot)
+            .await
+            .unwrap();
+    assert_eq!(resumed.attempt(), plan.attempt());
+    assert!(matches!(
+        f.db.open_git_preparation_source(&node, &plan, 60).await,
+        Err(Error::StaleLease)
+    ));
+    let resumed_read =
+        f.db.open_git_preparation_source(&node, &resumed, 60)
+            .await
+            .unwrap();
+    assert!(matches!(
+        f.db.read_source_export(&resumed_read, &store, &[root], 1024 * 1024)
+            .await,
+        Err(Error::ReadScope)
+    ));
+    let resumed_root = resumed_read.root();
+    f.db.drain_workspace(&ctx("drain-git-workspace"), workspace, plan.generation())
+        .await
+        .unwrap();
+    assert!(matches!(
+        f.db.read_source_export(&resumed_read, &store, &[resumed_root], 1024 * 1024)
+            .await,
+        Err(Error::ExecutionState)
+    ));
+    assert!(matches!(
+        f.db.finish_source_export(resumed_read).await,
+        Err(Error::ExecutionState)
+    ));
+    cleanup(&f.schema).await;
+}

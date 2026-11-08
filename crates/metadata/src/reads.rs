@@ -1,7 +1,9 @@
 //! Incremental local graph reads. These are trusted service primitives, not an
 //! authentication boundary or a remotely serializable object-capability protocol.
 use crate::catalog::{ObjectKey, ObjectLease, live_lease, live_read_lease, settings};
-use crate::{Error, Metadata, Result, Scope, ttl_valid};
+use crate::{
+    Error, Metadata, Result, Scope, access::repository_lock, exports::SourceExport, ttl_valid,
+};
 use std::collections::BTreeSet;
 use treeharbor_core::{Object, ObjectId};
 use treeharbor_storage::{ManagedStore, OpenedObject};
@@ -182,7 +184,7 @@ impl Metadata {
         nodes: &[ReadNode],
         byte_limit: u64,
     ) -> Result<ReadBatch> {
-        self.open_read_batch_inner(session, store, nodes, byte_limit, false)
+        self.open_read_batch_inner(session, store, nodes, byte_limit, false, None)
             .await
     }
 
@@ -195,8 +197,26 @@ impl Metadata {
         nodes: &[ReadNode],
         byte_limit: u64,
     ) -> Result<ReadBatch> {
-        self.open_read_batch_inner(session, store, nodes, byte_limit, true)
+        self.open_read_batch_inner(session, store, nodes, byte_limit, true, None)
             .await
+    }
+
+    pub(crate) async fn open_preparation_read(
+        &mut self,
+        export: &SourceExport,
+        store: &ManagedStore,
+        nodes: &[ReadNode],
+        byte_limit: u64,
+    ) -> Result<ReadBatch> {
+        self.open_read_batch_inner(
+            export.session(),
+            store,
+            nodes,
+            byte_limit,
+            true,
+            Some(export),
+        )
+        .await
     }
 
     async fn open_read_batch_inner(
@@ -206,6 +226,7 @@ impl Metadata {
         nodes: &[ReadNode],
         byte_limit: u64,
         prefix: bool,
+        preparation: Option<&SourceExport>,
     ) -> Result<ReadBatch> {
         if nodes.is_empty()
             || nodes.len() > MAX_READ_OBJECTS
@@ -242,6 +263,10 @@ impl Metadata {
         // a batch: the commit below must succeed before descriptors escape.
         tx.batch_execute("SET LOCAL idle_in_transaction_session_timeout='5s'")
             .await?;
+        if let Some(export) = preparation {
+            repository_lock(&tx, export.scope(), false).await?;
+            export.validate_in(&tx).await?;
+        }
         live_read_lease(&tx, &session.lease).await?;
         let rows = tx.query("SELECT o.generation,o.backend,o.kind,o.length,o.state, \
             (r.parent IS NULL OR EXISTS(SELECT 1 FROM th_object_edges e WHERE e.tenant=o.tenant AND e.parent=r.parent AND e.parent_generation=r.parent_generation AND e.child=o.digest AND e.child_generation=o.generation)) \
@@ -300,6 +325,10 @@ impl Metadata {
                 return Err(Error::ReceiptMismatch);
             }
             objects.push(PendingRead { file, key, kind });
+        }
+        if let Some(export) = preparation {
+            export.validate_in(&tx).await?;
+            live_read_lease(&tx, &session.lease).await?;
         }
         tx.commit().await?;
         Ok(ReadBatch {

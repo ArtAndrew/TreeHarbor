@@ -4,11 +4,13 @@ use crate::{
     Authority, Error, Job, Metadata, Result, Scope,
     access::{Authorization, Permission, repository_lock},
     catalog::settings,
-    identifier, tenant_valid, ttl_valid,
+    identifier,
+    intake::WorkspaceFormat,
+    tenant_valid, ttl_valid,
 };
 use serde_json::{Value, json};
 use tokio_postgres::Transaction;
-use treeharbor_core::{ObjectId, ProfileId, RevisionRef, SourceProfile};
+use treeharbor_core::{GitOid, ObjectId, ProfileId, RevisionRef, SourceProfile};
 use uuid::Uuid;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -33,6 +35,7 @@ pub struct Preparation {
     snapshot: ObjectId,
     profile: SourceProfile,
     holder: String,
+    git_revision: Option<GitOid>,
     volume_digest: Option<[u8; 32]>,
 }
 impl Preparation {
@@ -71,6 +74,9 @@ impl Preparation {
     }
     pub fn source_holder(&self) -> &str {
         &self.holder
+    }
+    pub fn git_revision(&self) -> Option<GitOid> {
+        self.git_revision
     }
     pub fn volume_digest(&self) -> Option<[u8; 32]> {
         self.volume_digest
@@ -183,14 +189,77 @@ async fn bound_preparation(
     plan: &Preparation,
 ) -> Result<tokio_postgres::Row> {
     let scope = auth.scope();
-    tx.query_opt(r#"SELECT p.state,p.manifest_digest,p.completed_worker,p.completed_job_generation,w.state
+    let format = if plan.git_revision.is_some() {
+        WorkspaceFormat::GitCompatible
+    } else {
+        WorkspaceFormat::Native
+    };
+    tx.query_opt(r#"SELECT p.state,p.manifest_digest,p.completed_worker,p.completed_job_generation,w.state,w.pin_holder
             FROM th_workspace_preparations p JOIN th_workspaces w ON w.tenant=p.tenant AND w.repository=p.repository AND w.workspace=p.workspace
             JOIN th_bases b ON b.tenant=w.tenant AND b.repository=w.repository AND b.revision=w.base_revision
             WHERE p.attempt=$1 AND p.tenant=$2 AND p.repository=$3 AND p.node=$4 AND p.storage_instance=$5 AND p.slot=$6
             AND p.generation=w.generation AND p.epoch=w.epoch AND p.generation=$7 AND p.epoch=$8 AND p.job_id=$9
             AND w.node=p.node AND w.runtime IS NULL AND p.base_revision=w.base_revision AND p.snapshot=b.snapshot AND p.profile=w.resolved_profile
-            AND p.snapshot=$10 AND p.profile=$11 AND p.workspace=$12 AND p.base_revision=$13 AND w.state IN ('requested','ready')"#,
-            &[&plan.attempt,&scope.tenant(),&scope.repository(),&auth.principal(),&plan.slot.storage,&plan.slot.slot,&plan.generation,&plan.epoch,&plan.job.id,&plan.snapshot.as_bytes().as_slice(),&plan.profile.id().as_bytes().as_slice(),&plan.workspace,&plan.revision.to_string()]).await?.ok_or(Error::ExecutionState)
+            AND p.snapshot=$10 AND p.profile=$11 AND p.workspace=$12 AND p.base_revision=$13 AND w.state IN ('requested','ready') AND w.format=$14"#,
+            &[&plan.attempt,&scope.tenant(),&scope.repository(),&auth.principal(),&plan.slot.storage,&plan.slot.slot,&plan.generation,&plan.epoch,&plan.job.id,&plan.snapshot.as_bytes().as_slice(),&plan.profile.id().as_bytes().as_slice(),&plan.workspace,&plan.revision.to_string(),&format.name()]).await?.ok_or(Error::ExecutionState)
+}
+
+/// A Git identity admitted by the Connected import path in this repository epoch.
+pub(crate) async fn completed_git_import(
+    tx: &Transaction<'_>,
+    scope: &Scope,
+    epoch: i64,
+    native: ObjectId,
+) -> Result<GitOid> {
+    let rows = tx.query(
+        "SELECT DISTINCT git_revision FROM th_github_imports WHERE tenant=$1 AND repository=$2 AND epoch=$3 AND native_commit=$4 AND state='completed' LIMIT 2",
+        &[&scope.tenant(), &scope.repository(), &epoch, &native.as_bytes().as_slice()],
+    ).await?;
+    match rows.as_slice() {
+        [] => Err(Error::NotFound),
+        [row] => match row.get::<_, String>(0).parse()? {
+            RevisionRef::Git(oid) => Ok(oid),
+            _ => Err(Error::SchemaMismatch),
+        },
+        _ => Err(Error::SchemaMismatch),
+    }
+}
+
+pub(crate) async fn git_source_context(
+    tx: &Transaction<'_>,
+    auth: &Authorization,
+    plan: &Preparation,
+) -> Result<(ObjectId, ObjectId, String)> {
+    if auth.scope().tenant() != plan.scope().tenant()
+        || auth.scope().repository() != plan.scope().repository()
+        || auth.principal() != plan.node
+    {
+        return Err(Error::Forbidden);
+    }
+    let (RevisionRef::Native(native), Some(_)) = (plan.revision, plan.git_revision) else {
+        return Err(Error::ReadScope);
+    };
+    if plan.authority != Authority::Connected || plan.profile.paths().is_some() {
+        return Err(Error::ReadScope);
+    }
+    authorize(tx, auth).await?;
+    if registered_storage(tx, auth).await? != plan.slot.storage
+        || current_authority(tx, auth.scope(), plan.epoch).await? != plan.authority
+    {
+        return Err(Error::Fenced);
+    }
+    let row = bound_preparation(tx, auth, plan).await?;
+    if row.get::<_, String>(0) != "reserved" || row.get::<_, String>(4) != "requested" {
+        return Err(Error::ExecutionState);
+    }
+    // The completed import record is immutable. The private plan got its Git
+    // identity at reservation; the authority and epoch above fence it here.
+    if row.get::<_, String>(5) != plan.holder {
+        return Err(Error::ReadScope);
+    }
+    live_job(tx, auth, &plan.job).await?;
+    authorize(tx, auth).await?;
+    Ok((native, plan.snapshot, plan.holder.clone()))
 }
 
 impl Metadata {
@@ -300,8 +369,15 @@ impl Metadata {
         worker: Uuid,
         ttl_seconds: i32,
     ) -> Result<Option<Job>> {
-        self.claim_preparation_matching(auth, storage, worker, ttl_seconds, None)
-            .await
+        self.claim_preparation_matching(
+            auth,
+            storage,
+            worker,
+            ttl_seconds,
+            None,
+            WorkspaceFormat::Native,
+        )
+        .await
     }
 
     /// Claim only this workspace within the ordinary node/storage/lease scope.
@@ -317,8 +393,38 @@ impl Metadata {
         if workspace.is_nil() {
             return Err(Error::Invalid("workspace"));
         }
-        self.claim_preparation_matching(auth, storage, worker, ttl_seconds, Some(workspace))
-            .await
+        self.claim_preparation_matching(
+            auth,
+            storage,
+            worker,
+            ttl_seconds,
+            Some(workspace),
+            WorkspaceFormat::Native,
+        )
+        .await
+    }
+
+    /// Opt-in claim for controllers that can prepare an exact Git workspace.
+    pub async fn claim_git_preparation_for(
+        &mut self,
+        auth: &Authorization,
+        storage: Uuid,
+        worker: Uuid,
+        ttl_seconds: i32,
+        workspace: Uuid,
+    ) -> Result<Option<Job>> {
+        if workspace.is_nil() {
+            return Err(Error::Invalid("workspace"));
+        }
+        self.claim_preparation_matching(
+            auth,
+            storage,
+            worker,
+            ttl_seconds,
+            Some(workspace),
+            WorkspaceFormat::GitCompatible,
+        )
+        .await
     }
 
     async fn claim_preparation_matching(
@@ -328,6 +434,7 @@ impl Metadata {
         worker: Uuid,
         ttl_seconds: i32,
         workspace: Option<Uuid>,
+        format: WorkspaceFormat,
     ) -> Result<Option<Job>> {
         ttl_valid(ttl_seconds)?;
         let tx = self.client.transaction().await?;
@@ -345,14 +452,14 @@ impl Metadata {
             WHERE o.tenant=$1 AND o.repository=$2 AND o.kind='workspace.prepare'
               AND ($6::uuid IS NULL OR w.workspace=$6)
               AND ((o.state='pending' AND o.available_at<=clock_timestamp()) OR (o.state='running' AND o.lease_until<=clock_timestamp()))
-              AND w.state='requested' AND w.format='native' AND w.resolved_profile IS NOT NULL AND w.runtime IS NULL
+              AND w.state='requested' AND w.format=$7 AND w.resolved_profile IS NOT NULL AND w.runtime IS NULL
               AND (w.node IS NULL OR w.node=$3) AND w.epoch=r.epoch AND r.state='active'
               AND o.payload->>'generation'=w.generation::text AND o.payload->>'epoch'=w.epoch::text
             ORDER BY o.id LIMIT 1 FOR UPDATE OF o SKIP LOCKED
         ) UPDATE th_outbox o SET state='running',worker=$4,generation=generation+1,
             lease_until=clock_timestamp()+($5::integer * interval '1 second')
           FROM selected WHERE o.id=selected.id RETURNING o.id,o.generation,o.kind,o.payload"#,
-            &[&scope.tenant(),&scope.repository(),&auth.principal(),&worker,&ttl_seconds,&workspace]).await?;
+            &[&scope.tenant(),&scope.repository(),&auth.principal(),&worker,&ttl_seconds,&workspace,&format.name()]).await?;
         let job = row.map(|row| Job {
             id: row.get(0),
             scope: scope.clone(),
@@ -374,6 +481,27 @@ impl Metadata {
         job: &Job,
         slot: StorageSlot,
     ) -> Result<Preparation> {
+        self.reserve_preparation_matching(auth, job, slot, WorkspaceFormat::Native)
+            .await
+    }
+
+    pub async fn reserve_git_preparation(
+        &mut self,
+        auth: &Authorization,
+        job: &Job,
+        slot: StorageSlot,
+    ) -> Result<Preparation> {
+        self.reserve_preparation_matching(auth, job, slot, WorkspaceFormat::GitCompatible)
+            .await
+    }
+
+    async fn reserve_preparation_matching(
+        &mut self,
+        auth: &Authorization,
+        job: &Job,
+        slot: StorageSlot,
+        format: WorkspaceFormat,
+    ) -> Result<Preparation> {
         if slot.slot.is_nil() || slot.storage.is_nil() {
             return Err(Error::Invalid("storage slot"));
         }
@@ -392,8 +520,8 @@ impl Metadata {
             JOIN th_source_profiles p ON p.tenant=w.tenant AND p.repository=w.repository AND p.digest=w.resolved_profile
             LEFT JOIN th_node_volumes v ON v.storage_instance=$7 AND v.slot=$8 AND v.tenant=w.tenant AND v.node=$6
             WHERE w.tenant=$1 AND w.repository=$2 AND w.workspace=$3 AND w.generation=$4 AND w.epoch=$5
-            AND w.state='requested' AND w.format='native' AND w.runtime IS NULL AND (w.node IS NULL OR w.node=$6)"#,
-            &[&scope.tenant(),&scope.repository(),&workspace,&generation,&epoch,&auth.principal(),&slot.storage,&slot.slot]).await?.ok_or(Error::ExecutionState)?;
+            AND w.state='requested' AND w.format=$9 AND w.runtime IS NULL AND (w.node IS NULL OR w.node=$6)"#,
+            &[&scope.tenant(),&scope.repository(),&workspace,&generation,&epoch,&auth.principal(),&slot.storage,&slot.slot,&format.name()]).await?.ok_or(Error::ExecutionState)?;
         let revision: String = row.get(0);
         let parsed_revision = revision.parse()?;
         let snapshot = digest(row.get(1))?;
@@ -402,6 +530,17 @@ impl Metadata {
         if profile.id().as_bytes() != &profile_bytes {
             return Err(Error::SchemaMismatch);
         }
+        let git_revision = if format == WorkspaceFormat::GitCompatible {
+            let RevisionRef::Native(native) = parsed_revision else {
+                return Err(Error::ReadScope);
+            };
+            if authority != Authority::Connected || profile.paths().is_some() {
+                return Err(Error::ReadScope);
+            }
+            Some(completed_git_import(&tx, scope, epoch, native).await?)
+        } else {
+            None
+        };
         let holder: String = row.get(4);
         let volume_digest = row.get::<_, Option<Vec<u8>>>(5).map(digest).transpose()?;
         tx.execute(r#"INSERT INTO th_workspace_preparations(attempt,tenant,repository,workspace,generation,epoch,node,storage_instance,slot,job_id,base_revision,snapshot,profile,state)
@@ -439,6 +578,7 @@ impl Metadata {
             snapshot: ObjectId::from_bytes(snapshot),
             profile,
             holder,
+            git_revision,
             volume_digest,
         })
     }
@@ -524,6 +664,10 @@ impl Metadata {
             || auth.principal() != plan.node
         {
             return Err(Error::Forbidden);
+        }
+        // File-only acknowledgements cannot publish a Git-compatible placement.
+        if plan.git_revision.is_some() {
+            return Err(Error::ReceiptMismatch);
         }
         if observed.snapshot != plan.snapshot || observed.profile != plan.profile.id() {
             return Err(Error::ReceiptMismatch);

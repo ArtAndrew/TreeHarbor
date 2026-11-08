@@ -1,8 +1,9 @@
 //! Authenticated complete-source reads from a repository's registered native base.
 use crate::{
-    Authority, Error, Metadata, Result,
+    Authority, Error, Metadata, Result, Scope,
     access::{Authorization, Permission, repository_lock},
     catalog::{lease_pin_in, settings},
+    preparations::Preparation,
     reads::{ReadBatch, ReadNode, ReadSession},
 };
 use tokio_postgres::Transaction;
@@ -27,6 +28,7 @@ enum Fence {
     RestoreDecision { epoch: i64, key: String },
     Source(ExportFence),
     GithubProjection { epoch: i64, projection: Uuid },
+    Preparation(Box<Preparation>),
 }
 async fn input(
     tx: &Transaction<'_>,
@@ -46,6 +48,7 @@ async fn input(
         Fence::GithubProjection { epoch, projection } => {
             crate::github::projections::export_context(tx, auth, *epoch, *projection).await
         }
+        Fence::Preparation(plan) => crate::preparations::git_source_context(tx, auth, plan).await,
     }
 }
 impl SourceExport {
@@ -54,6 +57,25 @@ impl SourceExport {
     }
     pub fn snapshot(&self) -> ObjectId {
         self.snapshot
+    }
+    pub(crate) fn scope(&self) -> &Scope {
+        self.auth.scope()
+    }
+
+    pub(crate) fn session(&self) -> &ReadSession {
+        &self.session
+    }
+
+    pub(crate) fn is_preparation(&self) -> bool {
+        matches!(self.fence, Fence::Preparation(_))
+    }
+
+    pub(crate) async fn validate_in(&self, tx: &Transaction<'_>) -> Result<()> {
+        let (revision, snapshot, _) = input(tx, &self.auth, &self.fence).await?;
+        if snapshot != self.snapshot || revision != self.root().id() {
+            return Err(Error::ReadScope);
+        }
+        Ok(())
     }
 }
 async fn context(
@@ -126,6 +148,17 @@ impl Metadata {
         self.open_export(auth, Fence::GithubProjection { epoch, projection }, ttl)
             .await
     }
+    /// Read only the complete source of this exact live Git preparation.
+    pub async fn open_git_preparation_source(
+        &mut self,
+        auth: &Authorization,
+        plan: &Preparation,
+        ttl: i32,
+    ) -> Result<SourceExport> {
+        self.open_export(auth, Fence::Preparation(Box::new(plan.clone())), ttl)
+            .await
+    }
+
     async fn open_export(
         &mut self,
         auth: &Authorization,
@@ -153,10 +186,7 @@ impl Metadata {
         let tx = self.client.transaction().await?;
         settings(&tx).await?;
         repository_lock(&tx, read.auth.scope(), false).await?;
-        let (revision, snapshot, _) = input(&tx, &read.auth, &read.fence).await?;
-        if snapshot != read.snapshot || revision != read.root().id() {
-            return Err(Error::ReadScope);
-        }
+        read.validate_in(&tx).await?;
         tx.commit().await?;
         Ok(())
     }
@@ -167,6 +197,11 @@ impl Metadata {
         nodes: &[ReadNode],
         byte_limit: u64,
     ) -> Result<ReadBatch> {
+        if read.is_preparation() {
+            return self
+                .open_preparation_read(read, store, nodes, byte_limit)
+                .await;
+        }
         self.check_source_export(read).await?;
         self.open_read_prefix(&read.session, store, nodes, byte_limit)
             .await
