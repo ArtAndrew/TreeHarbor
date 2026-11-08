@@ -933,3 +933,183 @@ async fn git_workspace_history_read_is_fenced_by_its_preparation_lease() {
     ));
     cleanup(&f.schema).await;
 }
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL; trusted node observations, no runtime executed"]
+async fn managed_git_run_and_seal_keep_the_exact_imported_placement() {
+    use treeharbor_core::{CaptureSelection, RepoPath, SourceProfile};
+    use treeharbor_metadata::{
+        intake::{WorkspaceFormat, WorkspaceSpec},
+        preparations::{PreparedFiles, StorageSlot},
+        runs::{RunRequest, RuntimeVolume},
+        seals::SealRequest,
+        uploads::UploadLimits,
+    };
+    use treeharbor_runtime::{Definition, Profile};
+
+    let mut f = Fixture::new().await;
+    f.bind().await;
+    let id = Uuid::new_v4();
+    request(&mut f, id, &spec_import()).await;
+    let graph = graph();
+    let bridge = begin(&mut f, id, &graph).await;
+    let (_dir, store) = store(&f);
+    for object in &graph {
+        put(&mut f, &bridge, id, &store, object).await;
+    }
+    f.db.finish_github_import(&bridge, &cmd("finish-runtime-source"), id)
+        .await
+        .unwrap();
+    let base = RevisionRef::Native(graph.last().unwrap().id().unwrap());
+    let snapshot = graph[2].id().unwrap();
+    let owner = token(
+        &mut f.db,
+        &f.scope,
+        "writer",
+        K::Agent,
+        &[P::WorkspaceWrite],
+    )
+    .await;
+    let owner =
+        f.db.authorize(&owner.secret, &f.scope, P::WorkspaceWrite)
+            .await
+            .unwrap();
+    let ctx = |key: &str| owner.context(key.into(), Authority::Connected, 1);
+    let node = token(&mut f.db, &f.scope, "node", K::Node, &[P::RuntimeControl]).await;
+    let node =
+        f.db.authorize(&node.secret, &f.scope, P::RuntimeControl)
+            .await
+            .unwrap();
+    let slot = StorageSlot {
+        storage: Uuid::new_v4(),
+        slot: Uuid::new_v4(),
+    };
+    f.db.register_node_storage(f.scope.tenant(), node.principal(), slot.storage, "operator")
+        .await
+        .unwrap();
+    let runtime = Profile::new(Definition {
+        version: 1,
+        image: format!("sha256:{}", "11".repeat(32)),
+        uid: 1001,
+        gid: 1001,
+        memory_bytes: 268435456,
+        nano_cpus: 1_000_000_000,
+        max_processes: 64,
+        timeout_ms: 10000,
+        workspace_bytes: 134217728,
+    })
+    .unwrap();
+    f.db.register_runtime_profile(&f.scope, &runtime, "operator")
+        .await
+        .unwrap();
+    f.db.register_runtime_volume(
+        f.scope.tenant(),
+        node.principal(),
+        &RuntimeVolume {
+            slot,
+            digest: [71; 32],
+            limit_bytes: runtime.definition().workspace_bytes,
+        },
+        "operator",
+    )
+    .await
+    .unwrap();
+    let source = SourceProfile::full();
+    f.db.put_source_profile(&ctx("full"), &source)
+        .await
+        .unwrap();
+    let workspace = Uuid::new_v4();
+    f.db.create_workspace(
+        &ctx("workspace"),
+        &WorkspaceSpec {
+            id: workspace,
+            base,
+            profile: *source.id().as_bytes(),
+            format: WorkspaceFormat::GitCompatible,
+        },
+    )
+    .await
+    .unwrap();
+    let job =
+        f.db.claim_git_preparation_for(&node, slot.storage, Uuid::new_v4(), 60, workspace)
+            .await
+            .unwrap()
+            .unwrap();
+    let preparation =
+        f.db.reserve_git_preparation(&node, &job, slot)
+            .await
+            .unwrap();
+    let origin = GitOid::Sha1([7; 20]);
+    let observed = PreparedFiles {
+        snapshot,
+        profile: source.id(),
+        manifest_digest: [8; 32],
+    };
+    assert!(matches!(
+        f.db.complete_git_preparation(&node, &preparation, &observed, GitOid::Sha1([9; 20]))
+            .await,
+        Err(Error::ReceiptMismatch)
+    ));
+    f.db.complete_git_preparation(&node, &preparation, &observed, origin)
+        .await
+        .unwrap();
+
+    let run = RunRequest {
+        run: Uuid::new_v4(),
+        workspace,
+        generation: 1,
+        profile: runtime.digest(),
+        argv: vec!["/usr/bin/git".into(), "status".into()],
+        agent: "writer".into(),
+        task: "task".into(),
+    };
+    f.db.request_run(&ctx("run"), &run).await.unwrap();
+    let seal = SealRequest {
+        seal: Uuid::new_v4(),
+        run: run.run,
+        generation: 1,
+        selection: CaptureSelection::new(
+            vec![RepoPath::new(b"src".to_vec()).unwrap()],
+            vec![],
+            vec![],
+        )
+        .unwrap(),
+        limits: UploadLimits {
+            objects: 100,
+            bytes: 1048576,
+            ttl_seconds: 300,
+        },
+    };
+    f.db.request_workspace_seal(&ctx("seal"), &seal)
+        .await
+        .unwrap();
+    assert!(
+        f.db.claim_workspace_seal_for(&node, slot.storage, Uuid::new_v4(), 60, seal.seal)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    let plan =
+        f.db.claim_run_for(&node, slot.storage, Uuid::new_v4(), 60, run.run)
+            .await
+            .unwrap()
+            .unwrap();
+    assert!(!plan.is_check());
+    assert!(plan.stop_requested());
+    assert_eq!(plan.prepared().git_revision, Some(origin));
+    assert_eq!(plan.prepared().attempt, preparation.attempt());
+    assert_eq!(plan.prepared().revision, base);
+    // A never-started run can now be retired. This is a metadata contract only.
+    f.db.finish_run(&node, &plan).await.unwrap();
+    let captured =
+        f.db.claim_workspace_seal_for(&node, slot.storage, Uuid::new_v4(), 60, seal.seal)
+            .await
+            .unwrap()
+            .unwrap();
+    let placement = captured.context().prepared();
+    assert_eq!(placement.git_revision, Some(origin));
+    assert_eq!(placement.snapshot, snapshot);
+    assert_eq!(placement.manifest_digest, observed.manifest_digest);
+    assert_eq!(placement.slot, slot);
+    cleanup(&f.schema).await;
+}

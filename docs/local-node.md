@@ -104,8 +104,10 @@ against the original imported commit and publishes the working files and their
 independent `.git` together. The history spool and Git projection have separate
 object, byte and edge limits. `preparation_statistics` only accounts for file
 materialization. Recovery verifies the durable receipt and can reopen the same
-placement without invoking Git or inspecting agent-edited Git metadata. Managed
-execution and stopped-file capture for this format are still pending.
+placement without invoking Git or inspecting agent-edited Git metadata. For
+managed agent execution, register a bounded Linux volume and pass its `--slot`
+at preparation time. See [managed runs](managed-runs.md) for the run and capture
+workflow. The agent's image supplies Git when the task needs it.
 
 Reopen an already acknowledged workspace in a new process:
 
