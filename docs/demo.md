@@ -4,7 +4,11 @@ This 36-second animation walks through a **recorded real trial from 28 October
 2026**. It is an illustration of recorded results, not terminal footage or a new
 execution. The two agents are deterministic Rust scripts, not LLMs.
 
-![Recorded TreeHarbor trial: one pinned source, two concurrent scripted agents, immutable ChangeSets, two real GitHub draft PRs, then Git export after workspace cleanup](assets/connected-trial.gif)
+[Play or download the 36-second MP4](assets/connected-trial.mp4) ·
+[Open the animated GIF directly](https://raw.githubusercontent.com/ArtAndrew/TreeHarbor/main/docs/assets/connected-trial.gif) ·
+[Read the steps](#what-happened)
+
+![Six frames showing the recorded trial from pinned source, through concurrent tasks and draft PRs, to Git export after cleanup](assets/connected-trial-storyboard.png)
 
 ## What happened
 
@@ -36,6 +40,6 @@ The host and credentials need manual preparation. No private keys or ready-to-us
 credentials are distributed. The source/runtime/permission boundaries are in
 [the architecture overview](../README.md#the-workflow).
 
-Prefer text or reduced motion? The numbered steps above contain the same result
-without animation. A scripted acceptance trial does not establish production
+The storyboard and numbered steps contain the full walkthrough. A scripted
+acceptance trial does not establish production
 readiness, LLM compatibility, customer adoption or a performance advantage.

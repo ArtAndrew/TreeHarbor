@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Create a small deterministic Git fixture in a NEW directory; no user code runs."""
+"""Create a deterministic Git fixture in a NEW directory; no user code runs."""
 import argparse
 import os
 from pathlib import Path
@@ -7,13 +7,17 @@ import subprocess
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('directory', type=Path)
+parser.add_argument('--modules', type=int, default=8)
+parser.add_argument('--files-per-module', type=int, default=16)
 args = parser.parse_args()
+if not (1 <= args.modules <= 64 and 1 <= args.files_per_module <= 128):
+    parser.error('modules must be 1..64 and files per module must be 1..128')
 root = args.directory.resolve()
 root.mkdir(mode=0o700)  # Refuse existing output, including a symlink.
-for module in range(8):
+for module in range(args.modules):
     directory = root / f'module-{module}'
     directory.mkdir()
-    for index in range(16):
+    for index in range(args.files_per_module):
         data = f'module={module} file={index}\n'.encode() + b'x' * 4096
         (directory / f'file-{index:02}.txt').write_bytes(data[:4096])
 (root / 'README.txt').write_text('Synthetic TreeHarbor file preparation fixture. No build or agent execution.\n')

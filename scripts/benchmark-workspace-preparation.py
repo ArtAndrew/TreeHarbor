@@ -215,16 +215,24 @@ with tempfile.TemporaryDirectory(prefix='th-import-') as tmp:
         for wave in range(args.iterations):
             order=['treeharbor','git-worktree']; rng.shuffle(order)
             for system in order:
+                preparation_phases = None
                 start=time.perf_counter()
                 if system=='treeharbor':
                     workspace=str(uuid.uuid4())
                     created_reply=client('workspace-create','--key','create-'+workspace,
                         '--authority','standalone','--epoch','1','--workspace',workspace,
                         '--base',reply['result']['revision'],'--profile-digest',profile)
+                    requested = time.perf_counter()
                     prepared=node('prepare-once','--workspace',workspace)
+                    materialized = time.perf_counter()
                     if prepared['state']!='files_ready':
                         raise RuntimeError('workspace did not become file-ready')
                     path=Path(prepared['path'])
+                    preparation_phases = {
+                        'workspace_request_seconds': requested - start,
+                        'node_prepare_command_seconds': materialized - requested,
+                        'materialization_counters': prepared.get('preparation_statistics'),
+                    }
                 else:
                     path=root/('git-worktree-'+str(wave))
                     git('-C',mirror,'worktree','add','--detach',path,revision)
@@ -244,14 +252,17 @@ with tempfile.TemporaryDirectory(prefix='th-import-') as tmp:
                 else:
                     git('-C',mirror,'worktree','remove',path)
                 cleanup_seconds=time.perf_counter()-cleanup_start
-                observations.append({'wave':wave,'order':order.index(system),'system':system,
+                observation = {'wave':wave,'order':order.index(system),'system':system,
                     'files_ready_seconds':ready,'first_read_seconds':useful_seconds,
                     'cleanup_seconds':cleanup_seconds,'workspace_allocated_bytes':disk,
-                    'verified_bytes_modes_paths':True})
+                    'verified_bytes_modes_paths':True}
+                if preparation_phases is not None:
+                    observation['treeharbor_preparation'] = preparation_phases
+                observations.append(observation)
         medians={system:{key:statistics.median(o[key] for o in observations if o['system']==system)
                  for key in ['files_ready_seconds','first_read_seconds','cleanup_seconds']}
                  for system in ['treeharbor','git-worktree']}
-        report={'version':1,'scope':'local-full-file-preparation',
+        report={'version':2,'scope':'local-full-file-preparation',
             'source_revision':revision,'binary_sha256':hashlib.sha256(BIN.read_bytes()).hexdigest(),
             'binary_version':run(BIN,'--version').decode().strip(),
             'platform':platform.platform(),'machine':platform.machine(),'logical_cpus':os.cpu_count(),

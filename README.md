@@ -41,7 +41,7 @@ trial with scripted agents, not LLMs. Setup is manual today; the
 you invest time. We are looking for the first five external pilot reports, including
 failed installs and reasons you chose another tool.
 
-[![36-second walkthrough of the recorded two-scripted-agent trial; real draft PRs and Git export after cleanup, not live footage](docs/assets/connected-trial.gif)](docs/demo.md)
+[![Preview of the recorded trial showing two draft PRs. Open the walkthrough for video and all six steps.](docs/assets/connected-trial-preview.png)](docs/demo.md)
 
 ## Who is it for?
 

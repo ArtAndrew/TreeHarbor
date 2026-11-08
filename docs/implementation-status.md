@@ -37,6 +37,16 @@ They check actual materialized content/counters, edited-file preservation and
 unavailable historical statistics. These counters are diagnostic data, not a
 latency benchmark, physical disk measurement or evidence of performance superiority.
 
+The [phase probe](benchmark-preparation.md#preparation-phases--8-november-2026)
+records five randomized waves per system for each of two deterministic fixtures.
+The optimized macOS build verified and cleaned all twenty preparations.
+The median node command took 411 ms on 131 entries and 5,519 ms on 2,051 entries.
+It includes process startup, database operations and file preparation. The raw
+reports retain the binary hash, commands' timings and materialization counters.
+
+The [recorded Connected trial](demo.md) has an MP4 with six distinct scenes
+verified by decoding, a static storyboard and a direct link to the GIF.
+
 ## 0.1.12-alpha.1 release scope
 
 Current documentation additions: [first-run checkpoints](try-treeharbor.md), a

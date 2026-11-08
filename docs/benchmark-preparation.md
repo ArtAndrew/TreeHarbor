@@ -31,6 +31,8 @@ python3 scripts/create-preparation-fixture.py /absolute/path/to/new-fixture
 
 Save the printed full commit ID. The fixture contains 131 tracked entries, including
 an executable and a relative symlink, with about 512 KiB of logical file content.
+For the 2,051-entry variant, add `--modules 16 --files-per-module 128` and use
+a different output directory. Each generated data file is 4 KiB.
 Put your disposable local database connection in a mode-0600 file; use local socket
 authentication or `PGPASSFILE`, not a password in the connection string/arguments.
 
@@ -57,6 +59,11 @@ will fail the comparison rather than silently compare different trees.
 - TreeHarbor timing starts before the authenticated workspace request and includes
   node process startup, preparation, durable readiness and the first useful read.
   Git timing starts before worktree creation and includes the same file read.
+- Version 2 observations split TreeHarbor preparation into the workspace request
+  and the `node prepare-once` command. The latter includes process startup,
+  database connections, job claim, file preparation and readiness publication.
+  Materialization counters are recorded when the binary reports them. A missing
+  measurement is `null`, and encoded object bytes are local reads in this probe.
 - All file bytes, executable bits, relative symlink targets and the complete leaf
   path set are checked afterwards. Private permission bits differ by design.
 - Cleanup is timed separately: TreeHarbor drain/physical cleanup and Git worktree
@@ -99,3 +106,19 @@ its full configuration before making purchasing or capacity decisions.
 The broader cold/warm, concurrency, server-cost and analogue matrix remains open.
 [Share a workload](../.github/ISSUE_TEMPLATE/workload.md) or report an unfair baseline;
 please retain raw failed observations as well as successful ones.
+
+## Preparation phases — 8 November 2026
+
+Five randomized waves per fixture and system on macOS ARM64. Each preparation
+passed byte, mode, path and cleanup verification. The source objects were
+already present, no prepared tree was reused, and OS caches were uncontrolled.
+
+| Fixture | TreeHarbor request | TreeHarbor node command | TreeHarbor first read | Git worktree first read |
+| --- | ---: | ---: | ---: | ---: |
+| [131 entries](benchmarks/preparation-phases-macos-arm64-small.json) | 14 ms | 411 ms | 428 ms | 42 ms |
+| [2,051 entries](benchmarks/preparation-phases-macos-arm64-2k.json) | 16 ms | 5,519 ms | 5,535 ms | 146 ms |
+
+The node command accounts for most of the measured delay, and grows with the
+larger fixture. Its timing includes process startup, database operations and
+file preparation. Isolating those costs requires a finer measurement. These
+sample medians describe one local setup with no agent execution or concurrent jobs.
