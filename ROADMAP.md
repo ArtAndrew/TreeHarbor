@@ -53,6 +53,13 @@ queue recovery, runtime replacement and automated fencing remain later gates.
 Both Linux packages passed installed runtime/cold-restore tests and independent
 signature/source checks before publication; see the [release receipt](docs/evidence/connected-recovery-release-20261102.json).
 
+[0.1.13-alpha.1](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.13-alpha.1)
+adds optional [Git-compatible Connected workspaces](docs/local-node.md). A
+separate signed ARM64 installation verified Git commands, exact-base capture
+and replay after cleanup. The [release receipt](docs/evidence/connected-git-workspace-release-20261108.json)
+records the scope. Live GitHub PR publication from this format remains an
+acceptance milestone.
+
 ## First preview acceptance
 
 Verify a clean installation and the complete packaged two-agent-to-PR demo,

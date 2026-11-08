@@ -21,7 +21,7 @@ Repository authority and epoch come with the mutation. Client JSON cannot select
 a host mount, Engine socket, image, node, identity or unrestricted runtime flags.
 The profile is distinct from the workspace's full/sparse source-delivery profile.
 
-In development builds, Connected agent runs also accept an explicitly prepared
+Starting with 0.1.13-alpha.1, Connected agent runs also accept an explicitly prepared
 [Git-compatible workspace](local-node.md). Use the imported native base, a full
 source profile, and the same registered volume and runtime profile as for ordinary
 managed runs. The workspace starts at the exact imported Git commit with private

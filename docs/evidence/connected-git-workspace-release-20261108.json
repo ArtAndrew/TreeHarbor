@@ -1,0 +1,83 @@
+{
+  "version": 1,
+  "published_at": "2026-11-08T19:15:48Z",
+  "release": "https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.13-alpha.1",
+  "release_id": 438461227,
+  "source_revision": "f02a2cb7af62efbd332306e033a98b5f80a2b21a",
+  "tag": "v0.1.13-alpha.1",
+  "github_immutable_release": false,
+  "main_ci": "https://github.com/ArtAndrew/TreeHarbor/actions/runs/42512018592/attempts/1",
+  "signed_producer": "https://github.com/ArtAndrew/TreeHarbor/actions/runs/42512970537/attempts/1",
+  "signed_attempt": 1,
+  "architectures": {
+    "x86_64": {
+      "target": "x86_64-unknown-linux-musl",
+      "archive_sha256": "53d9dc059aebb8126aeed1b488530d4da40456e8106140d111a5e03f821fe8fb",
+      "official_online_and_bundle_attestation_verified": true,
+      "exact_subject_set_and_invocation_verified": true,
+      "installed_managed_and_native_checks_passed": true
+    },
+    "aarch64": {
+      "target": "aarch64-unknown-linux-musl",
+      "archive_sha256": "cb1439eff5dcf837662eb71a6973e63c3390f7630679b76f2a6f81d2f6fd111c",
+      "official_online_and_bundle_attestation_verified": true,
+      "exact_subject_set_and_invocation_verified": true,
+      "installed_managed_and_native_checks_passed": true
+    }
+  },
+  "separate_arm64_install": {
+    "source_revision": "f02a2cb7af62efbd332306e033a98b5f80a2b21a",
+    "archive_sha256": "cb1439eff5dcf837662eb71a6973e63c3390f7630679b76f2a6f81d2f6fd111c",
+    "product_version": "0.1.13-alpha.1",
+    "target": "aarch64-unknown-linux-musl",
+    "installed_git_workspace_passed": true,
+    "github_authority": "fixture",
+    "sandbox": "gVisor",
+    "exact_imported_base_retained": true,
+    "acceptance_replayed_after_cleanup": true,
+    "live_github_publication": false
+  },
+  "public_assets": [
+    {
+      "name": "treeharbor-0.1.13-alpha.1-aarch64-unknown-linux-musl.metadata.zip",
+      "size": 62937,
+      "digest": "sha256:19764399a31e733742b215a1f7986cbbc32b5d2277775af6569d09edd8d7938f"
+    },
+    {
+      "name": "treeharbor-0.1.13-alpha.1-aarch64-unknown-linux-musl.provenance.sigstore.json",
+      "size": 12412,
+      "digest": "sha256:3ff61613cf9e8b13ccb410762d81768a49dfe2773a83d10d706cda48b8848c61"
+    },
+    {
+      "name": "treeharbor-0.1.13-alpha.1-aarch64-unknown-linux-musl.tar.gz",
+      "size": 12776512,
+      "digest": "sha256:cb1439eff5dcf837662eb71a6973e63c3390f7630679b76f2a6f81d2f6fd111c"
+    },
+    {
+      "name": "treeharbor-0.1.13-alpha.1-aarch64-unknown-linux-musl.tar.gz.sha256",
+      "size": 126,
+      "digest": "sha256:a86d45addf2e2a220280c76353b8c1b625c16fdc2a96ae84d46ca1dd3852036c"
+    },
+    {
+      "name": "treeharbor-0.1.13-alpha.1-x86_64-unknown-linux-musl.metadata.zip",
+      "size": 63180,
+      "digest": "sha256:39394abb91614d946b5ded851a197c90db81c8b8ac5174dfd03f1589a386be5d"
+    },
+    {
+      "name": "treeharbor-0.1.13-alpha.1-x86_64-unknown-linux-musl.provenance.sigstore.json",
+      "size": 12455,
+      "digest": "sha256:84359f4f87a69f991bee3b7f75cae7d81634319cc8f98388dcadf0e355c7ade5"
+    },
+    {
+      "name": "treeharbor-0.1.13-alpha.1-x86_64-unknown-linux-musl.tar.gz",
+      "size": 13576167,
+      "digest": "sha256:53d9dc059aebb8126aeed1b488530d4da40456e8106140d111a5e03f821fe8fb"
+    },
+    {
+      "name": "treeharbor-0.1.13-alpha.1-x86_64-unknown-linux-musl.tar.gz.sha256",
+      "size": 125,
+      "digest": "sha256:e809a79ec2b847ed04b4db17b686bf9cb1b962783cdaa2a0b0a65fb19fec32ec"
+    }
+  ],
+  "previous_release_assets_unchanged": true
+}

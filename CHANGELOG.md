@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-## 0.1.13-alpha.1 — Git-compatible Connected workspaces
+## 0.1.13-alpha.1 — Git-compatible Connected workspaces — 2026-11-08
 
 - Prepare full Connected workspaces with private Git metadata for agents that
   use Git locally. The checkout starts at the exact imported commit. Managed
