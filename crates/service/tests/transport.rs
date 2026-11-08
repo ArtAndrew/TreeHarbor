@@ -1074,7 +1074,7 @@ fn git_history_pack(f: &Fixture, output: &std::path::Path) {
     }
     let bundle = f.dir.path().join("history.bundle");
     git_reference::bundle(&repo, &bundle, &parent);
-    let captured = Command::new(env!("CARGO_BIN_EXE_treeharbor"))
+    let captured = Command::new(&f.binary)
         .env("PATH", "/treeharbor-test-no-executables")
         .env("GIT_DIR", "/must-not-use-an-inherited-repository")
         .env("GIT_CONFIG_COUNT", "1")
@@ -1114,6 +1114,7 @@ fn git_history_pack(f: &Fixture, output: &std::path::Path) {
 }
 
 struct Fixture {
+    binary: PathBuf,
     dir: tempfile::TempDir,
     config_path: PathBuf,
     credential_path: PathBuf,
@@ -1139,6 +1140,10 @@ impl Fixture {
         Self::new_with_authority(Authority::Standalone).await
     }
     async fn new_with_authority(authority: Authority) -> Self {
+        Self::new_with_binary(authority, PathBuf::from(env!("CARGO_BIN_EXE_treeharbor"))).await
+    }
+    async fn new_with_binary(authority: Authority, binary: PathBuf) -> Self {
+        assert!(binary.is_absolute() && binary.is_file());
         let database_url = std::env::var("TH_SERVICE_TEST_DATABASE_URL").expect(
             "set TH_SERVICE_TEST_DATABASE_URL to disposable PostgreSQL over a trusted Unix socket",
         );
@@ -1178,6 +1183,7 @@ impl Fixture {
         .unwrap();
         let scope = Scope::new("transport-test", Uuid::new_v4()).unwrap();
         let f = Self {
+            binary,
             config_path: dir.path().join("config.json"),
             credential_path: dir.path().join("agent.json"),
             dir,
@@ -1299,7 +1305,7 @@ impl Fixture {
         files::write_private(&self.config_path,json!({"database_url":c.database_url,"schema":c.schema,"socket":c.socket,"pool_size":c.pool_size,"max_connections":c.max_connections,"request_timeout_ms":c.request_timeout_ms,"storage":c.storage.as_ref().map(|s|json!({"root":s.root,"backend":s.backend}))}).to_string().as_bytes()).unwrap();
     }
     fn admin(&self, args: &[&str]) -> Output {
-        Command::new(env!("CARGO_BIN_EXE_treeharbor"))
+        Command::new(&self.binary)
             .args(["admin", "--config"])
             .arg(&self.config_path)
             .args(args)
@@ -1322,7 +1328,7 @@ impl Fixture {
         self.cli_with_credential(&self.credential_path, args)
     }
     fn cli_with_credential(&self, credential: &std::path::Path, args: &[&str]) -> Output {
-        Command::new(env!("CARGO_BIN_EXE_treeharbor"))
+        Command::new(&self.binary)
             .env("PATH", "/treeharbor-test-no-executables")
             .args(["client", "--socket"])
             .arg(&self.config.socket)
@@ -1334,7 +1340,7 @@ impl Fixture {
     }
     async fn start(&self) -> Process {
         let log = fs::File::create(self.dir.path().join("server.log")).unwrap();
-        let mut command = Command::new(env!("CARGO_BIN_EXE_treeharbor"));
+        let mut command = Command::new(&self.binary);
         command
             .env("PATH", "/treeharbor-test-no-executables")
             .arg("serve")

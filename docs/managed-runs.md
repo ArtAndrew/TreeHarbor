@@ -190,6 +190,9 @@ cargo test -p treeharbor-service --test transport --locked \
 
 The sandbox phase prints a separate `PASS` marker. It uses a local Git source
 and fixture GitHub authority evidence; it requires no GitHub App credentials.
+To run the entire transport fixture with an installed package, also set
+`TH_TEST_GIT_WORKSPACE_BINARY` to the absolute path to its `bin/treeharbor`.
+Use that package's `treeharbor-runtime-init` when building the runtime image.
 
 For a bounded operator flow that must execute a particular task, add
 `--run RUN_UUID` to `node run-once`. Selection stays within the authenticated
