@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
-"""Local file preparation against a warm Git worktree baseline; no agent execution."""
+"""Local full-file preparation against Git worktree and clone baselines."""
 import argparse
+from concurrent.futures import ThreadPoolExecutor
+from math import ceil
 import platform
 import hashlib
 import json
@@ -26,12 +28,15 @@ parser.add_argument('--repository', required=True, type=Path, help='local Git fi
 parser.add_argument('--revision', required=True, help='exact commit to capture')
 parser.add_argument('--output', required=True, type=Path)
 parser.add_argument('--iterations', type=int, default=5)
+parser.add_argument('--concurrency', type=int, default=1)
 parser.add_argument('--seed', type=int, default=42)
 parser.add_argument('--git-checkout-workers', type=int, default=0)
 parser.add_argument('--max-fixture-bytes', type=int, default=64 * 1024 * 1024)
 args = parser.parse_args()
 if not 1 <= args.iterations <= 100 or args.git_checkout_workers < 0:
     parser.error('iterations must be 1..100; checkout workers must be nonnegative')
+if not 1 <= args.concurrency <= 16:
+    parser.error('concurrency must be 1..16 for this local probe')
 if not re.fullmatch(r'(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})', args.revision):
     parser.error('revision must be a full Git commit ID')
 BIN, PSQL, OUT = args.binary.resolve(), args.psql.resolve(), args.output.resolve()
@@ -44,7 +49,10 @@ if OUT.exists():
     parser.error('output already exists; preserve prior measurements')
 GIT = shutil.which('git')
 if not GIT:
-    parser.error('Git is required only to extract the benchmark input snapshot')
+    parser.error('Git is required for the benchmark input and baselines')
+
+SYSTEMS = ('treeharbor', 'git-worktree', 'git-shared-clone', 'git-full-clone')
+TIMINGS = ('files_ready_seconds', 'first_read_seconds', 'cleanup_seconds')
 
 def run(*args):
     p = subprocess.run([str(x) for x in args], capture_output=True, timeout=240)
@@ -143,17 +151,23 @@ with tempfile.TemporaryDirectory(prefix='th-import-') as tmp:
                                   '--credential-file', credential, *parts))
         profile = client('profile-put', '--key', 'bench-full', '--authority', 'standalone',
                          '--epoch', '1', '--full')['result']['profile_digest']
-        node_root = root/'node'
-        storage = json.loads(run(BIN, 'node', 'initialize', '--root', node_root,
-                                 '--tenant', 'benchmark', '--principal', 'node'))['storage']
-        admin('principal-create', '--tenant', 'benchmark', '--principal', 'node', '--kind', 'node')
-        admin('node-register', '--tenant', 'benchmark', '--principal', 'node', '--storage', storage)
         node_grants = ['--permission', 'runtime.control']
-        admin('access-set', *scope, '--principal', 'node', *node_grants)
-        node_credential = root/'node.json'
-        admin('token-issue', *scope, '--principal', 'node', *node_grants,
-              '--ttl-seconds', '600', '--output', node_credential)
-        def node(action, *parts):
+        nodes = []
+        for lane in range(args.concurrency):
+            principal = f'node-{lane}'
+            node_root = root/principal
+            storage = json.loads(run(BIN, 'node', 'initialize', '--root', node_root,
+                                     '--tenant', 'benchmark', '--principal', principal))['storage']
+            admin('principal-create', '--tenant', 'benchmark', '--principal', principal, '--kind', 'node')
+            admin('node-register', '--tenant', 'benchmark', '--principal', principal, '--storage', storage)
+            admin('access-set', *scope, '--principal', principal, *node_grants)
+            node_credential = root/(principal + '.json')
+            admin('token-issue', *scope, '--principal', principal, *node_grants,
+                  '--ttl-seconds', '600', '--output', node_credential)
+            nodes.append((node_root, storage, node_credential))
+
+        def node(lane, action, *parts):
+            node_root, storage, node_credential = nodes[lane]
             return json.loads(run(BIN, 'node', action, '--config', config,
                                   '--credential-file', node_credential,
                                   '--root', node_root, '--storage', storage, *parts))
@@ -210,77 +224,114 @@ with tempfile.TemporaryDirectory(prefix='th-import-') as tmp:
                         total+=p.lstat().st_blocks*512
                 dirs[:]=[n for n in dirs if n!='.git' and not (Path(parent)/n).is_symlink()]
             return total
-        observations=[]
-        rng=random.Random(args.seed)
-        for wave in range(args.iterations):
-            order=['treeharbor','git-worktree']; rng.shuffle(order)
-            for system in order:
-                preparation_phases = None
-                start=time.perf_counter()
-                if system=='treeharbor':
-                    workspace=str(uuid.uuid4())
-                    created_reply=client('workspace-create','--key','create-'+workspace,
-                        '--authority','standalone','--epoch','1','--workspace',workspace,
-                        '--base',reply['result']['revision'],'--profile-digest',profile)
-                    requested = time.perf_counter()
-                    prepared=node('prepare-once','--workspace',workspace)
-                    materialized = time.perf_counter()
-                    if prepared['state']!='files_ready':
-                        raise RuntimeError('workspace did not become file-ready')
-                    path=Path(prepared['path'])
-                    preparation_phases = {
-                        'workspace_request_seconds': requested - start,
-                        'node_prepare_command_seconds': materialized - requested,
-                        'materialization_counters': prepared.get('preparation_statistics'),
-                    }
+        def prepare(system, wave, order, lane):
+            observation = {'wave': wave, 'order': order, 'lane': lane, 'system': system}
+            workspace = generation = None
+            start = time.perf_counter()
+            if system == 'treeharbor':
+                workspace = str(uuid.uuid4())
+                created_reply = client('workspace-create', '--key', 'create-'+workspace,
+                    '--authority', 'standalone', '--epoch', '1', '--workspace', workspace,
+                    '--base', reply['result']['revision'], '--profile-digest', profile)
+                requested = time.perf_counter()
+                prepared = node(lane, 'prepare-once', '--workspace', workspace)
+                materialized = time.perf_counter()
+                if prepared['state'] != 'files_ready' or prepared['workspace'] != workspace:
+                    raise RuntimeError('the selected workspace did not become file-ready')
+                generation = created_reply['result']['generation']
+                path = Path(prepared['path'])
+                observation['treeharbor_preparation'] = {
+                    'workspace_request_seconds': requested - start,
+                    'node_prepare_command_seconds': materialized - requested,
+                    'materialization_counters': prepared.get('preparation_statistics'),
+                }
+            else:
+                path = root/f'{system}-{wave}-{lane}'
+                if system == 'git-worktree':
+                    git('-C', mirror, 'worktree', 'add', '--detach', path, revision)
                 else:
-                    path=root/('git-worktree-'+str(wave))
-                    git('-C',mirror,'worktree','add','--detach',path,revision)
-                ready=time.perf_counter()-start
-                read_useful(path)
-                useful_seconds=time.perf_counter()-start
-                verify(path)
-                disk=allocated(path)
-                cleanup_start=time.perf_counter()
-                if system=='treeharbor':
-                    client('workspace-delete','--key','delete-'+workspace,
-                        '--authority','standalone','--epoch','1','--workspace',workspace,
-                        '--generation',str(created_reply['result']['generation']))
-                    cleaned=node('cleanup-once','--workspace',workspace)
-                    if client('workspace-status','--workspace',workspace)['result']['state']!='deleted':
-                        raise RuntimeError('workspace cleanup was not acknowledged')
-                else:
-                    git('-C',mirror,'worktree','remove',path)
-                cleanup_seconds=time.perf_counter()-cleanup_start
-                observation = {'wave':wave,'order':order.index(system),'system':system,
-                    'files_ready_seconds':ready,'first_read_seconds':useful_seconds,
-                    'cleanup_seconds':cleanup_seconds,'workspace_allocated_bytes':disk,
-                    'verified_bytes_modes_paths':True}
-                if preparation_phases is not None:
-                    observation['treeharbor_preparation'] = preparation_phases
-                observations.append(observation)
-        medians={system:{key:statistics.median(o[key] for o in observations if o['system']==system)
-                 for key in ['files_ready_seconds','first_read_seconds','cleanup_seconds']}
-                 for system in ['treeharbor','git-worktree']}
-        report={'version':2,'scope':'local-full-file-preparation',
+                    method = '--shared' if system == 'git-shared-clone' else '--no-local'
+                    git('clone', method, '--no-checkout', '--template=', mirror, path)
+                    git('-C', path, 'checkout', '--detach', revision)
+            observation['files_ready_seconds'] = time.perf_counter() - start
+            read_useful(path)
+            observation['first_read_seconds'] = time.perf_counter() - start
+            return path, workspace, generation, observation
+
+        def cleanup(case):
+            path, workspace, generation, observation = case
+            start = time.perf_counter()
+            system = observation['system']
+            if system == 'treeharbor':
+                client('workspace-delete', '--key', 'delete-'+workspace,
+                    '--authority', 'standalone', '--epoch', '1', '--workspace', workspace,
+                    '--generation', str(generation))
+                node(observation['lane'], 'cleanup-once', '--workspace', workspace)
+                if client('workspace-status', '--workspace', workspace)['result']['state'] != 'deleted':
+                    raise RuntimeError('workspace cleanup was not acknowledged')
+            elif system == 'git-worktree':
+                git('-C', mirror, 'worktree', 'remove', path)
+            else:
+                shutil.rmtree(path)
+            if path.exists():
+                raise RuntimeError('workspace remains after cleanup')
+            observation['cleanup_seconds'] = time.perf_counter() - start
+            return observation
+
+        observations = []
+        batches = []
+        rng = random.Random(args.seed)
+        with ThreadPoolExecutor(max_workers=args.concurrency) as workers:
+            for wave in range(args.iterations):
+                order = list(SYSTEMS)
+                rng.shuffle(order)
+                for index, system in enumerate(order):
+                    start = time.perf_counter()
+                    prepared_cases = list(workers.map(
+                        lambda lane: prepare(system, wave, index, lane), range(args.concurrency)))
+                    batches.append({'wave': wave, 'order': index, 'system': system,
+                                    'all_first_reads_seconds': time.perf_counter() - start})
+                    for path, _, _, observation in prepared_cases:
+                        verify(path)
+                        observation['workspace_allocated_bytes'] = allocated(path)
+                        observation['git_metadata_allocated_bytes'] = 0
+                        if system != 'treeharbor':
+                            git_dir = Path(os.fsdecode(git('-C', path, 'rev-parse', '--absolute-git-dir').rstrip(b'\n')))
+                            observation['git_metadata_allocated_bytes'] = allocated(git_dir)
+                            if system == 'git-worktree':
+                                observation['git_metadata_allocated_bytes'] += allocated(path/'.git')
+                        observation['verified_bytes_modes_paths'] = True
+                    observations.extend(workers.map(cleanup, prepared_cases))
+
+        def summarize(system, statistic):
+            return {key: statistic([o[key] for o in observations if o['system'] == system])
+                    for key in TIMINGS}
+
+        def sample_p95(values):
+            return sorted(values)[ceil(0.95 * len(values)) - 1] if len(values) >= 20 else None
+
+        medians = {system: summarize(system, statistics.median) for system in SYSTEMS}
+        tails = {system: summarize(system, sample_p95) for system in SYSTEMS}
+        report={'version':3,'scope':'local-full-file-preparation',
             'source_revision':revision,'binary_sha256':hashlib.sha256(BIN.read_bytes()).hexdigest(),
             'binary_version':run(BIN,'--version').decode().strip(),
             'platform':platform.platform(),'machine':platform.machine(),'logical_cpus':os.cpu_count(),
             'git_version':git('--version').decode().strip(),
             'postgres_version':sql('SHOW server_version').decode().strip(),
             'tracked_files':len(fixture['files']),'logical_file_bytes':fixture_bytes,
-            'iterations':args.iterations,'random_seed':args.seed,
+            'iterations':args.iterations,'concurrency':args.concurrency,'random_seed':args.seed,
             'git_checkout_workers':args.git_checkout_workers,
             'cache_state':'source objects present; no prepared tree; OS caches uncontrolled',
             'setup':{'snapshot_pack_seconds':pack_seconds,'native_import_seconds':import_seconds,
                      'git_mirror_seconds':mirror_seconds,
                      'treeharbor_objects_allocated_bytes':allocated(store),
                      'git_mirror_allocated_bytes':allocated(mirror)},
-            'observations':observations,'sample_medians':medians,
-            'limitations':['concurrency 1; full files only; source already loaded',
+            'observations':observations,'batches':batches,'sample_medians':medians,'sample_p95':tails,
+            'limitations':['full files only; source already loaded on the same host',
                 'TreeHarbor snapshot vs Git full-history mirror; setup costs not directly equivalent',
-                'no runtime, LLM, CI, GitHub, network, cold-cache claim or p95',
-                'workspace bytes exclude Git metadata; total database/server CPU/RAM and storage not measured',
+                'no runtime, LLM, CI, GitHub, measured transport bytes or cold-cache claim',
+                'p95 is a nearest-rank sample statistic and is absent below 20 observations per system',
+                'working file blocks and per-task Git metadata are separate; total database/server CPU/RAM and storage not measured',
                 'CLI/node process startup included; no persistent worker daemon',
                 'read correctness checked; no untrusted code executed',
                 'not a full cost, durability or throughput comparison']}
