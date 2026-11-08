@@ -60,9 +60,10 @@ proposal identities needed to inspect what each agent changed.
 
 If you only need a few local working directories, start with Git worktrees.
 Evaluate TreeHarbor when your controller needs durable change submissions, exact
-source identities and recoverable task state across disposable workers. Current
-native workspaces contain files without `.git`; tools requiring a local Git
-checkout need a separate integration path.
+source identities and recoverable task state across disposable workers. The
+released preview uses native file workspaces. For tools that need `.git`, the
+development build offers a [Git-compatible Connected workspace](docs/local-node.md)
+with a private checkout pinned to the imported commit.
 
 The intended benefit is lower workspace preparation cost and less coordination
 between an agent's edit and accepted code. **A performance advantage has not yet
@@ -134,13 +135,14 @@ Scion or tuned Git. Performance comparisons and unassisted onboarding remain ope
 
 ## What works today?
 
-Status as of **2026-11-02**. “Implemented” describes the stated component and its
-tests, not completion of the entire product.
+“Implemented” describes the stated component and its tests. The
+[release page](https://github.com/ArtAndrew/TreeHarbor/releases) lists capabilities
+available in signed packages.
 
 | Area | Implemented and tested | Still incomplete |
 | --- | --- | --- |
 | Rust source engine | Immutable objects, snapshots, history, versioned changes and exact revision identities | Larger-repository performance and compatibility coverage |
-| Workspaces | Full/sparse file preparation, expansion preserving edits, explicit drain/cleanup and recovery | Optimized caching, automatic scheduling and Git-compatible workspace format |
+| Workspaces | Full/sparse native file preparation, expansion preserving edits, explicit drain/cleanup and recovery. Development builds can prepare full Connected workspaces with private `.git` metadata. | Optimized caching, automatic scheduling and release verification of Git-compatible workspaces |
 | Agent execution | Managed Linux tasks through external gVisor, resource limits, capture after runtime removal and process-loss recovery | Automated runtime provisioning and node replacement |
 | Developer interfaces | Local authenticated API/CLI, external task contexts and an experimental MCP stdio adapter | Packaged onboarding and remote service transport |
 | Connected | Real GitHub import, branch/PR publication, managed required checks, versioned branch-policy fences, queue requests, candidate/final-history evidence and signed events | Complete host-policy/admission certification and unattended operation |

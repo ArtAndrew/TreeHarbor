@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Prepare full Connected workspaces with private Git metadata for agents that
+  use Git locally. The checkout starts at the exact imported commit. Managed
+  capture keeps selected file changes against that base after the runtime stops,
+  regardless of changes to the local Git index, refs or configuration. See the
+  [operator workflow](docs/local-node.md).
 - Add a first-run guide with installation checkpoints and an illustrated walkthrough
   of the recorded two-task GitHub PR trial. Add community entry points for setup
   questions and pilot feedback.

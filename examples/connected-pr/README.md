@@ -42,6 +42,14 @@ this helper does not implement another source engine.
    Metadata-read on the selected repository for branch/PR delivery. Queue, Checks,
    Actions and Administration grants are not required for this helper.
 
+The development build can also prepare
+[Git-compatible workspaces](../../docs/local-node.md) for this operator flow.
+Request `workspace-create --git-compatible` with a full source profile and
+add `--git /path/to/git` to each `node prepare-once` invocation. Use the same
+explicit workspace ID and registered volume slot. Install Git in the approved
+agent image if the task needs it. Capture still selects working files against
+the imported base; a local Git commit does not publish a GitHub branch.
+
 Keep the App key/configuration, publisher credentials, database configuration,
 binary and helper journal outside agent files. No credentials are created or
 granted automatically. Never place a publisher or App key in an agent's argv,
