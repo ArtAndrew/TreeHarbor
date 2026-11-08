@@ -66,13 +66,13 @@ impl CommandContext {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum WorkspaceFormat {
     Native,
     GitCompatible,
 }
 impl WorkspaceFormat {
-    fn name(self) -> &'static str {
+    pub(crate) fn name(self) -> &'static str {
         match self {
             Self::Native => "native",
             Self::GitCompatible => "git-compatible",
@@ -219,7 +219,7 @@ impl Metadata {
             return Err(Error::ExecutionState);
         }
         let changed=tx.tx.execute(r#"UPDATE th_workspaces SET state='ready',node=$4,runtime=$5
-            WHERE tenant=$1 AND repository=$2 AND workspace=$3 AND generation=$6 AND epoch=$7 AND state='requested' AND resolved_profile IS NOT NULL"#,
+            WHERE tenant=$1 AND repository=$2 AND workspace=$3 AND generation=$6 AND epoch=$7 AND state='requested' AND format='native' AND resolved_profile IS NOT NULL"#,
             &[&scope.tenant,&scope.repository,&ready.id,&ready.node,&ready.runtime,&ready.generation,&ctx.epoch]).await?;
         if changed != 1 {
             return Err(Error::ExecutionState);
@@ -614,6 +614,20 @@ impl crate::Mutation<'_> {
         let profile = treeharbor_core::SourceProfile::decode(&profile_row.get::<_, Vec<u8>>(0))?;
         if profile.id().as_bytes() != &spec.profile {
             return Err(Error::SchemaMismatch);
+        }
+        if spec.format == WorkspaceFormat::GitCompatible {
+            let RevisionRef::Native(native) = spec.base else {
+                return Err(Error::Invalid("Git workspace base"));
+            };
+            if ctx.authority != Authority::Connected
+                || delivery != "files"
+                || profile.paths().is_some()
+            {
+                return Err(Error::Invalid(
+                    "Git workspace requires a full Connected file profile",
+                ));
+            }
+            crate::preparations::completed_git_import(&self.tx, scope, ctx.epoch, native).await?;
         }
         let holder = workspace_pin(spec.id);
         self.copy_root_pin(&row.get::<_, String>(0), &holder)
