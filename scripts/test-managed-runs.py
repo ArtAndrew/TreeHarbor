@@ -250,7 +250,7 @@ class Harness:
                 "--root", str(node["root"]), "--storage", node["storage"]]
 
     def placement_profile(self, node=0, timeout=10000):
-        number = len(self.cases)
+        number = len(self.mounts)
         backing = self.root / f"volume-{number}.ext4"
         with backing.open("wb") as file:
             file.truncate(128 * 1024 * 1024)
@@ -276,10 +276,11 @@ class Harness:
         return number, assigned, slot, mount, digest
 
     def case(self, mode, *args, node=0, timeout=10000, workspace=None, selected=False,
-             base=None, source=b"base\n", overlay=False, overlay_fault=False):
+             base=None, source=b"base\n", overlay=False, overlay_fault=False, agent=None):
         number, assigned, slot, mount, digest = self.placement_profile(node, timeout)
         run = str(uuid.uuid4())
-        credential = self.agents[node]
+        agent = node if agent is None else agent
+        credential = self.agents[agent]
         base = self.revision if base is None else base
         create = None
         if workspace is None:
@@ -331,14 +332,15 @@ class Harness:
         assert (files / "same.txt").read_bytes() == source
         request = ["run-request", "--key", f"run-{number}", "--authority", "standalone", "--epoch", "1",
                    "--run", run, "--workspace", workspace, "--generation", "1", "--profile-digest", digest,
-                   "--agent", f"agent-{node}", "--task", f"task-{number}", "--", "/probe", mode, *map(str, args)]
+                   "--agent", f"agent-{agent}", "--task", f"task-{number}", "--", "/probe", mode, *map(str, args)]
         first = self.client(*request, credential=credential)
         assert first == self.client(*request, credential=credential)
         assert first["state"] == "requested"
         attempt = self.sql(f"SELECT attempt FROM th_managed_runs WHERE run='{run}'")
         case = {"node": assigned, "credential": credential, "workspace": workspace, "run": run,
                 "attempt": attempt, "files": files, "mount": mount, "request": request, "first": first,
-                "profile": digest, "node_index": node, "slot": slot, "base": base, "overlay": overlay}
+                "profile": digest, "node_index": node, "agent_index": agent,
+                "slot": slot, "base": base, "overlay": overlay}
         self.cases.append(case)
         return case
 
@@ -432,8 +434,8 @@ class Harness:
         assert self.client("change-status", "--upload", upload, credential=case["credential"])["state"] == "completed"
         return result
 
-    def request_seal(self, case):
-        seal = str(uuid.uuid4())
+    def request_seal(self, case, seal=None):
+        seal = seal or str(uuid.uuid4())
         request = ["seal-request", "--key", "seal-" + seal, "--authority", "standalone", "--epoch", "1",
                    "--seal", seal, "--run", case["run"], "--generation", "1", "--replace", "same.txt"]
         first = self.client(*request, credential=case["credential"])
@@ -468,7 +470,7 @@ class Harness:
         directory = ((1).to_bytes(4, "big") + (8).to_bytes(4, "big") + b"same.txt"
                      + (0o100644).to_bytes(4, "big") + oid(1, content))
         assert result["result_snapshot"] == "sha256:" + oid(3, oid(2, directory)).hex()
-        other = self.agents[1 - case["node_index"]]
+        other = next(credential for credential in self.agents if credential != case["credential"])
         assert self.client("seal-status", "--seal", seal, credential=other, check=False).returncode != 0
         assert self.client(*request, credential=case["node"]["credential"], check=False).returncode != 0
         return result

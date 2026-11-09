@@ -15,6 +15,8 @@ use treeharbor_node::{Node, Prepare};
 use treeharbor_storage::{ManagedStore, TenantId};
 use uuid::Uuid;
 
+mod selected;
+
 #[derive(Subcommand)]
 pub enum Action {
     /// Create a new private storage identity; never reuse an existing path.
@@ -119,6 +121,21 @@ pub enum Action {
         #[arg(long)]
         run: Option<Uuid>,
     },
+    /// Local experiment: service exact runs, captures and drains on one node.
+    #[command(hide = true)]
+    WorkSelected {
+        #[command(flatten)]
+        node: Arguments,
+        #[arg(long)]
+        selection: PathBuf,
+        #[arg(long)]
+        engine_socket: PathBuf,
+        #[arg(long)]
+        cow_driver: Option<PathBuf>,
+        /// Stop waiting for unclaimed work; never cancel an active operation.
+        #[arg(long, default_value_t = 30, value_parser = clap::value_parser!(u64).range(1..=3600))]
+        wait_seconds: u64,
+    },
 }
 #[derive(Args)]
 pub struct Arguments {
@@ -170,6 +187,7 @@ pub async fn run(action: Action) -> Result<bool> {
         | Action::VolumeRegister { node, .. }
         | Action::CowSourceRegister { node, .. }
         | Action::RunOnce { node, .. }
+        | Action::WorkSelected { node, .. }
         | Action::CleanupOnce { node, .. }
         | Action::SealOnce { node, .. } => node,
         Action::Initialize { .. } => unreachable!(),
@@ -207,6 +225,29 @@ pub async fn run(action: Action) -> Result<bool> {
         args.parallelism,
     )?;
     let (workspace, tree) = match action {
+        Action::WorkSelected {
+            selection,
+            engine_socket,
+            cow_driver,
+            wait_seconds,
+            ..
+        } => {
+            drop(session);
+            selected::run(
+                node,
+                database,
+                auth,
+                &config,
+                selected::Options {
+                    selection,
+                    engine_socket,
+                    cow_driver,
+                    wait_seconds,
+                },
+            )
+            .await?;
+            return Ok(true);
+        }
         Action::CowSourceRegister {
             mount, limit_bytes, ..
         } => {

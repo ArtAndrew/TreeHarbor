@@ -301,6 +301,26 @@ impl Node {
             )
             .await?)
     }
+    /// Exact polling variant: absence of an owner drain or an unfinished managed
+    /// execution is idle, never permission to stop or delete the workspace.
+    pub async fn claim_ready_cleanup(
+        &self,
+        db: &mut Metadata,
+        auth: &Authorization,
+        workspace: Uuid,
+    ) -> Result<Option<CleanupPlan>> {
+        self.check_auth(auth)?;
+        self.storage.verify()?;
+        Ok(db
+            .claim_ready_workspace_cleanup(
+                auth,
+                workspace,
+                self.identity().storage(),
+                Uuid::new_v4(),
+                60,
+            )
+            .await?)
+    }
     /// Drain and managed runtime removal must already be committed. This observes
     /// actual runtime absence, never fabricates a stop from a lease or metadata.
     pub async fn cleanup_workspace(
