@@ -2,9 +2,14 @@
 
 ## Unreleased
 
+## 0.1.14-alpha.1 — faster workspaces on guarded Linux volumes
+
 - Synchronize staged source files once on an exclusive Linux ext4 volume and
   report its writeback time in preparation diagnostics.
 - Let the Connected PR example select prepared Git-compatible workspaces explicitly.
+- Exercise two conflicting agent edits on one protected native branch, a resolved
+  version with a fresh check and review, and a separate Git history export.
+  See the [installed Standalone drill](docs/native-integration.md#installed-two-agent-overlap-drill).
 
 ## 0.1.13-alpha.1 — Git-compatible Connected workspaces — 2026-11-08
 
