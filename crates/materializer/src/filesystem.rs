@@ -2,7 +2,7 @@ use crate::{Error, Limits, MaterializedTree, Result, Selection, Statistics};
 use std::{
     collections::{BTreeMap, BTreeSet, VecDeque},
     fs::{self, File, OpenOptions},
-    io::{Read, Write},
+    io::{BufWriter, Read, Write},
     os::unix::{
         ffi::{OsStrExt, OsStringExt},
         fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt, symlink},
@@ -406,7 +406,7 @@ impl Stage {
                 Err(e) => Err(e.into()),
             }
         })?;
-        let mut file = OpenOptions::new()
+        let file = OpenOptions::new()
             .write(true)
             .create_new(true)
             .mode(0o600)
@@ -418,21 +418,24 @@ impl Stage {
             .as_ref()
             .map(|v| v.iter().map(|p| hex(p.as_bytes())).collect::<Vec<_>>());
         let header = serde_json::json!({"version":1,"materializer":"copy-unix-v1","tenant":self.manifest.tenant,"repository":self.manifest.repository,"snapshot":self.manifest.snapshot.hex(),"selection":paths,"preserved_local_state":self.manifest.preserved_local_state});
-        // Stream entries so the manifest encoding does not allocate a second full tree.
-        file.write_all(b"{\"header\":")?;
-        serde_json::to_writer(&mut file, &header)?;
-        file.write_all(b",\"entries\":[")?;
+        // Stream entries without allocating a second tree or writing every JSON
+        // token separately. Flush before the existing durability barrier.
+        let mut manifest = BufWriter::new(file);
+        manifest.write_all(b"{\"header\":")?;
+        serde_json::to_writer(&mut manifest, &header)?;
+        manifest.write_all(b",\"entries\":[")?;
         for (index, (path, entry)) in self.manifest.entries.iter().enumerate() {
             if index != 0 {
-                file.write_all(b",")?;
+                manifest.write_all(b",")?;
             }
             serde_json::to_writer(
-                &mut file,
-                &serde_json::json!([hex(path.as_bytes()), entry.mode as u32, entry.target.hex()]),
+                &mut manifest,
+                &(hex(path.as_bytes()), entry.mode as u32, entry.target.hex()),
             )?;
         }
-        file.write_all(b"]}\n")?;
-        file.sync_all()?;
+        manifest.write_all(b"]}\n")?;
+        manifest.flush()?;
+        manifest.get_ref().sync_all()?;
         for directory in self.directories.iter().rev() {
             File::open(self.path(directory))?.sync_all()?;
         }

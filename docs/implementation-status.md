@@ -117,6 +117,15 @@ record 320 verified preparations. On this native fixture with four tasks,
 the candidate reached a first read in a median 371 ms versus 1,690 ms in
 the previous build. Git worktree remained faster on the sampled setup.
 
+Protected read batches now reuse the validated local store for each object
+generation. The same catalog transaction protects every open and every
+descriptor still verifies its own bytes. Manifest encoding uses buffered
+writes with identical bytes and the existing durability barriers. Paired
+Linux runs recorded a Git-compatible repeat first-read p50 of 283 ms, down
+from 317 ms with seed reuse alone. Git worktree reached 101 ms. The same
+series includes file-only preparation and per-phase times.
+[Four paired benchmark runs](benchmark-preparation.md#protected-reads-and-manifest-writing--9-november-2026).
+
 The [recorded Connected trial](demo.md) has an MP4 with six distinct scenes
 verified by decoding, a static storyboard and a direct link to the GIF.
 
