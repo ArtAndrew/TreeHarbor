@@ -265,3 +265,33 @@ validator outcomes are explicitly fixtures, not actual CI execution evidence.
 For approved offline commands, use [managed native checks](managed-checks.md).
 They derive evidence from bounded execution and reject manual validation reports
 for registered programs. External collectors remain a separate trust boundary.
+
+### Installed two-agent overlap drill
+
+Two scripted gVisor agents start from one native revision and independently
+edit `same.txt`. The first proposal is reviewed, checked and landed on a
+protected `main`. The second queue entry then reports a content conflict and
+the ref stays on the first result. Its owner prepares a new workspace from
+that result and submits a resolved version of the same ChangeSet. The queue
+requires a fresh review and an actual check on the new candidate. The drill
+reads native history after workspace cleanup and then checks the optional
+export by restoring the final bytes and earlier revisions in ordinary Git.
+
+Run the focused drill in a disposable Linux runner with Docker configured for
+gVisor, a disposable PostgreSQL container reachable through a local Unix socket,
+and permission to mount temporary ext4 volumes. Set `TH_RUNTIME_PG_CONTAINER`
+and `TH_RUNTIME_DATABASE_URL` as in the runtime jobs in [CI](../.github/workflows/ci.yml).
+Use absolute paths from the verified installation.
+
+```sh
+cargo build -p treeharbor-runtime --example runtime_probe --locked \
+  --target "$(uname -m)-unknown-linux-musl"
+TH_TEST_SERVICE_BINARY=/absolute/install/bin/treeharbor \
+TH_TEST_RUNTIME_INIT=/absolute/install/bin/treeharbor-runtime-init \
+  python3 scripts/test-native-checks.py --overlap-only
+```
+
+The installed ARM64 run used a network namespace with no external interfaces
+and traced 207 native TreeHarbor invocations. The trace observed zero subprocess
+executions and zero IPv4 or IPv6 connection attempts before the separate Git
+projection. This evidence covers one scripted workflow. [Installed ARM64 receipt](evidence/standalone-agent-overlap-20261109.json)
