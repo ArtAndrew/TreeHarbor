@@ -1,5 +1,9 @@
 //! Local, opt-in prepared lower and per-attempt mounted placement.
-use crate::{Error, Prepare, Result, private, storage::Operation, worker::clear_unpublished};
+use crate::{
+    Error, Prepare, Result, cow_volume, private,
+    storage::{Operation, Storage},
+    worker::clear_unpublished,
+};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
@@ -60,18 +64,22 @@ fn text(bytes: [u8; 32]) -> String {
     ObjectId::from_bytes(bytes).to_string()
 }
 
-fn directory(operation: &Operation) -> Result<PathBuf> {
-    let parent = private::directory(operation.storage.root.parent().ok_or(Error::Private)?)?;
-    Ok(parent.join(format!(
-        ".treeharbor-cow-{}",
-        operation.storage.identity.storage()
-    )))
+pub(crate) fn directory(storage: &Storage) -> Result<PathBuf> {
+    let parent = private::directory(storage.root.parent().ok_or(Error::Private)?)?;
+    Ok(parent.join(format!(".treeharbor-cow-{}", storage.identity.storage())))
+}
+
+fn source_directory(storage: &Storage) -> Result<PathBuf> {
+    match cow_volume::open(storage)? {
+        Some(volume) => Ok(volume.files().to_owned()),
+        None => directory(storage),
+    }
 }
 
 fn layout(operation: &Operation, binding: [u8; 32]) -> Result<OverlayLayout> {
-    let dir = directory(operation)?;
+    let dir = directory(&operation.storage)?;
     Ok(OverlayLayout {
-        lower: dir.join("image/files"),
+        lower: source_directory(&operation.storage)?.join("image/files"),
         upper: operation.root.join("overlay-upper"),
         work: operation.root.join("overlay-work"),
         files: dir.join("views").join(ObjectId::from_bytes(binding).hex()),
@@ -83,6 +91,7 @@ fn checked_record(path: &Path, bytes: &[u8]) -> Result<()> {
         if private::read(path, MAX_RECORD)? != bytes {
             return Err(Error::Identity);
         }
+        fs::File::open(path.parent().ok_or(Error::Private)?)?.sync_all()?;
     } else {
         private::write_new(path, bytes)?;
     }
@@ -149,8 +158,7 @@ pub(crate) async fn prepare(
         return Err(Error::Configuration);
     }
     let plan = request.plan;
-    let dir = directory(&operation)?;
-    let image = dir.join("image");
+    let dir = directory(&operation.storage)?;
     let (key, tree, manifest) = {
         // One bounded image per local storage identity. Its path is never
         // replaced, even after a crash or a request for a different revision.
@@ -159,6 +167,13 @@ pub(crate) async fn prepare(
             _lock: operation.storage.cow_image.clone().lock_owned().await,
         });
         operation.verify()?;
+        // Registration uses this same image lock. Select its directory only
+        // after taking the lock, so the first build cannot race registration.
+        let source_volume = cow_volume::open(&operation.storage)?;
+        let source_dir = source_volume
+            .as_ref()
+            .map_or_else(|| dir.clone(), |volume| volume.files().to_owned());
+        let image = source_dir.join("image");
         private::make_directory(&dir)?;
         let warm = image.try_exists()?;
         let root = if warm && git.is_some() {
@@ -187,11 +202,16 @@ pub(crate) async fn prepare(
             )?;
             (key, tree, manifest)
         } else {
-            let staging = dir.join("staging");
+            let staging = source_dir.join("staging");
             let tenant = plan.scope().tenant();
             clear_unpublished(&operation, &staging, tenant)?;
             let materializer = Materializer::open(&staging, 1)?;
-            let publication = Publication::new(image.clone(), key, guard);
+            let mut publication = Publication::new(image.clone(), key, guard);
+            if let Some(volume) = &source_volume
+                && let Some(fd) = volume.preparation_sync_fd()?
+            {
+                publication = publication.with_volume_sync(fd);
+            }
             let files = treeharbor_materializer::Preparation {
                 scope: plan.scope(),
                 holder: plan.source_holder(),
@@ -297,7 +317,7 @@ pub(crate) fn open(
     {
         return Err(Error::Identity);
     }
-    let root = directory(operation)?;
+    let root = source_directory(&operation.storage)?;
     let key = *pin
         .image
         .parse::<ObjectId>()
