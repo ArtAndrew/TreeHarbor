@@ -268,6 +268,14 @@ for registered programs. External collectors remain a separate trust boundary.
 
 ### Installed two-agent overlap drill
 
+Development source also accepts `--shared-node`: two different agent owners use
+one bounded node worker. The first task is stopped, captured and cleaned up while
+the second keeps writing. Exact retries and rejection of a wrong-node cleanup
+precede the same integration drill below. See the [operator interface](node-work-selection.md)
+and [local trial receipt](evidence/shared-node-work-20261109.json). This new option
+is not present in the 0.1.15-alpha.1 package; it is included in the subsequent
+installed-package CI and release checks.
+
 Two scripted gVisor agents start from one native revision and independently
 edit `same.txt`. The first proposal is reviewed, checked and landed on a
 protected `main`. The second queue entry then reports a content conflict and

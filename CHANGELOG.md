@@ -5,6 +5,10 @@
 - Add an operator-only Copy-on-Write preparation path with one verified source
   image per node, separate writable workspace layers and guarded runtime views.
   A bounded batch prepares independent slots concurrently.
+- Add a bounded node worker for exact run, capture and cleanup selections.
+  A local Linux trial stopped, captured and deleted one agent's workspace while
+  another agent kept writing through a separate view of the same source image.
+  Owner requests and acceptance remain explicit. See [the operator command](docs/node-work-selection.md).
 - Support an explicitly registered source filesystem with durable ownership
   and writeback checks. Missing or mismatched placements fail closed.
 - Publish first/repeat four-workspace measurements and raw data, including
