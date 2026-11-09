@@ -2049,6 +2049,14 @@ New increment: [managed native checks](managed-checks.md) bind approved offline
 commands to exact candidate files and derive validation from removed, bounded
 runtime observations. Schema 11 persists programs, executions and immutable
 evidence. Generic agent exits and manual reports cannot satisfy registered programs.
+
+An [installed Standalone overlap drill](native-integration.md#installed-two-agent-overlap-drill)
+now connects those components on one protected native `main`. Both agents edit
+the same path from one revision. The first lands after a real check and review,
+the second reports a content conflict, and its resolved version requires fresh
+evidence. The signed ARM64 run verified native history and an ordinary Git
+restore after workspace cleanup. Its native commands ran in an isolated network
+namespace, with Git execution observed at the explicit export step. [Run receipt](evidence/standalone-agent-overlap-20261109.json)
 The node verifies pristine inputs before first start; recovery uses the existing
 runtime and preserves build outputs. A required Linux scenario now exercises this
 path in `scripts/test-native-checks.py`; local database tests cover replay, current

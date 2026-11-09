@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "date": "2026-11-09",
+  "scope": "installed Standalone two-agent overlap on one protected native branch",
+  "product": {
+    "release": "v0.1.13-alpha.1",
+    "source_revision": "f02a2cb7af62efbd332306e033a98b5f80a2b21a",
+    "target": "aarch64-unknown-linux-musl",
+    "archive_sha256": "cb1439eff5dcf837662eb71a6973e63c3390f7630679b76f2a6f81d2f6fd111c",
+    "binary_sha256": "efa4886b9225332fd5613d282c4958d8e25f61d5e8a54022063ab19e1e03e926",
+    "runtime_init_sha256": "e3d680034dd06736e7914f9ea7a038d893b3e5c07a33a9735a7c0560a3d87164",
+    "signed_producer_run": "42512970537"
+  },
+  "fixture": {
+    "runtime": "gVisor",
+    "metadata": "disposable PostgreSQL schema",
+    "runtime_probe_git_blob": "233fb2ebd7ab266cb3c06fefdc13632160edae0e",
+    "managed_runs_git_blob": "cd189e86dc0fa8f96f40bb9ff1b3538b20b9860f",
+    "native_checks_git_blob": "e710335e0d2eb525b9108f145825e9640c009b4e"
+  },
+  "observed": {
+    "simultaneous_isolated_tasks": 2,
+    "overlap_path": "same.txt",
+    "both_proposals_from_same_native_base": true,
+    "first_proposal_checked_reviewed_and_landed": true,
+    "second_proposal_reported_content_conflict": true,
+    "old_check_assignment_refused_on_resolved_candidate": true,
+    "resolved_version_checked_reviewed_and_landed": true,
+    "native_history_and_post_cleanup_git_restore_verified": true,
+    "native_traced_commands": 207,
+    "native_subprocess_execs": 0,
+    "native_inet_connections": 0,
+    "external_network_interfaces": 0,
+    "separate_git_export": true
+  }
+}
