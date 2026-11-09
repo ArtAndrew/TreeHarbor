@@ -133,6 +133,18 @@ managed agent execution, register a bounded Linux volume and pass its `--slot`
 at preparation time. See [managed runs](managed-runs.md) for the run and capture
 workflow. The agent's image supplies Git when the task needs it.
 
+Development builds retain one verified Git metadata seed under the private node
+root. A repeat preparation can copy this seed for the exact repository, epoch,
+native and Git revisions, limits and Git executable. Each new workspace gets
+independent metadata files. Its source authorization and file preparation still
+run normally. A missing, changed or unreadable seed falls back to rebuilding.
+
+The node retains up to 32 MiB of seed file content, with room for one temporary
+replacement. The cache contains Git history and survives individual workspace
+cleanup. To discard it, stop operations using the node root and remove the
+root's `git-seed-cache-v1` directory. A new node or a cache deletion requires no
+data migration.
+
 Reopen an already acknowledged workspace in a new process:
 
 ```sh

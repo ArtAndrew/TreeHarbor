@@ -337,23 +337,26 @@ async fn prepare_and_recover_git_workspace(
         "1",
         "--full",
     ]));
+    let create = |workspace: &str| {
+        result(f.cli(&[
+            "workspace-create",
+            "--key",
+            &format!("create-{workspace}"),
+            "--authority",
+            "connected",
+            "--epoch",
+            "1",
+            "--workspace",
+            workspace,
+            "--base",
+            &RevisionRef::Native(root).to_string(),
+            "--profile-digest",
+            profile["profile_digest"].as_str().unwrap(),
+            "--git-compatible",
+        ]));
+    };
     let workspace = Uuid::new_v4().to_string();
-    result(f.cli(&[
-        "workspace-create",
-        "--key",
-        "git-workspace",
-        "--authority",
-        "connected",
-        "--epoch",
-        "1",
-        "--workspace",
-        &workspace,
-        "--base",
-        &RevisionRef::Native(root).to_string(),
-        "--profile-digest",
-        profile["profile_digest"].as_str().unwrap(),
-        "--git-compatible",
-    ]));
+    create(&workspace);
     let node_root = f.dir.path().join("git-node");
     let node_init = Command::new(&f.binary)
         .args(["node", "initialize", "--root"])
@@ -423,7 +426,7 @@ async fn prepare_and_recover_git_workspace(
         storage,
         profile["profile_digest"].as_str().unwrap(),
     );
-    let node = |action: &str, extra: &[&str]| {
+    let node_for = |workspace: &str, action: &str, extra: &[&str]| {
         Command::new(&f.binary)
             .env("PATH", "/treeharbor-test-no-executables")
             .args(["node", action, "--config"])
@@ -432,11 +435,12 @@ async fn prepare_and_recover_git_workspace(
             .arg(&credential)
             .arg("--root")
             .arg(&node_root)
-            .args(["--storage", storage, "--workspace", &workspace])
+            .args(["--storage", storage, "--workspace", workspace])
             .args(extra)
             .output()
             .unwrap()
     };
+    let node = |action, extra: &[&str]| node_for(&workspace, action, extra);
     let output = |response: Output| -> Value {
         assert!(
             response.status.success(),
@@ -469,11 +473,19 @@ async fn prepare_and_recover_git_workspace(
     f.sql.batch_execute(
         "CREATE FUNCTION reject_git_ack() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.state='prepared' THEN RAISE EXCEPTION 'injected acknowledgement failure'; END IF; RETURN NEW; END; $$; CREATE TRIGGER reject_git_ack BEFORE UPDATE ON th_workspace_preparations FOR EACH ROW EXECUTE FUNCTION reject_git_ack();"
     ).await.unwrap();
-    assert!(
-        !node("prepare-once", &["--git", "/usr/bin/git"])
-            .status
-            .success()
-    );
+    let git = f.dir.path().join("counted-git");
+    fs::write(
+        &git,
+        b"#!/bin/sh\nprintf 'invoked\\n' >> \"$0.calls\"\nexec /usr/bin/git \"$@\"\n",
+    )
+    .unwrap();
+    use std::os::unix::fs::PermissionsExt;
+    fs::set_permissions(&git, fs::Permissions::from_mode(0o700)).unwrap();
+    let git_args = ["--git", git.to_str().unwrap()];
+    assert!(!node("prepare-once", &git_args).status.success());
+    let calls = git.with_extension("calls");
+    let cold_calls = fs::read(&calls).unwrap();
+    assert!(!cold_calls.is_empty());
     let files = placement.join("files");
     assert!(files.join(".git/index").is_file());
     assert!(placement.join("publication.json").is_file());
@@ -506,25 +518,44 @@ async fn prepare_and_recover_git_workspace(
         fs::read(files.join(".git/config")).unwrap(),
         b"invalid agent metadata"
     );
-    result(f.cli(&[
-        "workspace-delete",
-        "--key",
-        "drain-git-workspace",
-        "--authority",
-        "connected",
-        "--epoch",
-        "1",
-        "--workspace",
-        &workspace,
-        "--generation",
-        "1",
-    ]));
-    output(node("cleanup-once", &[]));
-    assert!(!files.exists());
+
+    // A new process, workspace and slot reuse only the checked seed. The first
+    // workspace is still present with edited files and invalid Git config.
+    let warm_workspace = Uuid::new_v4().to_string();
+    create(&warm_workspace);
+    let warm = output(node_for(&warm_workspace, "prepare-once", &git_args));
+    assert_eq!(warm["state"], "files_ready");
+    assert_eq!(fs::read(calls).unwrap(), cold_calls);
+    let warm_files = PathBuf::from(warm["path"].as_str().unwrap());
     assert_eq!(
-        result(f.cli(&["workspace-status", "--workspace", &workspace]))["state"],
-        "deleted"
+        git_reference::git(&warm_files, &["rev-parse", "HEAD"], b""),
+        head
     );
+    assert!(git_reference::git(&warm_files, &["status", "--porcelain"], b"").is_empty());
+    git_reference::git(&warm_files, &["fsck", "--strict", "--no-dangling"], b"");
+    assert_eq!(fs::read(files.join("main.rs")).unwrap(), b"agent edit");
+
+    for (id, path) in [(&workspace, files), (&warm_workspace, warm_files)] {
+        result(f.cli(&[
+            "workspace-delete",
+            "--key",
+            &format!("drain-{id}"),
+            "--authority",
+            "connected",
+            "--epoch",
+            "1",
+            "--workspace",
+            id,
+            "--generation",
+            "1",
+        ]));
+        output(node_for(id, "cleanup-once", &[]));
+        assert!(!path.exists());
+        assert_eq!(
+            result(f.cli(&["workspace-status", "--workspace", id]))["state"],
+            "deleted"
+        );
+    }
 }
 
 fn request(f: &Fixture, value: &Value) -> Output {

@@ -14,7 +14,7 @@ mod stream;
 mod verify;
 pub use verify::{VerifiedMapping, verify_mapping};
 mod workspace;
-pub use workspace::{WorkspaceSeed, seed_workspace};
+pub use workspace::{WorkspaceSeed, install_workspace_seed, seed_workspace};
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};

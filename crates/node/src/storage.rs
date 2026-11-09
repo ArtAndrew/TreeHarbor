@@ -35,6 +35,7 @@ impl Identity {
 pub(crate) struct Storage {
     pub root: PathBuf,
     pub identity: Identity,
+    pub git_seed_cache: Mutex<()>,
     lock: File,
 }
 impl Storage {
@@ -116,6 +117,7 @@ impl Node {
             Storage {
                 root: path,
                 identity,
+                git_seed_cache: Mutex::new(()),
                 lock,
             },
             concurrent,
@@ -152,6 +154,7 @@ impl Node {
         let owned = Storage {
             root: path,
             identity,
+            git_seed_cache: Mutex::new(()),
             lock,
         };
         owned.verify()?;
