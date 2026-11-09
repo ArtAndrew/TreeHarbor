@@ -151,13 +151,7 @@ pub(crate) async fn prepare(
     let plan = request.plan;
     let dir = directory(&operation)?;
     let image = dir.join("image");
-    let source = db
-        .open_read_session(plan.scope(), plan.source_holder(), 60)
-        .await?;
-    let key = image_key(request, source.root().id());
-    db.close_read_session(source).await?;
-    let key = key?;
-    let (tree, manifest) = {
+    let (key, tree, manifest) = {
         // One bounded image per local storage identity. Its path is never
         // replaced, even after a crash or a request for a different revision.
         let guard = Arc::new(ImageGuard {
@@ -166,24 +160,32 @@ pub(crate) async fn prepare(
         });
         operation.verify()?;
         private::make_directory(&dir)?;
-        let tree = if image.try_exists()? {
-            if git.is_some() {
-                let export = db
-                    .open_git_preparation_source(request.authorization, plan, 600)
-                    .await?;
-                db.finish_source_export(export).await?;
-            }
-            let receipt = PublicationReceipt::load(&image, key)?;
-            MaterializedTree::load_baseline(
+        let warm = image.try_exists()?;
+        let root = if warm && git.is_some() {
+            db.cached_git_preparation_root(request.authorization, plan)
+                .await?
+        } else {
+            let source = db
+                .open_read_session(plan.scope(), plan.source_holder(), 60)
+                .await?;
+            let root = source.root().id();
+            db.close_read_session(source).await?;
+            root
+        };
+        let key = image_key(request, root)?;
+        if warm {
+            let manifest = PublicationReceipt::load(&image, key)?.manifest_digest()?;
+            let tree = MaterializedTree::load_baseline(
                 &image,
                 BaselineExpectation {
                     scope: plan.scope(),
                     snapshot: plan.snapshot(),
                     profile: plan.profile(),
-                    manifest_digest: receipt.manifest_digest()?,
+                    manifest_digest: manifest,
                 },
                 request.limits,
-            )?
+            )?;
+            (key, tree, manifest)
         } else {
             let staging = dir.join("staging");
             let tenant = plan.scope().tenant();
@@ -197,8 +199,13 @@ pub(crate) async fn prepare(
                 selection: Selection::from_profile(plan.profile()),
                 limits: request.limits,
             };
-            if let Some(git) = git {
-                let parent = private::make_directory(&staging.join(tenant))?;
+            let tree = if let Some(git) = git {
+                // GitSource may still be loading a seed after cancellation.
+                // Keep its scratch under the slot guard that it already owns.
+                let scratch = operation.root.join("staging");
+                clear_unpublished(&operation, &scratch, tenant)?;
+                let parent = private::make_directory(&scratch.join(tenant))?;
+                let parent = private::make_directory(&parent.join("prepare-git-source"))?;
                 let source = crate::git_source::GitSource::stage(
                     db,
                     request,
@@ -216,10 +223,10 @@ pub(crate) async fn prepare(
                 materializer
                     .prepare_published(db, request.store, files, publication)
                     .await?
-            }
-        };
-        let manifest = PublicationReceipt::load(&image, key)?.manifest_digest()?;
-        (tree, manifest)
+            };
+            let manifest = PublicationReceipt::load(&image, key)?.manifest_digest()?;
+            (key, tree, manifest)
+        }
     };
     let driver = driver.to_owned();
     let tenant = plan.scope().tenant().to_owned();

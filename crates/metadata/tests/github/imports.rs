@@ -855,6 +855,50 @@ async fn git_workspace_history_read_is_fenced_by_its_preparation_lease() {
         f.db.open_git_preparation_source(&reader, &plan, 60).await,
         Err(Error::Forbidden)
     ));
+    assert!(matches!(
+        f.db.cached_git_preparation_root(&reader, &plan).await,
+        Err(Error::Forbidden)
+    ));
+    assert_eq!(
+        f.db.cached_git_preparation_root(&node, &plan)
+            .await
+            .unwrap(),
+        native
+    );
+    let raw = connection(&f.schema).await;
+    let move_pin = "UPDATE th_object_pins p SET digest=o.digest,generation=o.generation
+        FROM th_objects o WHERE p.tenant=$1 AND p.repository=$2 AND p.holder=$3
+        AND o.tenant=p.tenant AND o.digest=$4";
+    let tenant = f.scope.tenant();
+    let repository = f.scope.repository();
+    let holder = plan.source_holder();
+    assert_eq!(
+        raw.execute(
+            move_pin,
+            &[
+                &tenant,
+                &repository,
+                &holder,
+                &snapshot.as_bytes().as_slice()
+            ],
+        )
+        .await
+        .unwrap(),
+        1
+    );
+    assert!(matches!(
+        f.db.cached_git_preparation_root(&node, &plan).await,
+        Err(Error::ReadScope)
+    ));
+    assert_eq!(
+        raw.execute(
+            move_pin,
+            &[&tenant, &repository, &holder, &native.as_bytes().as_slice()],
+        )
+        .await
+        .unwrap(),
+        1
+    );
 
     let read =
         f.db.open_git_preparation_source(&node, &plan, 60)
@@ -879,7 +923,6 @@ async fn git_workspace_history_read_is_fenced_by_its_preparation_lease() {
         children.len()
     );
 
-    let raw = connection(&f.schema).await;
     raw.execute(
         "UPDATE th_outbox SET lease_until=clock_timestamp()-interval '1 second' WHERE id=$1",
         &[&job.id],
@@ -909,6 +952,16 @@ async fn git_workspace_history_read_is_fenced_by_its_preparation_lease() {
         f.db.open_git_preparation_source(&node, &plan, 60).await,
         Err(Error::StaleLease)
     ));
+    assert!(matches!(
+        f.db.cached_git_preparation_root(&node, &plan).await,
+        Err(Error::StaleLease)
+    ));
+    assert_eq!(
+        f.db.cached_git_preparation_root(&node, &resumed)
+            .await
+            .unwrap(),
+        native
+    );
     let resumed_read =
         f.db.open_git_preparation_source(&node, &resumed, 60)
             .await
@@ -929,6 +982,10 @@ async fn git_workspace_history_read_is_fenced_by_its_preparation_lease() {
     ));
     assert!(matches!(
         f.db.finish_source_export(resumed_read).await,
+        Err(Error::ExecutionState)
+    ));
+    assert!(matches!(
+        f.db.cached_git_preparation_root(&node, &resumed).await,
         Err(Error::ExecutionState)
     ));
     cleanup(&f.schema).await;
