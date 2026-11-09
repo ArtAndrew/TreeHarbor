@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+## 0.1.15-alpha.1 — faster repeat Connected workspaces
+
+- Stage authorized Git history in one private scratch file.
+- Reuse verified Git metadata on the same node for repeat preparations of
+  the same authorized revision. Each workspace receives its own index, refs
+  and object files.
+- Reuse the validated object-store directory within protected reads and
+  buffer baseline manifest writes with the existing durability barriers.
+- Publish paired Linux ARM64 measurements for fresh and repeated
+  Git-compatible workspaces. See the [preparation benchmark](docs/benchmark-preparation.md#protected-reads-and-manifest-writing--9-november-2026).
+
 ## 0.1.14-alpha.1 — faster workspaces on guarded Linux volumes
 
 - Synchronize staged source files once on an exclusive Linux ext4 volume and
