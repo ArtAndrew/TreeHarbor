@@ -255,8 +255,10 @@ read. Verification and cleanup are recorded separately.
 
 The baseline used the guarded-volume synchronization build from the preceding
 section. The candidate changes the temporary source copy for Git projection
-to one private file. The Rust toolchain and optimized ARM64 musl profile are
-the same. Four runs alternated baseline and candidate. Every run had six
+to one private file. The measured candidate used an owner-only process umask.
+The implementation also applies mode `0600` before copying source frames.
+The Rust toolchain and optimized ARM64 musl profile are the same.
+Four runs alternated baseline and candidate. Every run had six
 waves, with randomized system order. All 288 preparations verified file
 bytes, modes, paths, symlinks and, where applicable, Git history. Each column
 pools 48 observations per system. The records were produced by a local driver
