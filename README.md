@@ -71,10 +71,11 @@ checkout and caches remain the comparison baseline.
 
 ## Measured progress: four workspaces from one source image
 
-An **unreleased Copy-on-Write prototype** prepares a source image once and gives
+The **Copy-on-Write alpha candidate** prepares a source image once and gives
 each workspace its own writable layer. It avoids writing the same source files
-again for every task. This is an operator-only experiment, separate from the
-signed alpha packages.
+again for every task. The next package adds a Rust host helper, a documented
+Linux setup and recovery of concurrent tasks after worker loss. It remains
+separate from the currently signed 0.1.15 packages until release checks pass.
 
 On a local two-CPU ARM64 Linux VM, four concurrent Git-compatible workspaces
 with 8,195 files produced these times through the first read in **all four**:
@@ -89,7 +90,7 @@ for the first group and in earlier small-tree tests. Both systems started with
 local source objects; OS caches were uncontrolled. This measures preparation,
 not coding-agent execution, CI, production throughput or total cost.
 [Results, build identities and raw data](docs/benchmark-preparation.md#shared-source-images--9-november-2026) ·
-[Prototype scope and remaining work](docs/experimental-cow.md).
+[Installation profile and limits](docs/experimental-cow.md).
 
 ## The workflow
 

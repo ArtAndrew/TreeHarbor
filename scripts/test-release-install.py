@@ -34,6 +34,9 @@ def main():
         expected = "treeharbor " + manifest["product_version"]
         if version != expected:
             raise RuntimeError(f"executable version differs from manifest: {version!r}")
+        driver = prefix / "lib/treeharbor" / manifest["product_version"] / "bin/treeharbor-cow-driver"
+        if subprocess.check_output([str(driver), "--version"], text=True, timeout=15).strip() != "treeharbor-cow-driver " + manifest["product_version"]:
+            raise RuntimeError("Copy-on-Write helper version differs from manifest")
         subprocess.run([str(binary), "--help"], check=True, stdout=subprocess.DEVNULL, timeout=15)
         for subcommand in (["admin", "--help"], ["serve", "--help"], ["github", "queue", "--help"]):
             subprocess.run([str(binary), *subcommand], check=True, stdout=subprocess.DEVNULL, timeout=15)

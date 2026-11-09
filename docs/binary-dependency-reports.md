@@ -21,7 +21,7 @@ those gates or approves a release.
   hashes, observed compiler identity and hashes of available target sysroot inputs.
   Availability is not proof that every archive member was linked. The file keeps
   `native_link_closure_verified` and `build_provenance_verified` false.
-- `native-inputs.json`: version-1 link-input observations for the two actual
+- `native-inputs.json`: version-2 link-input observations for the three actual
   executable hashes, an observed source/session, rooted relative input inventories
   and compiler/linker hashes. The GNU linker dependency file is captured during
   the same build, before Rust removes temporary objects. This is not complete
@@ -31,7 +31,7 @@ those gates or approves a release.
   `SBOM-SHA256SUMS`, beside the archives and their checksums.
 
 The package manifest binds the observations file by SHA-256; observations bind
-the report by SHA-256. Packaging compares both binary hashes, target and checkout
+the report by SHA-256. Packaging compares every binary hash, target and checkout
 revision, so replacing a binary after capture refuses the package. These hash
 links establish integrity, not a signature or native component completeness.
 When native inputs are present, observations also bind that file by SHA-256 and
@@ -46,7 +46,14 @@ without an embedded Cargo graph cannot gain a dependency list merely because a
 source lockfile exists. Absolute build directories are removed only from verified
 file identities; remaining occurrences cause failure.
 
-The scanner runs on copies of the two binaries with update checks and disk caching
+The current executable set is `treeharbor`, `treeharbor-runtime-init` and
+`treeharbor-cow-driver`. The native-input validator still reads version-1 reports
+for the original two-executable set when those exact two expected hashes are
+supplied. A legacy report cannot stand in for the current three-executable
+package, and a version-2 report must include the driver. Per-link capture records
+retain their existing version and meaning.
+
+The scanner runs on copies of the packaged binaries with update checks and disk caching
 disabled. Raw scanner output and full Cargo metadata stay temporary. The installed
 application is not executed to discover its dependencies. Its ordinary runtime
 acceptance remains a separate test.

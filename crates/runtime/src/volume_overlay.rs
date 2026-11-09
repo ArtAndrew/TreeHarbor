@@ -159,7 +159,7 @@ fn inspect(volume: &Volume, layout: &OverlayLayout) -> Result<(Evidence, [File; 
     if capacity != volume.identity().capacity_bytes {
         return Err(Error::Mismatch);
     }
-    let mount = record(&mountinfo()?, layout, directories[3].device)?;
+    let mount = record(&mountinfo()?, layout, directories[3].device, true)?;
     let boot = fs::read_to_string("/proc/sys/kernel/random/boot_id")?;
     let boot = Uuid::parse_str(boot.trim()).map_err(|_| Error::Unsupported)?;
     Ok((
@@ -183,7 +183,17 @@ fn unique_mount(file: &File) -> Result<u64> {
     Ok(stat.stx_mnt_id)
 }
 
-fn record(text: &str, layout: &OverlayLayout, device: rustix::fs::Dev) -> Result<u64> {
+pub(crate) fn driver_mount(layout: &OverlayLayout, require_private: bool) -> Result<()> {
+    let device = fs::symlink_metadata(&layout.files)?.dev();
+    record(&mountinfo()?, layout, device, require_private).map(|_| ())
+}
+
+fn record(
+    text: &str,
+    layout: &OverlayLayout,
+    device: rustix::fs::Dev,
+    require_private: bool,
+) -> Result<u64> {
     let mut found = None;
     for line in text.lines() {
         let fields: Vec<_> = line.split(' ').collect();
@@ -204,11 +214,12 @@ fn record(text: &str, layout: &OverlayLayout, device: rustix::fs::Dev) -> Result
             .iter()
             .position(|field| *field == "-")
             .ok_or(Error::Invalid)?;
-        if split != 6
+        if split < 6
+            || (require_private && split != 6)
             || fields.len() != split + 4
             || fields[3] != "/"
-            || fields[7] != "overlay"
-            || fields[8] != "overlay"
+            || fields[split + 1] != "overlay"
+            || fields[split + 2] != "overlay"
         {
             return Err(Error::Mismatch);
         }
@@ -219,7 +230,7 @@ fn record(text: &str, layout: &OverlayLayout, device: rustix::fs::Dev) -> Result
         {
             return Err(Error::Mismatch);
         }
-        let options: Vec<_> = fields[9].split(',').collect();
+        let options: Vec<_> = fields[split + 3].split(',').collect();
         for (key, path) in [
             ("lowerdir=", &layout.lower),
             ("upperdir=", &layout.upper),

@@ -39,5 +39,6 @@ cp -R "$root/." "$staging/"
 # Rename a complete package, then expose its CLI. No service/state is modified.
 mv -- "$staging" "$destination"
 ln -s -- "$destination/bin/treeharbor" "$command_path"
-printf 'Installed: %s\nRuntime init: %s\n' "$command_path" "$destination/bin/treeharbor-runtime-init"
+printf 'Installed: %s\nRuntime init: %s\nCopy-on-Write helper: %s\n' "$command_path" "$destination/bin/treeharbor-runtime-init" "$destination/bin/treeharbor-cow-driver"
 printf 'Add %s/bin to PATH. PostgreSQL and Docker/gVisor setup are separate.\n' "$prefix"
+printf 'The optional Copy-on-Write helper requires a protected host installation and explicit operator elevation. No host permissions were changed.\n'

@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.16-alpha.1 — Copy-on-Write candidate (unreleased)
 
 - Add an operator-only Copy-on-Write preparation path with one verified source
   image per node, separate writable workspace layers and guarded runtime views.
@@ -11,9 +11,17 @@
   Owner requests and acceptance remain explicit. See [the operator command](docs/node-work-selection.md).
 - Support an explicitly registered source filesystem with durable ownership
   and writeback checks. Missing or mismatched placements fail closed.
+- Include a Rust mount helper in the Linux archive, with the same dependency
+  reports, checksums and provenance as the service and runtime init. Installation
+  grants no host privileges; the optional helper needs a protected host copy and
+  explicit administrator approval. See [the setup and recovery profile](docs/experimental-cow.md).
+- Recover the same two running containers after terminating a shared worker.
+  Exercise exact mount replay, independent lock contention and refusal of a
+  different source or unprotected helper before the existing capture/conflict/export drill.
 - Publish first/repeat four-workspace measurements and raw data, including
-  cases where Git worktree remains faster. This prototype is not a signed
-  release or a supported deployment; see [scope and limits](docs/experimental-cow.md).
+  cases where Git worktree remains faster. Measurements identify the earlier
+  development build and do not claim new release measurements or production readiness.
+  Signed installed-package acceptance is still required before publication.
 
 ## 0.1.15-alpha.1 — faster repeat Connected workspaces
 

@@ -218,6 +218,32 @@ variant is now part of the required installed-package CI and release workflow.
 The operator-provisioned overlay profile still needs packaged installation and
 installed-artifact acceptance, including its documented recovery limits.
 
+The next candidate packages `treeharbor-cow-driver`, a Rust Linux helper using
+direct mount/unmount calls and a lock held by the privileged process. It checks
+the fixed layout and exact existing mount before mutation; it refuses elevation
+from an executable or ancestor writable by the node account. The installer grants
+no new host access. All three executables enter the archive, binary dependency
+inventory and native-input report. Native-input report version 2 requires all
+three identities; version 1 remains readable only for its original two binaries.
+
+The development ARM64 helper passed an actual PostgreSQL/gVisor test covering
+exact replay, wrong-source mount/unmount refusal, contention with a separate
+process holding the mount lock, and unsafe executable refusal. A killed shared
+worker reclaimed the same two container IDs, then captured/cleaned one task while
+the other continued writing. Replays, unrelated operation failure, exact native
+conflicts, fresh checks/review and Git export passed. The first boundary-test
+attempt called a preparation-only API after requesting a run and was correctly
+rejected; correcting that test order assumption yielded the complete pass.
+
+Both required installed-package jobs now run this profile with the actual
+archived helper, compare its protected installed copy byte-for-byte and exercise
+worker recovery. The same checks run before signing. The
+[deployment/recovery guide](experimental-cow.md) records the single-image,
+256 MiB and no-automatic-reboot-recovery limits. This candidate still needs its
+own required CI and signed installed-artifact results; historical trial success
+does not substitute for them. No new live GitHub permissions or test writes are
+part of this increment.
+
 ## 0.1.12-alpha.1 release scope
 
 Current documentation additions: [first-run checkpoints](try-treeharbor.md), a

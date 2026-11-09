@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Bind two actual executables to retained canonical linker-input observations.
+"""Bind packaged executables to retained canonical linker-input observations.
 
 All six CLI options are explicit. Private records are re-normalized with the
 sibling strict wrapper; ephemeral linker inputs are never reopened. A missing
@@ -33,7 +33,8 @@ wrapper = importlib.util.module_from_spec(SPEC)
 sys.modules[SPEC.name] = wrapper
 SPEC.loader.exec_module(wrapper)
 
-NAMES = ("treeharbor", "treeharbor-runtime-init")
+LEGACY_NAMES = ("treeharbor", "treeharbor-runtime-init")
+NAMES = (*LEGACY_NAMES, "treeharbor-cow-driver")
 PROFILE = wrapper.PROFILE
 CLAIMS = ("source_provenance_verified", "build_provenance_verified",
           "native_component_inventory_complete", "archive_member_attribution_complete",
@@ -100,21 +101,24 @@ def validate_report(report, *, expected_source, expected_target, expected_sessio
     wrapper.build_context(expected_source, expected_session)
     require(expected_source != "0" * 40 and isinstance(expected_target, str)
             and expected_target in wrapper.TARGETS, "invalid_expected_context")
-    keys(binary_sha256, NAMES)
+    require(isinstance(report, dict) and type(report.get("version")) is int
+            and report["version"] in (1, 2), "report_context_mismatch")
+    names = LEGACY_NAMES if report["version"] == 1 else NAMES
+    keys(binary_sha256, names)
     require(all(hash_value(v) for v in binary_sha256.values()), "invalid_binary_hashes")
     keys(report, ("version", "kind", "profile", "target", "build_source", "build_session",
                   "binary_sha256", "binaries", "observation", "scope", *CLAIMS))
-    require(type(report["version"]) is int and report["version"] == 1 and report["kind"] == KIND
+    require(report["kind"] == KIND
             and report["profile"] == wrapper.PROFILE and report["target"] == expected_target
             and report["build_source"] == expected_source and report["build_session"] == expected_session,
             "report_context_mismatch")
     require(report["observation"] == OBSERVATION and report["scope"] == SCOPE
             and all(report[c] is False for c in CLAIMS), "unsupported_coverage_claim")
-    keys(report["binary_sha256"], NAMES)
-    keys(report["binaries"], NAMES)
+    keys(report["binary_sha256"], names)
+    keys(report["binaries"], names)
     require(report["binary_sha256"] == binary_sha256, "binary_identity_mismatch")
     tools = None
-    for name in NAMES:
+    for name in names:
         binary = report["binaries"][name]
         keys(binary, ("bytes", "binary_sha256", "normalized_sha256", "output", "inputs", "tools"))
         require(binary["binary_sha256"] == binary_sha256[name] and hash_value(binary["normalized_sha256"]), "binary_identity_mismatch")
@@ -227,7 +231,7 @@ def collect(*, capture_dir, bin_dir, target, source_revision, build_session):
                           "normalized_sha256": digest(values["normalized.json"][1]),
                           "output": output, "inputs": normalized["inputs"], "tools": normalized["tools"]}
     require(set(selected) == set(NAMES), "missing_matching_link_invocation")
-    report = {"version": 1, "kind": KIND, "profile": wrapper.PROFILE, "target": target,
+    report = {"version": 2, "kind": KIND, "profile": wrapper.PROFILE, "target": target,
               "build_source": source_revision, "build_session": build_session,
               "binary_sha256": {n: observed[n]["sha256"] for n in NAMES}, "binaries": selected,
               "observation": OBSERVATION, "scope": SCOPE, **{c: False for c in CLAIMS}}
@@ -257,7 +261,7 @@ def main(argv=None):
         args.output_dir.mkdir(mode=0o700, exist_ok=True)
         require(args.output_dir.is_dir(), "invalid_output_directory")
         wrapper.durable_json(args.output_dir, "native-inputs.json", report)
-        print(json.dumps({"version": 1, "native_inputs_sha256": digest(encode(report)),
+        print(json.dumps({"version": 2, "native_inputs_sha256": digest(encode(report)),
                           "binary_sha256": report["binary_sha256"], **{c: False for c in CLAIMS}}))
         return 0
     except (OSError, ValueError, KeyError, TypeError, AttributeError):

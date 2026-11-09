@@ -127,7 +127,7 @@ def package(args):
         if name in files or name.startswith("/") or any(p in ("", ".", "..") for p in name.split("/")):
             raise ValueError(f"invalid or duplicate archive path: {name}")
         files[name] = (data, mode)
-    for name in ("treeharbor", "treeharbor-runtime-init"):
+    for name in ("treeharbor", "treeharbor-runtime-init", "treeharbor-cow-driver"):
         add("bin/" + name, binary(args.bin_dir / name, TARGETS[args.target]), 0o755)
     observations_digest = None
     observations_path = getattr(args, "input_observations", None)
@@ -138,7 +138,7 @@ def package(args):
         data = regular(observations_path)
         observations = json_document(data)
         expected = {name: hashlib.sha256(files["bin/" + name][0]).hexdigest()
-                    for name in ("treeharbor", "treeharbor-runtime-init")}
+                    for name in ("treeharbor", "treeharbor-runtime-init", "treeharbor-cow-driver")}
         if (not isinstance(observations, dict) or observations.get("version") != 1
                 or observations.get("target") != args.target
                 or observations.get("packaging_source_revision") != revision

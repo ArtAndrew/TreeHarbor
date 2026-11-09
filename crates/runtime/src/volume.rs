@@ -13,7 +13,7 @@ use std::{
 
 #[cfg(target_os = "linux")]
 #[path = "volume_overlay.rs"]
-mod overlay;
+pub(crate) mod overlay;
 #[cfg(target_os = "linux")]
 pub use overlay::{OverlayLayout, OverlayView};
 
