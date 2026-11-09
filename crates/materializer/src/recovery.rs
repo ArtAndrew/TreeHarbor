@@ -47,6 +47,29 @@ impl MaterializedTree {
         expected: BaselineExpectation<'_>,
         limits: Limits,
     ) -> Result<Self> {
+        Self::load(root, expected, limits, None)
+    }
+
+    #[cfg(target_os = "linux")]
+    pub fn load_view_baseline(
+        root: &Path,
+        expected: BaselineExpectation<'_>,
+        limits: Limits,
+        files: std::path::PathBuf,
+    ) -> Result<Self> {
+        // The caller authenticates and holds the exact overlay mount.
+        if !files.is_absolute() || files.starts_with(root) {
+            return Err(Error::InvalidBaseline);
+        }
+        Self::load(root, expected, limits, Some(files))
+    }
+
+    fn load(
+        root: &Path,
+        expected: BaselineExpectation<'_>,
+        limits: Limits,
+        files: Option<std::path::PathBuf>,
+    ) -> Result<Self> {
         let limits = limits.validate()?;
         let directory = OpenOptions::new()
             .read(true)
@@ -59,14 +82,22 @@ impl MaterializedTree {
         let manifest = read_manifest(&directory, expected, limits)?;
         // Do not traverse `files`: it can legitimately contain edits, deletions,
         // symlinks or new files. Only reject substitution of the mount root itself.
-        let files = rustix::fs::statat(&directory, "files", rustix::fs::AtFlags::SYMLINK_NOFOLLOW)
-            .map_err(io::Error::from)?;
-        if rustix::fs::FileType::from_raw_mode(files.st_mode) != rustix::fs::FileType::Directory {
-            return Err(Error::InvalidBaseline);
+        let local = rustix::fs::statat(&directory, "files", rustix::fs::AtFlags::SYMLINK_NOFOLLOW);
+        match (files.is_some(), local) {
+            (true, Err(rustix::io::Errno::NOENT)) => (),
+            (false, Ok(stat))
+                if rustix::fs::FileType::from_raw_mode(stat.st_mode)
+                    == rustix::fs::FileType::Directory =>
+            {
+                ()
+            }
+            (false, Err(error)) => return Err(io::Error::from(error).into()),
+            _ => return Err(Error::InvalidBaseline),
         }
         same_directory(&directory_meta, &fs::symlink_metadata(&root)?)?;
         Ok(Self {
             root,
+            files,
             manifest: Arc::new(manifest),
             stats: None,
         })

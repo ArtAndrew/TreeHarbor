@@ -82,6 +82,27 @@ impl CleanupGuard {
         placement: Volume,
         expected: RemovalExpectation<'_>,
     ) -> Result<Self> {
+        Self::open_exact(root, engine, placement, expected, None).await
+    }
+
+    #[cfg(target_os = "linux")]
+    pub async fn open_overlay(
+        root: &Path,
+        engine: &Engine,
+        placement: Volume,
+        expected: RemovalExpectation<'_>,
+        overlay: [u8; 32],
+    ) -> Result<Self> {
+        Self::open_exact(root, engine, placement, expected, Some(overlay)).await
+    }
+
+    async fn open_exact(
+        root: &Path,
+        engine: &Engine,
+        placement: Volume,
+        expected: RemovalExpectation<'_>,
+        overlay: Option<[u8; 32]>,
+    ) -> Result<Self> {
         placement.verify()?;
         let parent = root.parent().ok_or(Error::Invalid)?.canonicalize()?;
         if parent.starts_with(&placement.identity().mount)
@@ -99,18 +120,36 @@ impl CleanupGuard {
         let intent = read(&journal.root.join("intent.json"), 128 * 1024)?;
         let value: Value = serde_json::from_slice(&intent)?;
         let original: VolumeIdentity = serde_json::from_value(value["volume"].clone())?;
-        check_cleanup_volume(placement.identity(), &original, expected.files)?;
-        if expected.engine.is_some_and(|id| id != engine.identity())
-            || intent
-                != intent_bytes(
-                    engine.identity(),
-                    expected.attempt,
-                    expected.binding,
-                    expected.profile,
-                    expected.task,
-                    &original,
-                )?
-        {
+        let expected_bytes = if let Some(digest) = overlay {
+            if &original != placement.identity()
+                || value["overlay"]["layout"]["files"].as_str() != expected.files.to_str()
+                || overlay_intent_digest(&value["overlay"])? != digest
+            {
+                return Err(Error::Mismatch);
+            }
+            let mut expected_intent = intent_value(
+                engine.identity(),
+                expected.attempt,
+                expected.binding,
+                expected.profile,
+                expected.task,
+                &original,
+            );
+            expected_intent["version"] = json!(2);
+            expected_intent["overlay"] = value["overlay"].clone();
+            serde_json::to_vec(&expected_intent)?
+        } else {
+            check_cleanup_volume(placement.identity(), &original, expected.files)?;
+            intent_bytes(
+                engine.identity(),
+                expected.attempt,
+                expected.binding,
+                expected.profile,
+                expected.task,
+                &original,
+            )?
+        };
+        if expected.engine.is_some_and(|id| id != engine.identity()) || intent != expected_bytes {
             return Err(Error::Mismatch);
         }
         let saved = journal.saved_id()?;
@@ -423,6 +462,35 @@ fn require_control_path(path: &Path, spec: &Specification) -> Result<()> {
         return Err(Error::Mismatch);
     }
     Ok(())
+}
+
+pub(crate) fn overlay_intent_digest(intent: &Value) -> Result<[u8; 32]> {
+    let mut hash = Sha256::new();
+    hash.update(b"treeharbor-overlay-placement\0v1\0");
+    hash.update(serde_json::to_vec(intent)?);
+    Ok(hash.finalize().into())
+}
+
+#[cfg(test)]
+#[test]
+fn overlay_placement_has_independent_digest() {
+    let observation = json!({
+        "layout": {"lower":"/srv/lower","upper":"/srv/slot/upper","work":"/srv/slot/work","files":"/srv/views/workspace"},
+        "observed": {
+            "mount":42, "boot":"00000000-0000-0000-0000-000000000001",
+            "directories":[
+                {"device":1,"inode":2,"unique_mount":101},
+                {"device":3,"inode":4,"unique_mount":102},
+                {"device":3,"inode":5,"unique_mount":102},
+                {"device":6,"inode":7,"unique_mount":103}
+            ]
+        }
+    });
+    assert_eq!(serde_json::to_vec(&observation).unwrap().len(), 368);
+    assert_eq!(
+        hex(&overlay_intent_digest(&observation).unwrap()),
+        "b94b2f90ff1bc8771e6f3887e7a62ebf89a922e3ed4b9e0f5404eaf111c13265"
+    );
 }
 
 fn intent_value(

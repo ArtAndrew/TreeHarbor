@@ -10,6 +10,8 @@ mod publication;
 mod recovery;
 mod seed;
 mod selection;
+#[cfg(target_os = "linux")]
+mod view;
 pub use capture::{CaptureArtifact, CaptureExpectation};
 pub use publication::{Publication, PublicationReceipt};
 pub use recovery::BaselineExpectation;
@@ -119,12 +121,18 @@ pub struct Statistics {
 #[derive(Clone, Debug)]
 pub struct MaterializedTree {
     root: PathBuf,
+    files: Option<PathBuf>,
     manifest: Arc<Manifest>,
     stats: Option<Statistics>,
 }
 impl MaterializedTree {
     pub fn path(&self) -> PathBuf {
-        self.root.join("files")
+        self.files
+            .clone()
+            .unwrap_or_else(|| self.root.join("files"))
+    }
+    pub fn is_external_view(&self) -> bool {
+        self.files.is_some()
     }
     pub fn manifest_path(&self) -> PathBuf {
         self.root.join("manifest.json")

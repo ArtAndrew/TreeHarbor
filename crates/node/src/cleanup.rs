@@ -110,6 +110,7 @@ struct Deletion {
     directory: PathBuf,
     intent: Intent,
     bytes: Vec<u8>,
+    overlay: bool,
 }
 fn exists(path: &Path) -> Result<bool> {
     match fs::symlink_metadata(path) {
@@ -118,15 +119,21 @@ fn exists(path: &Path) -> Result<bool> {
         Err(e) => Err(e.into()),
     }
 }
-fn allowed(name: &[u8], initialized: bool) -> bool {
+fn allowed(name: &[u8], initialized: bool, overlay: bool) -> bool {
     name.starts_with(b"record-write-")
         || (initialized && matches!(name, b"intent.json" | b"tree" | b"staging"))
+        || (initialized
+            && overlay
+            && matches!(
+                name,
+                b"overlay-upper" | b"overlay-work" | b"overlay-pin.json" | b"overlay-attached.json"
+            ))
 }
-fn validate_names(root: &Root, initialized: bool) -> Result<Vec<Vec<u8>>> {
+fn validate_names(root: &Root, initialized: bool, overlay: bool) -> Result<Vec<Vec<u8>>> {
     use std::os::unix::ffi::OsStrExt;
     let names = root.names()?;
     for name in &names {
-        if !allowed(name, initialized) {
+        if !allowed(name, initialized, overlay) {
             return Err(Error::Incomplete);
         }
         if name.starts_with(b"record-write-") {
@@ -145,6 +152,7 @@ impl Deletion {
         bound: [u8; 32],
         original: Option<Vec<u8>>,
         manifest: Option<[u8; 32]>,
+        overlay: bool,
     ) -> Result<Self> {
         guard.verify()?;
         let journals = private::make_directory(&guard.storage.root.join("cleanup"))?;
@@ -187,7 +195,7 @@ impl Deletion {
                         return Err(Error::Identity);
                     }
                 }
-                validate_names(root, initialized)?;
+                validate_names(root, initialized, overlay)?;
             }
             if manifest.is_some() && !initialized {
                 return Err(Error::Incomplete);
@@ -220,6 +228,7 @@ impl Deletion {
             directory,
             intent,
             bytes,
+            overlay,
         };
         result.verify()?;
         Ok(result)
@@ -255,7 +264,7 @@ impl Deletion {
             }
         } else {
             if let Some(root) = &self.root {
-                let names = validate_names(root, self.intent.initialized)?;
+                let names = validate_names(root, self.intent.initialized, self.overlay)?;
                 root.remove(&names, || self.verify())?;
             }
             self.verify()?;
@@ -302,6 +311,19 @@ impl Node {
         plan: &CleanupPlan,
         socket: Option<&Path>,
     ) -> Result<Value> {
+        self.cleanup_workspace_with_driver(db, heartbeat, auth, plan, socket, None)
+            .await
+    }
+
+    pub async fn cleanup_workspace_with_driver(
+        &self,
+        db: &mut Metadata,
+        heartbeat: &mut Metadata,
+        auth: &Authorization,
+        plan: &CleanupPlan,
+        socket: Option<&Path>,
+        cow_driver: Option<&Path>,
+    ) -> Result<Value> {
         self.check_auth(auth)?;
         self.storage.verify()?;
         if plan.node() != self.identity().node()
@@ -330,30 +352,72 @@ impl Node {
             {
                 return Err(Error::Identity);
             }
+            let original = plan
+                .placement()
+                .map(|_| crate::worker::cleanup_intent(plan))
+                .transpose()?;
+            let bound = binding(plan, original.as_deref())?;
+            let id = plan.id();
+            let manifest = plan.placement().and_then(|p| p.manifest_digest);
+            #[cfg(not(target_os = "linux"))]
+            let overlay = false;
+            #[cfg(target_os = "linux")]
+            let cleanup_dir = self.storage.root.join("cleanup").join(id.to_string());
+            #[cfg(target_os = "linux")]
+            let overlay = if let Some(op) = &operation {
+                exists(&op.root.join(crate::cow::PIN))?
+                    || exists(&cleanup_dir.join(crate::cow::RETIRED))?
+            } else {
+                false
+            };
+            if overlay && cow_driver.is_none() {
+                return Err(Error::Incomplete);
+            }
+            #[cfg(target_os = "linux")]
+            let retirement = if overlay {
+                Some((
+                    cow_driver.ok_or(Error::Configuration)?.to_owned(),
+                    hash(original.as_deref().ok_or(Error::Identity)?),
+                    manifest.ok_or(Error::Incomplete)?,
+                ))
+            } else {
+                None
+            };
             let runtime = if let Some(context) = plan.runtime() {
                 let op = operation.as_ref().ok_or(Error::Identity)?;
                 let volume = op.volume.as_ref().ok_or(Error::Identity)?.try_clone()?;
+                #[cfg(target_os = "linux")]
+                let (files, overlay_placement) = if let Some((_, binding, manifest)) = &retirement {
+                    let (files, identity) =
+                        crate::cow::cleanup_context(op, &cleanup_dir, *binding, *manifest)?;
+                    (files, Some(identity))
+                } else {
+                    (op.root.join("tree/files"), None)
+                };
+                #[cfg(not(target_os = "linux"))]
                 let files = op.root.join("tree/files");
                 let engine = Engine::open(socket.ok_or(Error::Configuration)?).await?;
                 let journal = private::directory(&self.storage.root.join("runtime"))?
                     .join(context.attempt().to_string());
-                Some(
-                    CleanupGuard::open(
-                        &journal,
-                        &engine,
-                        volume,
-                        RemovalExpectation {
-                            attempt: context.attempt(),
-                            binding: context.binding(),
-                            profile: context.profile(),
-                            task: context.task(),
-                            engine: context.engine(),
-                            container: context.container(),
-                            files: &files,
-                        },
-                    )
-                    .await?,
-                )
+                let expected = RemovalExpectation {
+                    attempt: context.attempt(),
+                    binding: context.binding(),
+                    profile: context.profile(),
+                    task: context.task(),
+                    engine: context.engine(),
+                    container: context.container(),
+                    files: &files,
+                };
+                #[cfg(target_os = "linux")]
+                let opened = if let Some(identity) = overlay_placement {
+                    CleanupGuard::open_overlay(&journal, &engine, volume, expected, identity)
+                        .await?
+                } else {
+                    CleanupGuard::open(&journal, &engine, volume, expected).await?
+                };
+                #[cfg(not(target_os = "linux"))]
+                let opened = CleanupGuard::open(&journal, &engine, volume, expected).await?;
+                Some(opened)
             } else {
                 None
             };
@@ -363,15 +427,8 @@ impl Node {
                 runtime,
             });
             guard.verify()?;
-            let original = plan
-                .placement()
-                .map(|_| crate::worker::cleanup_intent(plan))
-                .transpose()?;
-            let bound = binding(plan, original.as_deref())?;
-            let id = plan.id();
-            let manifest = plan.placement().and_then(|p| p.manifest_digest);
             let deletion = tokio::task::spawn_blocking(move || {
-                Deletion::open(guard, id, bound, original, manifest)
+                Deletion::open(guard, id, bound, original, manifest, overlay)
             })
             .await??;
             let intent = hash(&deletion.bytes);
@@ -381,7 +438,16 @@ impl Node {
             db.admit_workspace_cleanup(auth, plan, intent).await?;
             // The owned Deletion carries every OS/slot guard through the actual
             // unlink and fsync work, even if this async future is abandoned.
-            let (deletion, proof) = tokio::task::spawn_blocking(move || deletion.run()).await??;
+            let (deletion, proof) = tokio::task::spawn_blocking(move || {
+                #[cfg(target_os = "linux")]
+                if let Some((driver, binding, manifest)) = retirement {
+                    deletion.verify()?;
+                    let operation = deletion.guard.operation.as_deref().ok_or(Error::Identity)?;
+                    crate::cow::detach(operation, &driver, &deletion.directory, binding, manifest)?;
+                }
+                deletion.run()
+            })
+            .await??;
             deletion.verify()?;
             let result = db.complete_workspace_cleanup(auth, plan, &proof).await?;
             drop(deletion);

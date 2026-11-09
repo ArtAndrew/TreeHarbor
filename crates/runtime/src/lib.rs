@@ -4,7 +4,7 @@ mod engine;
 mod journal;
 mod profile;
 mod volume;
-pub use engine::{Container, Engine, Inspection, RuntimeState, Specification};
+pub use engine::{Container, Engine, Inspection, RuntimeState, Specification, WorkspacePlacement};
 pub use journal::{CleanupGuard, Controller, Outcome, RemovalExpectation, RemovedGuard};
 pub use profile::{Definition, Profile, Task};
 #[cfg(target_os = "linux")]

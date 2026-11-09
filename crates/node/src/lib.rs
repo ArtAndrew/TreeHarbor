@@ -1,6 +1,8 @@
 //! Trusted local node: durable files, managed external-runtime tasks and capture.
 mod capture;
 mod cleanup;
+#[cfg(target_os = "linux")]
+mod cow;
 mod execution;
 mod git_seed_cache;
 mod git_source;
