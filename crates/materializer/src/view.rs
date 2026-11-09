@@ -57,7 +57,7 @@ impl MaterializedTree {
             root,
             files: Some(files),
             manifest: self.manifest,
-            stats: None,
+            stats: self.stats,
         })
     }
 }

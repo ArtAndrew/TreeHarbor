@@ -280,6 +280,33 @@ pub(crate) async fn git_source_context(
 }
 
 impl Metadata {
+    /// Reuse already verified local Git source bytes for this live preparation.
+    /// No catalog object is read and no temporary object hold is needed.
+    pub async fn cached_git_preparation_root(
+        &mut self,
+        auth: &Authorization,
+        plan: &Preparation,
+    ) -> Result<ObjectId> {
+        let tx = self.client.transaction().await?;
+        settings(&tx).await?;
+        let scope = auth.scope();
+        repository_lock(&tx, scope, false).await?;
+        let (revision, _, holder) = git_source_context(&tx, auth, plan).await?;
+        // The workspace owns a durable pin. The repository lock excludes
+        // changes to it while we check its exact live object generation.
+        let pinned: bool = tx.query_one(
+            "SELECT EXISTS(SELECT 1 FROM th_object_pins p JOIN th_objects o USING (tenant,digest,generation)
+             WHERE p.tenant=$1 AND p.repository=$2 AND p.holder=$3 AND p.digest=$4 AND o.state='live')",
+            &[&scope.tenant(), &scope.repository(), &holder, &revision.as_bytes().as_slice()],
+        ).await?.get(0);
+        if !pinned {
+            return Err(Error::ReadScope);
+        }
+        authorize(&tx, auth).await?;
+        tx.commit().await?;
+        Ok(revision)
+    }
+
     pub async fn prepared_workspace(
         &mut self,
         auth: &Authorization,
