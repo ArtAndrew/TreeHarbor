@@ -136,6 +136,14 @@ for repeat Git-compatible preparation and 1,136 ms on the first wave.
 The Git worktree repeat median in the candidate runs was 110 ms.
 [Verified source file reuse benchmark](benchmark-preparation.md#verified-source-file-reuse--9-november-2026).
 
+The source seed stores verified leaf contents in one bounded local file.
+The node validates the cached manifest and each blob before replaying it
+into a fresh writable workspace. An unreadable or damaged cache is rebuilt
+from the authoritative source. The paired Linux runs measured a repeat
+Git-compatible median of 194 ms with the packed seed and 207 ms with the
+directory seed. The corresponding Git worktree median was 94 ms.
+[Sequential source seed reads](benchmark-preparation.md#sequential-source-seed-reads--9-november-2026).
+
 The [recorded Connected trial](demo.md) has an MP4 with six distinct scenes
 verified by decoding, a static storyboard and a direct link to the GIF.
 
