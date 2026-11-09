@@ -277,6 +277,15 @@ requires a fresh review and an actual check on the new candidate. The drill
 reads native history after workspace cleanup and then checks the optional
 export by restoring the final bytes and earlier revisions in ordinary Git.
 
+The full installed drill also backs up this overlapping history and reopens it
+from a separate PostgreSQL database and object store. It compares the complete
+native graph and first-parent view, including ordered merge parents, and checks
+the projected Git graph. Removing or corrupting the second parent in the
+restored copy fails both complete history queries and export. Restoring the
+original bytes recovers the same graph. Run the script without
+`--overlap-only` to exercise this recovery, replacement-node validation and
+cleanup with a disposable database.
+
 Run the focused drill in a disposable Linux runner with Docker configured for
 gVisor, a disposable PostgreSQL container reachable through a local Unix socket,
 and permission to mount temporary ext4 volumes. Set `TH_RUNTIME_PG_CONTAINER`

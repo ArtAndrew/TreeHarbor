@@ -304,6 +304,7 @@ class Checks(managed.Harness):
         restored = self.export_and_restore(landed_b, "overlap", merged)
         assert managed.command("/usr/bin/git", "--git-dir", restored, "show", "main^1:same.txt").stdout == left
         assert managed.command("/usr/bin/git", "--git-dir", restored, "show", "main^1^1:same.txt").stdout == "base\n"
+        return landed_b, restored
 
     def exercise(self, overlap_only=False):
         self.empty_proposal = False
@@ -311,7 +312,7 @@ class Checks(managed.Harness):
         self.reviewer = self.principal("reviewer", "human", ["read", "review"])
         self.integrator = self.principal("integrator", "integrator", ["read", "integration.control"])
         self.ci = self.principal("ci", "validator", ["read", "validation.report"])
-        self.overlapping_agents()
+        overlap = self.overlapping_agents()
         if overlap_only:
             return
         agent = self.case("isolation", "candidate\n", self.secret)
@@ -439,7 +440,7 @@ class Checks(managed.Harness):
         assert self.native("check_status", self.ci, run=passed["check"]) == original_check
         print("PASS cleanup export: removed agent/check files preserve native history, exact check evidence and ordinary Git restoration", flush=True)
         pending_restore = self.check_case(timeout=16000)
-        cold_restore.exercise(self, landed, managed, pending_restore)
+        cold_restore.exercise(self, landed, managed, pending_restore, overlap)
 
 
 if __name__ == "__main__":
