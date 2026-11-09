@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.16-alpha.1 — Copy-on-Write candidate (unreleased)
+## 0.1.16-alpha.1 — shared Copy-on-Write workspaces — 2026-11-09
 
 - Add an operator-only Copy-on-Write preparation path with one verified source
   image per node, separate writable workspace layers and guarded runtime views.
@@ -21,7 +21,11 @@
 - Publish first/repeat four-workspace measurements and raw data, including
   cases where Git worktree remains faster. Measurements identify the earlier
   development build and do not claim new release measurements or production readiness.
-  Signed installed-package acceptance is still required before publication.
+- Publish signed Linux x86-64 and ARM64 packages after installed shared-worker
+  recovery checks. Independent verification matched the original archives,
+  all signed subjects and the exact producing workflow. A separate ARM64
+  installation passed the same-node recovery, overlapping-task and Git-export
+  scenario. See the [release evidence](docs/evidence/cow-workspace-release-20261109.json).
 
 ## 0.1.15-alpha.1 — faster repeat Connected workspaces
 

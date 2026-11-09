@@ -1,0 +1,123 @@
+{
+  "version": 1,
+  "published_at": "2026-11-09T17:23:12Z",
+  "release": "https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.16-alpha.1",
+  "release_id": 439429177,
+  "source_revision": "c48c14b52c64a8ffb8b32cfd26ae4a565216a359",
+  "tag": "v0.1.16-alpha.1",
+  "github_immutable_release": false,
+  "main_ci": "https://github.com/ArtAndrew/TreeHarbor/actions/runs/42656233548/attempts/2",
+  "signed_producer": "https://github.com/ArtAndrew/TreeHarbor/actions/runs/42661426400/attempts/1",
+  "signed_attempt": 1,
+  "architectures": {
+    "x86_64": {
+      "target": "x86_64-unknown-linux-musl",
+      "archive_sha256": "afa5903fe48c7e970d1b6177d0e08d069ec4f93f02508a16d36f5c1c5a7f5c53",
+      "binary_sha256": {
+        "treeharbor": "dc55c5d9bf8839ba76b1f368a968d48cec61c8ab019af424e24b695937ab139f",
+        "treeharbor-cow-driver": "240d9713545e2cd9fdc9675c8afdd641ef77e20529270c3c7e01a0c47aefaa9e",
+        "treeharbor-runtime-init": "f9e0bad39d31c87852d8127bdbf97ad3377e36c1f51ddc9fed2abc15b5e00002"
+      },
+      "official_online_and_bundle_attestation_verified": true,
+      "exact_subject_set_and_invocation_verified": true,
+      "installed_managed_and_native_checks_passed": true,
+      "installed_shared_worker_recovery_passed": true,
+      "completed_test_commands": [
+        "python3 scripts/test-managed-runs.py",
+        "python3 scripts/test-native-checks.py --shared-node --recover-shared-worker"
+      ]
+    },
+    "aarch64": {
+      "target": "aarch64-unknown-linux-musl",
+      "archive_sha256": "b2e466d150ea01b9f8c894a9b00a21b8dcd5e99ee790f9cbf4686eea285c06cf",
+      "binary_sha256": {
+        "treeharbor": "78558e687f78229439135c3b40be0be04b94fbcc4e2cf8d1795301a43ea532ad",
+        "treeharbor-cow-driver": "4f72097c58802401c0ee0ffb474dc464ec88aa40800a89ee88276d6a9e07ac02",
+        "treeharbor-runtime-init": "3706516d2e2d93967e6fb1a400090623e62347dfed082237e0915830eacd6f3c"
+      },
+      "official_online_and_bundle_attestation_verified": true,
+      "exact_subject_set_and_invocation_verified": true,
+      "installed_managed_and_native_checks_passed": true,
+      "installed_shared_worker_recovery_passed": true,
+      "completed_test_commands": [
+        "python3 scripts/test-managed-runs.py",
+        "python3 scripts/test-native-checks.py --shared-node --recover-shared-worker"
+      ]
+    }
+  },
+  "separate_arm64_install": {
+    "source_revision": "c48c14b52c64a8ffb8b32cfd26ae4a565216a359",
+    "archive_sha256": "b2e466d150ea01b9f8c894a9b00a21b8dcd5e99ee790f9cbf4686eea285c06cf",
+    "product_version": "0.1.16-alpha.1",
+    "target": "aarch64-unknown-linux-musl",
+    "command": "python3 scripts/test-native-checks.py --overlap-only --shared-node --recover-shared-worker",
+    "reported_passes": 9,
+    "metadata_store": "PostgreSQL",
+    "runtime": "gVisor release-20261012.0",
+    "authority_mode": "standalone fixture",
+    "shared_source": "operator-provisioned ext4 / OverlayFS",
+    "network_profile": "isolated network namespace with no external route; local runtime and database sockets",
+    "protected_helper_matches_signed_archive": true,
+    "same_two_container_ids_after_worker_loss": true,
+    "first_workspace_cleanup_preserved_second_agent_writes": true,
+    "wrong_source_and_lock_contention_refused": true,
+    "unsafe_helper_elevation_refused": true,
+    "completed_selection_replayed_without_new_run": true,
+    "conflict_required_fresh_checks_and_review": true,
+    "native_history_exported_to_ordinary_git": true,
+    "temporary_runtime_and_volume_cleanup_passed": true,
+    "execution_log_sha256": "e7a34cb06be97980f62cd73191bcee915e088dc5340337d6d0b00f9ab0f213af",
+    "execution_record_kind": "operator-recorded trial; not a signed execution attestation",
+    "live_github_operations": false
+  },
+  "public_assets": [
+    {
+      "name": "treeharbor-0.1.16-alpha.1-aarch64-unknown-linux-musl.metadata.zip",
+      "size": 72077,
+      "digest": "sha256:6a45b58b92b132b7826cd75e23be4ad36e66b6efa1c3e6339bf898a43f85e321"
+    },
+    {
+      "name": "treeharbor-0.1.16-alpha.1-aarch64-unknown-linux-musl.provenance.sigstore.json",
+      "size": 12416,
+      "digest": "sha256:8a6669b1dccf946f5c1c459344c17f63823e72a03d7284e32a63b8073fd7d48f"
+    },
+    {
+      "name": "treeharbor-0.1.16-alpha.1-aarch64-unknown-linux-musl.tar.gz",
+      "size": 13464107,
+      "digest": "sha256:b2e466d150ea01b9f8c894a9b00a21b8dcd5e99ee790f9cbf4686eea285c06cf"
+    },
+    {
+      "name": "treeharbor-0.1.16-alpha.1-aarch64-unknown-linux-musl.tar.gz.sha256",
+      "size": 126,
+      "digest": "sha256:38bca0915a18d9147589ff56a62ac410195f171d72639592772bfc7dc4c12f9d"
+    },
+    {
+      "name": "treeharbor-0.1.16-alpha.1-x86_64-unknown-linux-musl.metadata.zip",
+      "size": 72319,
+      "digest": "sha256:59fbd5e992146032a59c1e616353ee20b5acfae05b8659b92b08cfb3de62400a"
+    },
+    {
+      "name": "treeharbor-0.1.16-alpha.1-x86_64-unknown-linux-musl.provenance.sigstore.json",
+      "size": 12408,
+      "digest": "sha256:3f9566ad0492ddd85097debb40dd175b469d557f32313e713d40fdfe9506bba7"
+    },
+    {
+      "name": "treeharbor-0.1.16-alpha.1-x86_64-unknown-linux-musl.tar.gz",
+      "size": 14276011,
+      "digest": "sha256:afa5903fe48c7e970d1b6177d0e08d069ec4f93f02508a16d36f5c1c5a7f5c53"
+    },
+    {
+      "name": "treeharbor-0.1.16-alpha.1-x86_64-unknown-linux-musl.tar.gz.sha256",
+      "size": 125,
+      "digest": "sha256:0a8a6a33be8f33b7a7ac19136941a37bda7f2b82e4c3e3392904ea401a35c395"
+    }
+  ],
+  "previous_release_assets_unchanged": true,
+  "limits": [
+    "Controlled-evaluation alpha; no production-readiness claim.",
+    "One exact source image per node, workspace preparation capped at 256 MiB.",
+    "Manual Linux volume/runtime/helper setup; no automatic image rotation or reboot/missing-node recovery.",
+    "Scripted tasks, not an LLM evaluation or a fresh live GitHub PR trial.",
+    "Published preparation measurements identify earlier development binaries, not these release archives."
+  ]
+}

@@ -1,6 +1,6 @@
 # Experimental work selection on one node
 
-`node work-selected` is an operator command in the upcoming Copy-on-Write alpha for a bounded
+`node work-selected` is an operator command available from 0.1.16-alpha.1 for a bounded
 group of already authorized operations. It shares one node process across
 managed runs, stopped-file captures and workspace cleanup. It supports ordinary
 placements and the [Copy-on-Write preview](experimental-cow.md).
