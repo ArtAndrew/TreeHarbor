@@ -226,6 +226,10 @@ class Harness:
         target = runtime_target()
         shutil.copy2(Path(os.environ.get("TH_TEST_RUNTIME_INIT", target / "treeharbor-runtime-init")), build / "init")
         shutil.copy2(target / "examples/runtime_probe", build / "probe")
+        # The image files are owned by root. The probe must remain executable
+        # by the unprivileged task even after a private build with umask 077.
+        for name in ("init", "probe"):
+            (build / name).chmod(0o755)
         (build / "Dockerfile").write_text("FROM scratch\nCOPY init /init\nCOPY probe /probe\n")
         self.image = docker("build", "--network=none", "--quiet", build).stdout.strip()
         self.transport = self.root / "proxy"
@@ -271,17 +275,19 @@ class Harness:
         digest = self.admin("runtime-profile-register", *self.scope, "--file", profile)["profile_digest"]
         return number, assigned, slot, mount, digest
 
-    def case(self, mode, *args, node=0, timeout=10000, workspace=None, selected=False):
+    def case(self, mode, *args, node=0, timeout=10000, workspace=None, selected=False,
+             base=None, source=b"base\n"):
         number, assigned, slot, mount, digest = self.placement_profile(node, timeout)
         run = str(uuid.uuid4())
         credential = self.agents[node]
+        base = self.revision if base is None else base
         create = None
         if workspace is None:
             if number == 0:
                 # Exercise the installed Rust shortcut, then use the exact returned
                 # identity through real file preparation and managed execution.
                 create = ["workspace-new", "--state", self.root / "first-workspace.json",
-                          "--authority", "standalone", "--epoch", "1", "--base", self.revision,
+                          "--authority", "standalone", "--epoch", "1", "--base", base,
                           "--profile-digest", self.source_profile]
                 requested = self.client(*create, credential=credential)
                 workspace = requested["workspace"]
@@ -290,7 +296,7 @@ class Harness:
             else:
                 workspace = str(uuid.uuid4())
                 self.client("workspace-create", "--key", f"workspace-{number}", "--authority", "standalone", "--epoch", "1",
-                            "--workspace", workspace, "--base", self.revision, "--profile-digest", self.source_profile,
+                            "--workspace", workspace, "--base", base, "--profile-digest", self.source_profile,
                             credential=credential)
         selection = ["--workspace", workspace] if selected else []
         prepared = self.value(*self.node_args(assigned, "prepare-once"), "--slot", slot, *selection)
@@ -298,7 +304,7 @@ class Harness:
         if create is not None:
             assert self.client(*create, credential=credential) == requested
         files = Path(prepared["path"])
-        assert (files / "same.txt").read_text() == "base\n"
+        assert (files / "same.txt").read_bytes() == source
         request = ["run-request", "--key", f"run-{number}", "--authority", "standalone", "--epoch", "1",
                    "--run", run, "--workspace", workspace, "--generation", "1", "--profile-digest", digest,
                    "--agent", f"agent-{node}", "--task", f"task-{number}", "--", "/probe", mode, *map(str, args)]
@@ -308,7 +314,7 @@ class Harness:
         attempt = self.sql(f"SELECT attempt FROM th_managed_runs WHERE run='{run}'")
         case = {"node": assigned, "credential": credential, "workspace": workspace, "run": run,
                 "attempt": attempt, "files": files, "mount": mount, "request": request, "first": first,
-                "profile": digest, "node_index": node, "slot": slot}
+                "profile": digest, "node_index": node, "slot": slot, "base": base}
         self.cases.append(case)
         return case
 
@@ -428,7 +434,7 @@ class Harness:
         result = self.client(*request, credential=case["credential"])
         assert result == self.client(*request, credential=case["credential"])
         assert result["state"] == "accepted" and result["seal"] == seal
-        assert result["run"] == case["run"] and result["base_revision"] == self.revision
+        assert result["run"] == case["run"] and result["base_revision"] == case["base"]
         assert result["version"] == previous_version + 1
 
         def oid(kind, payload):

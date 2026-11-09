@@ -41,7 +41,7 @@ fn main() {
     );
     let args: Vec<_> = std::env::args().collect();
     match args[1].as_str() {
-        "check" => {
+        "check" | "check-one-of" => {
             assert!(std::env::var_os("TH_TEST_SECRET").is_none());
             assert!(!std::path::Path::new("/var/run/docker.sock").exists());
             assert!(
@@ -60,10 +60,16 @@ fn main() {
                 .unwrap();
             file.write_all(b"one check\n").unwrap();
             file.sync_all().unwrap();
-            if let Some(delay) = args.get(3) {
-                thread::sleep(Duration::from_millis(delay.parse().unwrap()));
-            }
-            if actual != args[2] {
+            let passed = if args[1] == "check" {
+                if let Some(delay) = args.get(3) {
+                    thread::sleep(Duration::from_millis(delay.parse().unwrap()));
+                }
+                actual == args[2]
+            } else {
+                assert_eq!(args.len(), 4);
+                args[2..].contains(&actual)
+            };
+            if !passed {
                 std::process::exit(23);
             }
         }
@@ -79,7 +85,7 @@ fn main() {
                 thread::sleep(Duration::from_millis(delay.parse().unwrap()));
             }
         }
-        "isolation" => {
+        "isolation" | "overlap-edit" => {
             assert!(std::env::var_os("TH_TEST_SECRET").is_none());
             assert!(!std::path::Path::new("/var/run/docker.sock").exists());
             assert!(fs::read(&args[3]).is_err());
@@ -99,9 +105,18 @@ fn main() {
                 )
                 .is_err()
             );
+            if args[1] == "overlap-edit" {
+                assert_eq!(fs::read("same.txt").unwrap(), b"base\n");
+            }
             fs::write("same.txt", args[2].as_bytes()).unwrap();
             assert_eq!(fs::read("same.txt").unwrap(), args[2].as_bytes());
-            if let Some(delay) = args.get(4) {
+            if args[1] == "overlap-edit" {
+                // The operator releases each task only after observing both
+                // private edits. The managed runtime bounds this wait.
+                while !std::path::Path::new("overlap-release").is_file() {
+                    thread::sleep(Duration::from_millis(10));
+                }
+            } else if let Some(delay) = args.get(4) {
                 thread::sleep(Duration::from_millis(delay.parse().unwrap()));
             }
         }
