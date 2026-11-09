@@ -84,7 +84,7 @@ architecture. Its retained original filenames allow `SBOM-SHA256SUMS` checks.
 ## Building development packages
 
 The package builder needs Python 3.11+, Git and a clean committed checkout. Build
-both binaries for the same native Linux architecture with the pinned Rust toolchain:
+all three binaries for the same native Linux architecture with the pinned Rust toolchain:
 
 ```sh
 rustup target add x86_64-unknown-linux-musl
@@ -95,7 +95,7 @@ python3 scripts/package-release.py --target x86_64-unknown-linux-musl \
 ```
 
 Use a new output directory. The builder refuses replacement of an archive. It
-checks both ELF architectures and rejects a dynamic interpreter, includes tracked
+checks every executable's ELF architecture and rejects a dynamic interpreter, includes tracked
 public documentation/examples and all vendored notices, and excludes the rest of
 the checkout. The version comes from Cargo.toml. The manifest records the packaging
 checkout revision and file hashes; this alone does not prove how binaries were
@@ -136,6 +136,10 @@ startup, credentials or runtime provisioning happens during installation.
 
 The runtime init resides at `PREFIX/lib/treeharbor/VERSION/bin/treeharbor-runtime-init`.
 Use the protected runtime setup described in [managed runs](managed-runs.md).
+The optional `treeharbor-cow-driver` is in the same directory. The
+[Copy-on-Write profile](experimental-cow.md#install-the-host-helper) requires a
+separate protected host copy and explicit operator elevation. The ordinary
+installer neither grants privileges nor modifies host mount or sudo policy.
 PostgreSQL, Docker/gVisor, bounded volumes and host access are separate prerequisites.
 Removing the CLI symlink and that version directory uninstalls the package; retain
 repository state and backups separately.
@@ -149,7 +153,11 @@ artifacts for seven days. These are not approved releases. The workflow creates 
 tag or GitHub release, and generates no SBOM/provenance attestation.
 
 The runtime CI also installs a newly built static package and passes its service
-and runtime-init paths to the managed lifecycle tests. Those tests keep their
+and runtime-init paths to the managed lifecycle tests. The Copy-on-Write drill
+uses a protected host copy of the packaged third executable and verifies its
+bytes against the archive. It runs two scripted agents on one node, recovers a
+killed worker without duplicating containers, and captures/cleans up one task
+while the other keeps writing. Those tests keep their
 adversarial probe as a separate fixture while executing the installed product
 binaries. Full Connected live acceptance remains a separate gate.
 

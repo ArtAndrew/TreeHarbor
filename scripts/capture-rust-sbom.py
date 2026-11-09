@@ -25,7 +25,7 @@ def load(name, filename):
 package = load("package_release", "package-release.py")
 sbom = load("normalize_rust_sbom", "normalize-rust-sbom.py")
 ROOT = Path(__file__).resolve().parents[1]
-NAMES = ("treeharbor", "treeharbor-runtime-init")
+NAMES = ("treeharbor", "treeharbor-runtime-init", "treeharbor-cow-driver")
 
 
 def run(*args, cwd=ROOT):

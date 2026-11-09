@@ -1,9 +1,13 @@
 //! Trusted external-runtime control. This is not agent-facing authorization.
 #![recursion_limit = "256"]
+#[cfg(target_os = "linux")]
+mod cow_driver;
 mod engine;
 mod journal;
 mod profile;
 mod volume;
+#[cfg(target_os = "linux")]
+pub use cow_driver::run as run_cow_driver;
 pub use engine::{Container, Engine, Inspection, RuntimeState, Specification, WorkspacePlacement};
 pub use journal::{CleanupGuard, Controller, Outcome, RemovalExpectation, RemovedGuard};
 pub use profile::{Definition, Profile, Task};

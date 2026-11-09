@@ -43,12 +43,11 @@ pub enum Action {
         /// Use this trusted absolute Git executable for an explicitly selected Git workspace.
         #[arg(long, requires = "workspace")]
         git: Option<PathBuf>,
-        /// Local operator experiment with an exact prepared overlay placement.
-        #[arg(long, hide = true, requires_all = ["workspace", "slot"])]
+        /// Opt in to the Linux Copy-on-Write preview with a protected host helper.
+        #[arg(long, requires_all = ["workspace", "slot"])]
         cow_driver: Option<PathBuf>,
     },
-    /// Local experiment with multiple guarded placements on one node.
-    #[command(hide = true)]
+    /// Prepare a bounded Copy-on-Write batch on separate slots of one Linux node.
     PrepareBatch {
         #[command(flatten)]
         node: Arguments,
@@ -79,8 +78,7 @@ pub enum Action {
         #[arg(long, value_parser=clap::value_parser!(u64).range(67_108_864..=68_719_476_736))]
         limit_bytes: u64,
     },
-    /// Local experiment: attach an empty dedicated source-image filesystem.
-    #[command(hide = true)]
+    /// Attach an empty dedicated source-image filesystem for the Linux preview.
     CowSourceRegister {
         #[command(flatten)]
         node: Arguments,
@@ -108,7 +106,8 @@ pub enum Action {
         /// Required if the workspace has a managed execution journal.
         #[arg(long)]
         engine_socket: Option<PathBuf>,
-        #[arg(long, hide = true)]
+        /// Protected Copy-on-Write helper used for this placement's cleanup.
+        #[arg(long)]
         cow_driver: Option<PathBuf>,
     },
     /// Execute or recover one persisted run using a trusted local Docker/runsc.
@@ -121,8 +120,7 @@ pub enum Action {
         #[arg(long)]
         run: Option<Uuid>,
     },
-    /// Local experiment: service exact runs, captures and drains on one node.
-    #[command(hide = true)]
+    /// Service selected existing runs, captures and drains on one node.
     WorkSelected {
         #[command(flatten)]
         node: Arguments,

@@ -14,6 +14,13 @@ evidence of adoption or production readiness.
 | **Standalone S2** | Own native history, review, checks and integration without Git/GitHub on the native path | Complete the native lifecycle and fenced migration on the shared Rust core, under the same ELv2. Prioritize after the first Connected usage evidence. |
 
 Available packages and their exact scope are listed in [signed alpha releases](https://github.com/ArtAndrew/TreeHarbor/releases).
+The next candidate is a bounded [Copy-on-Write profile](docs/experimental-cow.md):
+reuse one source image, run concurrent tasks on one Linux node, recover a lost
+worker and retire one workspace while another remains active. It includes a Rust
+host helper; signed installed-package acceptance remains the publication gate.
+Automatic image rotation and reboot recovery are later increments. The
+[measurements](docs/benchmark-preparation.md#shared-source-images--9-november-2026)
+retain the earlier development build identity and both favorable and unfavorable cases.
 [External tasks](docs/external-api-runs.md#save-creation-identities-automatically)
 can save creation identities with `api-run-new` (0.1.7-alpha.1+) or use the
 [MCP task tools](docs/mcp.md#start-a-task-using-your-own-execution-environment) (0.1.6-alpha.1+).

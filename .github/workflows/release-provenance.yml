@@ -168,6 +168,11 @@ jobs:
           "$TH_INSTALL_PREFIX/bin/treeharbor" --version
           printf 'TH_TEST_SERVICE_BINARY=%s/bin/treeharbor\n' "$TH_INSTALL_PREFIX" >> "$GITHUB_ENV"
           printf 'TH_TEST_RUNTIME_INIT=%s/treeharbor-runtime-init\n' "$(dirname "$(realpath "$TH_INSTALL_PREFIX/bin/treeharbor")")" >> "$GITHUB_ENV"
+          th_driver="$(dirname "$(realpath "$TH_INSTALL_PREFIX/bin/treeharbor")")/treeharbor-cow-driver"
+          sudo install -d -o root -g root -m 0755 /usr/local/libexec
+          sudo install -o root -g root -m 0755 "$th_driver" /usr/local/libexec/treeharbor-cow-driver
+          cmp "$th_driver" /usr/local/libexec/treeharbor-cow-driver
+          printf 'TH_TEST_OVERLAY_DRIVER=/usr/local/libexec/treeharbor-cow-driver\n' >> "$GITHUB_ENV"
       - name: Exercise actual managed AgentRun lifecycle
         env:
           TH_RUNTIME_PG_CONTAINER: ${{ job.services.postgres.id }}
@@ -177,7 +182,7 @@ jobs:
         env:
           TH_RUNTIME_PG_CONTAINER: ${{ job.services.postgres.id }}
           TH_RUNTIME_DATABASE_URL: host=/var/run/treeharbor-runtime-pg user=treeharbor_test password=disposable-ci-only dbname=treeharbor_test
-        run: python3 scripts/test-native-checks.py --shared-node
+        run: python3 scripts/test-native-checks.py --shared-node --recover-shared-worker
       - name: Identify the exact installed and runtime-tested archive
         env:
           TH_PACKAGE_DIR: ${{ runner.temp }}/runtime-package
@@ -209,7 +214,7 @@ jobs:
               prefix = archive.name.removesuffix(".tar.gz") + "/"
               manifest = json.load(contents.extractfile(prefix + "manifest.json"))
               binary_hashes = {name: digest(contents.extractfile(prefix + "bin/" + name).read())
-                               for name in ("treeharbor", "treeharbor-runtime-init")}
+                               for name in ("treeharbor", "treeharbor-runtime-init", "treeharbor-cow-driver")}
           revision = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
           target = os.environ["TH_PACKAGE_ARCH"] + "-unknown-linux-musl"
           if (manifest["source_revision"] != revision or revision != os.environ["GITHUB_SHA"]
@@ -224,7 +229,8 @@ jobs:
                   or observations["binary_sha256"] != binary_hashes):
               raise RuntimeError("runtime-tested archive/observations/source mismatch")
           installed = {"treeharbor": Path(os.environ["TH_TEST_SERVICE_BINARY"]),
-                       "treeharbor-runtime-init": Path(os.environ["TH_TEST_RUNTIME_INIT"])}
+                       "treeharbor-runtime-init": Path(os.environ["TH_TEST_RUNTIME_INIT"]),
+                       "treeharbor-cow-driver": Path(os.environ["TH_TEST_OVERLAY_DRIVER"])}
           if {name: digest(path.read_bytes()) for name, path in installed.items()} != binary_hashes:
               raise RuntimeError("installed test executables differ from the retained archive")
           for name, data in (("input-observations.json", observation_bytes),
@@ -250,7 +256,7 @@ jobs:
                      "sidecar_sha256": {name: digest((package / name).read_bytes()) for name in
                                         ("input-observations.json", "rust-dependencies.cdx.json", "native-inputs.json", "SBOM-SHA256SUMS")},
                      "completed_test_commands": ["python3 scripts/test-managed-runs.py",
-                                                 "python3 scripts/test-native-checks.py --shared-node"]}
+                                                 "python3 scripts/test-native-checks.py --shared-node --recover-shared-worker"]}
           with (package / "tested-runtime-artifacts.json").open("x") as output:
               json.dump(receipt, output, sort_keys=True, indent=2)
               output.write("\n")

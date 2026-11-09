@@ -1,9 +1,9 @@
 # Experimental work selection on one node
 
-`node work-selected` is an unreleased, hidden operator command for a bounded
+`node work-selected` is an operator command in the upcoming Copy-on-Write alpha for a bounded
 group of already authorized operations. It shares one node process across
 managed runs, stopped-file captures and workspace cleanup. It supports ordinary
-placements and the [experimental Copy-on-Write path](experimental-cow.md).
+placements and the [Copy-on-Write preview](experimental-cow.md).
 
 The owner/controller still creates runs, requests captures, accepts changes and
 requests workspace deletion through the existing authenticated API. The node
@@ -44,8 +44,8 @@ treeharbor node work-selected \
   --wait-seconds 120
 ```
 
-The optional `--cow-driver` requires the same trusted, operator-provisioned
-driver as the experimental preparation and cleanup commands. No mount paths or
+The optional `--cow-driver` requires the same protected, operator-provisioned
+helper as the preview preparation and cleanup commands. No mount paths or
 privileges are supplied by an agent. The runtime socket and credentials remain
 outside exposed workspace files.
 
@@ -84,5 +84,10 @@ second capture simply because it is delivered again.
 
 This command is not a resident scheduler. Killing its process is not proof that
 managed runtimes stopped. Existing run recovery, node identity, runtime journal
-and lease rules still apply. Automatic source-image rotation, remount after
+and lease rules still apply. After proving the old worker has exited and allowing
+its database leases to expire, retry the same selection against the same intact
+node and volumes. The runtime journal reconciles the original execution attempt;
+do not create new run IDs to recover an uncertain attempt. The local Linux drill
+verifies that both original containers are reclaimed after worker termination.
+Automatic source-image rotation, remount after
 reboot and replacement of a missing node or volume remain unfinished.

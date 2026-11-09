@@ -13,6 +13,7 @@ import os
 from pathlib import Path
 import subprocess
 import socket
+import shutil
 import uuid
 import cold_restore
 
@@ -191,12 +192,52 @@ class Checks(managed.Harness):
         print("PASS managed capture export: actual sealed, checked, reviewed and landed agent bytes restore in ordinary Git", flush=True)
         return restored
 
-    def shared_node_agents(self, left, right, overlay):
+    def driver_contract(self, agent):
+        driver = Path(os.environ["TH_TEST_OVERLAY_DRIVER"])
+        lower = agent["files"].parents[1] / "image/files"
+        placement = agent["mount"] / "placement"
+        arguments = [lower, placement / "overlay-upper", placement / "overlay-work", agent["files"]]
+        managed.command(driver, "mount", *arguments)
+        other = self.root / "wrong-source/image/files"
+        other.mkdir(mode=0o700, parents=True)
+        (other / "same.txt").write_bytes(b"wrong source\n")
+        for action in ("mount", "unmount"):
+            refused = managed.command(driver, action, other, *arguments[1:], check=False)
+            assert refused.returncode != 0
+            assert agent["files"].is_mount() and (agent["files"] / "same.txt").read_bytes() == b"base\n"
+        # The elevated syscall process must participate in this exact lock;
+        # testing an independent holder avoids substituting an in-memory lock.
+        holder = subprocess.Popen(["/usr/bin/sudo", "-n", "/usr/bin/python3", "-c",
+                                   "import fcntl,sys; f=open(sys.argv[1],'r+'); fcntl.flock(f,fcntl.LOCK_EX); "
+                                   "print('held',flush=True); sys.stdin.read(1)", str(agent["files"]) + ".lock"],
+                                  stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        self.children.append(holder)
+        try:
+            managed.wait_until(lambda: managed.select.select([holder.stdout], [], [], 0)[0] or holder.poll() is not None)
+            assert holder.stdout.readline() == "held\n"
+            refused = managed.command(driver, "unmount", *arguments, check=False, timeout=5)
+            assert refused.returncode != 0 and agent["files"].is_mount()
+        finally:
+            holder.communicate("x", timeout=10)
+        assert holder.returncode == 0
+        user_copy = self.root / "user-owned-driver"
+        shutil.copy2(driver, user_copy)
+        refused = managed.command(user_copy, "mount", *arguments, check=False)
+        assert refused.returncode != 0
+        # The run is already requested, so the preparation-only API must not
+        # reopen it. The actual worker below rechecks the retained unique mount
+        # identity before executing this exact run after all refusals above.
+        assert (agent["files"] / "same.txt").read_bytes() == b"base\n"
+        print("PASS installed driver: exact mount replay, foreign source refusal, real lock contention and unsafe executable refusal", flush=True)
+
+    def shared_node_agents(self, left, right, overlay, recover_worker=False):
         agents = [self.case("overlap-edit", content, self.secret, node=0, agent=index,
                             timeout=120000, selected=True, overlay=overlay)
                   for index, content in enumerate((left, right))]
         assert agents[0]["credential"] != agents[1]["credential"]
         assert agents[0]["node"] == agents[1]["node"]
+        if overlay:
+            self.driver_contract(agents[0])
         # A deliberately wrong-node cleanup must fail independently, without
         # aborting the two selected agents or borrowing the other node's rights.
         _, foreign_node, foreign_slot, _, _ = self.placement_profile(node=1)
@@ -225,6 +266,23 @@ class Checks(managed.Harness):
                                        for agent, content in zip(agents, (left, right))))
         assert agents[0]["attempt"] != agents[1]["attempt"]
         assert agents[0]["files"] != agents[1]["files"]
+        if recover_worker:
+            containers = [managed.docker("inspect", "--format", "{{.Id}}", "treeharbor-" + a["attempt"]).stdout.strip()
+                          for a in agents]
+            worker.kill()
+            worker.communicate(timeout=10)
+            assert worker.returncode == -9
+            for agent in agents:
+                assert self.status(agent)["state"] == "running" and not self.status(agent)["runtime_removed"]
+                self.expire_dead_worker(agent)
+            worker = subprocess.Popen(command, env=self.env, stdout=subprocess.PIPE,
+                                      stderr=subprocess.PIPE, text=True)
+            self.children.append(worker)
+            managed.wait_until(lambda: all(self.sql("SELECT generation FROM th_outbox WHERE kind='run.execute' "
+                                                   f"AND payload->>'run'='{a['run']}'") == "2" for a in agents))
+            for agent, container in zip(agents, containers):
+                assert managed.docker("inspect", "--format", "{{.Id}}", "treeharbor-" + agent["attempt"]).stdout.strip() == container
+            print("PASS shared node recovery: killed worker reclaimed the same two running containers", flush=True)
         if overlay:
             lower = agents[0]["files"].parents[1] / "image/files/same.txt"
             assert agents[0]["files"].parents[1] == agents[1]["files"].parents[1]
@@ -300,11 +358,11 @@ class Checks(managed.Harness):
         print("PASS shared node: a wrong-node selection failed without cancelling either agent or deleting foreign files", flush=True)
         return changes
 
-    def overlapping_agents(self, shared_node=False):
+    def overlapping_agents(self, shared_node=False, recover_worker=False):
         left, right, merged = "alpha\n", "beta\n", "alpha + beta\n"
         overlay = bool(os.environ.get("TH_TEST_OVERLAY_DRIVER"))
         if shared_node:
-            a, b = self.shared_node_agents(left, right, overlay)
+            a, b = self.shared_node_agents(left, right, overlay, recover_worker=recover_worker)
         else:
             a, b = self.separate_node_agents(left, right, overlay)
         assert a["base_revision"] == b["base_revision"] == self.revision
@@ -435,13 +493,13 @@ class Checks(managed.Harness):
         assert managed.command("/usr/bin/git", "--git-dir", restored, "show", "main^1^1:same.txt").stdout == "base\n"
         return landed_b, restored
 
-    def exercise(self, overlap_only=False, shared_node=False):
+    def exercise(self, overlap_only=False, shared_node=False, recover_shared_worker=False):
         self.empty_proposal = False
         self.policy_admin = self.principal("policy-admin", "human", ["read", "repository.write", "policy.write"])
         self.reviewer = self.principal("reviewer", "human", ["read", "review"])
         self.integrator = self.principal("integrator", "integrator", ["read", "integration.control"])
         self.ci = self.principal("ci", "validator", ["read", "validation.report"])
-        overlap = self.overlapping_agents(shared_node=shared_node)
+        overlap = self.overlapping_agents(shared_node=shared_node, recover_worker=recover_shared_worker)
         if overlap_only:
             return
         agent = self.case("isolation", "candidate\n", self.secret)
@@ -576,11 +634,15 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--overlap-only", action="store_true", help="run the protected two-agent scenario only")
     parser.add_argument("--shared-node", action="store_true", help="run both agents with one bounded node worker")
+    parser.add_argument("--recover-shared-worker", action="store_true", help="kill and recover the node worker while both agents run")
     args = parser.parse_args()
+    if args.recover_shared_worker and not args.shared_node:
+        parser.error("--recover-shared-worker requires --shared-node")
     h = Checks()
     try:
         h.setup()
-        h.exercise(overlap_only=args.overlap_only, shared_node=args.shared_node)
+        h.exercise(overlap_only=args.overlap_only, shared_node=args.shared_node,
+                   recover_shared_worker=args.recover_shared_worker)
     except Exception:
         h.diagnostics()
         raise

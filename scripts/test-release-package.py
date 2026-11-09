@@ -62,7 +62,7 @@ class PackageTests(unittest.TestCase):
         self.commit()
         self.bins = self.base / "binaries"
         self.bins.mkdir()
-        for name in ("treeharbor", "treeharbor-runtime-init"):
+        for name in ("treeharbor", "treeharbor-runtime-init", "treeharbor-cow-driver"):
             p = self.bins / name
             p.write_bytes(elf())
             p.chmod(0o755)
@@ -144,7 +144,7 @@ class PackageTests(unittest.TestCase):
         observations = {"version": 1, "target": "x86_64-unknown-linux-musl",
                         "packaging_source_revision": self.git("rev-parse", "HEAD").decode().strip(),
                         "binary_sha256": {n: hashlib.sha256((self.bins / n).read_bytes()).hexdigest()
-                                          for n in ("treeharbor", "treeharbor-runtime-init")},
+                                          for n in ("treeharbor", "treeharbor-runtime-init", "treeharbor-cow-driver")},
                         "rust_sbom_sha256": "ef" * 32,
                         "native_link_closure_verified": False, "build_provenance_verified": False}
         path = self.base / "observations.json"
@@ -191,7 +191,7 @@ class PackageTests(unittest.TestCase):
         observations = {"version": 1, "target": "x86_64-unknown-linux-musl",
                         "packaging_source_revision": self.git("rev-parse", "HEAD").decode().strip(),
                         "binary_sha256": {n: hashlib.sha256((self.bins / n).read_bytes()).hexdigest()
-                                          for n in ("treeharbor", "treeharbor-runtime-init")},
+                                          for n in ("treeharbor", "treeharbor-runtime-init", "treeharbor-cow-driver")},
                         "rust_sbom_sha256": "ef" * 32, "native_link_closure_verified": False,
                         "build_provenance_verified": False,
                         "native_inputs_sha256": hashlib.sha256(report.read_bytes()).hexdigest(),

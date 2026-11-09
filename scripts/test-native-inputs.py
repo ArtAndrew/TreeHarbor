@@ -95,7 +95,7 @@ class CollectorTests(unittest.TestCase):
         with self.assertRaises((ValueError, OSError)):
             operation()
 
-    def test_two_actual_binary_hashes_and_arm_input_shapes_without_ephemeral_reopens(self):
+    def test_all_binary_hashes_and_arm_input_shapes_without_ephemeral_reopens(self):
         before = {p: p.read_bytes() for p in self.capture_dir.glob("*/*.json")}
         # Recorded objects and link outputs intentionally do not exist anymore.
         with patch.object(collector.wrapper, "file_hash", side_effect=AssertionError("ephemeral input reopened")):
@@ -110,6 +110,19 @@ class CollectorTests(unittest.TestCase):
         self.assertNotIn("/toolchain", text)
         self.assertTrue(all(report[c] is False for c in collector.CLAIMS))
         self.assertEqual(before, {p: p.read_bytes() for p in before})
+
+    def test_legacy_two_binary_report_remains_readable_but_cannot_omit_current_driver(self):
+        current = self.collect()
+        self.assertEqual(current["version"], 2)
+        self.assertIn("treeharbor-cow-driver", current["binaries"])
+        legacy = deepcopy(current)
+        legacy["version"] = 1
+        for field in ("binary_sha256", "binaries"):
+            del legacy[field]["treeharbor-cow-driver"]
+        self.assertIs(self.validate(legacy, binary_sha256=legacy["binary_sha256"]), legacy)
+        self.rejects(lambda: self.validate(legacy))
+        legacy["version"] = 2
+        self.rejects(lambda: self.validate(legacy, binary_sha256=legacy["binary_sha256"]))
 
     def test_cached_missing_incomplete_or_failed_invocation_is_not_inventory(self):
         first, _ = self.records[collector.NAMES[0]]

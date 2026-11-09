@@ -273,8 +273,10 @@ pub(crate) async fn prepare(
             if fs::read_dir(&paths.files)?.next().is_some() {
                 return Err(Error::Incomplete);
             }
-            invoke(&driver, "mount", &paths)?;
         }
+        // The packaged driver also reconciles an interrupted propagation change
+        // on the exact existing overlay. It never replaces a mismatched mount.
+        invoke(&driver, "mount", &paths)?;
         if fs::read_dir(&paths.upper)?.next().is_some() {
             return Err(Error::Incomplete);
         }
