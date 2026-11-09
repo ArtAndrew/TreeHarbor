@@ -376,3 +376,25 @@ measurements show variation between runs on this host. OS caches were
 uncontrolled. These timings apply to locally loaded source and exclude
 agent execution, network and GitHub work.
 [All four runs and per-placement timings](benchmarks/connected-materialization-linux-arm64-2k-c4.json).
+
+## Verified source file reuse — 9 November 2026
+
+The source file seed comparison uses separate nodes for file-only and
+Git-compatible preparations. Both start with empty node caches and use the
+same volumes in separate waves. Source objects are loaded before timing.
+The host's OS cache remains uncontrolled. Four runs in A/B/B/A order
+verified all 384 placements and cleanup.
+
+| Time to first useful read | First wave p50, before → after | Repeat p50 / sample p95, before → after |
+| --- | ---: | ---: |
+| Connected, private Git metadata | 1,069 → 1,136 ms | 354 / 556 → 247 / 317 ms |
+| Connected, file-only | 294 → 347 ms | 302 / 657 → 215 / 261 ms |
+| Git worktree | 119 → 113 ms | 113 / 184 → 110 / 128 ms |
+
+The first-wave medians use eight preparations per system and build.
+The repeat statistics use 56. The candidate read source objects on
+every first wave and reused local verified files on every repeat.
+The first-wave cost includes creating the file seed. The worktree
+rows show host variation between runs. The probe includes no agent
+execution or remote GitHub or network activity.
+[All four raw runs](benchmarks/connected-source-seed-linux-arm64-2k-c4.json).

@@ -6,7 +6,7 @@ use std::{
     fs::{self, File, OpenOptions},
     os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt},
     path::{Path, PathBuf},
-    sync::{Arc, Mutex, Weak},
+    sync::{Arc, Mutex, RwLock, Weak},
 };
 use tokio::sync::{Mutex as AsyncMutex, OwnedMutexGuard, OwnedSemaphorePermit, Semaphore};
 use uuid::Uuid;
@@ -36,6 +36,7 @@ pub(crate) struct Storage {
     pub root: PathBuf,
     pub identity: Identity,
     pub git_seed_cache: Mutex<()>,
+    pub source_seed: Arc<RwLock<()>>,
     lock: File,
 }
 impl Storage {
@@ -118,6 +119,7 @@ impl Node {
                 root: path,
                 identity,
                 git_seed_cache: Mutex::new(()),
+                source_seed: Arc::new(RwLock::new(())),
                 lock,
             },
             concurrent,
@@ -155,6 +157,7 @@ impl Node {
             root: path,
             identity,
             git_seed_cache: Mutex::new(()),
+            source_seed: Arc::new(RwLock::new(())),
             lock,
         };
         owned.verify()?;

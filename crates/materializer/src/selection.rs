@@ -1,7 +1,7 @@
 use crate::Result;
 use treeharbor_core::{RepoPath, SourceProfile};
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Selection {
     pub(crate) paths: Option<Vec<RepoPath>>,
 }

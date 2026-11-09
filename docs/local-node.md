@@ -65,7 +65,7 @@ live disk usage and complete agent task cost separately.
 | `source_objects` | Source object reads accounted during preparation; not a count of unique stored objects |
 | `source_encoded_bytes` | Encoded source bytes read; not network traffic |
 | `source_bytes_written` | Source content materialized into files or symlink targets |
-| `local_bytes_copied` | Bytes copied from preserved local files during materialization |
+| `local_bytes_copied` | Bytes copied from preserved local files or a verified source seed |
 | `workspace_bytes` | Logical content bytes accounted for the prepared tree; not allocated disk blocks |
 | `filesystem_entries` | Prepared filesystem entries, including directories and symlinks |
 | `read_batches` (development build) | Source read batches opened for the materialized tree |
@@ -144,6 +144,19 @@ replacement. The cache contains Git history and survives individual workspace
 cleanup. To discard it, stop operations using the node root and remove the
 root's `git-seed-cache-v1` directory. A new node or a cache deletion requires no
 data migration.
+
+Development nodes can also reuse a verified copy of their delivered source
+files. Each preparation opens the current source lease. It verifies the
+cached manifest, bytes and paths, then writes its own files and completes
+the usual durability checks. A missing, mismatched or corrupt seed uses
+the original source path. Counters distinguish source object reads from
+local bytes copied.
+
+The cache uses one ready entry and space for one replacement. Each entry
+can retain 16 MiB of file content, up to 8,192 entries and a manifest up to
+4 MiB. These bounds apply to reuse. The cache is a private sibling of the
+node root named `.treeharbor-source-seed-v1-STORAGE_UUID`. Keep it outside
+backup inputs. Stop operations on that node before deleting the cache.
 
 Reopen an already acknowledged workspace in a new process:
 

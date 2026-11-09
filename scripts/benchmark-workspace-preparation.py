@@ -185,33 +185,36 @@ with tempfile.TemporaryDirectory(prefix='th-import-') as tmp, ExitStack() as pla
         profile = client('profile-put', '--key', 'bench-full', '--authority', authority,
                          '--epoch', '1', '--full')['result']['profile_digest']
         node_grants = ['--permission', 'runtime.control']
-        nodes = []
-        for lane in range(args.concurrency):
-            principal = f'node-{lane}'
-            node_root = root/principal
-            storage = json.loads(run(BIN, 'node', 'initialize', '--root', node_root,
-                                     '--tenant', tenant, '--principal', principal))['storage']
-            admin('principal-create', '--tenant', tenant, '--principal', principal, '--kind', 'node')
-            admin('node-register', '--tenant', tenant, '--principal', principal, '--storage', storage)
-            admin('access-set', *scope, '--principal', principal, *node_grants)
-            node_credential = root/(principal + '.json')
-            admin('token-issue', *scope, '--principal', principal, *node_grants,
-                  '--ttl-seconds', '600', '--output', node_credential)
-            nodes.append((node_root, storage, node_credential))
+        node_systems = ('treeharbor', 'treeharbor-git') if connected else ('treeharbor',)
+        nodes = {}
+        for system in node_systems:
+            for lane in range(args.concurrency):
+                principal = f'{system}-node-{lane}'
+                node_root = root/principal
+                storage = json.loads(run(BIN, 'node', 'initialize', '--root', node_root,
+                                         '--tenant', tenant, '--principal', principal))['storage']
+                admin('principal-create', '--tenant', tenant, '--principal', principal, '--kind', 'node')
+                admin('node-register', '--tenant', tenant, '--principal', principal, '--storage', storage)
+                admin('access-set', *scope, '--principal', principal, *node_grants)
+                node_credential = root/(principal + '.json')
+                admin('token-issue', *scope, '--principal', principal, *node_grants,
+                      '--ttl-seconds', '600', '--output', node_credential)
+                nodes[system, lane] = (node_root, storage, node_credential)
 
-        def node(lane, action, *parts):
-            node_root, storage, node_credential = nodes[lane]
+        def node(system, lane, action, *parts):
+            node_root, storage, node_credential = nodes[system, lane]
             return json.loads(run(BIN, 'node', action, '--config', config,
                                   '--credential-file', node_credential,
                                   '--root', node_root, '--storage', storage, *parts))
-        slots, git_roots = [], []
+        slots, git_roots = {}, []
         for lane, mount in enumerate(volumes):
-            placement = placements.enter_context(tempfile.TemporaryDirectory(prefix='th-bench-', dir=mount))
             git_roots.append(Path(placements.enter_context(tempfile.TemporaryDirectory(prefix='th-bench-git-', dir=mount))))
-            slot = str(uuid.uuid4())
-            node(lane, 'volume-register', '--slot', slot, '--mount', mount, '--placement', placement,
-                 '--limit-bytes', args.volume_limit_bytes)
-            slots.append(slot)
+            for system in node_systems:
+                placement = placements.enter_context(tempfile.TemporaryDirectory(prefix='th-bench-', dir=mount))
+                slot = str(uuid.uuid4())
+                node(system, lane, 'volume-register', '--slot', slot, '--mount', mount,
+                     '--placement', placement, '--limit-bytes', args.volume_limit_bytes)
+                slots[system, lane] = slot
         # A private bare clone protects the caller's refs/worktrees and avoids
         # hard-linked objects. Its cost is recorded outside warm preparation.
         mirror = root/'baseline.git'
@@ -270,7 +273,7 @@ with tempfile.TemporaryDirectory(prefix='th-import-') as tmp, ExitStack() as pla
             observation = {'wave': wave, 'order': order, 'lane': lane, 'system': system}
             workspace = generation = None
             start = time.perf_counter()
-            if system in ('treeharbor', 'treeharbor-git'):
+            if system in node_systems:
                 workspace = str(uuid.uuid4())
                 git_workspace = system == 'treeharbor-git'
                 format_args = ['--git-compatible'] if git_workspace else []
@@ -278,9 +281,9 @@ with tempfile.TemporaryDirectory(prefix='th-import-') as tmp, ExitStack() as pla
                     '--authority', authority, '--epoch', '1', '--workspace', workspace,
                     '--base', native_revision, '--profile-digest', profile, *format_args)
                 requested = time.perf_counter()
-                slot_args = ['--slot', slots[lane]] if slots else []
+                slot_args = ['--slot', slots[system, lane]] if slots else []
                 git_args = ['--git', Path(GIT).absolute()] if git_workspace else []
-                prepared = node(lane, 'prepare-once', '--workspace', workspace, *slot_args, *git_args)
+                prepared = node(system, lane, 'prepare-once', '--workspace', workspace, *slot_args, *git_args)
                 materialized = time.perf_counter()
                 if prepared['state'] != 'files_ready' or prepared['workspace'] != workspace:
                     raise RuntimeError('the selected workspace did not become file-ready')
@@ -309,11 +312,11 @@ with tempfile.TemporaryDirectory(prefix='th-import-') as tmp, ExitStack() as pla
             path, workspace, generation, observation = case
             start = time.perf_counter()
             system = observation['system']
-            if system in ('treeharbor', 'treeharbor-git'):
+            if system in node_systems:
                 client('workspace-delete', '--key', 'delete-'+workspace,
                     '--authority', authority, '--epoch', '1', '--workspace', workspace,
                     '--generation', str(generation))
-                node(observation['lane'], 'cleanup-once', '--workspace', workspace)
+                node(system, observation['lane'], 'cleanup-once', '--workspace', workspace)
                 if client('workspace-status', '--workspace', workspace)['result']['state'] != 'deleted':
                     raise RuntimeError('workspace cleanup was not acknowledged')
             elif system == 'git-worktree':
@@ -383,7 +386,7 @@ with tempfile.TemporaryDirectory(prefix='th-import-') as tmp, ExitStack() as pla
             'iterations':args.iterations,'concurrency':args.concurrency,'random_seed':args.seed,
             'git_checkout_workers':args.git_checkout_workers,
             'treeharbor_placement':'guarded-ext4' if slots else 'node-directory',
-            'cache_state':'source objects present; no prepared tree; OS caches uncontrolled',
+            'cache_state':'source objects present; separate initially empty nodes by system/lane; OS caches uncontrolled',
             'setup':{**setup,'git_mirror_seconds':mirror_seconds,
                      'treeharbor_objects_allocated_bytes':allocated(store),
                      'git_mirror_allocated_bytes':allocated(mirror)},

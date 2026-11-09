@@ -1,5 +1,5 @@
 //! Node-owned publication, separate from the source baseline format.
-use crate::{Error, Result};
+use crate::{Error, Result, SourceSeed};
 use rustix::fs::{Mode, OFlags, RenameFlags, openat, renameat_with};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -17,6 +17,7 @@ pub struct Publication {
     binding: [u8; 32],
     _guard: Arc<dyn Send + Sync>,
     volume_sync_fd: Option<File>,
+    source_seed: Option<SourceSeed>,
 }
 impl Publication {
     pub(crate) fn destination(&self) -> &Path {
@@ -34,6 +35,7 @@ impl Publication {
             binding,
             _guard: guard,
             volume_sync_fd: None,
+            source_seed: None,
         }
     }
     /// Supply a held descriptor from the controller's verified, exclusively
@@ -46,6 +48,15 @@ impl Publication {
     }
     pub(crate) fn volume_sync_fd(&self) -> Option<&File> {
         self.volume_sync_fd.as_ref()
+    }
+    /// Use an optional node-private seed. The normal source lease, baseline
+    /// verification and durable publication still apply.
+    pub fn with_source_seed(mut self, seed: SourceSeed) -> Self {
+        self.source_seed = Some(seed);
+        self
+    }
+    pub(crate) fn source_seed(&self) -> Option<&SourceSeed> {
+        self.source_seed.as_ref()
     }
     pub(crate) fn publish(&self, staging: &Path) -> Result<PathBuf> {
         let parent = self.destination.parent().ok_or(Error::Configuration)?;
