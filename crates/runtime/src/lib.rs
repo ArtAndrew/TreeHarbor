@@ -7,6 +7,8 @@ mod volume;
 pub use engine::{Container, Engine, Inspection, RuntimeState, Specification};
 pub use journal::{CleanupGuard, Controller, Outcome, RemovalExpectation, RemovedGuard};
 pub use profile::{Definition, Profile, Task};
+#[cfg(target_os = "linux")]
+pub use volume::{OverlayLayout, OverlayView};
 pub use volume::{Volume, VolumeIdentity};
 
 #[derive(Debug, thiserror::Error)]

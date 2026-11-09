@@ -17,6 +17,8 @@ struct Input {
     attempt: Uuid,
     profile: Definition,
     argv: Vec<String>,
+    #[cfg(target_os = "linux")]
+    overlay: Option<treeharbor_runtime::OverlayLayout>,
 }
 fn observed(i: Inspection) -> Value {
     json!({"id":i.container.id(),"state":format!("{:?}",i.state).to_lowercase(),
@@ -44,13 +46,16 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         profile.definition().workspace_bytes,
     )?;
     let engine = Engine::open(&input.socket).await?;
-    let spec = Specification::new(
-        input.attempt,
-        [42; 32],
-        profile,
-        Task::new(input.argv)?,
-        volume,
-    )?;
+    let task = Task::new(input.argv)?;
+    #[cfg(target_os = "linux")]
+    let spec = if let Some(layout) = input.overlay {
+        let view = treeharbor_runtime::OverlayView::observe(&volume, layout)?;
+        Specification::new_overlay(input.attempt, [42; 32], profile, task, view)?
+    } else {
+        Specification::new(input.attempt, [42; 32], profile, task, volume)?
+    };
+    #[cfg(not(target_os = "linux"))]
+    let spec = Specification::new(input.attempt, [42; 32], profile, task, volume)?;
     let controller = Controller::open(&input.journal, &engine, spec)?;
     let result = match action.to_str().ok_or("invalid action")? {
         "create" => observed(controller.create().await?),
@@ -63,6 +68,10 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         "remove" => {
             controller.remove().await?;
             json!({"state":"removed"})
+        }
+        "verify-removed" => {
+            controller.into_removed_guard(None, None).await?.verify()?;
+            json!({"state":"verified-removed"})
         }
         _ => return Err("invalid action".into()),
     };

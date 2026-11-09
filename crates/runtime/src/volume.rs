@@ -11,6 +11,12 @@ use std::{
     path::{Path, PathBuf},
 };
 
+#[cfg(target_os = "linux")]
+#[path = "volume_overlay.rs"]
+mod overlay;
+#[cfg(target_os = "linux")]
+pub use overlay::{OverlayLayout, OverlayView};
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct VolumeIdentity {
@@ -191,15 +197,7 @@ fn inspect(
     if capacity == 0 || capacity > limit {
         return Err(Error::Mismatch);
     }
-    let mut bytes = Vec::new();
-    File::open("/proc/self/mountinfo")?
-        .take(4 * 1024 * 1024 + 1)
-        .read_to_end(&mut bytes)?;
-    if bytes.len() > 4 * 1024 * 1024 {
-        return Err(Error::Limit);
-    }
-    let text = std::str::from_utf8(&bytes).map_err(|_| Error::Unsupported)?;
-    let id = mount_record(text, mount, a.dev())?;
+    let id = mount_record(&mountinfo()?, mount, a.dev())?;
     Ok(VolumeIdentity {
         mount: mount.to_owned(),
         files: files.to_owned(),
@@ -210,6 +208,19 @@ fn inspect(
         capacity_bytes: capacity,
         limit_bytes: limit,
     })
+}
+
+#[cfg(target_os = "linux")]
+fn mountinfo() -> Result<String> {
+    const LIMIT: u64 = 4 * 1024 * 1024;
+    let mut bytes = Vec::new();
+    File::open("/proc/self/mountinfo")?
+        .take(LIMIT + 1)
+        .read_to_end(&mut bytes)?;
+    if bytes.len() as u64 > LIMIT {
+        return Err(Error::Limit);
+    }
+    String::from_utf8(bytes).map_err(|_| Error::Unsupported)
 }
 #[cfg(not(target_os = "linux"))]
 fn inspect(_: &Path, _: &Path, _: &File, _: &File, _: u64) -> Result<VolumeIdentity> {
