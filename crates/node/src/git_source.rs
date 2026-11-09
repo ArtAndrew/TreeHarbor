@@ -2,9 +2,9 @@
 use crate::{Error, Prepare, Result, storage::Operation};
 use std::{
     collections::{BTreeMap, BTreeSet},
-    fs::File,
+    fs::{File, Permissions},
     io,
-    os::unix::fs::FileExt,
+    os::unix::fs::{FileExt, PermissionsExt},
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -92,8 +92,10 @@ struct SourceSpool {
 
 impl SourceSpool {
     fn open(parent: &Path) -> io::Result<Self> {
+        let file = tempfile::tempfile_in(parent)?;
+        file.set_permissions(Permissions::from_mode(0o600))?;
         Ok(Self {
-            file: tempfile::tempfile_in(parent)?,
+            file,
             offsets: BTreeMap::new(),
             length: 0,
         })
@@ -190,7 +192,6 @@ async fn collect(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::os::unix::fs::PermissionsExt;
 
     #[test]
     fn spool_preserves_verified_objects_and_rejects_corruption() {
@@ -198,8 +199,8 @@ mod tests {
         let mut spool = SourceSpool::open(root.path()).unwrap();
         assert!(root.path().read_dir().unwrap().next().is_none());
         assert_eq!(
-            spool.file.metadata().unwrap().permissions().mode() & 0o077,
-            0
+            spool.file.metadata().unwrap().permissions().mode() & 0o777,
+            0o600
         );
         let first = Object::Blob(b"first".to_vec());
         let second = Object::Blob(b"second".to_vec());
