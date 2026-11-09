@@ -30,21 +30,8 @@ impl MaterializedTree {
     /// set, executable bits and symlink payloads. No path traversal follows links.
     /// Limits bound IO/memory; source bytes are read once per file, not cached.
     pub fn verify_pristine(&self, limits: Limits) -> Result<()> {
-        if self.manifest.selection.paths.is_some() {
-            return Err(Error::InvalidBaseline);
-        }
-        self.read_pristine_files(limits, |_, _| {})
-    }
-
-    /// Verify the exact delivered entry set, including a sparse baseline, and
-    /// hand validated leaf bytes to the internal seed reader.
-    pub(crate) fn read_pristine_files(
-        &self,
-        limits: Limits,
-        mut visit: impl FnMut(&RepoPath, Vec<u8>),
-    ) -> Result<()> {
         let limits = limits.validate()?;
-        if self.manifest.preserved_local_state {
+        if self.manifest.preserved_local_state || self.manifest.selection.paths.is_some() {
             return Err(Error::InvalidBaseline);
         }
         let parent = File::from(unix(rustix::fs::open(
@@ -77,10 +64,10 @@ impl MaterializedTree {
                     return Err(Error::Limit);
                 }
                 let key = RepoPath::new(relative.clone())?;
-                let (key, expected) = self
+                let expected = self
                     .manifest
                     .entries
-                    .get_key_value(&key)
+                    .get(&key)
                     .ok_or(Error::InvalidBaseline)?;
                 if !seen.insert(key) {
                     return Err(Error::InvalidBaseline);
@@ -126,9 +113,7 @@ impl MaterializedTree {
                         {
                             return Err(Error::InvalidBaseline);
                         }
-                        let mut data = Vec::with_capacity(
-                            usize::try_from(size + 1).map_err(|_| Error::Limit)?,
-                        );
+                        let mut data = Vec::new();
                         (&file).take(size + 1).read_to_end(&mut data)?;
                         let after = file.metadata()?;
                         if data.len() as u64 != size
@@ -157,14 +142,9 @@ impl MaterializedTree {
                     }
                     EntryMode::Directory => unreachable!(),
                 };
-                let blob = Object::Blob(data);
-                if blob.id()? != expected.target {
+                if Object::Blob(data).id()? != expected.target {
                     return Err(Error::InvalidBaseline);
                 }
-                let Object::Blob(data) = blob else {
-                    unreachable!()
-                };
-                visit(key, data);
             }
         }
         if seen.len() != self.manifest.entries.len() {

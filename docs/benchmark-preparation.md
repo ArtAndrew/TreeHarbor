@@ -398,3 +398,25 @@ The first-wave cost includes creating the file seed. The worktree
 rows show host variation between runs. The probe includes no agent
 execution or remote GitHub or network activity.
 [All four raw runs](benchmarks/connected-source-seed-linux-arm64-2k-c4.json).
+
+## Sequential source seed reads — 9 November 2026
+
+Four paired runs compared the directory seed with a packed leaf file in
+A/B/B/A order. Both builds used the same 2,051-entry commit, guarded ext4
+volumes, PostgreSQL, and four concurrent tasks on Linux ARM64. Source
+objects were present before timing. The comparison uses eight first-wave
+and 56 repeat placements per system and build, with uncontrolled OS caches.
+All 384 placements passed exact file verification and cleanup.
+
+| Time to first useful read | First wave p50, directory → packed | Repeat p50 / sample p95, directory → packed |
+| --- | ---: | ---: |
+| Connected, private Git metadata | 1,100 → 913 ms | 207 / 234 → 194 / 213 ms |
+| Connected, file-only | 326 → 295 ms | 188 / 222 → 171 / 186 ms |
+| Git worktree | 97 → 92 ms | 95 / 99 → 94 / 101 ms |
+
+The node verifies every packed payload against its expected object digest
+and creates independent writable files. Repeat placements used zero source
+objects from the durable store. First-wave timing includes building the
+cache. The sample measures local preparation through the first file read.
+It excludes execution runtime, network transfer and GitHub activity.
+[Raw observations](benchmarks/connected-packed-source-linux-arm64-2k-c4.json).

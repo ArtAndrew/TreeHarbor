@@ -544,10 +544,11 @@ async fn prepare_and_recover_git_workspace(
     assert_eq!(fs::read(files.join("main.rs")).unwrap(), b"agent edit");
 
     let damaged_seed = node_root.parent().unwrap().join(format!(
-        ".treeharbor-source-seed-v1-{storage}/ready/files/main.rs"
+        ".treeharbor-source-seed-v1-{storage}/ready/contents-v1"
     ));
-    fs::set_permissions(&damaged_seed, fs::Permissions::from_mode(0o600)).unwrap();
-    fs::write(damaged_seed, b"corrupted cache bytes").unwrap();
+    let mut contents = fs::read(&damaged_seed).unwrap();
+    *contents.last_mut().unwrap() ^= 1;
+    fs::write(damaged_seed, contents).unwrap();
     let rebuilt_workspace = Uuid::new_v4().to_string();
     create(&rebuilt_workspace);
     let rebuilt = output(node_for(&rebuilt_workspace, "prepare-once", &git_args));

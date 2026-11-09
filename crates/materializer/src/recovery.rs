@@ -56,57 +56,7 @@ impl MaterializedTree {
         private(&directory_meta, true)?;
         let root = root.canonicalize()?;
         same_directory(&directory_meta, &fs::symlink_metadata(&root)?)?;
-        let file = File::from(
-            openat(
-                &directory,
-                "manifest.json",
-                OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::NONBLOCK | OFlags::CLOEXEC,
-                Mode::empty(),
-            )
-            .map_err(io::Error::from)?,
-        );
-        let before = file.metadata()?;
-        private(&before, false)?;
-        if before.len() > MAX_MANIFEST_BYTES {
-            return Err(Error::Limit);
-        }
-        let mut reader = BufReader::new(Input::new(&file, MAX_MANIFEST_BYTES));
-        let mut deserializer = serde_json::Deserializer::from_reader(&mut reader);
-        let (header, entries) = ManifestSeed(limits).deserialize(&mut deserializer)?;
-        deserializer.end()?;
-        let reader = reader.into_inner();
-        let after = file.metadata()?;
-        if before.len() != reader.bytes
-            || before.len() != after.len()
-            || before.mtime() != after.mtime()
-            || before.mtime_nsec() != after.mtime_nsec()
-            || before.ctime() != after.ctime()
-            || before.ctime_nsec() != after.ctime_nsec()
-            || <[u8; 32]>::from(reader.hash.finalize()) != expected.manifest_digest
-        {
-            return Err(Error::InvalidBaseline);
-        }
-        private(&after, false)?;
-        if header.version != 1
-            || header.materializer != "copy-unix-v1"
-            || header.tenant != expected.scope.tenant()
-            || header.repository != expected.scope.repository().to_string()
-            || object_id(&header.snapshot)? != expected.snapshot
-            || &header.selection.0 != expected.profile
-        {
-            return Err(Error::InvalidBaseline);
-        }
-        let selection = Selection::from_profile(&header.selection.0);
-        for path in entries.keys() {
-            if !selection.relevant(path) {
-                return Err(Error::InvalidBaseline);
-            }
-        }
-        if let Some(paths) = &selection.paths
-            && paths.iter().any(|p| !entries.contains_key(p))
-        {
-            return Err(Error::InvalidBaseline);
-        }
+        let manifest = read_manifest(&directory, expected, limits)?;
         // Do not traverse `files`: it can legitimately contain edits, deletions,
         // symlinks or new files. Only reject substitution of the mount root itself.
         let files = rustix::fs::statat(&directory, "files", rustix::fs::AtFlags::SYMLINK_NOFOLLOW)
@@ -117,17 +67,76 @@ impl MaterializedTree {
         same_directory(&directory_meta, &fs::symlink_metadata(&root)?)?;
         Ok(Self {
             root,
-            manifest: Arc::new(Manifest {
-                tenant: header.tenant,
-                repository: header.repository,
-                snapshot: expected.snapshot,
-                selection,
-                entries,
-                preserved_local_state: header.preserved_local_state,
-            }),
+            manifest: Arc::new(manifest),
             stats: None,
         })
     }
+}
+
+pub(crate) fn read_manifest(
+    directory: &File,
+    expected: BaselineExpectation<'_>,
+    limits: Limits,
+) -> Result<Manifest> {
+    let file = File::from(
+        openat(
+            directory,
+            "manifest.json",
+            OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::NONBLOCK | OFlags::CLOEXEC,
+            Mode::empty(),
+        )
+        .map_err(io::Error::from)?,
+    );
+    let before = file.metadata()?;
+    private(&before, false)?;
+    if before.len() > MAX_MANIFEST_BYTES {
+        return Err(Error::Limit);
+    }
+    let mut reader = BufReader::new(Input::new(&file, MAX_MANIFEST_BYTES));
+    let mut deserializer = serde_json::Deserializer::from_reader(&mut reader);
+    let (header, entries) = ManifestSeed(limits).deserialize(&mut deserializer)?;
+    deserializer.end()?;
+    let reader = reader.into_inner();
+    let after = file.metadata()?;
+    if before.len() != reader.bytes
+        || before.len() != after.len()
+        || before.mtime() != after.mtime()
+        || before.mtime_nsec() != after.mtime_nsec()
+        || before.ctime() != after.ctime()
+        || before.ctime_nsec() != after.ctime_nsec()
+        || <[u8; 32]>::from(reader.hash.finalize()) != expected.manifest_digest
+    {
+        return Err(Error::InvalidBaseline);
+    }
+    private(&after, false)?;
+    if header.version != 1
+        || header.materializer != "copy-unix-v1"
+        || header.tenant != expected.scope.tenant()
+        || header.repository != expected.scope.repository().to_string()
+        || object_id(&header.snapshot)? != expected.snapshot
+        || &header.selection.0 != expected.profile
+    {
+        return Err(Error::InvalidBaseline);
+    }
+    let selection = Selection::from_profile(&header.selection.0);
+    for path in entries.keys() {
+        if !selection.relevant(path) {
+            return Err(Error::InvalidBaseline);
+        }
+    }
+    if let Some(paths) = &selection.paths
+        && paths.iter().any(|p| !entries.contains_key(p))
+    {
+        return Err(Error::InvalidBaseline);
+    }
+    Ok(Manifest {
+        tenant: header.tenant,
+        repository: header.repository,
+        snapshot: expected.snapshot,
+        selection,
+        entries,
+        preserved_local_state: header.preserved_local_state,
+    })
 }
 
 fn private(meta: &fs::Metadata, directory: bool) -> Result<()> {
