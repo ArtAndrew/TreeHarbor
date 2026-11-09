@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Synchronize staged source files once on an exclusive Linux ext4 volume and
+  report its writeback time in preparation diagnostics.
 - Let the Connected PR example select prepared Git-compatible workspaces explicitly.
 
 ## 0.1.13-alpha.1 — Git-compatible Connected workspaces — 2026-11-08

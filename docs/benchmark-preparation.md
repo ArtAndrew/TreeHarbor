@@ -206,3 +206,39 @@ samples. The next measurement should separate source verification from writing
 files inside that phase. Individual medians need not sum to the median command
 time. These small samples give direction for profiling this macOS setup; the
 Linux runtime and filesystem still need separate measurements.
+
+## Dedicated ext4 volumes — 9 November 2026
+
+The same 2,051-entry synthetic commit ran on a Linux 6.8 ARM64 VM with two
+CPUs and about 4 GB of RAM. The four concurrent tasks used independent
+64 MiB ext4 volumes on the same host. The TreeHarbor and Git paths each
+wrote their working files onto those volumes. Source objects were already
+loaded. Setup and cleanup were recorded separately and OS caches were
+uncontrolled. The probe used separate node processes and did not start agents.
+
+The baseline was the optimized ARM64 binary from the [tested PR151 build](https://github.com/ArtAndrew/TreeHarbor/actions/runs/42514447643)
+at source `dd8c37bfebd98e6e71960d7b1691f76e1173b680`. The candidate used the
+guarded-volume synchronization change, with Rust source tree
+`63a5c415e87a63759f6bd97eab839e3cb6b112a2` at `crates/` and the same Rust
+toolchain and optimized ARM64 musl profile. The order was
+[baseline](benchmarks/preparation-ext4-linux-arm64-2k-c4-baseline-1.json),
+[candidate](benchmarks/preparation-ext4-linux-arm64-2k-c4-candidate-1.json),
+[candidate](benchmarks/preparation-ext4-linux-arm64-2k-c4-candidate-2.json),
+[baseline](benchmarks/preparation-ext4-linux-arm64-2k-c4-baseline-2.json).
+Each run contained five waves. All 320 preparations passed file content, mode,
+path and cleanup checks. Each column pools 40 observations per system across
+two runs. Tasks in one wave share the host and are correlated.
+
+| Time to first file read | Baseline runs p50 / sample p95 | Candidate runs p50 / sample p95 |
+| --- | ---: | ---: |
+| TreeHarbor | 1,690 / 2,159 ms | 371 / 444 ms |
+| Git worktree | 131 / 161 ms | 117 / 136 ms |
+| Git shared clone | 144 / 212 ms | 134 / 293 ms |
+| Git full clone | 313 / 804 ms | 273 / 318 ms |
+
+The median recorded source sync wait changed from 1,306 ms across per-file
+batches to 37 ms in one volume sync. The preparation still writes and
+synchronizes its manifest and publication receipt. Git worktree remains
+faster on this fixture. These observations cover native source files and
+readiness. Git-compatible metadata, sandbox startup, real repository sizes,
+cold starts and total task cost require separate measurements.

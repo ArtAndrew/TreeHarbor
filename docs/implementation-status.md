@@ -99,6 +99,16 @@ The median node command took 411 ms on 131 entries and 5,519 ms on 2,051 entries
 It includes process startup, database operations and file preparation. The raw
 reports retain the binary hash, commands' timings and materialization counters.
 
+On a registered exclusive ext4 volume with Linux 5.8 or newer, fresh
+preparation uses one filesystem sync for staged source files. The manifest and
+publication still have separate durability barriers. An actual Linux `syncfs`
+error test confirms that a failed barrier leaves no completion manifest or
+publication. Ordinary directories retain batched per-file sync. The
+[Linux A/B runs](benchmark-preparation.md#dedicated-ext4-volumes--9-november-2026)
+record 320 verified preparations. On this native fixture with four tasks,
+the candidate reached a first read in a median 371 ms versus 1,690 ms in
+the previous build. Git worktree remained faster on the sampled setup.
+
 The [recorded Connected trial](demo.md) has an MP4 with six distinct scenes
 verified by decoding, a static storyboard and a direct link to the GIF.
 
