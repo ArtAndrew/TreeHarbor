@@ -22,7 +22,7 @@ TreeHarbor is an independent implementation and is not affiliated with Anthropic
 
 > **The Connected PR Preview is available in [signed alpha releases](https://github.com/ArtAndrew/TreeHarbor/releases).**
 > Signed Linux packages and the exact tested scope are in the release notes.
-> Latest preview: [0.1.15-alpha.1 — faster repeat Connected workspaces](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.15-alpha.1).
+> Latest preview: [0.1.16-alpha.1 — shared Copy-on-Write workspaces and worker recovery](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.16-alpha.1).
 > Evaluate on disposable pilot repositories. The full Connected and Standalone
 > releases remain incomplete; production use is not supported.
 > [What works](#what-works-today) · [What remains](#what-remains-before-a-full-release) ·
@@ -71,14 +71,15 @@ checkout and caches remain the comparison baseline.
 
 ## Measured progress: four workspaces from one source image
 
-The **Copy-on-Write alpha candidate** prepares a source image once and gives
+The opt-in **Copy-on-Write profile in 0.1.16-alpha.1** prepares a source image once and gives
 each workspace its own writable layer. It avoids writing the same source files
-again for every task. The next package adds a Rust host helper, a documented
-Linux setup and recovery of concurrent tasks after worker loss. It remains
-separate from the currently signed 0.1.15 packages until release checks pass.
+again for every task. The signed Linux packages include a Rust host helper,
+a documented manual setup and recovery of concurrent tasks after worker loss.
+One task can finish and release its workspace while another keeps running.
 
-On a local two-CPU ARM64 Linux VM, four concurrent Git-compatible workspaces
-with 8,195 files produced these times through the first read in **all four**:
+On a local two-CPU ARM64 Linux VM with a dedicated ext4 source volume, four
+concurrent Git-compatible workspaces with 8,195 files produced these times
+through the first read in **all four**:
 
 | Preparation | TreeHarbor prototype | Git worktree |
 | --- | ---: | ---: |
@@ -89,6 +90,8 @@ Repeat preparation was about **2.1× faster** in this run. Git remained faster
 for the first group and in earlier small-tree tests. Both systems started with
 local source objects; OS caches were uncontrolled. This measures preparation,
 not coding-agent execution, CI, production throughput or total cost.
+The figures come from the earlier development build; they are not new timings
+of the signed release archives.
 [Results, build identities and raw data](docs/benchmark-preparation.md#shared-source-images--9-november-2026) ·
 [Installation profile and limits](docs/experimental-cow.md).
 
@@ -130,7 +133,8 @@ your execution environment. There is no managed cloud service or automatic host
 provisioning. Source is available under [Elastic License 2.0](LICENSE), with no
 workspace-count limit. Git import/export provides an exit path. GitLab integration
 and a filesystem that fetches missing source files on demand are not available.
-The Copy-on-Write performance experiment above is not in the signed packages.
+The optional [Copy-on-Write profile](docs/experimental-cow.md) requires dedicated
+Linux volumes and operator setup; ordinary workspace preparation remains available.
 
 ## What differs from Scion?
 

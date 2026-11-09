@@ -2,10 +2,10 @@
 
 This opt-in Linux profile reuses one prepared source image across
 multiple workspaces. Each workspace has a separate writable layer. It is
-being packaged for the next alpha and is **not included in 0.1.15-alpha.1**.
-Until signed packages pass the installed checks, this remains a development
-candidate. Use the
-[Connected preview](connected-pr-preview.md) for the released workflow.
+available in the signed Linux packages starting with
+[0.1.16-alpha.1](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.16-alpha.1).
+It remains an experimental, manually configured profile of the
+[Connected preview](connected-pr-preview.md).
 
 The measured benefit is faster **repeat file preparation on the larger tested
 tree**. The first image still costs more to prepare than Git worktree on that
@@ -209,11 +209,15 @@ the first task was captured and deleted while the second kept writing. Conflicti
 proposals required fresh checks/review and exported to ordinary Git. These are
 development tests, not a signed release or a fresh live GitHub PR trial.
 
-## Before a packaged alpha
+## Packaged acceptance
 
-The remaining gate is the shared-node/helper/recovery drill on both signed
-installed Linux packages. The source trial above does not replace those
-installation checks. The release workflow retains the exact tested archive
-and checks the host helper's bytes against it before signing.
+Both Linux architectures passed the shared-node/helper/recovery drill using
+the installed 0.1.16-alpha.1 packages. The release workflow retained those exact
+archives and checked the protected host helper's bytes before signing.
+Independent verification matched the signatures, source revision and producing
+workflow. A separate installation of the signed ARM64 archive passed the
+same-node recovery and overlapping-task scenario with PostgreSQL and gVisor.
+See the [release evidence](evidence/cow-workspace-release-20261109.json).
+This release does not claim a new live GitHub PR trial or an LLM benchmark.
 General cache rotation, broader workloads and full Connected/Standalone
 operational certification follow as separate increments.

@@ -163,8 +163,9 @@ on repeated Git-compatible workspaces was 127 ms with Copy-on-Write, 193 ms
 with the regular guarded copy and 98 ms for Git worktree in the same
 Copy-on-Write runs. The initial Git-compatible workspace took 1,452 ms with
 Copy-on-Write and 1,023 ms with guarded copy. The source was already local and
-OS caches were uncontrolled. The prototype is unreleased and requires
-further work on driver provisioning, source image lifecycle and reboot recovery.
+OS caches were uncontrolled. These measurements used an unreleased prototype;
+the packaged profile is recorded below. Source image lifecycle and reboot
+recovery still require further work.
 
 A bounded local batch can prepare four separate guarded slots on one node
 against one source image per format. The two-format fixture used 17.9 MB for
@@ -203,7 +204,8 @@ No runtime tasks execute during this preparation comparison. The 31 targeted
 materializer/node tests passed, including the failed-writeback boundary.
 The separate real-ext4 contract also passed ownership, changed-registration,
 old-slot rejection and reopening checks. Required CI now provisions a disposable
-source volume for that contract. This is still an unreleased, operator-only path.
+source volume for that contract. These development measurements precede the
+packaged, operator-only profile recorded below.
 
 A [shared-node development trial](evidence/shared-node-work-20261109.json) then
 passed on ordinary placements and on two overlay views of one source image.
@@ -212,13 +214,13 @@ accepting and deleting the first task's workspace preserved the second task's
 ongoing writes and the unchanged source image. Exact selection replay did not
 relaunch tasks; an independently rejected wrong-node cleanup did not cancel
 other work. The retained proposals passed the existing conflict/fresh-check/Git
-export drill. The [bounded worker command](node-work-selection.md) is unreleased;
-it neither creates owner intents nor accepts proposed changes. Its normal-volume
+export drill. The [bounded worker command](node-work-selection.md) is now packaged in 0.1.16-alpha.1.
+It neither creates owner intents nor accepts proposed changes. Its normal-volume
 variant is now part of the required installed-package CI and release workflow.
-The operator-provisioned overlay profile still needs packaged installation and
-installed-artifact acceptance, including its documented recovery limits.
+The operator-provisioned overlay profile subsequently passed the packaged
+installation and installed-artifact checks recorded below.
 
-The next candidate packages `treeharbor-cow-driver`, a Rust Linux helper using
+Version 0.1.16-alpha.1 packages `treeharbor-cow-driver`, a Rust Linux helper using
 direct mount/unmount calls and a lock held by the privileged process. It checks
 the fixed layout and exact existing mount before mutation; it refuses elevation
 from an executable or ancestor writable by the node account. The installer grants
@@ -239,10 +241,21 @@ Both required installed-package jobs now run this profile with the actual
 archived helper, compare its protected installed copy byte-for-byte and exercise
 worker recovery. The same checks run before signing. The
 [deployment/recovery guide](experimental-cow.md) records the single-image,
-256 MiB and no-automatic-reboot-recovery limits. This candidate still needs its
-own required CI and signed installed-artifact results; historical trial success
-does not substitute for them. No new live GitHub permissions or test writes are
-part of this increment.
+256 MiB and no-automatic-reboot-recovery limits.
+
+The [signed 0.1.16-alpha.1 release](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.16-alpha.1)
+uses source `c48c14b52c64a8ffb8b32cfd26ae4a565216a359`.
+Independent [main CI](https://github.com/ArtAndrew/TreeHarbor/actions/runs/42656233548)
+(attempt 2) and the [signed producer](https://github.com/ArtAndrew/TreeHarbor/actions/runs/42661426400)
+(attempt 1) passed. Both Linux architectures ran the installed managed/native
+checks, including the protected helper and shared-worker recovery, before signing.
+Independent online and bundled verification matched all eight signed subjects
+per architecture and the exact source/workflow/producer invocation. A separate
+installation of the signed ARM64 archive passed same-container recovery,
+overlapping writes, capture/cleanup isolation, fresh conflict checks/review and
+Git export. The [release receipt](evidence/cow-workspace-release-20261109.json)
+records archive identities and the bounded scope. No fresh live GitHub PR trial,
+new release performance measurement or production certification is claimed.
 
 ## 0.1.12-alpha.1 release scope
 
