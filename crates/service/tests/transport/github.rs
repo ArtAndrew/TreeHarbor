@@ -65,6 +65,14 @@ fn provision_bridge(f: &Fixture) -> PathBuf {
     bridge
 }
 
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ConnectedPreparationBenchmark {
+    bundle: PathBuf,
+    git_revision: String,
+    arguments: Vec<String>,
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires PostgreSQL; actual Git history, bridge HTTP, restart and export (no live App)"]
 async fn github_source_http_preserves_exact_git_history_after_partial_upload_and_server_death() {
@@ -76,7 +84,27 @@ async fn github_source_http_preserves_exact_git_history_after_partial_upload_and
     let owner = f.credential_path.clone();
     let bridge = provision_bridge(&f);
     let pack_path = f.dir.path().join("original-pack");
-    git_history_pack(&f, &pack_path);
+    let benchmark = std::env::var_os("TH_TEST_CONNECTED_PREPARATION").map(|path| {
+        serde_json::from_slice::<ConnectedPreparationBenchmark>(&fs::read(path).unwrap()).unwrap()
+    });
+    if let Some(benchmark) = &benchmark {
+        let captured = Command::new(&f.binary)
+            .args(["git-import", "--git", "/usr/bin/git", "--bundle"])
+            .arg(&benchmark.bundle)
+            .arg("--commit")
+            .arg(&benchmark.git_revision)
+            .arg("--output")
+            .arg(&pack_path)
+            .output()
+            .unwrap();
+        assert!(
+            captured.status.success(),
+            "{}",
+            String::from_utf8_lossy(&captured.stderr)
+        );
+    } else {
+        git_history_pack(&f, &pack_path);
+    }
     let pack = treeharbor_service::pack::Pack::open(&pack_path).unwrap();
     let manifest: Value =
         serde_json::from_slice(&fs::read(pack_path.join("manifest.json")).unwrap()).unwrap();
@@ -204,6 +232,42 @@ async fn github_source_http_preserves_exact_git_history_after_partial_upload_and
     );
     assert!(!f.dir.path().join("absent-state").exists());
     f.credential_path = owner;
+    if let Some(benchmark) = benchmark {
+        let postgres_version: String = f
+            .sql
+            .query_one("SHOW server_version", &[])
+            .await
+            .unwrap()
+            .get(0);
+        let context = f.dir.path().join("benchmark-context.json");
+        let payload = json!({
+            "config": f.config_path,
+            "socket": f.config.socket,
+            "credential": f.credential_path,
+            "store": f.config.storage.as_ref().unwrap().root,
+            "tenant": f.scope.tenant(),
+            "repository_id": f.scope.repository().to_string(),
+            "native_revision": RevisionRef::Native(root).to_string(),
+            "git_revision": revision,
+            "postgres_version": postgres_version,
+        });
+        files::write_private(&context, &serde_json::to_vec(&payload).unwrap()).unwrap();
+        let driver = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../scripts/benchmark-workspace-preparation.py");
+        let status = Command::new("python3")
+            .arg("-B")
+            .arg(driver)
+            .args(benchmark.arguments)
+            .arg("--binary")
+            .arg(&f.binary)
+            .arg("--connected-fixture")
+            .arg(context)
+            .status();
+        drop(server);
+        f.cleanup().await;
+        assert!(status.unwrap().success());
+        return;
+    }
     let restored = f.dir.path().join("restored");
     let export = f.cli(&[
         "source-export",
