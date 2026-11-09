@@ -2,6 +2,7 @@
 mod capture;
 mod cleanup;
 mod execution;
+mod git_seed_cache;
 mod git_source;
 mod private;
 mod removal;

@@ -327,3 +327,28 @@ and alternate their order on one host. The probe checks the detached Git HEAD,
 reachable history and worktree bytes, and verifies that the Git-compatible
 placement has an independent object database. Use the Standalone command
 above for the clone baselines.
+
+## Repeated Git-compatible preparation — 9 November 2026
+
+Two optimized Linux ARM64 builds used the same one-commit, 2,051-entry
+fixture on a two-CPU host. Each run prepared eight waves of four fresh
+workspaces on dedicated ext4 volumes. A new node started each lane, and each
+lane kept that node identity across waves. The first wave started with an
+empty node seed cache. Source objects were already present and OS caches
+were uncontrolled. All 192 placements verified their file bytes, modes,
+paths, applicable Git history and cleanup.
+
+| Time to first useful read | First wave p50 | Repeat waves p50 / sample p95 |
+| --- | ---: | ---: |
+| Connected, private Git metadata before reuse | 965 ms | 970 / 1,069 ms |
+| Connected, private Git metadata with reuse | 968 ms | 301 / 343 ms |
+| Connected, file-only, same candidate run | 370 ms | 315 / 380 ms |
+| Git worktree, same candidate run | 119 ms | 99 / 148 ms |
+
+There were four first-wave and 28 repeat-wave observations per system in each
+run. The repeat-wave reduction covers the node's Git metadata cache, which
+does not retain prepared working files. It leaves the first-wave time and
+the roughly threefold local worktree gap visible. This sample excludes
+agent execution and network or GitHub costs.
+[Previous build observations](benchmarks/connected-git-seed-linux-arm64-2k-c4-before.json) ·
+[Seed reuse observations](benchmarks/connected-git-seed-linux-arm64-2k-c4-cache.json).

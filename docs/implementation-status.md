@@ -76,6 +76,14 @@ were revoked. The trial covered publication through draft PRs.
 [Agent A PR](https://github.com/TreeHarbor/TreeHarbor-acceptance/pull/6),
 [agent B PR](https://github.com/TreeHarbor/TreeHarbor-acceptance/pull/7).
 
+Development builds can reuse an exact, verified Git metadata seed on the same
+node. A new preparation verifies its current source lease and copies private
+metadata into a new placement. The original file validation, publication and
+cleanup paths still apply. The [guarded Linux comparison](benchmark-preparation.md#repeated-git-compatible-preparation--9-november-2026)
+records a first-read median of 301 ms on repeat preparations, versus 970 ms
+before seed reuse and 99 ms for Git worktree in the candidate run. The initial
+preparation had a median of 968 ms across four samples.
+
 ## Unreleased node preparation diagnostics
 
 `node prepare-once` now exposes the materializer's existing counters in

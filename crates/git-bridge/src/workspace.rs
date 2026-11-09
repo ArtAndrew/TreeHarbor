@@ -6,7 +6,7 @@ use std::{
     fs::{self, File, Permissions},
     os::unix::fs::PermissionsExt,
     path::Path,
-    time::Instant,
+    time::{Duration, Instant},
 };
 use treeharbor_core::{GitOid, ObjectId, ObjectStore, RevisionRef};
 
@@ -129,10 +129,23 @@ pub fn seed_workspace(store: &impl ObjectStore, request: WorkspaceSeed<'_>) -> R
             4096,
         )?;
     }
-    sync_metadata(&metadata, deadline)?;
+    install_seed(scratch.path(), &parent, deadline)
+}
+
+/// Install a trusted, independently copied seed from `staging/metadata` into
+/// the unpublished working tree. The caller verifies the cached bytes and
+/// retains exclusive ownership of both paths. Existing .git is never replaced.
+pub fn install_workspace_seed(staging: &Path, files: &Path, timeout: Duration) -> Result<()> {
+    let parent = private_parent(&files.join(".git"))?;
+    let staging = private_parent(&staging.join("metadata"))?;
+    install_seed(&staging, &parent, Instant::now() + timeout)
+}
+
+fn install_seed(staging: &Path, parent: &Path, deadline: Instant) -> Result<()> {
+    sync_metadata(&staging.join("metadata"), deadline)?;
     check_deadline(deadline)?;
-    let source = File::open(scratch.path())?;
-    let target = File::open(&parent)?;
+    let source = File::open(staging)?;
+    let target = File::open(parent)?;
     rustix::fs::renameat_with(
         &source,
         "metadata",
