@@ -15,7 +15,7 @@ import subprocess
 import uuid
 
 
-def exercise(h, landed, managed, pending):
+def exercise(h, landed, managed, pending, overlap):
     if not h.schema.startswith("th_test_") or "dbname=treeharbor_test" not in h.url:
         raise RuntimeError("restore drill requires the disposable acceptance database")
     target = None
@@ -33,6 +33,8 @@ def exercise(h, landed, managed, pending):
     original_credentials = {name: getattr(h, name) for name in credential_names}
     original_agents = list(h.agents)
     original_node_credentials = [(node, node["credential"]) for node in h.nodes]
+    overlap_landing, original_git = overlap
+    overlap_revision = overlap_landing["revision"]
 
     def sql(database, query):
         out = managed.docker("exec", h.pg, "psql", "-U", "treeharbor_test", "-d", database,
@@ -57,7 +59,36 @@ def exercise(h, landed, managed, pending):
         managed.wait_until(lambda: h.client("repository-info", check=False).returncode == 0 or h.server.poll() is not None)
         assert h.server.poll() is None, "restored service did not start"
 
+    def history(first_parent=False, check=True):
+        options = ["--first-parent"] if first_parent else []
+        return h.client("history", "--authority", "standalone", "--epoch", "1",
+                        "log", "--revision", overlap_revision, "--limit", "100",
+                        *options, credential=h.reviewer, check=check)
+
+    def git_history(repository, first_parent=False):
+        options = ["--first-parent"] if first_parent else []
+        text = managed.command("/usr/bin/git", "--git-dir", repository, "rev-list",
+                               "--parents", *options, "main").stdout
+        return {row[0]: row[1:] for row in map(str.split, text.splitlines())}
+
     try:
+        assert h.native("ref_resolve", h.reviewer, name="main")["head"] == overlap_revision
+        complete_history = history()
+        first_parent_history = history(first_parent=True)
+        for page in (complete_history, first_parent_history):
+            view = page["history"]
+            assert view["next_after"] is None and len(view["commits"]) == view["total_commits"]
+            assert view["commits"][0]["revision"] == overlap_revision
+        merge = complete_history["history"]["commits"][0]
+        parent, secondary = merge["parents"]
+        assert parent == first_parent_history["history"]["commits"][1]["revision"]
+        assert secondary in {row["revision"] for row in complete_history["history"]["commits"]}
+        assert secondary not in {row["revision"] for row in first_parent_history["history"]["commits"]}
+        before_git = git_history(original_git)
+        git_head = managed.command("/usr/bin/git", "--git-dir", original_git,
+                                   "rev-parse", "main").stdout.strip()
+        assert len(before_git[git_head]) == 2
+        assert before_git[git_head][1] not in git_history(original_git, first_parent=True)
         unassigned = str(uuid.uuid4())
         h.client("workspace-create", "--key", "restore-unassigned", "--authority", "standalone",
                  "--epoch", "1", "--workspace", unassigned, "--base", h.revision,
@@ -80,9 +111,13 @@ def exercise(h, landed, managed, pending):
         before = snapshot("treeharbor_test")
         # Use the installed Rust command and real matching container pg_dump;
         # do not synthesize dump bytes, snapshots or success.
+        docker = shutil.which("docker")
+        if docker is None:
+            raise RuntimeError("docker must be available to the acceptance harness")
+        docker_pg = ("#!/bin/sh\nexec " + shlex.quote(docker)
+                     + " exec -i -e PGDATABASE -e PGUSER -e PGPASSWORD " + shlex.quote(h.pg))
         dump = h.root / "pg-dump"
-        dump.write_text("#!/bin/sh\nexec /usr/bin/docker exec -i -e PGDATABASE -e PGUSER -e PGPASSWORD "
-                        + shlex.quote(h.pg) + ' pg_dump "$@"\n')
+        dump.write_text(docker_pg + ' pg_dump "$@"\n')
         dump.chmod(0o700)
         states = [h.root / "import.json", h.root / "pack", h.root / "first-workspace.json",
                   h.root / "native-advance", h.owner, *h.agents, h.policy_admin,
@@ -115,8 +150,7 @@ def exercise(h, landed, managed, pending):
         assert snapshot("treeharbor_test") == before, "backup changed source metadata"
         print("PASS installed cold backup: actual operator create/verify preserves enumerated private state and exact inventory without overwriting output", flush=True)
         restore = h.root / "pg-restore"
-        restore.write_text("#!/bin/sh\nexec /usr/bin/docker exec -i -e PGDATABASE -e PGUSER -e PGPASSWORD "
-                           + shlex.quote(h.pg) + ' pg_restore "$@"\n')
+        restore.write_text(docker_pg + ' pg_restore "$@"\n')
         restore.chmod(0o700)
         staged = h.value("backup", "restore-stage", "--isolated-target", "--backup", backup,
                          "--manifest-sha256", receipt["manifest_sha256"], "--directory", stage,
@@ -240,12 +274,19 @@ def exercise(h, landed, managed, pending):
             denied = h.client("repository-info", credential=old, check=False)
             assert denied.returncode != 0, "old credential became usable after restore"
         h.export_and_restore(landed, "cold-restored")
+        assert h.native("ref_resolve", h.reviewer, name="main")["head"] == overlap_revision
+        assert history() == complete_history
+        assert history(first_parent=True) == first_parent_history
+        recovered_git = h.export_and_restore(overlap_landing, "cold-restored-overlap", "alpha + beta\n")
+        assert git_history(recovered_git) == before_git
         changed = h.client("diff", "--authority", "standalone", "--epoch", "1", "change",
                            "--changeset", h.change["changeset"], "--version", "1", credential=h.agents[0])
         assert changed["after_snapshot"] == h.change["result_snapshot"]
         print("PASS cold restore: service uses restored objects, exports published history and reads accepted agent changes with original storage absent", flush=True)
 
-        digest = landed["revision"].removeprefix("native:sha256:")
+        # This commit is reached through the second parent of the landed merge.
+        # The head, its tree and the entire first-parent chain stay present.
+        digest = secondary.removeprefix("native:sha256:")
         descriptor = json.loads(sql(target, f"SELECT jsonb_build_object('tenant',tenant,'generation',generation) FROM {h.schema}.th_objects WHERE encode(digest,'hex')='{digest}'"))
         frame = restored_store / "managed-v1" / str(descriptor["generation"]) / "objects" / descriptor["tenant"] / digest[:2] / digest[2:]
         saved = frame.read_bytes()
@@ -260,15 +301,18 @@ def exercise(h, landed, managed, pending):
             start_service(label)
             output = h.root / ("rejected-restore-" + label)
             result = h.client("source-export", "--authority", "standalone", "--epoch", "1",
-                              "--revision", landed["revision"], "--output", output, check=False)
+                              "--revision", overlap_revision, "--output", output, check=False)
             assert result.returncode != 0, label
+            assert history(check=False).returncode != 0
             assert not output.exists(), "failed export exposed a successful output"
             frame.write_bytes(saved)
         h.server.kill()
         h.server.wait(timeout=10)
         start_service("repaired")
-        h.export_and_restore(landed, "cold-repaired")
-        print("PASS cold restore: missing and corrupt restored objects refuse export; restoring exact bytes recovers the complete Git history", flush=True)
+        assert history() == complete_history
+        repaired_git = h.export_and_restore(overlap_landing, "cold-repaired-overlap", "alpha + beta\n")
+        assert git_history(repaired_git) == before_git
+        print("PASS cold restore: missing or corrupt second parent refuses full history and export; repair recovers exact native and Git graphs", flush=True)
 
         # The old node runtime was never started for this requested check. The
         # backup retains a request, not evidence of execution. Do not infer a
