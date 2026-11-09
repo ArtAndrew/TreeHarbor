@@ -79,6 +79,15 @@ directory sync. `publish` covers physical publication. The `file_sync` duration
 measures the wait for batched source-file syncs and is included in
 `build_batches` and `finalize`. Keep it separate when totaling phases.
 
+When preparation uses a registered, exclusive ext4 volume on Linux 5.8 or
+newer, the node synchronizes the staged source files once using the verified
+volume descriptor it held before writing. The wait appears in
+`phase_seconds.volume_sync` and is included in `finalize`. It is `null` for
+ordinary file synchronization. The manifest and publication still use their
+own durability barriers. A volume synchronization error fails preparation
+before publication. The [Linux syncfs documentation](https://man7.org/linux/man-pages/man2/sync.2.html)
+describes filesystem scope and writeback error reporting.
+
 These timings exclude workspace requests, job claim, process startup, session
 setup/teardown, Git metadata preparation and the readiness transaction. They
 describe intervals spent by this preparation, including contention, rather

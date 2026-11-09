@@ -2,6 +2,7 @@
 """Local full-file preparation against Git worktree and clone baselines."""
 import argparse
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import ExitStack
 from math import ceil
 import platform
 import hashlib
@@ -32,11 +33,19 @@ parser.add_argument('--concurrency', type=int, default=1)
 parser.add_argument('--seed', type=int, default=42)
 parser.add_argument('--git-checkout-workers', type=int, default=0)
 parser.add_argument('--max-fixture-bytes', type=int, default=64 * 1024 * 1024)
+parser.add_argument('--workspace-volume', type=Path, action='append', default=[],
+                    help='one dedicated disposable ext4 mount per concurrent TreeHarbor task')
+parser.add_argument('--volume-limit-bytes', type=int, default=128 * 1024 * 1024)
 args = parser.parse_args()
 if not 1 <= args.iterations <= 100 or args.git_checkout_workers < 0:
     parser.error('iterations must be 1..100; checkout workers must be nonnegative')
 if not 1 <= args.concurrency <= 16:
     parser.error('concurrency must be 1..16 for this local probe')
+volumes = [path.resolve() for path in args.workspace_volume]
+if volumes and (platform.system() != 'Linux' or len(volumes) != args.concurrency
+                or len(set(volumes)) != len(volumes) or args.volume_limit_bytes <= 0
+                or not all(os.path.ismount(mount) for mount in volumes)):
+    parser.error('provide one distinct disposable Linux mount per task and a positive volume limit')
 if not re.fullmatch(r'(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})', args.revision):
     parser.error('revision must be a full Git commit ID')
 BIN, PSQL, OUT = args.binary.resolve(), args.psql.resolve(), args.output.resolve()
@@ -71,7 +80,7 @@ def sql(text):
 schema = 'th_test_' + uuid.uuid4().hex
 server = None
 created = False
-with tempfile.TemporaryDirectory(prefix='th-import-') as tmp:
+with tempfile.TemporaryDirectory(prefix='th-import-') as tmp, ExitStack() as placements:
     root = Path(tmp)
     config, socket, credential = root/'config.json', root/'service.sock', root/'owner.json'
     log = (root/'service.log').open('wb')
@@ -171,6 +180,14 @@ with tempfile.TemporaryDirectory(prefix='th-import-') as tmp:
             return json.loads(run(BIN, 'node', action, '--config', config,
                                   '--credential-file', node_credential,
                                   '--root', node_root, '--storage', storage, *parts))
+        slots, git_roots = [], []
+        for lane, mount in enumerate(volumes):
+            placement = placements.enter_context(tempfile.TemporaryDirectory(prefix='th-bench-', dir=mount))
+            git_roots.append(Path(placements.enter_context(tempfile.TemporaryDirectory(prefix='th-bench-git-', dir=mount))))
+            slot = str(uuid.uuid4())
+            node(lane, 'volume-register', '--slot', slot, '--mount', mount, '--placement', placement,
+                 '--limit-bytes', args.volume_limit_bytes)
+            slots.append(slot)
         # A private bare clone protects the caller's refs/worktrees and avoids
         # hard-linked objects. Its cost is recorded outside warm preparation.
         mirror = root/'baseline.git'
@@ -234,7 +251,8 @@ with tempfile.TemporaryDirectory(prefix='th-import-') as tmp:
                     '--authority', 'standalone', '--epoch', '1', '--workspace', workspace,
                     '--base', reply['result']['revision'], '--profile-digest', profile)
                 requested = time.perf_counter()
-                prepared = node(lane, 'prepare-once', '--workspace', workspace)
+                slot_args = ['--slot', slots[lane]] if slots else []
+                prepared = node(lane, 'prepare-once', '--workspace', workspace, *slot_args)
                 materialized = time.perf_counter()
                 if prepared['state'] != 'files_ready' or prepared['workspace'] != workspace:
                     raise RuntimeError('the selected workspace did not become file-ready')
@@ -246,7 +264,8 @@ with tempfile.TemporaryDirectory(prefix='th-import-') as tmp:
                     'materialization_counters': prepared.get('preparation_statistics'),
                 }
             else:
-                path = root/f'{system}-{wave}-{lane}'
+                destination = git_roots[lane] if git_roots else root
+                path = destination/f'{system}-{wave}-{lane}'
                 if system == 'git-worktree':
                     git('-C', mirror, 'worktree', 'add', '--detach', path, revision)
                 else:
@@ -321,6 +340,7 @@ with tempfile.TemporaryDirectory(prefix='th-import-') as tmp:
             'tracked_files':len(fixture['files']),'logical_file_bytes':fixture_bytes,
             'iterations':args.iterations,'concurrency':args.concurrency,'random_seed':args.seed,
             'git_checkout_workers':args.git_checkout_workers,
+            'treeharbor_placement':'guarded-ext4' if slots else 'node-directory',
             'cache_state':'source objects present; no prepared tree; OS caches uncontrolled',
             'setup':{'snapshot_pack_seconds':pack_seconds,'native_import_seconds':import_seconds,
                      'git_mirror_seconds':mirror_seconds,

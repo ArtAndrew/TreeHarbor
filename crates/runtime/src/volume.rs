@@ -61,6 +61,17 @@ impl Volume {
     pub fn files(&self) -> &Path {
         &self.identity.files
     }
+    /// Duplicate the mount descriptor opened before staging writes. Linux 5.8
+    /// and later report filesystem writeback errors through this descriptor.
+    #[cfg(target_os = "linux")]
+    pub fn preparation_sync_fd(&self) -> Result<Option<File>> {
+        let kernel = rustix::system::uname();
+        if !syncfs_reports_writeback_errors(kernel.release()) {
+            return Ok(None);
+        }
+        self.verify()?;
+        Ok(Some(self.mount.try_clone()?))
+    }
     /// Duplicate the same held mount lock and physical placement identity.
     pub fn try_clone(&self) -> Result<Self> {
         self.verify()?;
@@ -112,6 +123,17 @@ impl Volume {
         Ok(())
     }
 }
+
+#[cfg(target_os = "linux")]
+fn syncfs_reports_writeback_errors(release: &std::ffi::CStr) -> bool {
+    let Ok(release) = release.to_str() else {
+        return false;
+    };
+    let mut parts = release.split('.');
+    let mut next = || parts.next()?.parse::<u32>().ok();
+    next().zip(next()).is_some_and(|version| version >= (5, 8))
+}
+
 fn directory(path: &Path) -> Result<File> {
     let file = OpenOptions::new()
         .read(true)
@@ -308,6 +330,15 @@ mod tests {
             assert!(files_directory(Path::new("/")).is_err());
         }
     }
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn volume_sync_requires_a_kernel_with_writeback_error_reporting() {
+        assert!(!syncfs_reports_writeback_errors(c"5.7.19"));
+        assert!(!syncfs_reports_writeback_errors(c"unknown"));
+        assert!(syncfs_reports_writeback_errors(c"5.8.0"));
+        assert!(syncfs_reports_writeback_errors(c"6.8.0-142-generic"));
+    }
+
     #[test]
     fn mount_proof_rejects_aliases_shared_and_nested_mounts() {
         let device = rustix::fs::makedev(7, 3);
