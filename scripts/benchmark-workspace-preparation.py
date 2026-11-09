@@ -37,6 +37,7 @@ parser.add_argument('--max-fixture-bytes', type=int, default=64 * 1024 * 1024)
 parser.add_argument('--workspace-volume', type=Path, action='append', default=[],
                     help='one dedicated disposable ext4 mount per concurrent TreeHarbor task')
 parser.add_argument('--volume-limit-bytes', type=int, default=128 * 1024 * 1024)
+parser.add_argument('--cow-driver', type=Path, help=argparse.SUPPRESS)
 args = parser.parse_args()
 if not 1 <= args.iterations <= 100 or args.git_checkout_workers < 0:
     parser.error('iterations must be 1..100; checkout workers must be nonnegative')
@@ -47,6 +48,8 @@ if volumes and (platform.system() != 'Linux' or len(volumes) != args.concurrency
                 or len(set(volumes)) != len(volumes) or args.volume_limit_bytes <= 0
                 or not all(os.path.ismount(mount) for mount in volumes)):
     parser.error('provide one distinct disposable Linux mount per task and a positive volume limit')
+if args.cow_driver and (not volumes or not args.cow_driver.is_absolute()):
+    parser.error('the local overlay experiment requires guarded volumes and an absolute driver path')
 if not re.fullmatch(r'(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})', args.revision):
     parser.error('revision must be a full Git commit ID')
 BIN, OUT = args.binary.resolve(), args.output.resolve()
@@ -78,6 +81,8 @@ TIMINGS = ('files_ready_seconds', 'first_read_seconds', 'cleanup_seconds')
 def run(*args):
     p = subprocess.run([str(x) for x in args], capture_output=True, timeout=240)
     if p.returncode:
+        if os.environ.get('TH_BENCH_DIAGNOSTICS') == '1' and len(args) > 2 and args[1] == 'node':
+            print(p.stderr.decode(errors='replace')[-1000:], flush=True)
         raise RuntimeError(f'{Path(str(args[0])).name} exited with status {p.returncode}')
     return p.stdout
 
@@ -203,9 +208,10 @@ with tempfile.TemporaryDirectory(prefix='th-import-') as tmp, ExitStack() as pla
 
         def node(system, lane, action, *parts):
             node_root, storage, node_credential = nodes[system, lane]
+            placement = ('--cow-driver', args.cow_driver) if args.cow_driver and action in ('prepare-once', 'cleanup-once') else ()
             return json.loads(run(BIN, 'node', action, '--config', config,
                                   '--credential-file', node_credential,
-                                  '--root', node_root, '--storage', storage, *parts))
+                                  '--root', node_root, '--storage', storage, *parts, *placement))
         slots, git_roots = {}, []
         for lane, mount in enumerate(volumes):
             git_roots.append(Path(placements.enter_context(tempfile.TemporaryDirectory(prefix='th-bench-git-', dir=mount))))
@@ -215,6 +221,15 @@ with tempfile.TemporaryDirectory(prefix='th-import-') as tmp, ExitStack() as pla
                 node(system, lane, 'volume-register', '--slot', slot, '--mount', mount,
                      '--placement', placement, '--limit-bytes', args.volume_limit_bytes)
                 slots[system, lane] = slot
+        if args.cow_driver:
+            def release_fixture_mounts():
+                # No task is executed by this fixture. Preserve the initial
+                # exception without letting temporary-directory removal walk
+                # through a mounted view from a failed preparation.
+                for path in root.glob('.treeharbor-cow-*/views/*'):
+                    if path.is_mount():
+                        run('/usr/bin/sudo', '-n', '/usr/bin/umount', '--', path)
+            placements.callback(release_fixture_mounts)
         # A private bare clone protects the caller's refs/worktrees and avoids
         # hard-linked objects. Its cost is recorded outside warm preparation.
         mirror = root/'baseline.git'
@@ -260,14 +275,14 @@ with tempfile.TemporaryDirectory(prefix='th-import-') as tmp, ExitStack() as pla
                 elif (not stat.S_ISREG(mode) or p.read_bytes()!=bytes.fromhex(f['hex'])
                       or bool(mode & 0o111)!=(f['mode']=='100755')):
                     raise RuntimeError('file bytes or executable bit differ')
-        def allocated(path):
+        def allocated(path, exclude_git=True):
             total=path.lstat().st_blocks*512
             for parent, dirs, files in os.walk(path, followlinks=False):
                 for name in dirs+files:
                     p=Path(parent)/name
-                    if p.relative_to(path).as_posix()!='.git':
+                    if not exclude_git or p.relative_to(path).as_posix()!='.git':
                         total+=p.lstat().st_blocks*512
-                dirs[:]=[n for n in dirs if n!='.git' and not (Path(parent)/n).is_symlink()]
+                dirs[:]=[n for n in dirs if (not exclude_git or n!='.git') and not (Path(parent)/n).is_symlink()]
             return total
         def prepare(system, wave, order, lane):
             observation = {'wave': wave, 'order': order, 'lane': lane, 'system': system}
@@ -287,8 +302,16 @@ with tempfile.TemporaryDirectory(prefix='th-import-') as tmp, ExitStack() as pla
                 materialized = time.perf_counter()
                 if prepared['state'] != 'files_ready' or prepared['workspace'] != workspace:
                     raise RuntimeError('the selected workspace did not become file-ready')
+                if args.cow_driver and prepared.get('placement') != 'copy-on-write':
+                    raise RuntimeError('the selected workspace did not use the mounted view')
                 generation = created_reply['result']['generation']
                 path = Path(prepared['path'])
+                if args.cow_driver:
+                    attempt = Path(prepared['manifest']).parent.parent
+                    observation['overlay_writable_allocated_bytes'] = sum(
+                        allocated(attempt / name, exclude_git=False)
+                        for name in ('overlay-upper', 'overlay-work')
+                    ) if os.environ.get('TH_BENCH_MEASURE_UPPER') == '1' else None
                 observation['treeharbor_preparation'] = {
                     'workspace_request_seconds': requested - start,
                     'node_prepare_command_seconds': materialized - requested,
@@ -385,7 +408,7 @@ with tempfile.TemporaryDirectory(prefix='th-import-') as tmp, ExitStack() as pla
             'tracked_files':len(fixture['files']),'logical_file_bytes':fixture_bytes,
             'iterations':args.iterations,'concurrency':args.concurrency,'random_seed':args.seed,
             'git_checkout_workers':args.git_checkout_workers,
-            'treeharbor_placement':'guarded-ext4' if slots else 'node-directory',
+            'treeharbor_placement':'overlay-on-guarded-ext4' if args.cow_driver else ('guarded-ext4' if slots else 'node-directory'),
             'cache_state':'source objects present; separate initially empty nodes by system/lane; OS caches uncontrolled',
             'setup':{**setup,'git_mirror_seconds':mirror_seconds,
                      'treeharbor_objects_allocated_bytes':allocated(store),
@@ -400,6 +423,9 @@ with tempfile.TemporaryDirectory(prefix='th-import-') as tmp, ExitStack() as pla
                 'CLI/node process startup included; no persistent worker daemon',
                 'read correctness checked; no untrusted code executed',
                 'not a full cost, durability or throughput comparison']}
+        if args.cow_driver:
+            lower = [root / f'.treeharbor-cow-{storage}' / 'image' for _, storage, _ in nodes.values()]
+            report['setup']['treeharbor_lower_allocated_bytes'] = sum(allocated(path, exclude_git=False) for path in lower)
     finally:
         if server is not None:
             server.terminate()

@@ -43,6 +43,16 @@ struct DirectoryIdentity {
 }
 
 impl OverlayView {
+    pub fn mount_present(path: &std::path::Path) -> Result<bool> {
+        for line in mountinfo()?.lines() {
+            let point = line.split(' ').nth(4).ok_or(Error::Invalid)?;
+            if unescape(point)?.starts_with(path) {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+
     pub fn observe(volume: &Volume, layout: OverlayLayout) -> Result<Self> {
         let volume = volume.try_clone()?;
         let (evidence, held) = inspect(&volume, &layout)?;
@@ -60,6 +70,10 @@ impl OverlayView {
 
     pub fn mount_id(&self) -> u64 {
         self.evidence.mount
+    }
+
+    pub fn placement_digest(&self) -> Result<[u8; 32]> {
+        crate::journal::overlay_intent_digest(&self.intent())
     }
 
     pub(crate) fn volume(&self) -> &Volume {

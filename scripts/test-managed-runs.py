@@ -276,7 +276,7 @@ class Harness:
         return number, assigned, slot, mount, digest
 
     def case(self, mode, *args, node=0, timeout=10000, workspace=None, selected=False,
-             base=None, source=b"base\n"):
+             base=None, source=b"base\n", overlay=False, overlay_fault=False):
         number, assigned, slot, mount, digest = self.placement_profile(node, timeout)
         run = str(uuid.uuid4())
         credential = self.agents[node]
@@ -299,8 +299,32 @@ class Harness:
                             "--workspace", workspace, "--base", base, "--profile-digest", self.source_profile,
                             credential=credential)
         selection = ["--workspace", workspace] if selected else []
-        prepared = self.value(*self.node_args(assigned, "prepare-once"), "--slot", slot, *selection)
+        overlay_args = ["--cow-driver", os.environ["TH_TEST_OVERLAY_DRIVER"]] if overlay else []
+        command = [*self.node_args(assigned, "prepare-once"), "--slot", slot, *selection, *overlay_args]
+        if overlay_fault:
+            assert overlay and selected
+            fault = Path(os.environ["TH_TEST_OVERLAY_DRIVER"]).with_name("kill-after-mount")
+            observed = fault.with_suffix(".observed")
+            with fault.open("x") as file:
+                file.write("fixture\n")
+            try:
+                killed = self.cli(*command, check=False)
+                assert killed.returncode == -9, (killed.returncode, killed.stderr)
+                prior = Path(observed.read_text().strip())
+                assert prior.is_mount()
+                self.sql(f"UPDATE th_outbox SET lease_until=clock_timestamp()-interval '1 second' WHERE kind='workspace.prepare' AND payload->>'workspace'='{workspace}'")
+            finally:
+                fault.unlink(missing_ok=True)
+                observed.unlink(missing_ok=True)
+        prepared = self.value(*command)
+        if overlay_fault:
+            assert Path(prepared["path"]) == prior and prior.is_mount()
+            print("PASS prepared the same overlay after killing its worker between mount and publication", flush=True)
         assert prepared["workspace"] == workspace and prepared["state"] == "files_ready" and prepared["runtime"] is None
+        if overlay:
+            assert prepared["placement"] == "copy-on-write"
+            reopened = self.value(*self.node_args(assigned, "prepared"), "--workspace", workspace)
+            assert reopened["placement"] == "copy-on-write" and reopened["path"] == prepared["path"]
         if create is not None:
             assert self.client(*create, credential=credential) == requested
         files = Path(prepared["path"])
@@ -314,7 +338,7 @@ class Harness:
         attempt = self.sql(f"SELECT attempt FROM th_managed_runs WHERE run='{run}'")
         case = {"node": assigned, "credential": credential, "workspace": workspace, "run": run,
                 "attempt": attempt, "files": files, "mount": mount, "request": request, "first": first,
-                "profile": digest, "node_index": node, "slot": slot, "base": base}
+                "profile": digest, "node_index": node, "slot": slot, "base": base, "overlay": overlay}
         self.cases.append(case)
         return case
 
@@ -489,9 +513,10 @@ class Harness:
         (case["files"] / "same.txt").write_bytes(content)
 
     def start_cleanup(self, case):
+        overlay_args = ["--cow-driver", os.environ["TH_TEST_OVERLAY_DRIVER"]] if case.get("overlay") else []
         child = subprocess.Popen([str(self.binary), *self.node_args(case["node"], "cleanup-once"),
                                   "--workspace", case["workspace"],
-                                  "--engine-socket", str(self.transport / "engine.sock")],
+                                  "--engine-socket", str(self.transport / "engine.sock"), *overlay_args],
                                  env=self.env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         self.children.append(child)
         return child
@@ -955,6 +980,9 @@ class Harness:
             if pid.exists():
                 command("sudo", "kill", "-TERM", pid.read_text().strip(), check=False)
             self.proxy.wait(timeout=10)
+        for view in self.root.glob(".treeharbor-cow-*/views/*"):
+            if view.is_mount():
+                command("sudo", "umount", view)
         for mount in reversed(self.mounts):
             command("sudo", "umount", mount)
         if self.image:

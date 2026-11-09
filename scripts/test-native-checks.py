@@ -9,6 +9,7 @@ import argparse
 import importlib.util
 import json
 from hashlib import sha256
+import os
 from pathlib import Path
 import subprocess
 import socket
@@ -192,7 +193,9 @@ class Checks(managed.Harness):
 
     def overlapping_agents(self):
         left, right, merged = "alpha\n", "beta\n", "alpha + beta\n"
-        agents = [self.case("overlap-edit", content, self.secret, node=node, timeout=30000, selected=True)
+        overlay = bool(os.environ.get("TH_TEST_OVERLAY_DRIVER"))
+        agents = [self.case("overlap-edit", content, self.secret, node=node, timeout=30000,
+                            selected=True, overlay=overlay, overlay_fault=overlay and node == 0)
                   for node, content in enumerate((left, right))]
         workers = [self.start(agent) for agent in agents]
         managed.wait_until(lambda: all(self.status(agent)["state"] == "running"
@@ -207,8 +210,14 @@ class Checks(managed.Harness):
         a, b = [self.seal(agent) for agent in agents]
         assert a["base_revision"] == b["base_revision"] == self.revision
         assert a["base_snapshot"] == b["base_snapshot"] and a["result_snapshot"] != b["result_snapshot"]
-        for agent in agents:
-            self.cleanup_workspace(agent)
+        for index, agent in enumerate(agents):
+            if overlay:
+                lower = agent["files"].parents[1] / "image/files/same.txt"
+                assert lower.read_bytes() == b"base\n"
+                assert agent["files"].is_mount()
+            self.cleanup_workspace(agent, fault="receipt" if overlay and index == 0 else None)
+            if overlay:
+                assert not agent["files"].exists() and lower.read_bytes() == b"base\n"
         print("PASS native overlap: both isolated agents wrote one path concurrently from one native revision", flush=True)
 
         target = "main"

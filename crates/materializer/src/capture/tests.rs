@@ -113,6 +113,7 @@ impl Fixture {
         .unwrap();
         let tree = MaterializedTree {
             root: workspace,
+            files: None,
             manifest: Arc::new(Baseline {
                 tenant: scope.tenant().into(),
                 repository: scope.repository().to_string(),

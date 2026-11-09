@@ -51,16 +51,16 @@ pub struct Specification {
     binding: [u8; 32],
     profile: Profile,
     task: Task,
-    placement: Placement,
+    placement: WorkspacePlacement,
 }
 
-enum Placement {
+pub enum WorkspacePlacement {
     Copy(Volume),
     #[cfg(target_os = "linux")]
     Overlay(Box<OverlayView>),
 }
 
-impl Placement {
+impl WorkspacePlacement {
     fn volume(&self) -> &Volume {
         match self {
             Self::Copy(volume) => volume,
@@ -85,7 +85,13 @@ impl Specification {
         task: Task,
         volume: Volume,
     ) -> Result<Self> {
-        Self::with_placement(attempt, binding, profile, task, Placement::Copy(volume))
+        Self::with_placement(
+            attempt,
+            binding,
+            profile,
+            task,
+            WorkspacePlacement::Copy(volume),
+        )
     }
 
     #[cfg(target_os = "linux")]
@@ -101,16 +107,16 @@ impl Specification {
             binding,
             profile,
             task,
-            Placement::Overlay(Box::new(view)),
+            WorkspacePlacement::Overlay(Box::new(view)),
         )
     }
 
-    fn with_placement(
+    pub fn with_placement(
         attempt: Uuid,
         binding: [u8; 32],
         profile: Profile,
         task: Task,
-        placement: Placement,
+        placement: WorkspacePlacement,
     ) -> Result<Self> {
         if attempt.is_nil()
             || profile.definition().workspace_bytes != placement.volume().identity().limit_bytes
@@ -142,9 +148,9 @@ impl Specification {
     }
     pub(crate) fn files(&self) -> &Path {
         match &self.placement {
-            Placement::Copy(volume) => volume.files(),
+            WorkspacePlacement::Copy(volume) => volume.files(),
             #[cfg(target_os = "linux")]
-            Placement::Overlay(view) => view.files(),
+            WorkspacePlacement::Overlay(view) => view.files(),
         }
     }
     pub(crate) fn verify_placement(&self) -> Result<()> {
@@ -152,16 +158,16 @@ impl Specification {
     }
     pub(crate) fn overlay_intent(&self) -> Option<Value> {
         match &self.placement {
-            Placement::Copy(_) => None,
+            WorkspacePlacement::Copy(_) => None,
             #[cfg(target_os = "linux")]
-            Placement::Overlay(view) => Some(view.intent()),
+            WorkspacePlacement::Overlay(view) => Some(view.intent()),
         }
     }
     pub(crate) fn files_device(&self) -> u64 {
         match &self.placement {
-            Placement::Copy(volume) => volume.identity().device,
+            WorkspacePlacement::Copy(volume) => volume.identity().device,
             #[cfg(target_os = "linux")]
-            Placement::Overlay(view) => view.files_device(),
+            WorkspacePlacement::Overlay(view) => view.files_device(),
         }
     }
     pub fn binding(&self) -> [u8; 32] {

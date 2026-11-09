@@ -34,6 +34,9 @@ pub enum Action {
         /// Use this trusted absolute Git executable for an explicitly selected Git workspace.
         #[arg(long, requires = "workspace")]
         git: Option<PathBuf>,
+        /// Local operator experiment with an exact prepared overlay placement.
+        #[arg(long, hide = true, requires_all = ["workspace", "slot"])]
+        cow_driver: Option<PathBuf>,
     },
     /// Reopen an acknowledged placement without changing agent files.
     Prepared {
@@ -74,6 +77,8 @@ pub enum Action {
         /// Required if the workspace has a managed execution journal.
         #[arg(long)]
         engine_socket: Option<PathBuf>,
+        #[arg(long, hide = true)]
+        cow_driver: Option<PathBuf>,
     },
     /// Execute or recover one persisted run using a trusted local Docker/runsc.
     RunOnce {
@@ -158,6 +163,7 @@ pub async fn run(action: Action) -> Result<bool> {
         Action::CleanupOnce {
             workspace,
             engine_socket,
+            cow_driver,
             ..
         } => {
             let result = if let Some(plan) = node
@@ -165,12 +171,13 @@ pub async fn run(action: Action) -> Result<bool> {
                 .await?
             {
                 let mut heartbeat = database.connect(true).await?;
-                node.cleanup_workspace(
+                node.cleanup_workspace_with_driver(
                     &mut session.metadata,
                     &mut heartbeat.metadata,
                     &auth,
                     &plan,
                     engine_socket.as_deref(),
+                    cow_driver.as_deref(),
                 )
                 .await?
             } else {
@@ -299,8 +306,12 @@ pub async fn run(action: Action) -> Result<bool> {
             slot,
             workspace,
             git,
+            cow_driver,
             ..
         } => {
+            if cow_driver.is_some() && !cfg!(target_os = "linux") {
+                return Err(Error::Config);
+            }
             let max_workspace_bytes = if let Some(slot) = slot {
                 max_workspace_bytes.min(node.registered_volume(slot)?.limit_bytes())
             } else {
@@ -345,7 +356,16 @@ pub async fn run(action: Action) -> Result<bool> {
                 store: &store,
                 limits,
             };
-            let tree = if let Some(git) = git {
+            let tree = if let Some(driver) = cow_driver {
+                node.prepare_cow(
+                    &mut session.metadata,
+                    &mut heartbeat.metadata,
+                    request,
+                    git.as_deref(),
+                    &driver,
+                )
+                .await?
+            } else if let Some(git) = git {
                 node.prepare_git(
                     &mut session.metadata,
                     &mut heartbeat.metadata,
@@ -361,28 +381,29 @@ pub async fn run(action: Action) -> Result<bool> {
         }
         Action::Initialize { .. } => unreachable!(),
     };
-    println!(
-        "{}",
-        json!({"workspace":workspace.to_string(),"state":"files_ready","runtime":null,
-        "path":tree.path(),"manifest":tree.manifest_path(),"snapshot":tree.snapshot().to_string(),
-        "recovered_baseline":tree.statistics().is_none(),
-        "preparation_statistics":tree.statistics().map(|stats| json!({
-            "source_objects":stats.source_objects,
-            "source_encoded_bytes":stats.source_encoded_bytes,
-            "source_bytes_written":stats.source_bytes_written,
-            "local_bytes_copied":stats.local_bytes_copied,
-            "workspace_bytes":stats.workspace_bytes,
-            "filesystem_entries":stats.filesystem_entries,
-            "read_batches":stats.read_batches,
-            "phase_seconds":{
-                "open_read_batches":stats.open_read_batches.as_secs_f64(),
-                "build_batches":stats.build_batches.as_secs_f64(),
-                "file_sync":stats.file_sync.as_secs_f64(),
-                "volume_sync":stats.volume_sync.map(|duration| duration.as_secs_f64()),
-                "finalize":stats.finalize.as_secs_f64(),
-                "publish":stats.publish.as_secs_f64()
-            }
-        }))})
-    );
+    let mut result = json!({"workspace":workspace.to_string(),"state":"files_ready","runtime":null,
+    "path":tree.path(),"manifest":tree.manifest_path(),"snapshot":tree.snapshot().to_string(),
+    "recovered_baseline":tree.statistics().is_none(),
+    "preparation_statistics":tree.statistics().map(|stats| json!({
+        "source_objects":stats.source_objects,
+        "source_encoded_bytes":stats.source_encoded_bytes,
+        "source_bytes_written":stats.source_bytes_written,
+        "local_bytes_copied":stats.local_bytes_copied,
+        "workspace_bytes":stats.workspace_bytes,
+        "filesystem_entries":stats.filesystem_entries,
+        "read_batches":stats.read_batches,
+        "phase_seconds":{
+            "open_read_batches":stats.open_read_batches.as_secs_f64(),
+            "build_batches":stats.build_batches.as_secs_f64(),
+            "file_sync":stats.file_sync.as_secs_f64(),
+            "volume_sync":stats.volume_sync.map(|duration| duration.as_secs_f64()),
+            "finalize":stats.finalize.as_secs_f64(),
+            "publish":stats.publish.as_secs_f64()
+        }
+    }))});
+    if tree.is_external_view() {
+        result["placement"] = json!("copy-on-write");
+    }
+    println!("{result}");
     Ok(true)
 }

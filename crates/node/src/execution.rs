@@ -55,18 +55,14 @@ impl Node {
         let tree = self
             .open_run_files(operation.clone(), plan.prepared(), limits)
             .await?;
-        let volume = operation
-            .volume
-            .as_ref()
-            .ok_or(Error::Identity)?
-            .for_files(&tree.path())?;
+        let placement = self.execution_placement(&operation, plan.prepared(), &tree)?;
         let engine = Engine::open(socket).await?;
-        let spec = Specification::new(
+        let spec = Specification::with_placement(
             plan.attempt(),
             plan.binding(),
             plan.profile().clone(),
             plan.task().clone(),
-            volume,
+            placement,
         )?;
         let journals = private::make_directory(&self.storage.root.join("runtime"))?;
         let controller =

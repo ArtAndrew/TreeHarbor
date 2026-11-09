@@ -37,6 +37,8 @@ pub(crate) struct Storage {
     pub identity: Identity,
     pub git_seed_cache: Mutex<()>,
     pub source_seed: Arc<RwLock<()>>,
+    #[cfg(target_os = "linux")]
+    pub cow_image: Arc<AsyncMutex<()>>,
     lock: File,
 }
 impl Storage {
@@ -120,6 +122,8 @@ impl Node {
                 identity,
                 git_seed_cache: Mutex::new(()),
                 source_seed: Arc::new(RwLock::new(())),
+                #[cfg(target_os = "linux")]
+                cow_image: Arc::new(AsyncMutex::new(())),
                 lock,
             },
             concurrent,
@@ -158,6 +162,8 @@ impl Node {
             identity,
             git_seed_cache: Mutex::new(()),
             source_seed: Arc::new(RwLock::new(())),
+            #[cfg(target_os = "linux")]
+            cow_image: Arc::new(AsyncMutex::new(())),
             lock,
         };
         owned.verify()?;

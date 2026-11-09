@@ -277,7 +277,7 @@ impl Node {
         heartbeat: &mut Metadata,
         request: Prepare<'_>,
     ) -> Result<MaterializedTree> {
-        self.prepare_inner(db, heartbeat, request, None).await
+        self.prepare_inner(db, heartbeat, request, None, None).await
     }
 
     pub async fn prepare_git(
@@ -287,7 +287,20 @@ impl Node {
         request: Prepare<'_>,
         git: &Path,
     ) -> Result<MaterializedTree> {
-        self.prepare_inner(db, heartbeat, request, Some(git)).await
+        self.prepare_inner(db, heartbeat, request, Some(git), None)
+            .await
+    }
+
+    pub async fn prepare_cow(
+        &self,
+        db: &mut Metadata,
+        heartbeat: &mut Metadata,
+        request: Prepare<'_>,
+        git: Option<&Path>,
+        driver: &Path,
+    ) -> Result<MaterializedTree> {
+        self.prepare_inner(db, heartbeat, request, git, Some(driver))
+            .await
     }
 
     async fn prepare_inner(
@@ -296,6 +309,7 @@ impl Node {
         heartbeat: &mut Metadata,
         request: Prepare<'_>,
         git: Option<&Path>,
+        cow_driver: Option<&Path>,
     ) -> Result<MaterializedTree> {
         let Prepare {
             authorization: auth,
@@ -363,7 +377,22 @@ impl Node {
                     limits,
                 )
                 .await?
+            } else if let Some(driver) = cow_driver {
+                #[cfg(target_os = "linux")]
+                {
+                    crate::cow::prepare(db, &request, operation.clone(), binding, driver, git)
+                        .await?
+                }
+                #[cfg(not(target_os = "linux"))]
+                {
+                    let _ = driver;
+                    return Err(Error::Configuration);
+                }
             } else {
+                #[cfg(target_os = "linux")]
+                if root.join(crate::cow::PIN).try_exists()? {
+                    return Err(Error::Incomplete);
+                }
                 let owned = operation.clone();
                 let staging = root.join("staging");
                 let tenant = plan.scope().tenant().to_owned();
@@ -565,6 +594,35 @@ impl Node {
         )
         .await
     }
+
+    pub(crate) fn execution_placement(
+        &self,
+        operation: &Operation,
+        ready: &PreparedWorkspace,
+        tree: &MaterializedTree,
+    ) -> Result<treeharbor_runtime::WorkspacePlacement> {
+        use treeharbor_runtime::WorkspacePlacement;
+        #[cfg(target_os = "linux")]
+        if tree.is_external_view() {
+            let view = crate::cow::open(
+                operation,
+                Intent::ready(ready).binding()?,
+                ready.manifest_digest,
+            )?;
+            if view.files() != tree.path() {
+                return Err(Error::Identity);
+            }
+            return Ok(WorkspacePlacement::Overlay(Box::new(view)));
+        }
+        #[cfg(not(target_os = "linux"))]
+        let _ = ready;
+        let volume = operation
+            .volume
+            .as_ref()
+            .ok_or(Error::Identity)?
+            .for_files(&tree.path())?;
+        Ok(WorkspacePlacement::Copy(volume))
+    }
     #[allow(clippy::too_many_arguments)]
     async fn load_published(
         &self,
@@ -586,16 +644,25 @@ impl Node {
             private::directory(&source_parent)?;
             File::open(source_parent)?.sync_all()?;
             let receipt = PublicationReceipt::load(&path, binding)?;
-            Ok(MaterializedTree::load_baseline(
-                &path,
-                BaselineExpectation {
-                    scope: &scope,
-                    snapshot,
-                    profile: &profile,
-                    manifest_digest: receipt.manifest_digest()?,
-                },
-                limits,
-            )?)
+            let expected = BaselineExpectation {
+                scope: &scope,
+                snapshot,
+                profile: &profile,
+                manifest_digest: receipt.manifest_digest()?,
+            };
+            #[cfg(target_os = "linux")]
+            if operation.root.join(crate::cow::PIN).try_exists()? {
+                let view = crate::cow::open(&operation, binding, expected.manifest_digest)?;
+                let result = MaterializedTree::load_view_baseline(
+                    &path,
+                    expected,
+                    limits,
+                    view.files().to_owned(),
+                )?;
+                view.verify()?;
+                return Ok(result);
+            }
+            Ok(MaterializedTree::load_baseline(&path, expected, limits)?)
         })
         .await?
     }
@@ -665,7 +732,7 @@ fn initialize_attempt(operation: &Operation, intent: &Intent) -> Result<PathBuf>
     }
     Ok(root)
 }
-fn clear_unpublished(operation: &Operation, staging: &Path, tenant: &str) -> Result<()> {
+pub(crate) fn clear_unpublished(operation: &Operation, staging: &Path, tenant: &str) -> Result<()> {
     operation.verify()?;
     private::make_directory(staging)?;
     // Staging has never been published or mounted into an agent. All old writers

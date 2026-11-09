@@ -147,6 +147,25 @@ directory seed. The corresponding Git worktree median was 94 ms.
 The [recorded Connected trial](demo.md) has an MP4 with six distinct scenes
 verified by decoding, a static storyboard and a direct link to the GIF.
 
+## Experimental Copy-on-Write preparation
+
+An operator-controlled Linux prototype uses a verified lower tree and a
+separate writable layer in each registered ext4 workspace volume. The real
+prepare, run, capture and cleanup paths check the exact mounted view. A
+Standalone PostgreSQL and gVisor test recovered the same view after a worker
+stopped before readiness, accepted two independent edits, retried cleanup,
+and verified the landed content in Git after conflict resolution and fresh
+validation.
+
+On a local two-CPU ARM64 host, four paired Connected benchmark runs verified
+384 placements of a 2,051-file source at concurrency four. Median first read
+on repeated Git-compatible workspaces was 127 ms with Copy-on-Write, 193 ms
+with the regular guarded copy and 98 ms for Git worktree in the same
+Copy-on-Write runs. The initial Git-compatible workspace took 1,452 ms with
+Copy-on-Write and 1,023 ms with guarded copy. The source was already local and
+OS caches were uncontrolled. The prototype is unreleased and requires
+further work on driver provisioning, source image lifecycle and reboot recovery.
+
 ## 0.1.12-alpha.1 release scope
 
 Current documentation additions: [first-run checkpoints](try-treeharbor.md), a

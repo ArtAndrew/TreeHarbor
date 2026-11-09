@@ -34,12 +34,19 @@ impl MaterializedTree {
         if self.manifest.preserved_local_state || self.manifest.selection.paths.is_some() {
             return Err(Error::InvalidBaseline);
         }
-        let parent = File::from(unix(rustix::fs::open(
-            &self.root,
-            OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
-            Mode::empty(),
-        ))?);
-        let root = open_dir(&parent, b"files")?;
+        let open_root = |path: &std::path::Path| {
+            unix(rustix::fs::open(
+                path,
+                OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+                Mode::empty(),
+            ))
+            .map(File::from)
+        };
+        let root = if let Some(files) = &self.files {
+            open_root(files)?
+        } else {
+            open_dir(&open_root(&self.root)?, b"files")?
+        };
         let mut pending = vec![Vec::<u8>::new()];
         let mut seen = BTreeSet::new();
         let mut paths = 0u64;
@@ -198,6 +205,7 @@ mod tests {
         ]);
         let tree = MaterializedTree {
             root: dir.path().to_owned(),
+            files: None,
             manifest: Arc::new(Manifest {
                 tenant: "test".into(),
                 repository: "test".into(),

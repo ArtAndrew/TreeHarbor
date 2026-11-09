@@ -174,18 +174,14 @@ impl Node {
                 let tree = self
                     .open_run_files(operation.clone(), prepared, limits)
                     .await?;
-                let volume = operation
-                    .volume
-                    .as_ref()
-                    .ok_or(Error::Identity)?
-                    .for_files(&tree.path())?;
+                let placement = self.execution_placement(&operation, prepared, &tree)?;
                 let engine = Engine::open(socket).await?;
-                let spec = Specification::new(
+                let spec = Specification::with_placement(
                     context.attempt(),
                     context.binding(),
                     context.profile().clone(),
                     context.task().clone(),
-                    volume,
+                    placement,
                 )?;
                 // A seal cannot invent a new journal for an unknown execution.
                 let journals = private::directory(&self.storage.root.join("runtime"))?;

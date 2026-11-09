@@ -458,6 +458,7 @@ impl Stage {
         self.stats.publish = started.elapsed();
         Ok(MaterializedTree {
             root,
+            files: None,
             manifest: Arc::new(self.manifest),
             stats: Some(self.stats),
         })
