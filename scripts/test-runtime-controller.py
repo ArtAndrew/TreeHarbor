@@ -135,6 +135,10 @@ def main():
         target = runtime_target()
         shutil.copy2(target / "treeharbor-runtime-init", build / "init")
         shutil.copy2(target / "examples/runtime_probe", build / "probe")
+        # The fixture may be built under a private umask. Docker assigns root
+        # ownership, and the unprivileged test process must be able to exec.
+        (build / "init").chmod(0o755)
+        (build / "probe").chmod(0o755)
         (build / "Dockerfile").write_text("FROM scratch\nCOPY init /init\nCOPY probe /probe\n")
         image = docker("build", "--network=none", "--quiet", str(build)).stdout.strip()
         for index in range(2):
@@ -191,6 +195,62 @@ def main():
                 return last["state"] == "exited"
             wait_until(exited)
             return last
+
+        if os.environ.get("TH_TEST_OVERLAY_VIEW") == "1":
+            lower = root / "lower"
+            lower.mkdir(mode=0o700)
+            (lower / "same.txt").write_bytes(b"base\n")
+            cases = []
+            for lane in range(2):
+                edit = f"overlay-{lane}"
+                case = config("overlap-edit", edit, str(secret), slot=lane)
+                upper, work = case[2] / "upper", case[2] / "work"
+                upper.mkdir(mode=0o700)
+                work.mkdir(mode=0o700)
+                view = root / f"view-{lane}"
+                view.mkdir(mode=0o700)
+                options = (f"nodev,nosuid,xino=on,metacopy=off,redirect_dir=nofollow,index=off,"
+                           f"lowerdir={lower},upperdir={upper},workdir={work}")
+                command("sudo", "mount", "-t", "overlay", "-o", options, "overlay", str(view))
+                mounts.append(view)
+                command("sudo", "mount", "--make-private", str(view))
+                case[1]["overlay"] = {"lower": str(lower), "upper": str(upper),
+                                      "work": str(work), "files": str(view)}
+                case[0].write_text(json.dumps(case[1]))
+                cases.append((case, view, upper, edit, options))
+                assert call(case, "create")["state"] == "created"
+            for case, _, _, _, _ in cases:
+                assert call(case, "start")["state"] == "running"
+            for case, view, upper, edit, _ in cases:
+                try:
+                    wait_until(lambda: (upper / "same.txt").exists()
+                               and (upper / "same.txt").read_text() == edit)
+                except AssertionError:
+                    name = "treeharbor-" + case[1]["attempt"]
+                    observed = docker("inspect", "--format", "{{json .State}}", name, check=False)
+                    logs = docker("logs", "--tail", "20", name, check=False)
+                    print(f"Overlay case {edit}: {observed.stdout.strip()}\n{logs.stdout}{logs.stderr}", flush=True)
+                    raise
+                assert (view / "same.txt").read_text() == (upper / "same.txt").read_text() == edit
+            assert (lower / "same.txt").read_bytes() == b"base\n"
+            for case, view, _, edit, _ in cases:
+                (view / "overlap-release").touch()
+                assert finish(case)["exit_code"] == 0
+                assert call(case, "remove")["state"] == "removed"
+                assert call(case, "verify-removed")["state"] == "verified-removed"
+                assert (view / "same.txt").read_text() == edit
+                intent = json.loads((Path(case[1]["journal"]) / "intent.json").read_text())
+                assert intent["version"] == 2 and intent["overlay"]["layout"] == case[1]["overlay"]
+            case, view, _, _, options = cases[0]
+            command("sudo", "umount", str(view))
+            mounts.remove(view)
+            command("sudo", "mount", "-t", "overlay", "-o", options, "overlay", str(view))
+            mounts.append(view)
+            command("sudo", "mount", "--make-private", str(view))
+            replay = call(case, "verify-removed", check=False)
+            assert not isinstance(replay, dict) and replay.returncode != 0, replay
+            print("PASS two real gVisor tasks on separate OverlayFS views, exact stopped-file guard and stale mount rejection", flush=True)
+            return
 
         a = config("isolation", "agent-a", str(secret), slot=0)
         b = config("isolation", "agent-b", str(secret), slot=1)

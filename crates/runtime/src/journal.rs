@@ -41,7 +41,7 @@ impl RemovedGuard {
     pub fn verify(&self) -> Result<()> {
         self.journal.validate()?;
         self.journal.check_marker("removed.json")?;
-        self.spec.volume().verify()?;
+        self.spec.verify_placement()?;
         if exists(
             &self
                 .spec
@@ -192,29 +192,28 @@ impl<'a> Controller<'a> {
         if !root.is_absolute() {
             return Err(Error::Invalid);
         }
+        spec.verify_placement()?;
         let parent = root.parent().ok_or(Error::Invalid)?.canonicalize()?;
-        if parent.starts_with(&spec.volume().identity().mount)
-            || fs::metadata(&parent)?.dev() == spec.volume().identity().device
-            || (exists(root)?
-                && fs::symlink_metadata(root)?.dev() == spec.volume().identity().device)
-        {
-            return Err(Error::Mismatch);
+        require_control_path(&parent, &spec)?;
+        if exists(root)? {
+            require_control_path(root, &spec)?;
         }
-        let bytes = intent_bytes(
+        let mut intent = intent_value(
             engine.identity(),
             spec.attempt(),
             spec.binding(),
             spec.profile(),
             spec.task(),
             spec.volume().identity(),
-        )?;
+        );
+        if let Some(overlay) = spec.overlay_intent() {
+            intent["version"] = json!(2);
+            intent["overlay"] = overlay;
+        }
+        let bytes = serde_json::to_vec(&intent)?;
         let fingerprint = hex(&Sha256::digest(&bytes));
         let journal = Journal::open(root, &bytes)?;
-        if journal.root.starts_with(&spec.volume().identity().mount)
-            || fs::metadata(&journal.root)?.dev() == spec.volume().identity().device
-        {
-            return Err(Error::Mismatch);
-        }
+        require_control_path(&journal.root, &spec)?;
         journal.validate()?;
         let assignment = serde_json::to_vec(
             &json!({"version":1,"attempt":spec.attempt(),"intent_sha256":fingerprint}),
@@ -274,7 +273,7 @@ impl<'a> Controller<'a> {
             .join("treeharbor-execution.json")
     }
     fn claim_volume(&self) -> Result<()> {
-        self.spec.volume().verify()?;
+        self.spec.verify_placement()?;
         let path = self.volume_record();
         if exists(&path)? {
             if read(&path, 4096)? != self.assignment {
@@ -286,7 +285,7 @@ impl<'a> Controller<'a> {
         Ok(())
     }
     fn release_volume(&self) -> Result<()> {
-        self.spec.volume().verify()?;
+        self.spec.verify_placement()?;
         let path = self.volume_record();
         if exists(&path)? {
             // A terminal replay must never release another attempt's assignment.
@@ -414,6 +413,30 @@ impl<'a> Controller<'a> {
         self.release_volume()
     }
 }
+fn require_control_path(path: &Path, spec: &Specification) -> Result<()> {
+    let device = fs::symlink_metadata(path)?.dev();
+    if path.starts_with(&spec.volume().identity().mount)
+        || path.starts_with(spec.files())
+        || device == spec.volume().identity().device
+        || device == spec.files_device()
+    {
+        return Err(Error::Mismatch);
+    }
+    Ok(())
+}
+
+fn intent_value(
+    engine: &str,
+    attempt: uuid::Uuid,
+    binding: [u8; 32],
+    profile: &Profile,
+    task: &Task,
+    volume: &VolumeIdentity,
+) -> Value {
+    json!({"version":1,"engine":engine,"attempt":attempt,
+        "binding":hex(&binding),"profile":profile.definition(),"argv":task.argv(),"volume":volume})
+}
+
 fn intent_bytes(
     engine: &str,
     attempt: uuid::Uuid,
@@ -422,10 +445,9 @@ fn intent_bytes(
     task: &Task,
     volume: &VolumeIdentity,
 ) -> Result<Vec<u8>> {
-    Ok(serde_json::to_vec(
-        &json!({"version":1,"engine":engine,"attempt":attempt,
-        "binding":hex(&binding),"profile":profile.definition(),"argv":task.argv(),"volume":volume}),
-    )?)
+    Ok(serde_json::to_vec(&intent_value(
+        engine, attempt, binding, profile, task, volume,
+    ))?)
 }
 impl Journal {
     fn open_existing(root: &Path) -> Result<Self> {

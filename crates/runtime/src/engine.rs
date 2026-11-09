@@ -1,3 +1,5 @@
+#[cfg(target_os = "linux")]
+use crate::OverlayView;
 use crate::{Error, Profile, Result, Task, Volume, profile::hex};
 use bytes::Bytes;
 use http_body_util::{BodyExt, Full, Limited};
@@ -49,7 +51,31 @@ pub struct Specification {
     binding: [u8; 32],
     profile: Profile,
     task: Task,
-    volume: Volume,
+    placement: Placement,
+}
+
+enum Placement {
+    Copy(Volume),
+    #[cfg(target_os = "linux")]
+    Overlay(Box<OverlayView>),
+}
+
+impl Placement {
+    fn volume(&self) -> &Volume {
+        match self {
+            Self::Copy(volume) => volume,
+            #[cfg(target_os = "linux")]
+            Self::Overlay(view) => view.volume(),
+        }
+    }
+
+    fn verify(&self) -> Result<()> {
+        match self {
+            Self::Copy(volume) => volume.verify(),
+            #[cfg(target_os = "linux")]
+            Self::Overlay(view) => view.verify(),
+        }
+    }
 }
 impl Specification {
     pub fn new(
@@ -59,20 +85,47 @@ impl Specification {
         task: Task,
         volume: Volume,
     ) -> Result<Self> {
+        Self::with_placement(attempt, binding, profile, task, Placement::Copy(volume))
+    }
+
+    #[cfg(target_os = "linux")]
+    pub fn new_overlay(
+        attempt: Uuid,
+        binding: [u8; 32],
+        profile: Profile,
+        task: Task,
+        view: OverlayView,
+    ) -> Result<Self> {
+        Self::with_placement(
+            attempt,
+            binding,
+            profile,
+            task,
+            Placement::Overlay(Box::new(view)),
+        )
+    }
+
+    fn with_placement(
+        attempt: Uuid,
+        binding: [u8; 32],
+        profile: Profile,
+        task: Task,
+        placement: Placement,
+    ) -> Result<Self> {
         if attempt.is_nil()
-            || profile.definition().workspace_bytes != volume.identity().limit_bytes
+            || profile.definition().workspace_bytes != placement.volume().identity().limit_bytes
             || profile.definition().uid != rustix::process::geteuid().as_raw()
             || profile.definition().gid != rustix::process::getegid().as_raw()
         {
             return Err(Error::Mismatch);
         }
-        volume.verify()?;
+        placement.verify()?;
         Ok(Self {
             attempt,
             binding,
             profile,
             task,
-            volume,
+            placement,
         })
     }
     pub fn name(&self) -> String {
@@ -85,7 +138,31 @@ impl Specification {
         &self.task
     }
     pub fn volume(&self) -> &Volume {
-        &self.volume
+        self.placement.volume()
+    }
+    pub(crate) fn files(&self) -> &Path {
+        match &self.placement {
+            Placement::Copy(volume) => volume.files(),
+            #[cfg(target_os = "linux")]
+            Placement::Overlay(view) => view.files(),
+        }
+    }
+    pub(crate) fn verify_placement(&self) -> Result<()> {
+        self.placement.verify()
+    }
+    pub(crate) fn overlay_intent(&self) -> Option<Value> {
+        match &self.placement {
+            Placement::Copy(_) => None,
+            #[cfg(target_os = "linux")]
+            Placement::Overlay(view) => Some(view.intent()),
+        }
+    }
+    pub(crate) fn files_device(&self) -> u64 {
+        match &self.placement {
+            Placement::Copy(volume) => volume.identity().device,
+            #[cfg(target_os = "linux")]
+            Placement::Overlay(view) => view.files_device(),
+        }
     }
     pub fn binding(&self) -> [u8; 32] {
         self.binding
@@ -110,7 +187,7 @@ impl Specification {
                 "PidsLimit":256,"ShmSize":8*1024*1024,"OomKillDisable":false,
                 "Ulimits":[{"Name":"nofile","Soft":1024,"Hard":1024},{"Name":"core","Soft":0,"Hard":0}],
                 "Tmpfs":{"/tmp":"rw,noexec,nodev,nosuid,size=16777216,mode=1777"},
-                "Mounts":[{"Type":"bind","Source":self.volume.files(),"Target":"/workspace","ReadOnly":false,
+                "Mounts":[{"Type":"bind","Source":self.files(),"Target":"/workspace","ReadOnly":false,
                     "BindOptions":{"Propagation":"rprivate","NonRecursive":true}}],
                 "RestartPolicy":{"Name":"no","MaximumRetryCount":0},"AutoRemove":false,"PublishAllPorts":false,
                 "LogConfig":{"Type":"local","Config":{"max-size":"1m","max-file":"1","compress":"false"}}
@@ -268,7 +345,7 @@ impl Engine {
     /// Must be preceded by a durable create intent. A lost response is unknown;
     /// inspect the deterministic name, never choose a new name or auto-delete it.
     pub(crate) async fn create(&self, spec: &Specification) -> Result<Inspection> {
-        spec.volume.verify()?;
+        spec.verify_placement()?;
         let (status, image) = self
             .request(
                 "GET",
@@ -349,7 +426,7 @@ impl Engine {
         self.inspect_name(spec, id).await
     }
     async fn inspect_name(&self, spec: &Specification, name: &str) -> Result<Option<Inspection>> {
-        spec.volume.verify()?;
+        spec.verify_placement()?;
         let (status, value) = self
             .request("GET", &format!("/containers/{name}/json"), None)
             .await?;
@@ -577,7 +654,7 @@ fn verify(spec: &Specification, v: &Value) -> Result<Inspection> {
     let mounts = v["Mounts"].as_array().ok_or(Error::Mismatch)?;
     if mounts.len() != 1
         || mounts[0]["Type"] != "bind"
-        || mounts[0]["Source"] != spec.volume.files().to_str().ok_or(Error::Invalid)?
+        || mounts[0]["Source"] != spec.files().to_str().ok_or(Error::Invalid)?
         || mounts[0]["Destination"] != "/workspace"
         || mounts[0]["RW"] != true
         || mounts[0]["Propagation"] != "rprivate"
