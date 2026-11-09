@@ -105,6 +105,7 @@ pub struct Statistics {
     pub open_read_batches: Duration,
     pub build_batches: Duration,
     pub file_sync: Duration,
+    pub volume_sync: Option<Duration>,
     pub finalize: Duration,
     pub publish: Duration,
 }

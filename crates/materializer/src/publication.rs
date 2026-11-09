@@ -16,6 +16,7 @@ pub struct Publication {
     destination: PathBuf,
     binding: [u8; 32],
     _guard: Arc<dyn Send + Sync>,
+    volume_sync_fd: Option<File>,
 }
 impl Publication {
     pub(crate) fn destination(&self) -> &Path {
@@ -32,7 +33,19 @@ impl Publication {
             destination,
             binding,
             _guard: guard,
+            volume_sync_fd: None,
         }
+    }
+    /// Supply a held descriptor from the controller's verified, exclusively
+    /// assigned filesystem. It must be open before any staging writes, on a
+    /// kernel that reports writeback errors from `syncfs`.
+    #[cfg(target_os = "linux")]
+    pub fn with_volume_sync(mut self, mount: File) -> Self {
+        self.volume_sync_fd = Some(mount);
+        self
+    }
+    pub(crate) fn volume_sync_fd(&self) -> Option<&File> {
+        self.volume_sync_fd.as_ref()
     }
     pub(crate) fn publish(&self, staging: &Path) -> Result<PathBuf> {
         let parent = self.destination.parent().ok_or(Error::Configuration)?;

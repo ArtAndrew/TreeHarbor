@@ -39,8 +39,8 @@ pub(crate) struct Stage {
     directories: BTreeSet<Vec<u8>>,
     links: BTreeMap<Vec<u8>, Vec<u8>>,
     pub publication: Option<crate::Publication>,
-    // At most 32 private file descriptors; four synchronous workers per batch.
-    // All finish before the manifest/parent sync and before publication.
+    // Fallback for staging without a guarded volume: at most 32 private file
+    // descriptors and four workers. All finish before manifest and publication.
     pending_sync: Vec<File>,
 }
 impl Stage {
@@ -250,9 +250,16 @@ impl Stage {
                         0o600
                     },
                 ))?;
-                self.pending_sync.push(file);
-                if self.pending_sync.len() >= 32 {
-                    self.flush_files()?;
+                if self
+                    .publication
+                    .as_ref()
+                    .and_then(crate::Publication::volume_sync_fd)
+                    .is_none()
+                {
+                    self.pending_sync.push(file);
+                    if self.pending_sync.len() >= 32 {
+                        self.flush_files()?;
+                    }
                 }
             }
             EntryMode::Symlink => self.write_link(relative, bytes)?,
@@ -336,6 +343,9 @@ impl Stage {
         Ok(())
     }
     fn flush_files(&mut self) -> Result<()> {
+        if self.pending_sync.is_empty() {
+            return Ok(());
+        }
         let started = Instant::now();
         std::thread::scope(|scope| -> std::io::Result<()> {
             let mut workers = Vec::new();
@@ -364,6 +374,20 @@ impl Stage {
     pub fn finish(&mut self) -> Result<()> {
         let started = Instant::now();
         self.flush_files()?;
+        #[cfg(target_os = "linux")]
+        if let Some(volume) = self
+            .publication
+            .as_ref()
+            .and_then(crate::Publication::volume_sync_fd)
+        {
+            use std::os::unix::fs::MetadataExt;
+            let sync_started = Instant::now();
+            if self.temp.path().metadata()?.dev() != volume.metadata()?.dev() {
+                return Err(Error::Configuration);
+            }
+            rustix::fs::syncfs(volume).map_err(std::io::Error::from)?;
+            self.stats.volume_sync = Some(sync_started.elapsed());
+        }
         if let Some(paths) = &self.manifest.selection.paths {
             for path in paths {
                 if !self.manifest.entries.contains_key(path) {
@@ -660,5 +684,49 @@ mod tests {
         let path = stage.temp.path().to_owned();
         drop(stage);
         assert!(!path.exists());
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn failed_volume_sync_never_writes_the_completion_manifest() {
+        let parent = tempfile::Builder::new()
+            .permissions(fs::Permissions::from_mode(0o700))
+            .tempdir()
+            .unwrap();
+        let permit = Arc::new(tokio::sync::Semaphore::new(1))
+            .acquire_owned()
+            .await
+            .unwrap();
+        let mut stage = Stage::new(
+            parent.path().to_owned(),
+            "tenant".into(),
+            "00000000-0000-0000-0000-000000000001".into(),
+            ObjectId::from_bytes([3; 32]),
+            Selection::full(),
+            Limits::default(),
+            permit,
+            None,
+        )
+        .unwrap();
+        // This descriptor identifies the right filesystem, but the kernel
+        // rejects syncfs on O_PATH. The error must precede any durable receipt.
+        let mount = rustix::fs::open(
+            parent.path(),
+            rustix::fs::OFlags::PATH | rustix::fs::OFlags::DIRECTORY,
+            rustix::fs::Mode::empty(),
+        )
+        .unwrap();
+        let destination = parent.path().join("published");
+        stage.publication = Some(
+            crate::Publication::new(destination.clone(), [0; 32], Arc::new(()))
+                .with_volume_sync(mount.into()),
+        );
+        stage
+            .write_source(b"good", EntryMode::File, b"durable")
+            .unwrap();
+        assert!(stage.pending_sync.is_empty());
+        assert!(stage.finish().is_err());
+        assert!(!stage.temp.path().join("manifest.json").exists());
+        assert!(!destination.exists());
     }
 }

@@ -53,6 +53,16 @@ Git task; `0` lets Git choose parallel checkout workers. Full UTF-8 trees are
 supported within the 64 MiB default input limit. Submodules are rejected and
 checkout filters that change the bytes fail verification.
 
+On Linux, repeat `--workspace-volume /path/to/mount` once per concurrent task
+to measure preparations on dedicated ext4 volumes. Provision disposable,
+private volumes as described in [managed runs](managed-runs.md). Each volume
+must fit the limit set by `--volume-limit-bytes`, which defaults to 128 MiB.
+The probe registers separate node placements, runs each Git checkout on the
+same per-task volume and removes the private benchmark directories afterward.
+It does not provision or mount volumes. The raw report identifies the placement
+as `guarded-ext4`. The default `node-directory` placement uses ordinary node
+directories and requires no volumes.
+
 | Case | Measured preparation |
 | --- | --- |
 | TreeHarbor | Request an exact full native workspace and wait for its durable readiness on a selected node. |

@@ -374,6 +374,14 @@ impl Node {
                 })
                 .await??;
                 let publication = Publication::new(tree_path, binding, operation.clone());
+                #[cfg(target_os = "linux")]
+                let publication = if let Some(volume) = &operation.volume
+                    && let Some(mount) = volume.preparation_sync_fd()?
+                {
+                    publication.with_volume_sync(mount)
+                } else {
+                    publication
+                };
                 let files = treeharbor_materializer::Preparation {
                     scope: plan.scope(),
                     holder: plan.source_holder(),
