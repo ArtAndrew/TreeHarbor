@@ -1,6 +1,6 @@
 # Implementation status
 
-Updated: 2026-11-08. This file describes implemented behavior and remaining release
+Updated: 2026-11-09. This file describes implemented behavior and remaining release
 gates. A foundation milestone does not complete either mode.
 
 For a concise current overview, see [what works today](../README.md#what-works-today)
@@ -62,7 +62,19 @@ verification matched the exact release source and all signed subjects. A separat
 installation of the signed ARM64 archive passed the Git-compatible gVisor scenario
 with fixture GitHub authority. See the [signed release receipt](evidence/connected-git-workspace-release-20261108.json)
 and the earlier [development receipt](evidence/connected-git-workspace-pr149.json).
-Publication to a live GitHub repository from this workspace format remains open.
+
+On 2026-11-09, the signed ARM64 executable ran two overlapping scripted gVisor
+jobs against one exact commit in a public acceptance repository. Each used a
+private `.git` and edited `src/lib.rs` independently. The test driver selected
+Git-compatible workspaces with a local change to the packaged helper's readiness
+predicate. The installed Rust executable was unchanged. Both exact changes were
+accepted and published as separate draft PRs, and ordinary Git verified both
+exports. The first export was taken after confirmed workspace deletion. The
+second used the retained publication pack after the test driver stopped on a
+volume path error before deleting that workspace. All six test credentials
+were revoked. The trial covered publication through draft PRs.
+[Agent A PR](https://github.com/TreeHarbor/TreeHarbor-acceptance/pull/6),
+[agent B PR](https://github.com/TreeHarbor/TreeHarbor-acceptance/pull/7).
 
 ## Unreleased node preparation diagnostics
 

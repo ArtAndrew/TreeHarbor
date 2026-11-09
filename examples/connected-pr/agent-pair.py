@@ -168,9 +168,12 @@ def current_path(value):
 
 def validate(c):
     fields(c, ("version", "profile", "tenant", "repository", "epoch", "binary", "binary_sha256",
-                      "socket", "service_config", "state", "engine_socket", "baseline", "agents", "wait"), ("capture_worker", "github"))
+                      "socket", "service_config", "state", "engine_socket", "baseline", "agents", "wait"),
+           ("capture_worker", "github", "workspace_format"))
     require(type(c["version"]) is int and c["version"] == 1 and c["profile"] == "connected-prepared-agent-pair-v1",
             "config", "Unsupported pair stage.")
+    require(c.get("workspace_format", "native") in ("native", "git-compatible"),
+            "config", "Select native or git-compatible workspace format.")
     require(identifier(c["repository"]) and integer(c["epoch"], 1, 2**63-1)
             and isinstance(c["tenant"], str) and 0 < len(c["tenant"]) <= 128, "config", "Invalid repository scope.")
     require(all(absolute(c[k]) for k in ("binary", "socket", "service_config", "state", "engine_socket"))
@@ -309,7 +312,8 @@ class Pair:
         require(v.get("workspace") == a["workspace"] and v.get("generation") == a["generation"]
                 and type(v.get("generation")) is int and type(v.get("epoch")) is int
                 and v.get("epoch") == self.c["epoch"] and v.get("base") == self.c["baseline"]["revision"]
-                and v.get("state") == "ready" and v.get("format") == "native" and v.get("profile_resolved") is True,
+                and v.get("state") == "ready" and v.get("format") == self.c.get("workspace_format", "native")
+                and v.get("profile_resolved") is True,
                 "placement", "Workspace is not ready at the exact imported baseline.")
         v = self.cli(a["label"] + ":prepared", self.node_argv(a, "prepared", "--workspace", a["workspace"]))
         require(v.get("workspace") == a["workspace"] and v.get("state") == "files_ready" and v.get("runtime") is None
