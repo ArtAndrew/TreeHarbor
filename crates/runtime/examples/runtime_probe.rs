@@ -113,7 +113,13 @@ fn main() {
             if args[1] == "overlap-edit" {
                 // The operator releases each task only after observing both
                 // private edits. The managed runtime bounds this wait.
+                let mut heartbeat = OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open("overlap-heartbeat")
+                    .unwrap();
                 while !std::path::Path::new("overlap-release").is_file() {
+                    heartbeat.write_all(b".").unwrap();
                     thread::sleep(Duration::from_millis(10));
                 }
             } else if let Some(delay) = args.get(4) {

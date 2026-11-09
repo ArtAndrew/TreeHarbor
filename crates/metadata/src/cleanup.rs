@@ -284,6 +284,34 @@ impl Metadata {
         worker: Uuid,
         ttl: i32,
     ) -> Result<Option<CleanupPlan>> {
+        self.claim_workspace_cleanup_matching(auth, workspace, storage, worker, ttl, false)
+            .await
+    }
+
+    /// Waitable exact selection. No owner drain or unfinished managed execution
+    /// returns idle; all ordinary authority, lease and physical cleanup rules
+    /// still apply once a claim is possible. Never selects another workspace.
+    pub async fn claim_ready_workspace_cleanup(
+        &mut self,
+        auth: &Authorization,
+        workspace: Uuid,
+        storage: Uuid,
+        worker: Uuid,
+        ttl: i32,
+    ) -> Result<Option<CleanupPlan>> {
+        self.claim_workspace_cleanup_matching(auth, workspace, storage, worker, ttl, true)
+            .await
+    }
+
+    async fn claim_workspace_cleanup_matching(
+        &mut self,
+        auth: &Authorization,
+        workspace: Uuid,
+        storage: Uuid,
+        worker: Uuid,
+        ttl: i32,
+        pending_only: bool,
+    ) -> Result<Option<CleanupPlan>> {
         ttl_valid(ttl)?;
         if workspace.is_nil() || storage.is_nil() || worker.is_nil() {
             return Err(Error::Invalid("cleanup identity"));
@@ -306,6 +334,18 @@ impl Metadata {
                 tx.commit().await?;
                 return Ok(None);
             }
+        }
+        if pending_only
+            && tx.query_opt(r#"SELECT 1 FROM th_workspaces w
+                WHERE w.tenant=$1 AND w.repository=$2 AND w.workspace=$3 AND w.state='draining'
+                AND NOT EXISTS(SELECT 1 FROM th_agent_runs r LEFT JOIN th_managed_runs m USING(tenant,repository,run)
+                    WHERE r.tenant=w.tenant AND r.repository=w.repository AND r.workspace=w.workspace
+                    AND (m.removed IS DISTINCT FROM TRUE OR r.state NOT IN('succeeded','failed','cancelled','lost')))"#,
+                &[&s.tenant(),&s.repository(),&workspace]).await?.is_none()
+        {
+            node_auth(&tx, auth, storage).await?;
+            tx.commit().await?;
+            return Ok(None);
         }
         let (w, placement, runtime) = context(&tx, auth, workspace, storage).await?;
         let epoch = w.get("epoch");

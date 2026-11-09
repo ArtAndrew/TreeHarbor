@@ -191,9 +191,127 @@ class Checks(managed.Harness):
         print("PASS managed capture export: actual sealed, checked, reviewed and landed agent bytes restore in ordinary Git", flush=True)
         return restored
 
-    def overlapping_agents(self):
+    def shared_node_agents(self, left, right, overlay):
+        agents = [self.case("overlap-edit", content, self.secret, node=0, agent=index,
+                            timeout=120000, selected=True, overlay=overlay)
+                  for index, content in enumerate((left, right))]
+        assert agents[0]["credential"] != agents[1]["credential"]
+        assert agents[0]["node"] == agents[1]["node"]
+        # A deliberately wrong-node cleanup must fail independently, without
+        # aborting the two selected agents or borrowing the other node's rights.
+        _, foreign_node, foreign_slot, _, _ = self.placement_profile(node=1)
+        foreign = str(uuid.uuid4())
+        self.client("workspace-create", "--key", "foreign-" + foreign, "--authority", "standalone",
+                    "--epoch", "1", "--workspace", foreign, "--base", self.revision,
+                    "--profile-digest", self.source_profile, credential=self.agents[1])
+        foreign_prepared = self.value(*self.node_args(foreign_node, "prepare-once"),
+                                      "--slot", foreign_slot, "--workspace", foreign)
+        self.client("workspace-delete", "--key", "drain-" + foreign, "--authority", "standalone",
+                    "--epoch", "1", "--workspace", foreign, "--generation", "1", credential=self.agents[1])
+        seals = [str(uuid.uuid4()) for _ in agents]
+        selection = self.root / "selected-work.json"
+        managed.private_json(selection, {"version": 1, "runs": [a["run"] for a in agents],
+                                         "seals": seals, "cleanups": [a["workspace"] for a in agents] + [foreign]})
+        options = ["--cow-driver", os.environ["TH_TEST_OVERLAY_DRIVER"]] if overlay else []
+        command = [str(self.binary), *self.node_args(agents[0]["node"], "work-selected"),
+                   "--selection", str(selection), "--wait-seconds", "120",
+                   "--engine-socket", str(self.transport / "engine.sock"), *options]
+        worker = subprocess.Popen(command, env=self.env, stdout=subprocess.PIPE,
+                                  stderr=subprocess.PIPE, text=True)
+        self.children.append(worker)
+        managed.wait_until(lambda: all(self.status(agent)["state"] == "running"
+                                       and (agent["files"] / "same.txt").read_text() == content
+                                       and (agent["files"] / "overlap-heartbeat").is_file()
+                                       for agent, content in zip(agents, (left, right))))
+        assert agents[0]["attempt"] != agents[1]["attempt"]
+        assert agents[0]["files"] != agents[1]["files"]
+        if overlay:
+            lower = agents[0]["files"].parents[1] / "image/files/same.txt"
+            assert agents[0]["files"].parents[1] == agents[1]["files"].parents[1]
+            assert lower.read_bytes() == b"base\n"
+        survivor = agents[1]["files"] / "overlap-heartbeat"
+        before = survivor.stat().st_size
+        self.stop(agents[0])
+        changes, cleanups = [], []
+        for index, (agent, seal, content) in enumerate(zip(agents, seals, (left, right))):
+            if index == 1:
+                assert self.status(agent)["state"] == "running"
+                managed.wait_until(lambda: survivor.stat().st_size > before)
+                (agent["files"] / "overlap-release").touch()
+            managed.wait_until(lambda: self.status(agent)["runtime_removed"])
+            status = self.status(agent)
+            assert status["state"] == ("cancelled" if index == 0 else "succeeded"), status
+            assert managed.docker("inspect", "treeharbor-" + agent["attempt"], check=False).returncode != 0
+            assert not (agent["mount"] / "treeharbor-execution.json").exists()
+            self.request_seal(agent, seal)
+            managed.wait_until(lambda: self.client("seal-status", "--seal", seal,
+                                                   credential=agent["credential"])["state"] == "ready")
+            changes.append(self.accept_seal(agent, seal, content.encode()))
+            placement = agent["mount"] / "placement"
+            identity = (placement.stat().st_dev, placement.stat().st_ino)
+            self.stop(agent, drain=True)
+            managed.wait_until(lambda: self.client("workspace-status", "--workspace", agent["workspace"],
+                                                   credential=agent["credential"])["state"] == "deleted")
+            assert not list(placement.iterdir())
+            assert (placement.stat().st_dev, placement.stat().st_ino) == identity
+            if overlay:
+                assert not agent["files"].exists() and lower.read_bytes() == b"base\n"
+            # Completed cleanup can be replayed without locking the node or
+            # opening the old placement while the other task is still running.
+            replay = self.start_cleanup(agent)
+            out, err = replay.communicate(timeout=10)
+            assert replay.returncode == 0, (out, err)
+            receipt = json.loads(out)
+            assert receipt["state"] == "deleted" and receipt["workspace"] == agent["workspace"]
+            cleanups.append(receipt)
+            if index == 0:
+                assert self.status(agents[1])["state"] == "running"
+                assert (agents[1]["files"] / "same.txt").read_text() == right
+                before = survivor.stat().st_size
+                managed.wait_until(lambda: survivor.stat().st_size > before)
+                if overlay:
+                    assert agents[1]["files"].is_mount()
+                print("PASS shared node: first agent stopped, captured and deleted while the second kept writing", flush=True)
+        out, err = worker.communicate(timeout=15)
+        assert worker.returncode != 0, (out, err)
+        results = {(r["kind"], r["id"]): r["result"] for r in json.loads(out)}
+        assert len(results) == 7, results
+        assert results[("cleanup", foreign)]["state"] == "error", results
+        assert (Path(foreign_prepared["path"]) / "same.txt").read_bytes() == b"base\n"
+        foreign_cleanup = self.value(*self.node_args(foreign_node, "cleanup-once"), "--workspace", foreign)
+        assert foreign_cleanup["state"] == "deleted"
+        for index, (agent, seal) in enumerate(zip(agents, seals)):
+            assert results[("run", agent["run"])]["state"] == ("cancelled" if index == 0 else "succeeded")
+            assert results[("run", agent["run"])]["runtime_removed"]
+            assert results[("seal", seal)]["state"] == "ready"
+            assert results[("cleanup", agent["workspace"])] == cleanups[index]
+        # Same selection has no new work: completed captures/runs return idle
+        # and deletion returns its original receipt, without relaunching code.
+        managed.private_json(selection, {"version": 1, "runs": [a["run"] for a in agents],
+                                         "seals": seals, "cleanups": [a["workspace"] for a in agents]})
+        command[command.index("--wait-seconds") + 1] = "1"
+        repeated = managed.command(*command, env=self.env)
+        for result in json.loads(repeated.stdout):
+            if result["kind"] == "cleanup":
+                assert result["result"] == cleanups[[a["workspace"] for a in agents].index(result["id"])]
+            else:
+                assert result["result"] == {"state": "idle"}, result
+        print("PASS shared node: exact completed selection is replayable without recreating runtimes or captures", flush=True)
+        print("PASS shared node: a wrong-node selection failed without cancelling either agent or deleting foreign files", flush=True)
+        return changes
+
+    def overlapping_agents(self, shared_node=False):
         left, right, merged = "alpha\n", "beta\n", "alpha + beta\n"
         overlay = bool(os.environ.get("TH_TEST_OVERLAY_DRIVER"))
+        if shared_node:
+            a, b = self.shared_node_agents(left, right, overlay)
+        else:
+            a, b = self.separate_node_agents(left, right, overlay)
+        assert a["base_revision"] == b["base_revision"] == self.revision
+        assert a["base_snapshot"] == b["base_snapshot"] and a["result_snapshot"] != b["result_snapshot"]
+        return self.integrate_overlapping_agents(a, b, left, right, merged)
+
+    def separate_node_agents(self, left, right, overlay):
         agents = [self.case("overlap-edit", content, self.secret, node=node, timeout=30000,
                             selected=True, overlay=overlay, overlay_fault=overlay and node == 0)
                   for node, content in enumerate((left, right))]
@@ -219,7 +337,9 @@ class Checks(managed.Harness):
             if overlay:
                 assert not agent["files"].exists() and lower.read_bytes() == b"base\n"
         print("PASS native overlap: both isolated agents wrote one path concurrently from one native revision", flush=True)
+        return a, b
 
+    def integrate_overlapping_agents(self, a, b, left, right, merged):
         target = "main"
         _, node, slot, mount, profile = self.placement_profile(timeout=15000)
         program = {"version": 1, "runtime_profile": profile, "argv": ["/probe", "check-one-of", left, merged]}
@@ -315,13 +435,13 @@ class Checks(managed.Harness):
         assert managed.command("/usr/bin/git", "--git-dir", restored, "show", "main^1^1:same.txt").stdout == "base\n"
         return landed_b, restored
 
-    def exercise(self, overlap_only=False):
+    def exercise(self, overlap_only=False, shared_node=False):
         self.empty_proposal = False
         self.policy_admin = self.principal("policy-admin", "human", ["read", "repository.write", "policy.write"])
         self.reviewer = self.principal("reviewer", "human", ["read", "review"])
         self.integrator = self.principal("integrator", "integrator", ["read", "integration.control"])
         self.ci = self.principal("ci", "validator", ["read", "validation.report"])
-        overlap = self.overlapping_agents()
+        overlap = self.overlapping_agents(shared_node=shared_node)
         if overlap_only:
             return
         agent = self.case("isolation", "candidate\n", self.secret)
@@ -455,11 +575,12 @@ class Checks(managed.Harness):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--overlap-only", action="store_true", help="run the protected two-agent scenario only")
+    parser.add_argument("--shared-node", action="store_true", help="run both agents with one bounded node worker")
     args = parser.parse_args()
     h = Checks()
     try:
         h.setup()
-        h.exercise(overlap_only=args.overlap_only)
+        h.exercise(overlap_only=args.overlap_only, shared_node=args.shared_node)
     except Exception:
         h.diagnostics()
         raise
