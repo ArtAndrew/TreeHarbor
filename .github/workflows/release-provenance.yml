@@ -91,10 +91,12 @@ jobs:
           - os: ubuntu-24.04
             arch: x86_64
             check: gVisor task supervision
+            asset_id: 648587993
             sha256: 180dd277f657c1478f09490e8a9a595f7378257510b43d1d3694a769aef9ed02
           - os: ubuntu-24.04-arm
             arch: aarch64
             check: gVisor task supervision (arm64)
+            asset_id: 648587997
             sha256: fd174120b7048ad01c550d1a7cf7336895e8fc986bc1526f636dcaca4791c330
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
@@ -125,8 +127,8 @@ jobs:
         working-directory: ${{ runner.temp }}
         run: |
           test "$(uname -m)" = '${{ matrix.arch }}'
-          curl --fail --location --retry 3 --output gvisor.tar.bz2 https://github.com/google/gvisor/releases/download/release-20261012.0/gvisor-${{ matrix.arch }}.tar.bz2
-          echo '${{ matrix.sha256 }}  gvisor.tar.bz2' | sha256sum --check --strict
+          bash "$GITHUB_WORKSPACE/scripts/fetch-pinned-release-asset.sh" google/gvisor release-20261012.0 \
+            'gvisor-${{ matrix.arch }}.tar.bz2' '${{ matrix.asset_id }}' '${{ matrix.sha256 }}' gvisor.tar.bz2
           sudo tar -xjf gvisor.tar.bz2 -C /usr/local/bin
           sudo /usr/local/bin/runsc install
           sudo systemctl restart docker

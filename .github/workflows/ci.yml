@@ -75,8 +75,9 @@ jobs:
         working-directory: ${{ runner.temp }}
         run: |
           mkdir -p webhook-caddy
-          curl --fail --location --retry 3 --output webhook-caddy/caddy.tar.gz https://github.com/caddyserver/caddy/releases/download/v2.11.7/caddy_2.11.7_linux_amd64.tar.gz
-          echo '727b91701a392de6ebc5027509f548bf39979e5216340d0faed8fa5e69c84f8b  webhook-caddy/caddy.tar.gz' | sha256sum --check --strict
+          bash "$GITHUB_WORKSPACE/scripts/fetch-pinned-release-asset.sh" caddyserver/caddy v2.11.7 \
+            caddy_2.11.7_linux_amd64.tar.gz 607245028 \
+            727b91701a392de6ebc5027509f548bf39979e5216340d0faed8fa5e69c84f8b webhook-caddy/caddy.tar.gz
           tar -xzf webhook-caddy/caddy.tar.gz -C webhook-caddy caddy LICENSE
       - name: Exercise actual webhook TLS, failure recovery and ingress limits
         env:
@@ -92,10 +93,12 @@ jobs:
           - os: ubuntu-24.04
             arch: x86_64
             check: gVisor task supervision
+            asset_id: 648587993
             sha256: 180dd277f657c1478f09490e8a9a595f7378257510b43d1d3694a769aef9ed02
           - os: ubuntu-24.04-arm
             arch: aarch64
             check: gVisor task supervision (arm64)
+            asset_id: 648587997
             sha256: fd174120b7048ad01c550d1a7cf7336895e8fc986bc1526f636dcaca4791c330
     runs-on: ${{ matrix.os }}
     timeout-minutes: 25
@@ -126,8 +129,8 @@ jobs:
         working-directory: ${{ runner.temp }}
         run: |
           test "$(uname -m)" = '${{ matrix.arch }}'
-          curl --fail --location --retry 3 --output gvisor.tar.bz2 https://github.com/google/gvisor/releases/download/release-20261012.0/gvisor-${{ matrix.arch }}.tar.bz2
-          echo '${{ matrix.sha256 }}  gvisor.tar.bz2' | sha256sum --check --strict
+          bash "$GITHUB_WORKSPACE/scripts/fetch-pinned-release-asset.sh" google/gvisor release-20261012.0 \
+            'gvisor-${{ matrix.arch }}.tar.bz2' '${{ matrix.asset_id }}' '${{ matrix.sha256 }}' gvisor.tar.bz2
           sudo tar -xjf gvisor.tar.bz2 -C /usr/local/bin
           sudo /usr/local/bin/runsc install
           sudo systemctl restart docker
