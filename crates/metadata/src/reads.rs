@@ -318,9 +318,13 @@ impl Metadata {
                 length,
             ));
         }
+        let files = store.open_objects(
+            descriptors
+                .iter()
+                .map(|(key, _, _)| (key.generation(), key.id())),
+        )?;
         let mut objects = Vec::with_capacity(descriptors.len());
-        for (key, kind, length) in descriptors {
-            let file = store.open_object(key.generation(), key.id())?;
+        for ((key, kind, length), file) in descriptors.into_iter().zip(files) {
             if file.length() != length {
                 return Err(Error::ReceiptMismatch);
             }

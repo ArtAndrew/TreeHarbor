@@ -352,3 +352,27 @@ the roughly threefold local worktree gap visible. This sample excludes
 agent execution and network or GitHub costs.
 [Previous build observations](benchmarks/connected-git-seed-linux-arm64-2k-c4-before.json) ·
 [Seed reuse observations](benchmarks/connected-git-seed-linux-arm64-2k-c4-cache.json).
+
+## Protected reads and manifest writing — 9 November 2026
+
+The same fixture and guarded volumes ran two builds in the order seed reuse,
+faster materialization, faster materialization, seed reuse. Each run had
+eight four-task waves. All 384 placements verified and cleaned up.
+Each repeat column pools 56 observations per system. The first-wave column
+pools eight initially empty node seed caches per build, with source objects
+already present.
+
+| Time to first useful read | First wave p50, before → after | Repeat p50 / sample p95, before → after |
+| --- | ---: | ---: |
+| Connected, private Git metadata | 1,095 → 1,052 ms | 317 / 588 → 283 / 358 ms |
+| Connected, file-only | 419 → 296 ms | 308 / 434 → 258 / 332 ms |
+| Git worktree | 209 → 103 ms | 96 / 116 → 101 / 137 ms |
+
+For repeated Git-compatible preparations, median time opening protected read
+batches fell from 98 to 68 ms. Median finalization, which includes the
+guarded-volume sync and manifest, fell from 46 to 33 ms. The two candidate
+Git-compatible repeat medians were about 307 and 260 ms. The Git worktree
+measurements show variation between runs on this host. OS caches were
+uncontrolled. These timings apply to locally loaded source and exclude
+agent execution, network and GitHub work.
+[All four runs and per-placement timings](benchmarks/connected-materialization-linux-arm64-2k-c4.json).

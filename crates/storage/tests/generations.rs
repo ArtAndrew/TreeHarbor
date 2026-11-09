@@ -1,4 +1,4 @@
-use treeharbor_core::{Directory, Entry, EntryMode, EntryRef, Name, Object};
+use treeharbor_core::{Directory, Entry, EntryMode, EntryRef, Error, Name, Object};
 use treeharbor_storage::{ManagedStore, PreparedObject, TenantId};
 
 fn root() -> tempfile::TempDir {
@@ -23,6 +23,21 @@ fn old_generation_cleanup_cannot_remove_a_new_generation() {
     store.remove_retired_generation(1, old.id()).unwrap();
     assert!(store.get(1, old.id()).is_err());
     assert_eq!(store.get(2, new.id()).unwrap(), object);
+    let extra = Object::Blob(b"another object".to_vec());
+    let extra = store.put(1, &PreparedObject::new(&extra).unwrap()).unwrap();
+    let batch = store
+        .open_objects([(2, new.id()), (1, extra.id()), (2, new.id())])
+        .unwrap();
+    assert_eq!(batch[0].length(), batch[2].length());
+    let actual: Vec<_> = batch.into_iter().map(|file| file.read().unwrap()).collect();
+    assert_eq!(
+        actual,
+        [object.clone(), store.get(1, extra.id()).unwrap(), object]
+    );
+    assert!(matches!(
+        store.open_objects([(2, new.id()), (1, old.id())]),
+        Err(Error::MissingObject(id)) if id == old.id()
+    ));
 }
 #[test]
 fn receipts_bind_durable_bytes_type_edges_tenant_and_backend() {

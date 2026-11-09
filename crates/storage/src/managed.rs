@@ -1,5 +1,6 @@
 use crate::{LocalStore, OpenedObject, TenantId, ensure_private_dir, io_error, sync_directory};
 use std::{
+    collections::{BTreeMap, btree_map::Entry},
     fs,
     path::{Path, PathBuf},
 };
@@ -163,6 +164,28 @@ impl ManagedStore {
     }
     /// Internal read primitive: caller holds catalog protection until this returns.
     pub fn open_object(&self, generation: i64, id: ObjectId) -> Result<OpenedObject> {
+        self.open_generation(generation, id)?.open_object(id)
+    }
+    /// Reuse the validated local path for each generation within one protected
+    /// catalog read. The caller bounds the batch and retains catalog protection.
+    /// Each returned descriptor still addresses and verifies its own object.
+    pub fn open_objects(
+        &self,
+        objects: impl IntoIterator<Item = (i64, ObjectId)>,
+    ) -> Result<Vec<OpenedObject>> {
+        let mut generations = BTreeMap::new();
+        objects
+            .into_iter()
+            .map(|(generation, id)| {
+                let store = match generations.entry(generation) {
+                    Entry::Occupied(entry) => entry.into_mut(),
+                    Entry::Vacant(entry) => entry.insert(self.open_generation(generation, id)?),
+                };
+                store.open_object(id)
+            })
+            .collect()
+    }
+    fn open_generation(&self, generation: i64, id: ObjectId) -> Result<LocalStore> {
         let directory = self.directory(generation)?;
         match fs::symlink_metadata(&directory) {
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
@@ -171,7 +194,7 @@ impl ManagedStore {
             Err(error) => return Err(io_error(error)),
             Ok(_) => (),
         }
-        LocalStore::open(directory, &self.tenant)?.open_object(id)
+        LocalStore::open(directory, &self.tenant)
     }
     /// Internal maintenance primitive. The catalog orchestrator must commit
     /// RETIRING before invoking it. Never expose it as an agent API.
