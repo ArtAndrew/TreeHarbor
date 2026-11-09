@@ -205,6 +205,19 @@ The separate real-ext4 contract also passed ownership, changed-registration,
 old-slot rejection and reopening checks. Required CI now provisions a disposable
 source volume for that contract. This is still an unreleased, operator-only path.
 
+A [shared-node development trial](evidence/shared-node-work-20261109.json) then
+passed on ordinary placements and on two overlay views of one source image.
+Different agent owners edited the same source path. Stopping, capturing,
+accepting and deleting the first task's workspace preserved the second task's
+ongoing writes and the unchanged source image. Exact selection replay did not
+relaunch tasks; an independently rejected wrong-node cleanup did not cancel
+other work. The retained proposals passed the existing conflict/fresh-check/Git
+export drill. The [bounded worker command](node-work-selection.md) is unreleased;
+it neither creates owner intents nor accepts proposed changes. Its normal-volume
+variant is now part of the required installed-package CI and release workflow.
+The operator-provisioned overlay profile still needs packaged installation and
+installed-artifact acceptance, including its documented recovery limits.
+
 ## 0.1.12-alpha.1 release scope
 
 Current documentation additions: [first-run checkpoints](try-treeharbor.md), a

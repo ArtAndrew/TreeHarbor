@@ -19,6 +19,9 @@ fixture. See [conditions, results and raw data](benchmark-preparation.md#shared-
   checks the actual lower, upper, work and view identities before readiness.
 - Uses a bounded local batch for multiple preparations on one node. Current
   source access and PostgreSQL readiness checks still apply to every request.
+- Services exact run, capture and cleanup IDs in a bounded
+  [shared-node worker](node-work-selection.md). Owner requests, acceptance and
+  drain remain separate authenticated operations.
 - Opens the same verified view for execution and capture. Cleanup checks
   runtime removal, records detach intent and unmounts the exact placement
   before deleting workspace files. Uncertain placement does not authorize deletion.
@@ -36,9 +39,16 @@ filesystem: the complete selected source image is materialized before use.
 
 Local Linux tests cover interrupted preparation, reopening the same mounted
 view, two isolated scripted agents, stopped-file capture, conflicting native
-changes with fresh validation, interrupted cleanup and Git export. The agent
-execution trial used separate nodes. Shared-node preparation measurements
-do not establish simultaneous agent execution on that node.
+changes with fresh validation, interrupted cleanup and Git export.
+
+A subsequent [ARM64 development trial](evidence/shared-node-work-20261109.json)
+ran two different agent owners on one node with a shared source image. The first
+task was stopped, captured and deleted while the second kept writing. The lower
+source bytes remained unchanged. Repeated selections did not recreate runs or
+captures, and a wrong-node cleanup failed without cancelling the selected tasks.
+Both proposals then exercised conflict handling, fresh validation and Git export.
+The same scenario passed on ordinary ext4 placements. These are scripted tasks
+using actual PostgreSQL and gVisor, not LLMs or a throughput measurement.
 
 The dedicated-source contract checks registration replay, changed ownership,
 old writable-slot refusal, altered records and reopening. It runs against a
@@ -61,7 +71,7 @@ of the separate source and workspace volumes.
 ## Before a packaged alpha
 
 The next gates are one documented installation and mount-driver profile,
-simultaneous execution and cleanup of agents sharing a node, explicit
-stop/recovery behavior, and the same tests on the signed installed artifacts.
+explicit stop/recovery behavior, and the shared-node tests on signed installed
+artifacts. The source trial above does not replace those installation checks.
 General cache rotation, broader workloads and full Connected/Standalone
 operational certification follow as separate increments.

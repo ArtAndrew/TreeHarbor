@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "recorded_at": "2026-11-09T15:16:53Z",
+  "status": "development_trial",
+  "source_commit": "31720b74f91ed57ede7e177a842a6210a6419e8d",
+  "binary_sha256": "e329c29a5fe59f610dbb55bde12e143687992fd9785ce3e576b9e16204f8e90a",
+  "probe_sha256": "d43d2daa2632e6c6d4853b2225abfcbe552a6c280318686afe3453c627a7585a",
+  "runtime_init": {
+    "release": "0.1.15-alpha.1",
+    "sha256": "b3a1f5afdebca5b19df0b1a9c60b6df2942ff154f1cd837bbab1ed0b9ae32078"
+  },
+  "source_verification": {
+    "verified_files": 562,
+    "manifest_sha256": "bd19f0c9044f5f01437affaabd33190486ec0ce4013e25e779dcb0aab33960c7"
+  },
+  "platform": {
+    "os": "Linux",
+    "kernel": "6.8.0-142-generic",
+    "architecture": "aarch64",
+    "cpus": 2,
+    "database": "actual PostgreSQL",
+    "runtime": "Docker/runsc gVisor",
+    "network": "native service path in a network namespace with no routes",
+    "agents": "two scripted tasks with distinct owners"
+  },
+  "runs": [
+    {
+      "profile": "ordinary",
+      "command": "python3 scripts/test-native-checks.py --overlap-only --shared-node",
+      "outcome": "passed",
+      "log_sha256": "bb0bf9df36758d57d2288e0a7638d1b9f2da9b256ef9d0e7ee30a9d52d467a04",
+      "observed_checks": [
+        "PASS installed init: private local configuration, explicit database setup and existing destination refusal",
+        "PASS shared node: first agent stopped, captured and deleted while the second kept writing",
+        "PASS shared node: exact completed selection is replayable without recreating runtimes or captures",
+        "PASS shared node: a wrong-node selection failed without cancelling either agent or deleting foreign files",
+        "PASS native overlap: first change landed, second queue entry stopped on its exact file conflict",
+        "PASS native overlap: resolved version required fresh check and review, and native history records both landings",
+        "PASS managed capture export: actual sealed, checked, reviewed and landed agent bytes restore in ordinary Git"
+      ]
+    },
+    {
+      "profile": "overlay",
+      "command": "python3 scripts/test-native-checks.py --overlap-only --shared-node",
+      "outcome": "passed",
+      "log_sha256": "bb0bf9df36758d57d2288e0a7638d1b9f2da9b256ef9d0e7ee30a9d52d467a04",
+      "observed_checks": [
+        "PASS installed init: private local configuration, explicit database setup and existing destination refusal",
+        "PASS shared node: first agent stopped, captured and deleted while the second kept writing",
+        "PASS shared node: exact completed selection is replayable without recreating runtimes or captures",
+        "PASS shared node: a wrong-node selection failed without cancelling either agent or deleting foreign files",
+        "PASS native overlap: first change landed, second queue entry stopped on its exact file conflict",
+        "PASS native overlap: resolved version required fresh check and review, and native history records both landings",
+        "PASS managed capture export: actual sealed, checked, reviewed and landed agent bytes restore in ordinary Git"
+      ]
+    }
+  ],
+  "limits": [
+    "Development binary, not a signed installed release of this feature.",
+    "Overlay mount driver and bounded workspace volumes were provisioned by the operator.",
+    "One source image in the node parent directory; the optional dedicated source volume was not used in this trial.",
+    "Native proposal and integration workflow; no live GitHub writes or LLM execution.",
+    "No latency, throughput, cost, reboot recovery or production-readiness claim."
+  ]
+}
