@@ -525,7 +525,15 @@ async fn prepare_and_recover_git_workspace(
     create(&warm_workspace);
     let warm = output(node_for(&warm_workspace, "prepare-once", &git_args));
     assert_eq!(warm["state"], "files_ready");
-    assert_eq!(fs::read(calls).unwrap(), cold_calls);
+    assert_eq!(warm["preparation_statistics"]["source_objects"], 0);
+    assert_eq!(warm["preparation_statistics"]["read_batches"], 0);
+    assert!(
+        warm["preparation_statistics"]["local_bytes_copied"]
+            .as_u64()
+            .unwrap()
+            > 0
+    );
+    assert_eq!(fs::read(&calls).unwrap(), cold_calls);
     let warm_files = PathBuf::from(warm["path"].as_str().unwrap());
     assert_eq!(
         git_reference::git(&warm_files, &["rev-parse", "HEAD"], b""),
@@ -535,7 +543,35 @@ async fn prepare_and_recover_git_workspace(
     git_reference::git(&warm_files, &["fsck", "--strict", "--no-dangling"], b"");
     assert_eq!(fs::read(files.join("main.rs")).unwrap(), b"agent edit");
 
-    for (id, path) in [(&workspace, files), (&warm_workspace, warm_files)] {
+    let damaged_seed = node_root.parent().unwrap().join(format!(
+        ".treeharbor-source-seed-v1-{storage}/ready/files/main.rs"
+    ));
+    fs::set_permissions(&damaged_seed, fs::Permissions::from_mode(0o600)).unwrap();
+    fs::write(damaged_seed, b"corrupted cache bytes").unwrap();
+    let rebuilt_workspace = Uuid::new_v4().to_string();
+    create(&rebuilt_workspace);
+    let rebuilt = output(node_for(&rebuilt_workspace, "prepare-once", &git_args));
+    assert_eq!(rebuilt["state"], "files_ready");
+    assert!(
+        rebuilt["preparation_statistics"]["source_objects"]
+            .as_u64()
+            .unwrap()
+            > 0
+    );
+    assert_eq!(rebuilt["preparation_statistics"]["local_bytes_copied"], 0);
+    let rebuilt_files = PathBuf::from(rebuilt["path"].as_str().unwrap());
+    assert_eq!(
+        fs::read(rebuilt_files.join("main.rs")).unwrap(),
+        b"fn main() {}\n"
+    );
+    assert!(git_reference::git(&rebuilt_files, &["status", "--porcelain"], b"").is_empty());
+    assert_eq!(fs::read(calls).unwrap(), cold_calls);
+
+    for (id, path) in [
+        (&workspace, files),
+        (&warm_workspace, warm_files),
+        (&rebuilt_workspace, rebuilt_files),
+    ] {
         result(f.cli(&[
             "workspace-delete",
             "--key",

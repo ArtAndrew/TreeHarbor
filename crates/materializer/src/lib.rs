@@ -8,10 +8,12 @@ mod filesystem;
 mod pristine;
 mod publication;
 mod recovery;
+mod seed;
 mod selection;
 pub use capture::{CaptureArtifact, CaptureExpectation};
 pub use publication::{Publication, PublicationReceipt};
 pub use recovery::BaselineExpectation;
+pub use seed::SourceSeed;
 pub use selection::Selection;
 
 use filesystem::{Manifest, Stage};
@@ -259,6 +261,11 @@ impl Materializer {
         let snapshot = request.snapshot;
         let tenant = request.scope.tenant().to_owned();
         let repository = request.scope.repository().to_string();
+        let mut source_seed = publication
+            .as_ref()
+            .and_then(Publication::source_seed)
+            .filter(|seed| previous.is_none() && seed.matches(&selection))
+            .cloned();
         let stage = tokio::task::spawn_blocking(move || {
             let mut stage = Stage::new(
                 parent, tenant, repository, snapshot, selection, limits, permit, previous,
@@ -270,7 +277,28 @@ impl Materializer {
         let session = db
             .open_read_session(request.scope, request.holder, 60)
             .await?;
-        let result = build_source(db, store, &session, stage).await;
+        let root = session.root().id();
+        let result = async {
+            let stage = if let Some(seed) = source_seed.clone() {
+                let scope = request.scope.clone();
+                let (stage, cached) = tokio::task::spawn_blocking(move || {
+                    // Keep the publication's operation guard even if the
+                    // waiting request is cancelled during the cache read.
+                    let cached = seed.load(&scope, root, snapshot, limits).ok().flatten();
+                    (stage, cached)
+                })
+                .await?;
+                if let Some(cached) = cached {
+                    source_seed = None;
+                    return tokio::task::spawn_blocking(move || cached.replay(stage)).await?;
+                }
+                stage
+            } else {
+                stage
+            };
+            build_source(db, store, &session, stage).await
+        }
+        .await;
         let close = db.close_read_session(session).await;
         let stage = result?;
         close?;
@@ -278,6 +306,9 @@ impl Materializer {
             // A controller-owned publisher retains its lifetime guard and has a
             // deterministic recovery path, including a cancelled awaiting task.
             tokio::task::spawn_blocking(move || {
+                if let Some(seed) = source_seed {
+                    let _ = seed.remember(&stage, root);
+                }
                 if let Some(prepare_files) = prepare_files {
                     prepare_files(&stage.files())?;
                 }

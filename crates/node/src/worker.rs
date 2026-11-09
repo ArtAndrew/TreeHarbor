@@ -10,7 +10,7 @@ use std::{
 use treeharbor_core::{RevisionRef, SourceProfile};
 use treeharbor_materializer::{
     BaselineExpectation, Limits, MaterializedTree, Materializer, Publication, PublicationReceipt,
-    Selection,
+    Selection, SourceSeed,
 };
 use treeharbor_metadata::{
     Metadata,
@@ -374,6 +374,10 @@ impl Node {
                 })
                 .await??;
                 let publication = Publication::new(tree_path, binding, operation.clone());
+                let publication = match source_seed(&operation, plan) {
+                    Some(seed) => publication.with_source_seed(seed),
+                    None => publication,
+                };
                 #[cfg(target_os = "linux")]
                 let publication = if let Some(volume) = &operation.volume
                     && let Some(mount) = volume.preparation_sync_fd()?
@@ -603,6 +607,28 @@ fn exists(path: &Path) -> Result<bool> {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
         Err(e) => Err(e.into()),
     }
+}
+
+fn source_seed(operation: &Operation, plan: &Preparation) -> Option<SourceSeed> {
+    // Keep derived source outside the durable node root. Node backup is
+    // symlink-free and never needs a cache to restore its receipts.
+    let parent = private::directory(operation.storage.root.parent()?).ok()?;
+    let storage = operation.storage.identity.storage();
+    let mut hash = Sha256::new();
+    hash.update(b"treeharbor-source-seed\0v1\0");
+    let scope = plan.scope();
+    hash.update(scope.repository().as_bytes());
+    hash.update(plan.snapshot().as_bytes());
+    hash.update(plan.epoch().to_be_bytes());
+    hash.update(plan.authority().as_str().as_bytes());
+    hash.update([0]);
+    hash.update(scope.tenant().as_bytes());
+    Some(SourceSeed::new(
+        parent.join(format!(".treeharbor-source-seed-v1-{storage}")),
+        hash.finalize().into(),
+        plan.profile().clone(),
+        operation.storage.source_seed.clone(),
+    ))
 }
 fn check_intent(root: &Path, expected: &[u8]) -> Result<()> {
     private::directory(root)?;

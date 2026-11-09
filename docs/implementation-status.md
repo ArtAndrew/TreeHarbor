@@ -126,6 +126,16 @@ from 317 ms with seed reuse alone. Git worktree reached 101 ms. The same
 series includes file-only preparation and per-phase times.
 [Four paired benchmark runs](benchmark-preparation.md#protected-reads-and-manifest-writing--9-november-2026).
 
+A verified node-local source seed also serves repeat preparations with
+fresh per-workspace copies. It opens the current source lease and validates
+the exact delivered file set before writing or acknowledging a new placement.
+The real PostgreSQL transport covers reuse in a new process with an edited
+first workspace, then fallback and reconstruction after corrupting the seed.
+Four paired local runs with separate cold nodes measured 247 ms median
+for repeat Git-compatible preparation and 1,136 ms on the first wave.
+The Git worktree repeat median in the candidate runs was 110 ms.
+[Verified source file reuse benchmark](benchmark-preparation.md#verified-source-file-reuse--9-november-2026).
+
 The [recorded Connected trial](demo.md) has an MP4 with six distinct scenes
 verified by decoding, a static storyboard and a direct link to the GIF.
 
