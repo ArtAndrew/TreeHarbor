@@ -64,13 +64,35 @@ jobs:
             printf '#!/bin/sh\nexec /usr/bin/docker exec -i -e PGDATABASE -e PGUSER -e PGPASSWORD "%s" %s "$@"\n' "$PG_CONTAINER" "$tool" > "$RUNNER_TEMP/pg-tools/$tool"
             chmod 700 "$RUNNER_TEMP/pg-tools/$tool"
           done
+      - name: Prepare disposable source-volume contract disk
+        run: |
+          umask 077
+          volume="$RUNNER_TEMP/cow-source-contract/mount"
+          mkdir -p "$volume"
+          truncate -s 64M "$volume.ext4"
+          mkfs.ext4 -q -F -m 0 "$volume.ext4"
+          sudo mount -o loop,nodev,nosuid "$volume.ext4" "$volume"
+          sudo mount --make-private "$volume"
+          sudo chown "$(id -u):$(id -g)" "$volume"
+          chmod 0700 "$volume"
+          mkdir -m 0700 "$volume/source"
       - name: Run real database contracts (not mocks)
         env:
           TH_TEST_DATABASE_URL: host=127.0.0.1 user=treeharbor_test password=disposable-ci-only dbname=treeharbor_test
           TH_SERVICE_TEST_DATABASE_URL: host=/var/run/treeharbor-test-pg user=treeharbor_test password=disposable-ci-only dbname=treeharbor_test
           TH_TEST_PG_DUMP: ${{ runner.temp }}/pg-tools/pg_dump
           TH_TEST_PG_RESTORE: ${{ runner.temp }}/pg-tools/pg_restore
+          TH_TEST_COW_SOURCE_VOLUME: ${{ runner.temp }}/cow-source-contract/mount
         run: cargo test -p treeharbor-metadata -p treeharbor-materializer -p treeharbor-node -p treeharbor-service --locked -- --ignored
+      - name: Release disposable source-volume contract disk
+        if: always()
+        run: |
+          volume="$RUNNER_TEMP/cow-source-contract/mount"
+          if mountpoint -q "$volume"; then sudo umount -- "$volume"; fi
+          if test -e "$volume.ext4"; then
+            test -z "$(sudo losetup -j "$volume.ext4")"
+            rm -- "$volume.ext4"
+          fi
       - name: Install pinned webhook TLS proxy for acceptance
         working-directory: ${{ runner.temp }}
         run: |

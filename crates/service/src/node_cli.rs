@@ -77,6 +77,16 @@ pub enum Action {
         #[arg(long, value_parser=clap::value_parser!(u64).range(67_108_864..=68_719_476_736))]
         limit_bytes: u64,
     },
+    /// Local experiment: attach an empty dedicated source-image filesystem.
+    #[command(hide = true)]
+    CowSourceRegister {
+        #[command(flatten)]
+        node: Arguments,
+        #[arg(long)]
+        mount: PathBuf,
+        #[arg(long, value_parser=clap::value_parser!(u64).range(67_108_864..=1_073_741_824))]
+        limit_bytes: u64,
+    },
     /// Capture one owner-requested, removed managed run and publish its snapshot.
     SealOnce {
         #[command(flatten)]
@@ -158,6 +168,7 @@ pub async fn run(action: Action) -> Result<bool> {
         | Action::PrepareBatch { node, .. }
         | Action::Prepared { node, .. }
         | Action::VolumeRegister { node, .. }
+        | Action::CowSourceRegister { node, .. }
         | Action::RunOnce { node, .. }
         | Action::CleanupOnce { node, .. }
         | Action::SealOnce { node, .. } => node,
@@ -196,6 +207,21 @@ pub async fn run(action: Action) -> Result<bool> {
         args.parallelism,
     )?;
     let (workspace, tree) = match action {
+        Action::CowSourceRegister {
+            mount, limit_bytes, ..
+        } => {
+            #[cfg(not(target_os = "linux"))]
+            {
+                let _ = (mount, limit_bytes);
+                return Err(Error::Config);
+            }
+            #[cfg(target_os = "linux")]
+            {
+                node.register_cow_source_volume(&mount, limit_bytes)?;
+                println!("{}", json!({"state":"source-volume-registered"}));
+                return Ok(true);
+            }
+        }
         Action::CleanupOnce {
             workspace,
             engine_socket,

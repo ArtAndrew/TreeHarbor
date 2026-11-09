@@ -39,6 +39,8 @@ pub(crate) struct Storage {
     pub source_seed: Arc<RwLock<()>>,
     #[cfg(target_os = "linux")]
     pub cow_image: Arc<AsyncMutex<()>>,
+    #[cfg(target_os = "linux")]
+    pub cow_volume: Mutex<Option<Arc<treeharbor_runtime::Volume>>>,
     lock: File,
 }
 impl Storage {
@@ -124,6 +126,8 @@ impl Node {
                 source_seed: Arc::new(RwLock::new(())),
                 #[cfg(target_os = "linux")]
                 cow_image: Arc::new(AsyncMutex::new(())),
+                #[cfg(target_os = "linux")]
+                cow_volume: Mutex::new(None),
                 lock,
             },
             concurrent,
@@ -164,6 +168,8 @@ impl Node {
             source_seed: Arc::new(RwLock::new(())),
             #[cfg(target_os = "linux")]
             cow_image: Arc::new(AsyncMutex::new(())),
+            #[cfg(target_os = "linux")]
+            cow_volume: Mutex::new(None),
             lock,
         };
         owned.verify()?;

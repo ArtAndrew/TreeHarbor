@@ -3,6 +3,8 @@ mod capture;
 mod cleanup;
 #[cfg(target_os = "linux")]
 mod cow;
+#[cfg(target_os = "linux")]
+mod cow_volume;
 mod execution;
 mod git_seed_cache;
 mod git_source;

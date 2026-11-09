@@ -186,6 +186,25 @@ more run-to-run variation. Both runs used local source and a two-CPU
 Linux VM. This measures time through first file reads with all four
 placements, before agent execution or CI.
 
+The prototype also supports an explicitly registered, dedicated ext4 source
+volume. It retains one verified volume descriptor before staging and uses
+filesystem-wide writeback on supported Linux kernels. A durable ownership
+record prevents assigning that source volume as an agent's writable slot.
+Registration, reuse and publication share the image lock; changed registration
+is rejected before claiming another volume. Existing source images are never
+relocated. Missing or mismatched mounts require operator recovery.
+
+The final optimized ARM64 build verified 72 placements on the 8,195-file
+fixture. Its first Git-compatible group took 2,068 ms and repeated groups
+had a median 161 ms; Git worktree in the same run took 572 ms and 335 ms.
+All figures end at the last of four first file reads. These are local
+prototype measurements, with five repeated groups and uncontrolled OS caches.
+No runtime tasks execute during this preparation comparison. The 31 targeted
+materializer/node tests passed, including the failed-writeback boundary.
+The separate real-ext4 contract also passed ownership, changed-registration,
+old-slot rejection and reopening checks. Required CI now provisions a disposable
+source volume for that contract. This is still an unreleased, operator-only path.
+
 ## 0.1.12-alpha.1 release scope
 
 Current documentation additions: [first-run checkpoints](try-treeharbor.md), a

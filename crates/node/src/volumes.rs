@@ -59,6 +59,15 @@ impl Node {
             return Err(Error::Configuration);
         }
         let volume = Volume::open(mount, placement, limit)?;
+        #[cfg(target_os = "linux")]
+        if volume
+            .identity()
+            .mount
+            .join(crate::cow_volume::OWNER)
+            .try_exists()?
+        {
+            return Err(Error::Identity);
+        }
         if volume.identity().device == fs::metadata(&self.storage.root)?.dev()
             || self.storage.root.starts_with(&volume.identity().mount)
             || self
@@ -148,6 +157,15 @@ impl Node {
         match fs::symlink_metadata(&record_path) {
             Ok(_) => {
                 let record = self.registered_volume(slot)?;
+                #[cfg(target_os = "linux")]
+                if record
+                    .volume
+                    .mount
+                    .join(crate::cow_volume::OWNER)
+                    .try_exists()?
+                {
+                    return Err(Error::Identity);
+                }
                 let volume = Volume::open(
                     &record.volume.mount,
                     &record.volume.files,
