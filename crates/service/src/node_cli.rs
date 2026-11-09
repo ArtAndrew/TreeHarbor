@@ -1,9 +1,16 @@
-use crate::{Error, Result, client::Credential, config::Config, database::Database};
+use crate::{Error, Result, client::Credential, config::Config, database::Database, files};
 use clap::{Args, Subcommand};
-use serde_json::json;
-use std::path::PathBuf;
-use treeharbor_materializer::Limits;
-use treeharbor_metadata::access::Permission;
+use serde::Deserialize;
+use serde_json::{Value, json};
+use std::{
+    collections::HashSet,
+    path::{Path, PathBuf},
+};
+use treeharbor_materializer::{Limits, MaterializedTree};
+use treeharbor_metadata::{
+    Metadata,
+    access::{Authorization, Permission},
+};
 use treeharbor_node::{Node, Prepare};
 use treeharbor_storage::{ManagedStore, TenantId};
 use uuid::Uuid;
@@ -37,6 +44,18 @@ pub enum Action {
         /// Local operator experiment with an exact prepared overlay placement.
         #[arg(long, hide = true, requires_all = ["workspace", "slot"])]
         cow_driver: Option<PathBuf>,
+    },
+    /// Local experiment with multiple guarded placements on one node.
+    #[command(hide = true)]
+    PrepareBatch {
+        #[command(flatten)]
+        node: Arguments,
+        #[arg(long)]
+        selection: PathBuf,
+        #[arg(long)]
+        git: Option<PathBuf>,
+        #[arg(long)]
+        cow_driver: PathBuf,
     },
     /// Reopen an acknowledged placement without changing agent files.
     Prepared {
@@ -104,6 +123,22 @@ pub struct Arguments {
     #[arg(long, default_value_t = 4)]
     parallelism: usize,
 }
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct BatchPlacement {
+    workspace: Uuid,
+    slot: Uuid,
+}
+
+struct PreparationOptions<'a> {
+    workspace: Option<Uuid>,
+    slot: Option<Uuid>,
+    git: Option<&'a Path>,
+    cow_driver: Option<&'a Path>,
+    max_workspace_bytes: u64,
+}
+
 pub async fn run(action: Action) -> Result<bool> {
     if let Action::Initialize {
         root,
@@ -120,6 +155,7 @@ pub async fn run(action: Action) -> Result<bool> {
     }
     let args = match &action {
         Action::PrepareOnce { node, .. }
+        | Action::PrepareBatch { node, .. }
         | Action::Prepared { node, .. }
         | Action::VolumeRegister { node, .. }
         | Action::RunOnce { node, .. }
@@ -309,78 +345,178 @@ pub async fn run(action: Action) -> Result<bool> {
             cow_driver,
             ..
         } => {
-            if cow_driver.is_some() && !cfg!(target_os = "linux") {
-                return Err(Error::Config);
-            }
-            let max_workspace_bytes = if let Some(slot) = slot {
-                max_workspace_bytes.min(node.registered_volume(slot)?.limit_bytes())
-            } else {
-                max_workspace_bytes
-            };
-            let limits = Limits {
-                max_workspace_bytes,
-                ..Limits::default()
-            };
-            let storage = config.storage.as_ref().ok_or(Error::Config)?;
-            let store = ManagedStore::open(
-                &storage.root,
-                TenantId::new(credential.scope.tenant()).map_err(|_| Error::Config)?,
-                &storage.backend,
-            )
-            .map_err(|_| Error::Config)?;
-            let mut heartbeat = database.connect(true).await?;
-            let claimed = if git.is_some() {
-                node.claim_git_for(
-                    &mut session.metadata,
-                    &auth,
-                    workspace.ok_or(Error::Config)?,
+            let store = preparation_store(&config, &auth)?;
+            let Some(result) = prepare_selected(
+                &node,
+                &database,
+                &mut session.metadata,
+                &auth,
+                &store,
+                PreparationOptions {
+                    workspace,
                     slot,
-                )
-                .await?
-            } else if let Some(workspace) = workspace {
-                node.claim_for(&mut session.metadata, &auth, workspace, slot)
-                    .await?
-            } else if let Some(slot) = slot {
-                node.claim_on_slot(&mut session.metadata, &auth, slot)
-                    .await?
-            } else {
-                node.claim(&mut session.metadata, &auth).await?
-            };
-            let Some(plan) = claimed else {
+                    git: git.as_deref(),
+                    cow_driver: cow_driver.as_deref(),
+                    max_workspace_bytes,
+                },
+            )
+            .await?
+            else {
                 println!("{}", json!({"state":"idle"}));
                 return Ok(true);
             };
-            let request = Prepare {
-                authorization: &auth,
-                plan: &plan,
-                store: &store,
-                limits,
-            };
-            let tree = if let Some(driver) = cow_driver {
-                node.prepare_cow(
-                    &mut session.metadata,
-                    &mut heartbeat.metadata,
-                    request,
-                    git.as_deref(),
-                    &driver,
-                )
-                .await?
-            } else if let Some(git) = git {
-                node.prepare_git(
-                    &mut session.metadata,
-                    &mut heartbeat.metadata,
-                    request,
-                    &git,
-                )
-                .await?
-            } else {
-                node.prepare(&mut session.metadata, &mut heartbeat.metadata, request)
-                    .await?
-            };
-            (plan.workspace(), tree)
+            result
+        }
+        Action::PrepareBatch {
+            node: args,
+            selection,
+            git,
+            cow_driver,
+        } => {
+            let targets: Vec<BatchPlacement> =
+                serde_json::from_slice(&files::read_private(&selection, 4096)?)
+                    .map_err(|_| Error::Config)?;
+            if !cfg!(target_os = "linux")
+                || targets.is_empty()
+                || targets.len() > args.parallelism.min(16)
+            {
+                return Err(Error::Config);
+            }
+            let mut workspaces = HashSet::new();
+            let mut slots = HashSet::new();
+            for target in &targets {
+                if target.workspace.is_nil()
+                    || target.slot.is_nil()
+                    || !workspaces.insert(target.workspace)
+                    || !slots.insert(target.slot)
+                {
+                    return Err(Error::Config);
+                }
+                node.registered_volume(target.slot)?;
+            }
+            let store = preparation_store(&config, &auth)?;
+            drop(session);
+            let mut tasks = tokio::task::JoinSet::new();
+            for target in targets {
+                let (node, database, auth, store, git, cow_driver) = (
+                    node.clone(),
+                    database.clone(),
+                    auth.clone(),
+                    store.clone(),
+                    git.clone(),
+                    cow_driver.clone(),
+                );
+                tasks.spawn(async move {
+                    let workspace = target.workspace;
+                    let prepared = async {
+                        let mut session = database.connect(true).await?;
+                        prepare_selected(
+                            &node,
+                            &database,
+                            &mut session.metadata,
+                            &auth,
+                            &store,
+                            PreparationOptions {
+                                workspace: Some(workspace),
+                                slot: Some(target.slot),
+                                git: git.as_deref(),
+                                cow_driver: Some(&cow_driver),
+                                max_workspace_bytes: 256 * 1024 * 1024,
+                            },
+                        )
+                        .await
+                    }
+                    .await;
+                    match prepared {
+                        Ok(Some((workspace, tree))) => readiness(workspace, &tree),
+                        Ok(None) => json!({"workspace":workspace,"state":"idle"}),
+                        Err(error) => {
+                            json!({"workspace":workspace,"state":"error","error":error.to_string()})
+                        }
+                    }
+                });
+            }
+            let mut results = Vec::new();
+            while let Some(result) = tasks.join_next().await {
+                results.push(result.map_err(|_| Error::Administration)?);
+            }
+            println!("{}", json!(results));
+            return Ok(true);
         }
         Action::Initialize { .. } => unreachable!(),
     };
+    println!("{}", readiness(workspace, &tree));
+    Ok(true)
+}
+
+fn preparation_store(config: &Config, auth: &Authorization) -> Result<ManagedStore> {
+    let storage = config.storage.as_ref().ok_or(Error::Config)?;
+    ManagedStore::open(
+        &storage.root,
+        TenantId::new(auth.scope().tenant()).map_err(|_| Error::Config)?,
+        &storage.backend,
+    )
+    .map_err(|_| Error::Config)
+}
+
+async fn prepare_selected(
+    node: &Node,
+    database: &Database,
+    db: &mut Metadata,
+    auth: &Authorization,
+    store: &ManagedStore,
+    options: PreparationOptions<'_>,
+) -> Result<Option<(Uuid, MaterializedTree)>> {
+    let PreparationOptions {
+        workspace,
+        slot,
+        git,
+        cow_driver,
+        max_workspace_bytes,
+    } = options;
+    if cow_driver.is_some() && !cfg!(target_os = "linux") {
+        return Err(Error::Config);
+    }
+    let max_workspace_bytes = if let Some(slot) = slot {
+        max_workspace_bytes.min(node.registered_volume(slot)?.limit_bytes())
+    } else {
+        max_workspace_bytes
+    };
+    let limits = Limits {
+        max_workspace_bytes,
+        ..Limits::default()
+    };
+    let mut heartbeat = database.connect(true).await?;
+    let claimed = if git.is_some() {
+        node.claim_git_for(db, auth, workspace.ok_or(Error::Config)?, slot)
+            .await?
+    } else if let Some(workspace) = workspace {
+        node.claim_for(db, auth, workspace, slot).await?
+    } else if let Some(slot) = slot {
+        node.claim_on_slot(db, auth, slot).await?
+    } else {
+        node.claim(db, auth).await?
+    };
+    let Some(plan) = claimed else { return Ok(None) };
+    let request = Prepare {
+        authorization: auth,
+        plan: &plan,
+        store,
+        limits,
+    };
+    let tree = if let Some(driver) = cow_driver {
+        node.prepare_cow(db, &mut heartbeat.metadata, request, git, driver)
+            .await?
+    } else if let Some(git) = git {
+        node.prepare_git(db, &mut heartbeat.metadata, request, git)
+            .await?
+    } else {
+        node.prepare(db, &mut heartbeat.metadata, request).await?
+    };
+    Ok(Some((plan.workspace(), tree)))
+}
+
+fn readiness(workspace: Uuid, tree: &MaterializedTree) -> Value {
     let mut result = json!({"workspace":workspace.to_string(),"state":"files_ready","runtime":null,
     "path":tree.path(),"manifest":tree.manifest_path(),"snapshot":tree.snapshot().to_string(),
     "recovered_baseline":tree.statistics().is_none(),
@@ -404,6 +540,5 @@ pub async fn run(action: Action) -> Result<bool> {
     if tree.is_external_view() {
         result["placement"] = json!("copy-on-write");
     }
-    println!("{result}");
-    Ok(true)
+    result
 }

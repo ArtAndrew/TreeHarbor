@@ -87,10 +87,7 @@ impl MaterializedTree {
             (true, Err(rustix::io::Errno::NOENT)) => (),
             (false, Ok(stat))
                 if rustix::fs::FileType::from_raw_mode(stat.st_mode)
-                    == rustix::fs::FileType::Directory =>
-            {
-                ()
-            }
+                    == rustix::fs::FileType::Directory => {}
             (false, Err(error)) => return Err(io::Error::from(error).into()),
             _ => return Err(Error::InvalidBaseline),
         }
