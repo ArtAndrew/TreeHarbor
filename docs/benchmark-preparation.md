@@ -178,10 +178,10 @@ shared mirror and TreeHarbor object store are recorded separately. In that run,
 the TreeHarbor snapshot pack and import took 19.2 s and 38.2 s before any timed
 preparation. The local mirror setup took 62 ms and covers different work.
 
-The TreeHarbor results cover native file workspaces. They show where to profile
-the node preparation path under concurrent load. Comparisons for Git-compatible
-workspaces, sparse/partial delivery, cold caches, measured network traffic,
-server cost and the complete agent-to-integration path remain open.
+The TreeHarbor results cover native file workspaces. The Connected Git sample
+below measures private Git metadata separately. Sparse/partial delivery,
+cold caches, network traffic, server cost and the complete
+agent-to-integration path remain open.
 
 ## Within the node preparation command — 8 November 2026
 
@@ -240,5 +240,88 @@ The median recorded source sync wait changed from 1,306 ms across per-file
 batches to 37 ms in one volume sync. The preparation still writes and
 synchronizes its manifest and publication receipt. Git worktree remains
 faster on this fixture. These observations cover native source files and
-readiness. Git-compatible metadata, sandbox startup, real repository sizes,
-cold starts and total task cost require separate measurements.
+readiness. Sandbox startup, representative repository sizes, cold starts and
+total task cost require separate measurements.
+
+## Connected Git-compatible metadata — 9 November 2026
+
+The same 2,051-entry synthetic repository with one Git commit ran on two CPUs
+and about 4 GB RAM under Linux 6.8 ARM64. Each of four concurrent lanes used
+its own guarded ext4 mount. An exact Connected import into local PostgreSQL
+and the object store finished before measurement. Each preparation used a new
+workspace. Source objects were already present and OS caches were uncontrolled.
+Timing covers the workspace request, node startup, preparation and first file
+read. Verification and cleanup are recorded separately.
+
+The baseline used the guarded-volume synchronization build from the preceding
+section. The candidate changes the temporary source copy for Git projection
+to one private file. The Rust toolchain and optimized ARM64 musl profile are
+the same. Four runs alternated baseline and candidate. Every run had six
+waves, with randomized system order. All 288 preparations verified file
+bytes, modes, paths, symlinks and, where applicable, Git history. Each column
+pools 48 observations per system. The records were produced by a local driver
+with the same preparation and verification boundaries as the recipe below.
+[Baseline 1](benchmarks/connected-git-linux-arm64-2k-c4-baseline-1.json) ·
+[Candidate 1](benchmarks/connected-git-linux-arm64-2k-c4-candidate-1.json) ·
+[Baseline 2](benchmarks/connected-git-linux-arm64-2k-c4-baseline-2.json) ·
+[Candidate 2](benchmarks/connected-git-linux-arm64-2k-c4-candidate-2.json).
+
+| Time to first file read | Baseline p50 / sample p95 | Candidate p50 / sample p95 |
+| --- | ---: | ---: |
+| Connected, file-only | 423 / 958 ms | 350 / 802 ms |
+| Connected, private Git metadata | 7,929 / 12,889 ms | 1,185 / 2,616 ms |
+| Git worktree | 131 / 341 ms | 123 / 421 ms |
+
+The two baseline Git-compatible medians were 5.46 and 10.27 s. The two
+candidate medians were 1.04 and 1.29 s. A separate single-lane trace recorded
+6,788 successful `fsync` calls before the change and 52 after it, including
+the syncs required for final publication. The table uses untraced runs.
+Git worktree remains the fastest preparation in this local fixture. The
+measurements cover an already imported one-commit history and exclude runtime,
+agent execution, network transfer and integration cost.
+
+### Reproduce Connected preparation
+
+Use a disposable PostgreSQL database over a local socket and four private
+ext4 mounts as in the [managed-run volume setup](managed-runs.md). The
+transport test creates a temporary schema and a synthetic Connected binding
+locally. It uses the same authentication and import protocol as the service.
+The operator owns the mount lifecycle.
+
+```sh
+umask 077
+root=$(mktemp -d)
+revision=$(python3 scripts/create-preparation-fixture.py "$root/fixture" \
+  --modules 16 --files-per-module 128)
+git -C "$root/fixture" bundle create "$root/fixture.bundle" refs/heads/main
+
+python3 - "$root" "$revision" /mnt/bench0 /mnt/bench1 /mnt/bench2 /mnt/bench3 <<'PY'
+import json, sys
+from pathlib import Path
+root, revision, *volumes = sys.argv[1:]
+root = Path(root)
+arguments = ["--repository", str(root / "fixture"), "--revision", revision,
+             "--concurrency", "4", "--iterations", "6", "--seed", "421",
+             "--git-checkout-workers", "1", "--volume-limit-bytes", "67108864",
+             "--output", str(root / "result.json")]
+for volume in volumes:
+    arguments.extend(["--workspace-volume", volume])
+with (root / "spec.json").open("x") as handle:
+    json.dump({"bundle": str(root / "fixture.bundle"),
+               "git_revision": "git:sha1:" + revision, "arguments": arguments}, handle)
+PY
+
+export TH_SERVICE_TEST_DATABASE_URL='host=/absolute/test/socket user=treeharbor_test dbname=treeharbor_test'
+export TH_TEST_GIT_WORKSPACE_BINARY=/absolute/path/to/optimized/treeharbor
+TH_TEST_CONNECTED_PREPARATION="$root/spec.json" \
+  cargo test -p treeharbor-service --test transport --locked \
+  github_source_http_preserves_exact_git_history_after_partial_upload_and_server_death \
+  -- --ignored --nocapture
+```
+
+Read `result.json` in the temporary directory. Build each compared binary
+with the same release profile and toolchain, use a fresh output path per run,
+and alternate their order on one host. The probe checks the detached Git HEAD,
+reachable history and worktree bytes, and verifies that the Git-compatible
+placement has an independent object database. Use the Standalone command
+above for the clone baselines.

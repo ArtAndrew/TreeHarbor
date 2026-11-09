@@ -22,9 +22,10 @@ from urllib.parse import urlsplit
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--binary', required=True, type=Path)
-parser.add_argument('--psql', required=True, type=Path)
-parser.add_argument('--database-url-file', required=True, type=Path,
+parser.add_argument('--psql', type=Path)
+parser.add_argument('--database-url-file', type=Path,
                     help='private file containing a disposable PostgreSQL connection string')
+parser.add_argument('--connected-fixture', type=Path, help=argparse.SUPPRESS)
 parser.add_argument('--repository', required=True, type=Path, help='local Git fixture repository')
 parser.add_argument('--revision', required=True, help='exact commit to capture')
 parser.add_argument('--output', required=True, type=Path)
@@ -48,19 +49,30 @@ if volumes and (platform.system() != 'Linux' or len(volumes) != args.concurrency
     parser.error('provide one distinct disposable Linux mount per task and a positive volume limit')
 if not re.fullmatch(r'(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})', args.revision):
     parser.error('revision must be a full Git commit ID')
-BIN, PSQL, OUT = args.binary.resolve(), args.psql.resolve(), args.output.resolve()
-if args.database_url_file.stat().st_mode & 0o077:
-    parser.error('database URL file must not be accessible to group or other users')
-URL = args.database_url_file.read_text().strip()
-if 'password' in URL.lower() or urlsplit(URL).password is not None:
-    parser.error('use PGPASSFILE or local socket authentication, not credentials in the URL')
+BIN, OUT = args.binary.resolve(), args.output.resolve()
+connected = None
+if args.connected_fixture:
+    if args.psql or args.database_url_file or args.connected_fixture.stat().st_mode & 0o077:
+        parser.error('use only the private Connected context supplied by the transport fixture')
+    connected = json.loads(args.connected_fixture.read_text())
+else:
+    if not args.psql or not args.database_url_file:
+        parser.error('provide --psql and --database-url-file for the standalone benchmark')
+    PSQL = args.psql.resolve()
+    if args.database_url_file.stat().st_mode & 0o077:
+        parser.error('database URL file must not be accessible to group or other users')
+    URL = args.database_url_file.read_text().strip()
+    if 'password' in URL.lower() or urlsplit(URL).password is not None:
+        parser.error('use PGPASSFILE or local socket authentication, not credentials in the URL')
 if OUT.exists():
     parser.error('output already exists; preserve prior measurements')
 GIT = shutil.which('git')
 if not GIT:
     parser.error('Git is required for the benchmark input and baselines')
 
-SYSTEMS = ('treeharbor', 'git-worktree', 'git-shared-clone', 'git-full-clone')
+authority = 'connected' if connected else 'standalone'
+SYSTEMS = (('treeharbor', 'treeharbor-git', 'git-worktree') if connected
+           else ('treeharbor', 'git-worktree', 'git-shared-clone', 'git-full-clone'))
 TIMINGS = ('files_ready_seconds', 'first_read_seconds', 'cleanup_seconds')
 
 def run(*args):
@@ -83,29 +95,37 @@ created = False
 with tempfile.TemporaryDirectory(prefix='th-import-') as tmp, ExitStack() as placements:
     root = Path(tmp)
     config, socket, credential = root/'config.json', root/'service.sock', root/'owner.json'
-    log = (root/'service.log').open('wb')
+    log = None
     try:
-        sql(f'CREATE SCHEMA {schema}')
-        created = True
-        store = root/'objects'
-        store.mkdir(mode=0o700)
-        config.write_text(json.dumps({'database_url': URL, 'schema': schema, 'socket': str(socket),
-                                     'storage': {'root': str(store), 'backend': 'benchmark-local'}}))
-        config.chmod(0o600)
-        scope = ['--tenant', 'benchmark', '--repository', str(uuid.uuid4())]
         def admin(*args):
             return run(BIN, 'admin', '--config', config, *args)
-        admin('migrate')
-        admin('repository-create', *scope, '--authority', 'standalone')
-        admin('principal-create', '--tenant', 'benchmark', '--principal', 'owner', '--kind', 'human')
-        grants = ['--permission', 'read', '--permission', 'repository.write', '--permission', 'workspace.write']
-        admin('access-set', *scope, '--principal', 'owner', *grants)
-        admin('token-issue', *scope, '--principal', 'owner', *grants, '--ttl-seconds', '600', '--output', credential)
-        server = subprocess.Popen([str(BIN), 'serve', '--config', str(config)], stdout=log, stderr=log)
-        deadline = time.monotonic() + 15
-        while not socket.exists():
-            assert server.poll() is None and time.monotonic() < deadline
-            time.sleep(.05)
+        if connected:
+            config, socket, credential, store = (Path(connected[key]) for key in
+                                                   ('config', 'socket', 'credential', 'store'))
+            tenant, repo_id = connected['tenant'], connected['repository_id']
+        else:
+            tenant, repo_id = 'benchmark', str(uuid.uuid4())
+            sql(f'CREATE SCHEMA {schema}')
+            created = True
+            store = root/'objects'
+            store.mkdir(mode=0o700)
+            config.write_text(json.dumps({'database_url': URL, 'schema': schema, 'socket': str(socket),
+                                         'storage': {'root': str(store), 'backend': 'benchmark-local'}}))
+            config.chmod(0o600)
+            scope = ['--tenant', tenant, '--repository', repo_id]
+            admin('migrate')
+            admin('repository-create', *scope, '--authority', authority)
+            admin('principal-create', '--tenant', tenant, '--principal', 'owner', '--kind', 'human')
+            grants = ['--permission', 'read', '--permission', 'repository.write', '--permission', 'workspace.write']
+            admin('access-set', *scope, '--principal', 'owner', *grants)
+            admin('token-issue', *scope, '--principal', 'owner', *grants, '--ttl-seconds', '600', '--output', credential)
+            log = (root/'service.log').open('wb')
+            server = subprocess.Popen([str(BIN), 'serve', '--config', str(config)], stdout=log, stderr=log)
+            deadline = time.monotonic() + 15
+            while not socket.exists():
+                assert server.poll() is None and time.monotonic() < deadline
+                time.sleep(.05)
+        scope = ['--tenant', tenant, '--repository', repo_id]
         repository = args.repository.resolve()
         revision = run(GIT, '-C', repository, 'rev-parse', '--verify', args.revision + '^{commit}').decode().strip()
         entries = run(GIT, '-C', repository, 'ls-tree', '-r', '-l', '-z', revision).split(b'\0')
@@ -123,42 +143,46 @@ with tempfile.TemporaryDirectory(prefix='th-import-') as tmp, ExitStack() as pla
                                     'hex': run(GIT, '-C', repository, 'cat-file', 'blob', oid.decode()).hex()})
         if not fixture['files']:
             raise RuntimeError('fixture must contain files')
-        source = root/'source'
-        source.mkdir(mode=0o700)
-        paths = []
-        for f in fixture['files']:
-            path = source/f['path']
-            assert path.is_relative_to(source) and '..' not in Path(f['path']).parts
-            path.parent.mkdir(parents=True, exist_ok=True)
-            data = bytes.fromhex(f['hex'])
-            if f['mode'] == '120000':
-                os.symlink(os.fsdecode(data), path)
-            else:
-                path.write_bytes(data)
-                path.chmod(0o700 if f['mode']=='100755' else 0o600)
-            paths.extend(['--path', f['path']])
-        paths = [part for name in sorted({f['path'].split('/')[0] for f in fixture['files']}) for part in ('--path', name)]
-        if len(paths) // 2 > 1024:
-            raise RuntimeError('fixture has more than 1024 top-level selection paths')
-        start = time.perf_counter()
-        pack_reply = json.loads(run(BIN, 'source-pack', '--directory', source, '--output', root/'pack',
-             '--author-name', 'Benchmark', '--author-email', 'benchmark@example.invalid', *paths))
-        pack_seconds = time.perf_counter()-start
-        command = [BIN, 'client', '--socket', socket, '--credential-file', credential,
-                   'source-import', '--pack', root/'pack', '--state', root/'import.json',
-                   '--authority', 'standalone', '--epoch', '1']
-        start = time.perf_counter()
-        reply = json.loads(run(*command))
-        import_seconds = time.perf_counter()-start
-        assert reply['result']['state']=='completed'
-        start = time.perf_counter()
-        replay = json.loads(run(*command))
-        replay_seconds = time.perf_counter()-start
-        assert replay['result']==reply['result']
+        setup = {}
+        if connected:
+            if connected['git_revision'].rsplit(':', 1)[-1] != revision:
+                raise RuntimeError('the imported Git commit differs from the benchmark fixture')
+            native_revision = connected['native_revision']
+        else:
+            source = root/'source'
+            source.mkdir(mode=0o700)
+            for f in fixture['files']:
+                path = source/f['path']
+                assert path.is_relative_to(source) and '..' not in Path(f['path']).parts
+                path.parent.mkdir(parents=True, exist_ok=True)
+                data = bytes.fromhex(f['hex'])
+                if f['mode'] == '120000':
+                    os.symlink(os.fsdecode(data), path)
+                else:
+                    path.write_bytes(data)
+                    path.chmod(0o700 if f['mode']=='100755' else 0o600)
+            names = sorted({f['path'].split('/')[0] for f in fixture['files']})
+            if len(names) > 1024:
+                raise RuntimeError('fixture has more than 1024 top-level selection paths')
+            paths = [part for name in names for part in ('--path', name)]
+            start = time.perf_counter()
+            json.loads(run(BIN, 'source-pack', '--directory', source, '--output', root/'pack',
+                 '--author-name', 'Benchmark', '--author-email', 'benchmark@example.invalid', *paths))
+            setup['snapshot_pack_seconds'] = time.perf_counter()-start
+            command = [BIN, 'client', '--socket', socket, '--credential-file', credential,
+                       'source-import', '--pack', root/'pack', '--state', root/'import.json',
+                       '--authority', authority, '--epoch', '1']
+            start = time.perf_counter()
+            reply = json.loads(run(*command))
+            setup['native_import_seconds'] = time.perf_counter()-start
+            assert reply['result']['state']=='completed'
+            replay = json.loads(run(*command))
+            assert replay['result']==reply['result']
+            native_revision = reply['result']['revision']
         def client(*parts):
             return json.loads(run(BIN, 'client', '--socket', socket,
                                   '--credential-file', credential, *parts))
-        profile = client('profile-put', '--key', 'bench-full', '--authority', 'standalone',
+        profile = client('profile-put', '--key', 'bench-full', '--authority', authority,
                          '--epoch', '1', '--full')['result']['profile_digest']
         node_grants = ['--permission', 'runtime.control']
         nodes = []
@@ -166,9 +190,9 @@ with tempfile.TemporaryDirectory(prefix='th-import-') as tmp, ExitStack() as pla
             principal = f'node-{lane}'
             node_root = root/principal
             storage = json.loads(run(BIN, 'node', 'initialize', '--root', node_root,
-                                     '--tenant', 'benchmark', '--principal', principal))['storage']
-            admin('principal-create', '--tenant', 'benchmark', '--principal', principal, '--kind', 'node')
-            admin('node-register', '--tenant', 'benchmark', '--principal', principal, '--storage', storage)
+                                     '--tenant', tenant, '--principal', principal))['storage']
+            admin('principal-create', '--tenant', tenant, '--principal', principal, '--kind', 'node')
+            admin('node-register', '--tenant', tenant, '--principal', principal, '--storage', storage)
             admin('access-set', *scope, '--principal', principal, *node_grants)
             node_credential = root/(principal + '.json')
             admin('token-issue', *scope, '--principal', principal, *node_grants,
@@ -204,6 +228,7 @@ with tempfile.TemporaryDirectory(prefix='th-import-') as tmp, ExitStack() as pla
         start = time.perf_counter()
         git('clone', '--mirror', '--no-hardlinks', '--template=', repository, mirror)
         mirror_seconds = time.perf_counter()-start
+        expected_history = git('-C', mirror, 'rev-list', revision) if connected else None
         useful = next((f for f in fixture['files'] if f['mode'] in ('100644','100755')), None)
         if useful is None:
             raise RuntimeError('fixture needs at least one regular file for the useful read')
@@ -245,14 +270,17 @@ with tempfile.TemporaryDirectory(prefix='th-import-') as tmp, ExitStack() as pla
             observation = {'wave': wave, 'order': order, 'lane': lane, 'system': system}
             workspace = generation = None
             start = time.perf_counter()
-            if system == 'treeharbor':
+            if system in ('treeharbor', 'treeharbor-git'):
                 workspace = str(uuid.uuid4())
+                git_workspace = system == 'treeharbor-git'
+                format_args = ['--git-compatible'] if git_workspace else []
                 created_reply = client('workspace-create', '--key', 'create-'+workspace,
-                    '--authority', 'standalone', '--epoch', '1', '--workspace', workspace,
-                    '--base', reply['result']['revision'], '--profile-digest', profile)
+                    '--authority', authority, '--epoch', '1', '--workspace', workspace,
+                    '--base', native_revision, '--profile-digest', profile, *format_args)
                 requested = time.perf_counter()
                 slot_args = ['--slot', slots[lane]] if slots else []
-                prepared = node(lane, 'prepare-once', '--workspace', workspace, *slot_args)
+                git_args = ['--git', Path(GIT).absolute()] if git_workspace else []
+                prepared = node(lane, 'prepare-once', '--workspace', workspace, *slot_args, *git_args)
                 materialized = time.perf_counter()
                 if prepared['state'] != 'files_ready' or prepared['workspace'] != workspace:
                     raise RuntimeError('the selected workspace did not become file-ready')
@@ -281,9 +309,9 @@ with tempfile.TemporaryDirectory(prefix='th-import-') as tmp, ExitStack() as pla
             path, workspace, generation, observation = case
             start = time.perf_counter()
             system = observation['system']
-            if system == 'treeharbor':
+            if system in ('treeharbor', 'treeharbor-git'):
                 client('workspace-delete', '--key', 'delete-'+workspace,
-                    '--authority', 'standalone', '--epoch', '1', '--workspace', workspace,
+                    '--authority', authority, '--epoch', '1', '--workspace', workspace,
                     '--generation', str(generation))
                 node(observation['lane'], 'cleanup-once', '--workspace', workspace)
                 if client('workspace-status', '--workspace', workspace)['result']['state'] != 'deleted':
@@ -319,6 +347,20 @@ with tempfile.TemporaryDirectory(prefix='th-import-') as tmp, ExitStack() as pla
                             observation['git_metadata_allocated_bytes'] = allocated(git_dir)
                             if system == 'git-worktree':
                                 observation['git_metadata_allocated_bytes'] += allocated(path/'.git')
+                            if connected:
+                                if (git('-C', path, 'rev-parse', 'HEAD').decode().strip() != revision
+                                        or git('-C', path, 'rev-list', 'HEAD') != expected_history):
+                                    raise RuntimeError('Git workspace history differs from the fixture')
+                                if system == 'treeharbor-git':
+                                    if (git_dir != (path/'.git').resolve() or (path/'.git').is_symlink()
+                                            or (git_dir/'objects/info/alternates').exists()
+                                            or git('-C', path, 'remote')
+                                            or git('-C', path, 'status', '--porcelain', '--untracked-files=all')):
+                                        raise RuntimeError('Git-compatible workspace is not private and clean')
+                                    git('-C', path, 'fsck', '--strict', '--no-dangling')
+                                observation['verified_git_head_and_history'] = True
+                        elif connected and (path/'.git').exists():
+                            raise RuntimeError('file-only workspace contains Git metadata')
                         observation['verified_bytes_modes_paths'] = True
                     observations.extend(workers.map(cleanup, prepared_cases))
 
@@ -331,24 +373,24 @@ with tempfile.TemporaryDirectory(prefix='th-import-') as tmp, ExitStack() as pla
 
         medians = {system: summarize(system, statistics.median) for system in SYSTEMS}
         tails = {system: summarize(system, sample_p95) for system in SYSTEMS}
-        report={'version':3,'scope':'local-full-file-preparation',
+        report={'version':3,'scope':'local-connected-preparation' if connected else 'local-full-file-preparation',
             'source_revision':revision,'binary_sha256':hashlib.sha256(BIN.read_bytes()).hexdigest(),
             'binary_version':run(BIN,'--version').decode().strip(),
             'platform':platform.platform(),'machine':platform.machine(),'logical_cpus':os.cpu_count(),
             'git_version':git('--version').decode().strip(),
-            'postgres_version':sql('SHOW server_version').decode().strip(),
+            'postgres_version':connected['postgres_version'] if connected else sql('SHOW server_version').decode().strip(),
             'tracked_files':len(fixture['files']),'logical_file_bytes':fixture_bytes,
             'iterations':args.iterations,'concurrency':args.concurrency,'random_seed':args.seed,
             'git_checkout_workers':args.git_checkout_workers,
             'treeharbor_placement':'guarded-ext4' if slots else 'node-directory',
             'cache_state':'source objects present; no prepared tree; OS caches uncontrolled',
-            'setup':{'snapshot_pack_seconds':pack_seconds,'native_import_seconds':import_seconds,
-                     'git_mirror_seconds':mirror_seconds,
+            'setup':{**setup,'git_mirror_seconds':mirror_seconds,
                      'treeharbor_objects_allocated_bytes':allocated(store),
                      'git_mirror_allocated_bytes':allocated(mirror)},
             'observations':observations,'batches':batches,'sample_medians':medians,'sample_p95':tails,
             'limitations':['full files only; source already loaded on the same host',
-                'TreeHarbor snapshot vs Git full-history mirror; setup costs not directly equivalent',
+                ('Connected import completes before the measured phase' if connected
+                 else 'TreeHarbor snapshot vs Git full-history mirror; setup costs not directly equivalent'),
                 'no runtime, LLM, CI, GitHub, measured transport bytes or cold-cache claim',
                 'p95 is a nearest-rank sample statistic and is absent below 20 observations per system',
                 'working file blocks and per-task Git metadata are separate; total database/server CPU/RAM and storage not measured',
@@ -359,7 +401,8 @@ with tempfile.TemporaryDirectory(prefix='th-import-') as tmp, ExitStack() as pla
         if server is not None:
             server.terminate()
             server.wait(timeout=15)
-        log.close()
+        if log is not None:
+            log.close()
         if created:
             sql(f'DROP SCHEMA {schema} CASCADE')
 with OUT.open('x') as report_file:
