@@ -38,6 +38,7 @@ parser.add_argument('--workspace-volume', type=Path, action='append', default=[]
                     help='one dedicated disposable ext4 mount per concurrent TreeHarbor task')
 parser.add_argument('--volume-limit-bytes', type=int, default=128 * 1024 * 1024)
 parser.add_argument('--cow-driver', type=Path, help=argparse.SUPPRESS)
+parser.add_argument('--cow-shared-node', action='store_true', help=argparse.SUPPRESS)
 args = parser.parse_args()
 if not 1 <= args.iterations <= 100 or args.git_checkout_workers < 0:
     parser.error('iterations must be 1..100; checkout workers must be nonnegative')
@@ -50,6 +51,8 @@ if volumes and (platform.system() != 'Linux' or len(volumes) != args.concurrency
     parser.error('provide one distinct disposable Linux mount per task and a positive volume limit')
 if args.cow_driver and (not volumes or not args.cow_driver.is_absolute()):
     parser.error('the local overlay experiment requires guarded volumes and an absolute driver path')
+if args.cow_shared_node and not args.cow_driver:
+    parser.error('shared preparation requires the local overlay experiment')
 if not re.fullmatch(r'(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})', args.revision):
     parser.error('revision must be a full Git commit ID')
 BIN, OUT = args.binary.resolve(), args.output.resolve()
@@ -194,6 +197,9 @@ with tempfile.TemporaryDirectory(prefix='th-import-') as tmp, ExitStack() as pla
         nodes = {}
         for system in node_systems:
             for lane in range(args.concurrency):
+                if args.cow_shared_node and lane:
+                    nodes[system, lane] = nodes[system, 0]
+                    continue
                 principal = f'{system}-node-{lane}'
                 node_root = root/principal
                 storage = json.loads(run(BIN, 'node', 'initialize', '--root', node_root,
@@ -208,7 +214,8 @@ with tempfile.TemporaryDirectory(prefix='th-import-') as tmp, ExitStack() as pla
 
         def node(system, lane, action, *parts):
             node_root, storage, node_credential = nodes[system, lane]
-            placement = ('--cow-driver', args.cow_driver) if args.cow_driver and action in ('prepare-once', 'cleanup-once') else ()
+            placement = ('--cow-driver', args.cow_driver) if args.cow_driver and action in (
+                'prepare-once', 'prepare-batch', 'cleanup-once') else ()
             return json.loads(run(BIN, 'node', action, '--config', config,
                                   '--credential-file', node_credential,
                                   '--root', node_root, '--storage', storage, *parts, *placement))
@@ -241,6 +248,8 @@ with tempfile.TemporaryDirectory(prefix='th-import-') as tmp, ExitStack() as pla
                 '-c', 'checkout.workers='+str(args.git_checkout_workers),
                 *map(str, parts)], env=git_env, capture_output=True, timeout=240)
             if proc.returncode:
+                if os.environ.get('TH_BENCH_DIAGNOSTICS') == '1':
+                    print(proc.stderr.decode(errors='replace')[-1000:], flush=True)
                 raise RuntimeError('Git baseline failed with status '+str(proc.returncode))
             return proc.stdout
         start = time.perf_counter()
@@ -284,39 +293,46 @@ with tempfile.TemporaryDirectory(prefix='th-import-') as tmp, ExitStack() as pla
                         total+=p.lstat().st_blocks*512
                 dirs[:]=[n for n in dirs if (not exclude_git or n!='.git') and not (Path(parent)/n).is_symlink()]
             return total
+        def request_workspace(system):
+            workspace = str(uuid.uuid4())
+            format_args = ['--git-compatible'] if system == 'treeharbor-git' else []
+            created = client('workspace-create', '--key', 'create-'+workspace,
+                '--authority', authority, '--epoch', '1', '--workspace', workspace,
+                '--base', native_revision, '--profile-digest', profile, *format_args)
+            return workspace, created['result']['generation']
+
+        def observed_path(observation, prepared, workspace, start, requested, materialized):
+            if prepared['state'] != 'files_ready' or prepared['workspace'] != workspace:
+                if os.environ.get('TH_BENCH_DIAGNOSTICS') == '1':
+                    print('Unexpected preparation state:', prepared.get('state'), prepared.get('error'), flush=True)
+                raise RuntimeError('the selected workspace did not become file-ready')
+            if args.cow_driver:
+                if prepared.get('placement') != 'copy-on-write':
+                    raise RuntimeError('the selected workspace did not use the mounted view')
+                attempt = Path(prepared['manifest']).parent.parent
+                observation['overlay_writable_allocated_bytes'] = sum(
+                    allocated(attempt / name, exclude_git=False)
+                    for name in ('overlay-upper', 'overlay-work')
+                ) if os.environ.get('TH_BENCH_MEASURE_UPPER') == '1' else None
+            observation['treeharbor_preparation'] = {
+                'workspace_request_seconds': requested - start,
+                'node_prepare_command_seconds': materialized - requested,
+                'materialization_counters': prepared.get('preparation_statistics'),
+            }
+            return Path(prepared['path'])
+
         def prepare(system, wave, order, lane):
             observation = {'wave': wave, 'order': order, 'lane': lane, 'system': system}
             workspace = generation = None
             start = time.perf_counter()
             if system in node_systems:
-                workspace = str(uuid.uuid4())
-                git_workspace = system == 'treeharbor-git'
-                format_args = ['--git-compatible'] if git_workspace else []
-                created_reply = client('workspace-create', '--key', 'create-'+workspace,
-                    '--authority', authority, '--epoch', '1', '--workspace', workspace,
-                    '--base', native_revision, '--profile-digest', profile, *format_args)
+                workspace, generation = request_workspace(system)
                 requested = time.perf_counter()
                 slot_args = ['--slot', slots[system, lane]] if slots else []
-                git_args = ['--git', Path(GIT).absolute()] if git_workspace else []
+                git_args = ['--git', Path(GIT).absolute()] if system == 'treeharbor-git' else []
                 prepared = node(system, lane, 'prepare-once', '--workspace', workspace, *slot_args, *git_args)
                 materialized = time.perf_counter()
-                if prepared['state'] != 'files_ready' or prepared['workspace'] != workspace:
-                    raise RuntimeError('the selected workspace did not become file-ready')
-                if args.cow_driver and prepared.get('placement') != 'copy-on-write':
-                    raise RuntimeError('the selected workspace did not use the mounted view')
-                generation = created_reply['result']['generation']
-                path = Path(prepared['path'])
-                if args.cow_driver:
-                    attempt = Path(prepared['manifest']).parent.parent
-                    observation['overlay_writable_allocated_bytes'] = sum(
-                        allocated(attempt / name, exclude_git=False)
-                        for name in ('overlay-upper', 'overlay-work')
-                    ) if os.environ.get('TH_BENCH_MEASURE_UPPER') == '1' else None
-                observation['treeharbor_preparation'] = {
-                    'workspace_request_seconds': requested - start,
-                    'node_prepare_command_seconds': materialized - requested,
-                    'materialization_counters': prepared.get('preparation_statistics'),
-                }
+                path = observed_path(observation, prepared, workspace, start, requested, materialized)
             else:
                 destination = git_roots[lane] if git_roots else root
                 path = destination/f'{system}-{wave}-{lane}'
@@ -330,6 +346,37 @@ with tempfile.TemporaryDirectory(prefix='th-import-') as tmp, ExitStack() as pla
             read_useful(path)
             observation['first_read_seconds'] = time.perf_counter() - start
             return path, workspace, generation, observation
+
+        def prepare_shared(system, wave, order, workers):
+            start = time.perf_counter()
+            requests = list(workers.map(request_workspace, [system] * args.concurrency))
+            requested = time.perf_counter()
+            selection = root / f'prepare-{system}-{wave}.json'
+            targets = [{'workspace': workspace, 'slot': slots[system, lane]}
+                       for lane, (workspace, _) in enumerate(requests)]
+            fd = os.open(selection, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with os.fdopen(fd, 'w') as output:
+                json.dump(targets, output)
+            git_args = ['--git', Path(GIT).absolute()] if system == 'treeharbor-git' else []
+            results = node(system, 0, 'prepare-batch', '--selection', selection,
+                           '--parallelism', str(args.concurrency), *git_args)
+            materialized = time.perf_counter()
+            by_workspace = {row['workspace']: row for row in results}
+            if len(results) != len(by_workspace) or set(by_workspace) != {r['workspace'] for r in targets}:
+                raise RuntimeError('shared preparation response does not match its exact requests')
+            if len({row.get('path') for row in results}) != args.concurrency:
+                raise RuntimeError('shared preparation did not publish distinct placements')
+            if sum(row.get('preparation_statistics') is not None for row in results) != int(wave == 0):
+                raise RuntimeError('shared preparation did not build exactly one source image')
+            prepared = []
+            for lane, (workspace, generation) in enumerate(requests):
+                observation = {'wave': wave, 'order': order, 'lane': lane, 'system': system}
+                path = observed_path(observation, by_workspace[workspace], workspace, start, requested, materialized)
+                observation['files_ready_seconds'] = materialized - start
+                read_useful(path)
+                observation['first_read_seconds'] = time.perf_counter() - start
+                prepared.append((path, workspace, generation, observation))
+            return prepared
 
         def cleanup(case):
             path, workspace, generation, observation = case
@@ -360,8 +407,12 @@ with tempfile.TemporaryDirectory(prefix='th-import-') as tmp, ExitStack() as pla
                 rng.shuffle(order)
                 for index, system in enumerate(order):
                     start = time.perf_counter()
-                    prepared_cases = list(workers.map(
-                        lambda lane: prepare(system, wave, index, lane), range(args.concurrency)))
+                    shared = args.cow_shared_node and system in node_systems
+                    if shared:
+                        prepared_cases = prepare_shared(system, wave, index, workers)
+                    else:
+                        prepared_cases = list(workers.map(
+                            lambda lane: prepare(system, wave, index, lane), range(args.concurrency)))
                     batches.append({'wave': wave, 'order': index, 'system': system,
                                     'all_first_reads_seconds': time.perf_counter() - start})
                     for path, _, _, observation in prepared_cases:
@@ -388,7 +439,8 @@ with tempfile.TemporaryDirectory(prefix='th-import-') as tmp, ExitStack() as pla
                         elif connected and (path/'.git').exists():
                             raise RuntimeError('file-only workspace contains Git metadata')
                         observation['verified_bytes_modes_paths'] = True
-                    observations.extend(workers.map(cleanup, prepared_cases))
+                    observations.extend(map(cleanup, prepared_cases) if shared
+                                        else workers.map(cleanup, prepared_cases))
 
         def summarize(system, statistic):
             return {key: statistic([o[key] for o in observations if o['system'] == system])
@@ -409,7 +461,10 @@ with tempfile.TemporaryDirectory(prefix='th-import-') as tmp, ExitStack() as pla
             'iterations':args.iterations,'concurrency':args.concurrency,'random_seed':args.seed,
             'git_checkout_workers':args.git_checkout_workers,
             'treeharbor_placement':'overlay-on-guarded-ext4' if args.cow_driver else ('guarded-ext4' if slots else 'node-directory'),
-            'cache_state':'source objects present; separate initially empty nodes by system/lane; OS caches uncontrolled',
+            'treeharbor_nodes_per_system':1 if args.cow_shared_node else args.concurrency,
+            'cache_state':('source objects present; initially empty node per system; OS caches uncontrolled'
+                if args.cow_shared_node else
+                'source objects present; separate initially empty nodes by system/lane; OS caches uncontrolled'),
             'setup':{**setup,'git_mirror_seconds':mirror_seconds,
                      'treeharbor_objects_allocated_bytes':allocated(store),
                      'git_mirror_allocated_bytes':allocated(mirror)},
@@ -424,8 +479,11 @@ with tempfile.TemporaryDirectory(prefix='th-import-') as tmp, ExitStack() as pla
                 'read correctness checked; no untrusted code executed',
                 'not a full cost, durability or throughput comparison']}
         if args.cow_driver:
-            lower = [root / f'.treeharbor-cow-{storage}' / 'image' for _, storage, _ in nodes.values()]
+            lower = {root / f'.treeharbor-cow-{storage}' / 'image' for _, storage, _ in nodes.values()}
+            report['setup']['treeharbor_lower_image_count'] = len(lower)
             report['setup']['treeharbor_lower_allocated_bytes'] = sum(allocated(path, exclude_git=False) for path in lower)
+        if args.cow_shared_node:
+            report['limitations'].append('One node per format prepares concurrently; files are read after the whole batch reply and cleanup runs serially on that node')
     finally:
         if server is not None:
             server.terminate()

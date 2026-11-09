@@ -166,6 +166,26 @@ Copy-on-Write and 1,023 ms with guarded copy. The source was already local and
 OS caches were uncontrolled. The prototype is unreleased and requires
 further work on driver provisioning, source image lifecycle and reboot recovery.
 
+A bounded local batch can prepare four separate guarded slots on one node
+against one source image per format. The two-format fixture used 17.9 MB for
+its lower images on shared nodes and 71.7 MB on independent nodes. In the
+same four-run comparison, the first Git-compatible batch reached all four
+reads in a median 1.13 s, down from 1.73 s on independent nodes. Repeated
+batches reached all four reads in 127 ms with a shared image and 116 ms
+with Git worktree in the shared-image runs. All 384 completed placements
+passed the content, Git history and cleanup checks. These figures cover
+local preparation. The batch returns after all preparations and the test
+cleans up each slot serially on a shared node.
+
+On a second synthetic tree with 8,195 files, the same build verified
+192 placements. With one Git checkout worker, repeat group medians were
+152 ms for Git-compatible Copy-on-Write and 315 ms for Git worktree.
+The first group took 2.75 s and 0.40 s respectively. The two-checkout-worker
+run measured 339 ms and 1,156 ms for repeat groups, with substantially
+more run-to-run variation. Both runs used local source and a two-CPU
+Linux VM. This measures time through first file reads with all four
+placements, before agent execution or CI.
+
 ## 0.1.12-alpha.1 release scope
 
 Current documentation additions: [first-run checkpoints](try-treeharbor.md), a
