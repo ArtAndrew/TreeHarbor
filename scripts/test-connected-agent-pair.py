@@ -33,6 +33,7 @@ class Fake:
         self.fault = None
         self.status_wrong = False
         self.base_wrong = False
+        self.workspace_format = "native"
         self.prepared_wrong = False
         self.removed_false = False
 
@@ -50,7 +51,8 @@ class Fake:
             self.calls.append((label, list(argv)))
         if action == "workspace-status":
             return {"workspace": a["workspace"], "base": "native:sha256:" + "9" * 64 if self.base_wrong else self.c["baseline"]["revision"],
-                    "state": "ready", "generation": a["generation"], "epoch": self.c["epoch"], "format": "native", "profile_resolved": True}
+                    "state": "ready", "generation": a["generation"], "epoch": self.c["epoch"],
+                    "format": self.workspace_format, "profile_resolved": True}
         if action == "prepared":
             return {"workspace": a["workspace"], "state": "files_ready", "runtime": None,
                     "snapshot": "sha256:" + "9" * 64 if self.prepared_wrong else self.c["baseline"]["snapshot"], **a["prepared"]}
@@ -188,6 +190,24 @@ class PairTests(unittest.TestCase):
         self.act("execute")
         self.assertTrue(all(v["execute"] == 1 for v in self.fake.counts.values()))
         self.assertFalse(any(Path(a["credential"]).exists() for a in self.c["agents"]))
+
+    def test_git_compatible_workspace_requires_explicit_matching_format(self):
+        self.fake.workspace_format = "git-compatible"
+        with self.assertRaisesRegex(pair.Error, "Workspace is not ready"):
+            self.act("request")
+        self.assertTrue(all(v["request"] == 0 for v in self.fake.counts.values()))
+
+        config = deepcopy(self.c)
+        config["workspace_format"] = "git-compatible"
+        with self.assertRaisesRegex(pair.Error, "original pair config"):
+            self.act("request", config)
+        config["state"] += "-git-compatible"
+        self.c = config
+        self.fake = Fake(config)
+        self.fake.workspace_format = "git-compatible"
+        self.act("initialize")
+        self.running_pair()
+        self.assertTrue(all(v["accepted"] for v in self.act("capture")["agents"].values()))
 
     def test_lost_committed_mutation_replies_recover_original_key_without_duplicate(self):
         self.fake.fault = ("A", "request")

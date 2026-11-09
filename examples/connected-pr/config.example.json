@@ -4,6 +4,7 @@
   "tenant": "<tenant>",
   "repository": "<repository UUID>",
   "epoch": 1,
+  "workspace_format": "native",
   "binary": "<absolute resolved installed executable>",
   "binary_sha256": "<verified archive executable SHA256>",
   "socket": "<absolute service socket>",

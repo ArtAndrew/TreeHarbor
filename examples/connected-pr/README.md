@@ -63,6 +63,11 @@ fail validation. Fill the actual scope, baseline, prepared paths, node identitie
 runtime profile, credential paths and approved argv. Use new nonnil UUIDs for
 each run/seal/ChangeSet and distinct operation keys; preserve them on retry.
 
+The helper expects native workspaces when `workspace_format` is omitted. For
+workspaces created with `workspace-create --git-compatible`, set
+`"workspace_format": "git-compatible"` before initializing the pair journal.
+Both prepared workspaces must match the configured format.
+
 `binary` must name the resolved **regular executable**, not the installer's
 `bin/treeharbor` symlink. Verify its hash against the independently verified
 archive. For example, inspect `realpath /your/prefix/bin/treeharbor` and
