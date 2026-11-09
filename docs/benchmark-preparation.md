@@ -5,9 +5,11 @@ source, read one pinned file, verify the tree, then clean up. It uses the real
 TreeHarbor CLI, local service, PostgreSQL and object store. The Git cases use the
 same private bare mirror and exact commit. No agent code runs.
 
-**The first small-workload sample favors Git worktree.** There is no demonstrated
-TreeHarbor speed advantage. The useful question is whether retaining proposals and
-explicit task/source identities helps your workflow enough to justify the service.
+**Results depend on the workload and build.** Early small-workload samples favor
+Git worktree. The [unreleased shared-image experiment](#shared-source-images--9-november-2026)
+is faster on repeat preparation of the larger tested tree; its first preparation
+still loses to Git. These measurements do not establish a general performance or
+infrastructure-cost advantage.
 
 ## Reproduce
 
@@ -420,3 +422,104 @@ objects from the durable store. First-wave timing includes building the
 cache. The sample measures local preparation through the first file read.
 It excludes execution runtime, network transfer and GitHub activity.
 [Raw observations](benchmarks/connected-packed-source-linux-arm64-2k-c4.json).
+
+## Shared source images — 9 November 2026
+
+An unreleased Linux Copy-on-Write prototype reuses a verified source image and
+prepares four independent writable layers. The batch returns after all four
+preparations; the table measures time through the **last of four first reads**.
+These group statistics differ from per-workspace timings in earlier sections.
+No coding-agent process or CI job executes in this benchmark.
+
+All runs used a two-CPU ARM64 Linux 6.8 VM, PostgreSQL 18.6 and Git 2.43.0.
+Source import and a private Git mirror were already complete. OS caches were
+uncontrolled. Both formats used four guarded ext4 workspace volumes, including
+the Git worktree destinations. Fixture contents, paths, modes, Git HEAD/history,
+clean status, object consistency and acknowledged cleanup were checked.
+The [raw reports](benchmarks/connected-cow-linux-arm64-20261109.json) retain
+456 verified placements, source commits, executable hashes and phase counters.
+
+| Profile | Files | Git checkout workers per task | First group: TreeHarbor / Git | Repeat group median: TreeHarbor / Git |
+| --- | ---: | ---: | ---: | ---: |
+| Shared image in node-parent filesystem; two runs | 2,051 | 1 | 1,132 / 119 ms | 127 / 116 ms |
+| Shared image in node-parent filesystem | 8,195 | 1 | 2,752 / 397 ms | 152 / 315 ms |
+| Shared image in node-parent filesystem, separate run | 8,195 | 2 | 2,831 / 797 ms | 339 / 1,156 ms |
+| Dedicated source filesystem, final build | 8,195 | 1 | 2,068 / 572 ms | 161 / 335 ms |
+
+The first row combines two runs, each with one initial and seven repeat groups.
+The next two rows each contain one initial and seven repeat groups. The final
+row has one initial and five repeat groups. Each group contains four workspaces.
+The first-column numbers for a single run are individual observations, not
+reliable cold-start percentiles. Checkout workers are Git's internal setting;
+**all rows have four concurrent workspace tasks**.
+
+The final build's repeat group median was about 2.1x faster than Git worktree
+in that run. Git remained faster for initial preparation and for the smaller
+shared-image fixture. The two-worker run was substantially slower for both
+systems and does not isolate the effect of worker count. Different source
+placements and builds also prevent treating this table as a scaling curve.
+There is no broad p95, total-cost or production-throughput claim.
+
+The dedicated source image used a held filesystem descriptor opened before
+staging writes. Its measured source-file writeback took 23.4 ms in the
+Git-compatible builder. That phase is only part of the 2,068 ms preparation;
+read authorization, source construction, Git metadata, mounting, publication
+and database acknowledgement still contribute. Provisioning and retiring test
+filesystems are outside the timed interval. Physical upper-layer allocation,
+server CPU/RAM, network transfer, builds and CI are not included.
+
+Earlier rows correspond to source `dc304236f129757b9e189e8d9e8b6355e7632685`
+and executable SHA-256
+`e72f9920599e95daacf04cfd17847fefebeecb8d98836510d10f6810bae0f59f`.
+The final row corresponds to source `888fe37970fb671b73063dafd3d5540db12f7a58`
+and executable SHA-256
+`b35088198ecf34c7fa704c63cc25e1d9d8aed5228b937c8d934263ae1f20034b`.
+These are local optimized prototype builds, **not signed release packages**.
+The latest signed 0.1.15-alpha.1 uses the ordinary materialization path.
+
+### Reproducing the experimental path
+
+Generate the 8,195-entry fixture with `--modules 64 --files-per-module 128`.
+Its commit is `d2784632f690f8e2a226f0f4e084f7bd9f44bcc1`; each generated data
+file is 4 KiB. Create a bundle of its main ref. Use a disposable Linux host,
+matching optimized CLI, PostgreSQL and four private 64 MiB ext4 workspace
+mounts. The dedicated-source variant additionally needs two distinct empty
+64 MiB ext4 mounts, each with a private `source` directory, one per format.
+
+The existing Connected transport fixture accepts a private JSON specification
+through `TH_TEST_CONNECTED_PREPARATION`: `bundle` is the absolute bundle path,
+`git_revision` is `git:sha1:` followed by the fixture commit, and `arguments`
+is an array of benchmark-script arguments. Set `TH_TEST_GIT_WORKSPACE_BINARY`
+to the optimized CLI and `TH_SERVICE_TEST_DATABASE_URL` to the disposable
+PostgreSQL connection. Invoke:
+
+```sh
+cargo test -p treeharbor-service --test transport \
+  github::github_source_http_preserves_exact_git_history_after_partial_upload_and_server_death \
+  -- --exact --ignored --nocapture
+```
+
+Use the ordinary `--repository`, `--revision`, `--output`, `--concurrency 4`,
+`--iterations 6`, `--seed 421`, `--git-checkout-workers 1` and
+`--volume-limit-bytes 67108864` arguments. Supply four `--workspace-volume`
+paths, `--cow-shared-node`, and an absolute `--cow-driver` executable.
+For the dedicated-source variant add two `--cow-source-volume` paths in
+native/Git-compatible order. Registration and an empty source image precede
+the timed preparation. The fixture imports exact source through the real
+local service and uses disposable authority evidence; it does not contact GitHub.
+
+A trusted operator must currently provide the driver. It receives
+`mount|unmount lower upper work view`, restricts every path to the approved
+private experiment roots, and manages an OverlayFS mount with
+`nodev,nosuid,xino=on,metacopy=off,redirect_dir=nofollow,index=off` and private
+mount propagation. The node independently verifies the actual placement.
+The driver must detach the exact view and remove the kernel's empty work
+subdirectory after unmount. Provisioning and teardown are operator work;
+there is no supported general-purpose driver or automatic installer yet.
+See [prototype scope](experimental-cow.md) before using these hidden flags.
+
+To recompute a row from the raw bundle, select its named run(s), filter
+`report.batches` to `system == "treeharbor-git"` or `"git-worktree"`, and
+partition by `wave == 0`. Take the median `all_first_reads_seconds` in each
+partition and multiply by 1,000. Do not pool group timings with per-workspace
+observations or combine different executable hashes without labeling them.

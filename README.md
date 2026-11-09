@@ -22,7 +22,7 @@ TreeHarbor is an independent implementation and is not affiliated with Anthropic
 
 > **The Connected PR Preview is available in [signed alpha releases](https://github.com/ArtAndrew/TreeHarbor/releases).**
 > Signed Linux packages and the exact tested scope are in the release notes.
-> Latest preview: [0.1.13-alpha.1 — Git-compatible Connected workspaces](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.13-alpha.1).
+> Latest preview: [0.1.15-alpha.1 — faster repeat Connected workspaces](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.15-alpha.1).
 > Evaluate on disposable pilot repositories. The full Connected and Standalone
 > releases remain incomplete; production use is not supported.
 > [What works](#what-works-today) · [What remains](#what-remains-before-a-full-release) ·
@@ -66,10 +66,30 @@ offers an optional [Git-compatible workspace](docs/local-node.md) with a private
 checkout pinned to the imported commit.
 
 The intended benefit is lower workspace preparation cost and less coordination
-between an agent's edit and accepted code. **A performance advantage has not yet
-been measured.** Tuned Git worktrees, partial/sparse checkout and caches remain
-the comparison baseline. A [small local preparation probe](docs/benchmark-preparation.md)
-currently favors Git worktree; raw observations and limitations are published.
+between an agent's edit and accepted code. Tuned Git worktrees, partial/sparse
+checkout and caches remain the comparison baseline.
+
+## Measured progress: four workspaces from one source image
+
+An **unreleased Copy-on-Write prototype** prepares a source image once and gives
+each workspace its own writable layer. It avoids writing the same source files
+again for every task. This is an operator-only experiment, separate from the
+signed alpha packages.
+
+On a local two-CPU ARM64 Linux VM, four concurrent Git-compatible workspaces
+with 8,195 files produced these times through the first read in **all four**:
+
+| Preparation | TreeHarbor prototype | Git worktree |
+| --- | ---: | ---: |
+| First group, source image empty | 2.068 s | **0.572 s** |
+| Repeat groups, median of five | **0.161 s** | 0.335 s |
+
+Repeat preparation was about **2.1× faster** in this run. Git remained faster
+for the first group and in earlier small-tree tests. Both systems started with
+local source objects; OS caches were uncontrolled. This measures preparation,
+not coding-agent execution, CI, production throughput or total cost.
+[Results, build identities and raw data](docs/benchmark-preparation.md#shared-source-images--9-november-2026) ·
+[Prototype scope and remaining work](docs/experimental-cow.md).
 
 ## The workflow
 
@@ -107,8 +127,9 @@ host. All interfaces require operator setup and scoped credentials.
 Managed task execution additionally uses external gVisor; external API tasks use
 your execution environment. There is no managed cloud service or automatic host
 provisioning. Source is available under [Elastic License 2.0](LICENSE), with no
-workspace-count limit. Git import/export provides an exit path; a virtual filesystem,
-GitLab integration and a measured speed advantage are not available today.
+workspace-count limit. Git import/export provides an exit path. GitLab integration
+and a filesystem that fetches missing source files on demand are not available.
+The Copy-on-Write performance experiment above is not in the signed packages.
 
 ## What differs from Scion?
 
@@ -121,7 +142,7 @@ checked October 28, 2026; TreeHarbor's column distinguishes released and experim
 | --- | --- | --- |
 | Adoption | Migrated monorepo with bespoke review, search and CI | Connected alpha.1 returns ordinary GitHub PRs; existing review/CI/main remain authoritative |
 | Deployment | Spanner, blob storage and tiered regional caches for its fleet | One documented PostgreSQL/local-storage Linux profile; manual setup, no vendor cloud account required |
-| Files | Sparse and virtualized checkouts | Full/sparse materialized files; virtual filesystem is not implemented; alpha.1 uses native workspaces without `.git` |
+| Files | Sparse and virtualized checkouts | Full/sparse materialized files and optional private `.git`; shared Copy-on-Write images are experimental; on-demand file fetching is not implemented |
 | Data model | First-parent file deltas plus derived indexes | Content-addressed snapshots and versioned ChangeSets with explicit base/run lineage |
 | Integration | Emphasis on post-merge and pre-deploy testing at its scale | Alpha.1 delegates checks/review/merge to GitHub; managed queue and Standalone remain experimental |
 | Distribution | Internal deployment described in the article | Signed alpha Linux packages and source under standard ELv2; early controlled evaluation |

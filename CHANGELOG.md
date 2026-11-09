@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Add an operator-only Copy-on-Write preparation path with one verified source
+  image per node, separate writable workspace layers and guarded runtime views.
+  A bounded batch prepares independent slots concurrently.
+- Support an explicitly registered source filesystem with durable ownership
+  and writeback checks. Missing or mismatched placements fail closed.
+- Publish first/repeat four-workspace measurements and raw data, including
+  cases where Git worktree remains faster. This prototype is not a signed
+  release or a supported deployment; see [scope and limits](docs/experimental-cow.md).
+
 ## 0.1.15-alpha.1 — faster repeat Connected workspaces
 
 - Stage authorized Git history in one private scratch file.
