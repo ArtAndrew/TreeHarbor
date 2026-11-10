@@ -40,8 +40,9 @@ change server refs, move authority or grant permission to merge.
 
 ## Export several branches
 
-Resolve each branch with `ref_resolve` in [native integration](native-integration.md)
-and download a [source pack](live-source-export.md) for its exact `head`. For a
+Capture the desired tips with [`ref_snapshot`](native-integration.md#capture-the-current-branch-tips)
+or resolve an individual branch with `ref_resolve`. Download a
+[source pack](live-source-export.md) for each exact `head`. For a
 final migration capture, stop branch writers before resolving the tips and keep
 the service available for reads. Authority transfer is a separate operation.
 Then pass one `--ref BRANCH=PACK` per branch. Branches at the same tip can use the

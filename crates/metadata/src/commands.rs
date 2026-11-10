@@ -30,6 +30,7 @@ impl CommandError {
             Self::Metadata(Error::Forbidden) => "forbidden",
             Self::Metadata(Error::NotFound) => "not_found",
             Self::Metadata(Error::Fenced) => "repository_fenced",
+            Self::Metadata(Error::NativeRefSnapshotLimit) => "native_ref_snapshot_limit",
             Self::Metadata(Error::ExecutionState) => "execution_state_changed",
             Self::Metadata(Error::IdempotencyConflict) => "idempotency_conflict",
             Self::Metadata(Error::VersionConflict) => "version_conflict",

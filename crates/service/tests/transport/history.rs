@@ -137,6 +137,13 @@ async fn history_cli_preserves_criss_cross_pagination_and_scoped_reads_after_res
         Some("human"),
         &["repository.write", "policy.write", "read"],
     );
+    let vector: Value =
+        serde_json::from_str(include_str!("../fixtures/native-ref-snapshot-v1.json")).unwrap();
+    let capture = |fixture: &Fixture| native::native(fixture, vector["request"].clone());
+    let mut empty = vector["empty"].clone();
+    empty["tenant"] = json!(f.scope.tenant());
+    empty["repository"] = json!(f.scope.repository());
+    assert_eq!(native::ok(capture(&f)), empty);
     let digest = ObjectId::from_bytes([7; 32]).to_string();
     let policy = native::ok(native::native(
         &f,
@@ -206,6 +213,10 @@ async fn history_cli_preserves_criss_cross_pagination_and_scoped_reads_after_res
         .get(0);
     let mut export = Command::new(env!("CARGO_BIN_EXE_treeharbor"));
     export.arg("git-export");
+    let captured = native::ok(capture(&f));
+    let captured_refs = captured["refs"].as_array().unwrap();
+    assert_eq!(captured_refs.len(), branches.len());
+    assert_eq!(captured["epoch"], 1);
     for name in ["left", "right", "disconnected"] {
         let pack = f.dir.path().join(format!("export={name}"));
         let downloaded = f.cli(&[
@@ -225,12 +236,16 @@ async fn history_cli_preserves_criss_cross_pagination_and_scoped_reads_after_res
             String::from_utf8_lossy(&downloaded.stderr)
         );
     }
-    for (branch, root) in &branches {
-        let state = native::ok(native::native(
-            &f,
-            json!({"action":"ref_resolve","name":branch}),
-        ));
+    for (state, (branch, root)) in captured_refs.iter().zip(&branches) {
+        assert_eq!(state["name"], *branch);
         assert_eq!(state["head"], roots[root]);
+        assert_eq!(
+            state["snapshot"],
+            commits[&roots[root]].snapshot.to_string()
+        );
+        assert_eq!(state["generation"], 1);
+        assert_eq!(state["policy"], policy["policy"]);
+        assert_eq!(state["epoch"], captured["epoch"]);
         let pack = f.dir.path().join(format!("export={root}"));
         export
             .arg("--ref")
@@ -307,6 +322,19 @@ async fn history_cli_preserves_criss_cross_pagination_and_scoped_reads_after_res
         .unwrap();
     assert!(!failed.status.success());
     assert!(!incomplete.exists());
+    f.sql.execute(r#"INSERT INTO th_native_refs(tenant,repository,name,head,generation,epoch,policy,pin_holder)
+        SELECT r.tenant,r.repository,'fixture-ref-' || i,r.head,r.generation,r.epoch,r.policy,r.pin_holder
+        FROM th_native_refs r CROSS JOIN generate_series(1,125) AS i
+        WHERE r.tenant=$1 AND r.repository=$2 AND r.name='left'"#,
+        &[&f.scope.tenant(), &f.scope.repository()],
+    ).await.unwrap();
+    let overflow = capture(&f);
+    assert!(!overflow.status.success());
+    let overflow: Value = serde_json::from_slice(&overflow.stdout).unwrap();
+    assert_eq!(overflow["error"]["code"], "native_ref_snapshot_limit");
+    assert!(overflow.get("result").is_none());
+    f.sql.execute("DELETE FROM th_native_refs WHERE tenant=$1 AND repository=$2 AND name LIKE 'fixture-ref-%'",
+        &[&f.scope.tenant(), &f.scope.repository()]).await.unwrap();
     let bases = ok(history(
         &f,
         &["merge-bases", "--left", left, "--right", right],
@@ -465,6 +493,8 @@ async fn history_cli_preserves_criss_cross_pagination_and_scoped_reads_after_res
         f.credential_path.to_str().unwrap(),
     ]);
     assert!(!history(&f, &["log", "--revision", left]).status.success());
+    empty["repository"] = json!(other);
+    assert_eq!(native::ok(capture(&f)), empty);
     f.credential_path = original_credential;
     f.sql
         .execute(
@@ -474,6 +504,10 @@ async fn history_cli_preserves_criss_cross_pagination_and_scoped_reads_after_res
         .await
         .unwrap();
     assert!(!history(&f, &["log", "--revision", left]).status.success());
+    let stale = capture(&f);
+    assert!(!stale.status.success());
+    let stale: Value = serde_json::from_slice(&stale.stdout).unwrap();
+    assert_eq!(stale["error"]["code"], "repository_fenced");
     let args = [
         "history",
         "--authority",
@@ -495,6 +529,7 @@ async fn history_cli_preserves_criss_cross_pagination_and_scoped_reads_after_res
         issued["token_id"].as_str().unwrap(),
     ]);
     assert!(!f.cli(&args).status.success());
+    assert!(!capture(&f).status.success());
     drop(server);
     f.cleanup().await;
 }

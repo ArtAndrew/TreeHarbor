@@ -586,7 +586,7 @@ async fn handle(
         Err(failure) => {
             let status = match failure.code() {
                 "invalid_request" => StatusCode::BAD_REQUEST,
-                "request_too_large" => StatusCode::PAYLOAD_TOO_LARGE,
+                "request_too_large" | "native_ref_snapshot_limit" => StatusCode::PAYLOAD_TOO_LARGE,
                 "unauthenticated" => StatusCode::UNAUTHORIZED,
                 "forbidden" => StatusCode::FORBIDDEN,
                 "not_found" => StatusCode::NOT_FOUND,

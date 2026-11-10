@@ -92,6 +92,7 @@ object/policy digests are `sha256:<64 lowercase hex>` and revisions are
 | `ref_create` | `name`, `head` (registered native revision), `policy` (digest) | `repository.write` |
 | `ref_policy` | `name`, `generation` (expected current), `policy` | `policy.write` |
 | `ref_resolve` | `name` | `read` |
+| `ref_snapshot` | None | `read` |
 | `enqueue` | `entry` UUID, `target`, `changeset` UUID, `version` | `queue.request`, proposal owner |
 | `queue_pending` | `target`, `after` (nonnegative position), `limit` (1–100) | `read` |
 | `queue_status` | `entry` UUID | `read` |
@@ -105,6 +106,21 @@ object/policy digests are `sha256:<64 lowercase hex>` and revisions are
 | `review` | `candidate`, `review` UUID, `decision` | allowed human reviewer |
 | `review_revoke` | `review` UUID | original reviewer |
 | `land` | `candidate` UUID | `integration.control` |
+
+### Capture the current branch tips
+
+Send `{"action":"ref_snapshot"}` on the local `native` command. The v1 result
+contains `version`, `tenant`, `repository`, `authority`, `epoch` and `refs`.
+Each entry has the `name`, `head`, `snapshot`, `generation`, `epoch` and `policy`
+returned by `ref_resolve`. The service reads the complete set under a shared
+repository lock, in branch-name byte order. An empty repository has `refs: []`.
+More than 128 branches returns HTTP 413 with `native_ref_snapshot_limit`.
+An inactive or changed authority returns `repository_fenced`.
+
+Use the returned exact heads and epoch for [source export](live-source-export.md)
+and [one Git bundle](git-export.md#export-several-branches). The snapshot
+describes one instant. The caller must stop branch writers and verify the final
+tips separately for an authority transfer.
 
 ### Start a new project with empty history
 

@@ -23,6 +23,12 @@ file bytes. Removing a shared object from one input prevents publication even
 when another input still has it. The archive carries source history. Repository
 backup and transfer of write authority have their own gates.
 
+The read-only [`ref_snapshot` action](native-integration.md#capture-the-current-branch-tips)
+captures the complete branch set and authority epoch in one transaction. The
+transport trial uses that snapshot for the export. It checks the empty result,
+repository scoping, stale epoch and credential revocation, and refusal when the
+complete set exceeds 128 refs.
+
 ## Leased controller tasks — 0.1.19-alpha.1
 
 [Remote task assignment](remote-tasks-v1.md) queues an exact registered base
