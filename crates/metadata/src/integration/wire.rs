@@ -71,6 +71,7 @@ pub enum WireCommand {
     RefResolve {
         name: String,
     },
+    RefSnapshot {},
     Enqueue {
         key: String,
         epoch: i64,
@@ -276,6 +277,7 @@ impl WireCommand {
                 .await
             }
             Self::RefResolve { name } => db.resolve_native_ref(auth, &name).await,
+            Self::RefSnapshot {} => db.snapshot_native_refs(auth).await,
             Self::Enqueue {
                 key,
                 epoch,

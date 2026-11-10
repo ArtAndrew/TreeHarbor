@@ -128,6 +128,8 @@ pub enum Error {
     UploadMembership,
     #[error("native integration state is not ready for this operation")]
     IntegrationState,
+    #[error("native ref snapshot exceeds the 128-ref limit")]
+    NativeRefSnapshotLimit,
     #[error("native target head, generation or policy changed")]
     StaleCandidate,
     #[error("native candidate lacks current checks or review authorization")]
