@@ -610,19 +610,22 @@ class Harness:
         run = str(uuid.uuid4())
         request = ["run-request", "--key", "reuse-run-" + run, "--authority", "standalone", "--epoch", "1",
                    "--run", run, "--workspace", workspace, "--generation", "1", "--profile-digest", case["profile"],
-                   "--agent", "replacement", "--task", "reuse", "--", "/probe", "once", "3000"]
+                   "--agent", "replacement", "--task", "reuse", "--", "/probe", "once-until-release"]
         first = self.client(*request, credential=case["credential"])
         successor = dict(case, workspace=workspace, run=run, request=request, first=first,
                          attempt=self.sql(f"SELECT attempt FROM th_managed_runs WHERE run='{run}'"))
         self.cases.append(successor)
         active = self.start(successor)
-        wait_until(lambda: (case["files"] / "executions").exists())
+        wait_until(lambda: (case["files"] / "executions").exists()
+                   and self.status(successor)["state"] == "running")
         replay = self.start_cleanup(case)
         out, err = replay.communicate(timeout=45)
         assert replay.returncode == 0, (out, err)
         assert json.loads(out) == result
         assert (case["files"] / "same.txt").read_text() == "successor edits"
-        assert self.status(successor)["state"] == "running"
+        state = self.status(successor)
+        assert state["state"] == "running", state
+        (case["files"] / "release-once").touch()
         self.finish(successor, active)
         assert (case["files"] / "executions").read_bytes() == b"one execution\n"
         self.cleanup_workspace(successor)

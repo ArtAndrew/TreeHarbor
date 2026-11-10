@@ -604,13 +604,7 @@ async fn migration_from_published_v1_preserves_existing_repository_and_is_repeat
         panic!()
     };
     tx.complete(json!({"ok":true}), vec![]).await.unwrap();
-    assert_eq!(
-        raw.query_one("SELECT version FROM th_schema_version", &[])
-            .await
-            .unwrap()
-            .get::<_, i32>(0),
-        32
-    );
+    crate::common::assert_latest_schema(&raw).await;
     cleanup(&schema).await;
 }
 

@@ -1,6 +1,17 @@
 use tokio_postgres::{Client, NoTls};
 use treeharbor_metadata::{Authority, Metadata, Scope};
 use uuid::Uuid;
+
+#[allow(dead_code)]
+pub async fn assert_latest_schema(raw: &Client) {
+    let version = raw
+        .query_one("SELECT version FROM th_schema_version", &[])
+        .await
+        .unwrap()
+        .get::<_, i32>(0);
+    assert_eq!(version, 33);
+}
+
 pub async fn connection(schema: &str) -> Client {
     let url = std::env::var("TH_TEST_DATABASE_URL")
         .expect("set TH_TEST_DATABASE_URL to a disposable local PostgreSQL database");

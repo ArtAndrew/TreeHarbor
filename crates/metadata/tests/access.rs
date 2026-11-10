@@ -907,13 +907,7 @@ async fn published_v3_upgrade_retains_workspace_pins_and_receipts_without_granti
         .get(0);
     f.db.migrate().await.unwrap();
     f.db.migrate().await.unwrap();
-    assert_eq!(
-        raw.query_one("SELECT version FROM th_schema_version", &[])
-            .await
-            .unwrap()
-            .get::<_, i32>(0),
-        32
-    );
+    crate::common::assert_latest_schema(&raw).await;
     assert_eq!(
         raw.query_one("SELECT count(*) FROM th_access_tokens", &[])
             .await
