@@ -201,7 +201,7 @@ pub(crate) async fn prepare(
     operation: Arc<Operation>,
     binding: [u8; 32],
     driver: &Path,
-    git: Option<&Path>,
+    git: Option<crate::GitPreparation<'_>>,
 ) -> Result<MaterializedTree> {
     if operation.volume.is_none() || request.limits.max_workspace_bytes > 256 * 1024 * 1024 {
         return Err(Error::Configuration);

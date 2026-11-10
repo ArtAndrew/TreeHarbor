@@ -1,4 +1,5 @@
 use super::*;
+use std::path::Path;
 #[path = "github/admission_policy.rs"]
 mod admission_policy;
 #[path = "github/events.rs"]
@@ -71,6 +72,8 @@ struct ConnectedPreparationBenchmark {
     bundle: PathBuf,
     git_revision: String,
     arguments: Vec<String>,
+    #[serde(default)]
+    reuse_git_pack: bool,
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -87,24 +90,39 @@ async fn github_source_http_preserves_exact_git_history_after_partial_upload_and
     let benchmark = std::env::var_os("TH_TEST_CONNECTED_PREPARATION").map(|path| {
         serde_json::from_slice::<ConnectedPreparationBenchmark>(&fs::read(path).unwrap()).unwrap()
     });
-    if let Some(benchmark) = &benchmark {
-        let captured = Command::new(&f.binary)
-            .args(["git-import", "--git", "/usr/bin/git", "--bundle"])
-            .arg(&benchmark.bundle)
-            .arg("--commit")
-            .arg(&benchmark.git_revision)
-            .arg("--output")
-            .arg(&pack_path)
-            .output()
+    let capture_seconds = if let Some(benchmark) = &benchmark {
+        use treeharbor_git_bridge::{Limits, WorkspacePackScope};
+        use treeharbor_service::pack::{GitCapture, capture_git, capture_git_with_workspace_pack};
+        let RevisionRef::Git(commit) = benchmark.git_revision.parse().unwrap() else {
+            panic!("expected an exact Git revision");
+        };
+        let capture = GitCapture {
+            git: Path::new("/usr/bin/git"),
+            bundle: &benchmark.bundle,
+            commit,
+            output: &pack_path,
+            limits: Limits::default(),
+        };
+        let start = std::time::Instant::now();
+        if benchmark.reuse_git_pack {
+            capture_git_with_workspace_pack(
+                capture,
+                &WorkspacePackScope {
+                    tenant: f.scope.tenant().into(),
+                    repository: f.scope.repository(),
+                    epoch: 1,
+                },
+            )
             .unwrap();
-        assert!(
-            captured.status.success(),
-            "{}",
-            String::from_utf8_lossy(&captured.stderr)
-        );
+            assert!(pack_path.join("workspace-git-v1/objects.pack").is_file());
+        } else {
+            capture_git(capture).unwrap();
+        }
+        Some(start.elapsed().as_secs_f64())
     } else {
         git_history_pack(&f, &pack_path);
-    }
+        None
+    };
     let pack = treeharbor_service::pack::Pack::open(&pack_path).unwrap();
     let manifest: Value =
         serde_json::from_slice(&fs::read(pack_path.join("manifest.json")).unwrap()).unwrap();
@@ -205,7 +223,9 @@ async fn github_source_http_preserves_exact_git_history_after_partial_upload_and
     assert_eq!(completed["git_revision"], revision);
     drop(server);
     drop(pack);
-    fs::remove_dir_all(pack_path).unwrap();
+    if !benchmark.as_ref().is_some_and(|b| b.reuse_git_pack) {
+        fs::remove_dir_all(&pack_path).unwrap();
+    }
     let server = f.start().await;
     assert_eq!(result(request(&f, &finish)), completed);
     // A completed actual CLI import does not require its App key or local spool.
@@ -249,6 +269,8 @@ async fn github_source_http_preserves_exact_git_history_after_partial_upload_and
             "repository_id": f.scope.repository().to_string(),
             "native_revision": RevisionRef::Native(root).to_string(),
             "git_revision": revision,
+            "import_capture_seconds": capture_seconds,
+            "git_import_pack": benchmark.reuse_git_pack.then_some(&pack_path),
             "postgres_version": postgres_version,
         });
         files::write_private(&context, &serde_json::to_vec(&payload).unwrap()).unwrap();

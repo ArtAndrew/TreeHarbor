@@ -163,10 +163,20 @@ with tempfile.TemporaryDirectory(prefix='th-import-') as tmp, ExitStack() as pla
         if not fixture['files']:
             raise RuntimeError('fixture must contain files')
         setup = {}
+        git_import_pack = None
+        retained_pack_hash = None
         if connected:
             if connected['git_revision'].rsplit(':', 1)[-1] != revision:
                 raise RuntimeError('the imported Git commit differs from the benchmark fixture')
             native_revision = connected['native_revision']
+            if connected.get('import_capture_seconds') is not None:
+                setup['connected_local_capture_seconds'] = connected['import_capture_seconds']
+            if connected.get('git_import_pack'):
+                git_import_pack = Path(connected['git_import_pack'])
+                pack_file = git_import_pack/'workspace-git-v1'/'objects.pack'
+                retained_pack_hash = hashlib.sha256(pack_file.read_bytes()).hexdigest()
+                setup['retained_git_pack_bytes'] = pack_file.stat().st_size
+                setup['retained_git_pack_sha256'] = retained_pack_hash
         else:
             source = root/'source'
             source.mkdir(mode=0o700)
@@ -319,6 +329,14 @@ with tempfile.TemporaryDirectory(prefix='th-import-') as tmp, ExitStack() as pla
                 '--base', native_revision, '--profile-digest', profile, *format_args)
             return workspace, created['result']['generation']
 
+        def git_prepare_args(system):
+            if system != 'treeharbor-git':
+                return []
+            result = ['--git', Path(GIT).absolute()]
+            if git_import_pack:
+                result += ['--git-import-pack', git_import_pack]
+            return result
+
         def observed_path(observation, prepared, workspace, start, requested, materialized):
             if prepared['state'] != 'files_ready' or prepared['workspace'] != workspace:
                 if os.environ.get('TH_BENCH_DIAGNOSTICS') == '1':
@@ -347,7 +365,7 @@ with tempfile.TemporaryDirectory(prefix='th-import-') as tmp, ExitStack() as pla
                 workspace, generation = request_workspace(system)
                 requested = time.perf_counter()
                 slot_args = ['--slot', slots[system, lane]] if slots else []
-                git_args = ['--git', Path(GIT).absolute()] if system == 'treeharbor-git' else []
+                git_args = git_prepare_args(system)
                 prepared = node(system, lane, 'prepare-once', '--workspace', workspace, *slot_args, *git_args)
                 materialized = time.perf_counter()
                 path = observed_path(observation, prepared, workspace, start, requested, materialized)
@@ -375,7 +393,7 @@ with tempfile.TemporaryDirectory(prefix='th-import-') as tmp, ExitStack() as pla
             fd = os.open(selection, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
             with os.fdopen(fd, 'w') as output:
                 json.dump(targets, output)
-            git_args = ['--git', Path(GIT).absolute()] if system == 'treeharbor-git' else []
+            git_args = git_prepare_args(system)
             results = node(system, 0, 'prepare-batch', '--selection', selection,
                            '--parallelism', str(args.concurrency), *git_args)
             materialized = time.perf_counter()
@@ -454,6 +472,12 @@ with tempfile.TemporaryDirectory(prefix='th-import-') as tmp, ExitStack() as pla
                                         raise RuntimeError('Git-compatible workspace is not private and clean')
                                     git('-C', path, 'fsck', '--strict', '--no-dangling')
                                 observation['verified_git_head_and_history'] = True
+                                if system == 'treeharbor-git' and retained_pack_hash:
+                                    packed, = (git_dir/'objects'/'pack').glob('*.pack')
+                                    actual_pack_hash = hashlib.sha256(packed.read_bytes()).hexdigest()
+                                    if actual_pack_hash != retained_pack_hash:
+                                        raise RuntimeError('workspace did not install the exact retained import pack')
+                                    observation['verified_retained_git_pack'] = True
                         elif connected and (path/'.git').exists():
                             raise RuntimeError('file-only workspace contains Git metadata')
                         observation['verified_bytes_modes_paths'] = True

@@ -14,6 +14,7 @@ mod seal_publication;
 mod storage;
 mod volumes;
 mod worker;
+pub use git_source::GitPreparation;
 pub use storage::{Identity, Node};
 pub use volumes::VolumeRegistration;
 pub use worker::Prepare;

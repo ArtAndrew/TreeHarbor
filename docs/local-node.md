@@ -145,6 +145,35 @@ cleanup. To discard it, stop operations using the node root and remove the
 root's `git-seed-cache-v1` directory. A new node or a cache deletion requires no
 data migration.
 
+### Reuse an imported Git pack
+
+A development build can reuse the pack from a fresh Connected import when the
+bridge and node run under the same trusted OS account. Add
+`--git-import-pack /absolute/private/import-1/pack` to the existing
+`node prepare-once --workspace WORKSPACE_UUID --git /usr/bin/git` command. The
+same option works for `node prepare-batch` when the selected workspaces share
+the import. Keep the path and its contents outside all agent mounts.
+
+The node still checks its live authorization and materializes the native files.
+It only uses a digest-checked pack for the exact tenant, repository, authority
+epoch, native revision, snapshot and Git origin. Git installs it in a private
+object database with strict checks. When the directory is missing or its receipt,
+bytes or limits fail verification, the node rebuilds Git metadata from native
+objects. The retained pack grants no permissions and can be deleted after import.
+
+The private `workspace-git-v1` directory contains owner-only `objects.pack`
+and `receipt.json`. The pack is a standard complete Git pack of at most 32 MiB.
+The importer keeps it only when its verified index contains exactly the objects
+reachable from the selected commit. The
+[v1 receipt vector](../crates/git-bridge/tests/fixtures/workspace-git-v1.json)
+shows the fields. `native` and `snapshot` use canonical SHA-256 object IDs.
+`origin` uses the full Git revision format. `bounds` records the checked object
+count and source bytes, and the import limits used for edges and path visits.
+`bytes` and `sha256` cover the pack file itself. The directory is disposable
+and stays outside the authoritative object store.
+
+### Reuse source files
+
 Development nodes can also reuse a verified copy of their delivered source
 files. Each preparation opens the current source lease. It verifies the
 cached manifest, bytes and paths, then writes its own files and completes

@@ -43,6 +43,9 @@ pub enum Action {
         /// Use this trusted absolute Git executable for an explicitly selected Git workspace.
         #[arg(long, requires = "workspace")]
         git: Option<PathBuf>,
+        /// Reuse a verified Git pack from the bridge's private local import pack directory.
+        #[arg(long, requires = "git")]
+        git_import_pack: Option<PathBuf>,
         /// Opt in to the Linux Copy-on-Write preview with a protected host helper.
         #[arg(long, requires_all = ["workspace", "slot"])]
         cow_driver: Option<PathBuf>,
@@ -55,6 +58,9 @@ pub enum Action {
         selection: PathBuf,
         #[arg(long)]
         git: Option<PathBuf>,
+        /// Reuse a verified Git pack from the bridge's private local import pack directory.
+        #[arg(long, requires = "git")]
+        git_import_pack: Option<PathBuf>,
         #[arg(long)]
         cow_driver: PathBuf,
     },
@@ -162,7 +168,7 @@ struct BatchPlacement {
 struct PreparationOptions<'a> {
     workspace: Option<Uuid>,
     slot: Option<Uuid>,
-    git: Option<&'a Path>,
+    git: Option<treeharbor_node::GitPreparation<'a>>,
     cow_driver: Option<&'a Path>,
     max_workspace_bytes: u64,
 }
@@ -417,6 +423,7 @@ pub async fn run(action: Action) -> Result<bool> {
             slot,
             workspace,
             git,
+            git_import_pack,
             cow_driver,
             ..
         } => {
@@ -430,7 +437,12 @@ pub async fn run(action: Action) -> Result<bool> {
                 PreparationOptions {
                     workspace,
                     slot,
-                    git: git.as_deref(),
+                    git: git
+                        .as_deref()
+                        .map(|executable| treeharbor_node::GitPreparation {
+                            executable,
+                            import_pack: git_import_pack.as_deref(),
+                        }),
                     cow_driver: cow_driver.as_deref(),
                     max_workspace_bytes,
                 },
@@ -446,6 +458,7 @@ pub async fn run(action: Action) -> Result<bool> {
             node: args,
             selection,
             git,
+            git_import_pack,
             cow_driver,
         } => {
             let targets: Vec<BatchPlacement> =
@@ -473,12 +486,13 @@ pub async fn run(action: Action) -> Result<bool> {
             drop(session);
             let mut tasks = tokio::task::JoinSet::new();
             for target in targets {
-                let (node, database, auth, store, git, cow_driver) = (
+                let (node, database, auth, store, git, git_import_pack, cow_driver) = (
                     node.clone(),
                     database.clone(),
                     auth.clone(),
                     store.clone(),
                     git.clone(),
+                    git_import_pack.clone(),
                     cow_driver.clone(),
                 );
                 tasks.spawn(async move {
@@ -494,7 +508,12 @@ pub async fn run(action: Action) -> Result<bool> {
                             PreparationOptions {
                                 workspace: Some(workspace),
                                 slot: Some(target.slot),
-                                git: git.as_deref(),
+                                git: git.as_deref().map(|executable| {
+                                    treeharbor_node::GitPreparation {
+                                        executable,
+                                        import_pack: git_import_pack.as_deref(),
+                                    }
+                                }),
                                 cow_driver: Some(&cow_driver),
                                 max_workspace_bytes: 256 * 1024 * 1024,
                             },
@@ -549,7 +568,11 @@ async fn prepare_selected(
         cow_driver,
         max_workspace_bytes,
     } = options;
-    if cow_driver.is_some() && !cfg!(target_os = "linux") {
+    if (cow_driver.is_some() && !cfg!(target_os = "linux"))
+        || git
+            .and_then(|git| git.import_pack)
+            .is_some_and(|path| !path.is_absolute())
+    {
         return Err(Error::Config);
     }
     let max_workspace_bytes = if let Some(slot) = slot {

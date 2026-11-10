@@ -591,3 +591,37 @@ with a build that supports multiple revision images. The option selects the
 volume layout. Each format still starts from an empty volume and prepares
 only the selected revision. Use the same optimized profile for both binaries.
 [Raw observations, executable hashes and phase logs](benchmarks/cold-git-projection-linux-arm64-20261110.json)
+
+## Reusing the pack from import — 10 November 2026
+
+The same optimized Linux ARM64 development binary prepared four concurrent
+Git-compatible workspaces from the 8,195-file child commit. Each run used a fresh
+local PostgreSQL fixture, empty dedicated ext4 source volumes and two Git
+checkout workers. Only the optional import pack changed. The second pair
+reversed the order. OS caches were uncontrolled.
+
+| Pair | Local capture, base / reuse | First TreeHarbor batch, base / reuse | First Git worktree batch in those runs |
+| --- | ---: | ---: | ---: |
+| Base first | 7,341.4 / 6,398.8 ms | 1,727.8 / 845.0 ms | 750.3 / 505.7 ms |
+| Reuse first | 5,622.2 / 6,815.5 ms | 1,695.7 / 868.2 ms | 520.5 / 505.0 ms |
+
+Reuse cut the first TreeHarbor batch by 51% and 49% in the two pairs. Git worktree
+was faster for the first batch in all four runs. On the two reuse runs, the repeat
+batch took 136.4 and 162.8 ms for TreeHarbor and 652.7 and 648.0 ms for Git
+worktree. The verifier checked files, modes and exact Git history, and all
+sixteen workspaces in the reuse runs installed the original 514,400-byte pack.
+
+Local capture includes conversion, persistence and optional pack retention.
+The sum of capture and first preparation went from 9,069.2 to 7,243.8 ms in
+the first pair and from 7,318.0 to 7,683.7 ms in the second. These two pairs
+establish a preparation improvement after import for this workload. The timed
+intervals exclude upstream fetch, HTTP upload, agent execution and CI.
+
+Use the adjacent-revision fixture and dedicated-volume setup above with
+`--cow-max-images 2`, `--concurrency 4`, `--iterations 2`, `--seed 721` and
+`--git-checkout-workers 2`. Build the transport test with `cargo test --release`
+and use one optimized CLI for both configurations. Set `"reuse_git_pack": false`
+or `true` in the private `TH_TEST_CONNECTED_PREPARATION` JSON. The test measures
+local capture, imports through the local service and supplies the optional
+pack to the benchmark's Git-compatible node. Use new volumes and a new output
+path for every run. [Raw reports and exact input hashes](benchmarks/retained-git-pack-linux-arm64-20261110.json)

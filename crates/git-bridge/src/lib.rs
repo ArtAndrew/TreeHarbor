@@ -5,16 +5,20 @@
 #![cfg(unix)]
 mod ingest;
 mod origin;
-pub use ingest::{Import, Imported, import};
+pub use ingest::{Import, Imported, import, import_with_workspace_pack};
 pub mod download;
 mod pack;
 mod process;
 pub mod publish;
+mod retained;
+pub use retained::{WorkspacePack, WorkspacePackIdentity, WorkspacePackScope};
 mod stream;
 mod verify;
 pub use verify::{VerifiedMapping, verify_mapping};
 mod workspace;
-pub use workspace::{WorkspaceSeed, install_workspace_seed, seed_workspace};
+pub use workspace::{
+    WorkspaceSeed, install_workspace_seed, seed_workspace, seed_workspace_from_pack,
+};
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};

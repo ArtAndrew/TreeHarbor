@@ -1,6 +1,7 @@
 //! Complete history of one pinned Git commit; no ref authority or network fetch.
 use crate::{
-    Error, HashAlgorithm, Limits, Result, check_deadline, check_limits, origin, process, stream,
+    Error, HashAlgorithm, Limits, Result, WorkspacePackIdentity, WorkspacePackScope,
+    check_deadline, check_limits, origin, process, retained, stream,
 };
 use std::{
     cell::RefCell,
@@ -58,8 +59,9 @@ struct Source {
     records: BTreeMap<Vec<u8>, Record>,
     algorithm: HashAlgorithm,
     deadline: Instant,
+    bytes: u64,
 }
-fn line(reader: &mut impl BufRead) -> Result<Vec<u8>> {
+pub(crate) fn line(reader: &mut impl BufRead) -> Result<Vec<u8>> {
     let mut line = Vec::new();
     (&mut *reader).take(256).read_until(b'\n', &mut line)?;
     if line.is_empty() {
@@ -131,6 +133,7 @@ impl Source {
             records,
             algorithm,
             deadline,
+            bytes,
         })
     }
     fn get(&mut self, oid: &[u8], kind: Kind) -> Result<Vec<u8>> {
@@ -476,6 +479,25 @@ fn convert(
 /// Partial writes on error belong to caller-owned staging storage, not a live repo.
 /// Input is a complete local bundle; no source config, checkout or network access.
 pub fn import(store: &impl ObjectStore, request: Import<'_>) -> Result<Imported> {
+    import_inner(store, request, None)
+}
+
+/// Also retain the complete original Git pack when its verified object set
+/// exactly matches the imported revision. Retention is optional and grants
+/// no access to the accepted source. The caller owns the private output.
+pub fn import_with_workspace_pack(
+    store: &impl ObjectStore,
+    request: Import<'_>,
+    scope: &WorkspacePackScope,
+) -> Result<Imported> {
+    import_inner(store, request, Some(scope))
+}
+
+fn import_inner(
+    store: &impl ObjectStore,
+    request: Import<'_>,
+    scope: Option<&WorkspacePackScope>,
+) -> Result<Imported> {
     check_limits(request.limits, request.git)?;
     let meta = fs::symlink_metadata(request.scratch)?;
     if !meta.is_dir()
@@ -616,5 +638,27 @@ pub fn import(store: &impl ObjectStore, request: Import<'_>) -> Result<Imported>
         request.limits.source_bytes + request.limits.objects as u64 * 100,
     )?;
     let mut source = Source::open(output, &oids, algorithm, request.limits, deadline)?;
-    convert(store, &mut source, target, request.limits, deadline)
+    let imported = convert(store, &mut source, target, request.limits, deadline)?;
+    if let Some(scope) = scope
+        && let Ok(pack) = retained::exact_pack(&git, &repo, algorithm, &seen, deadline)
+    {
+        let _ = retained::save(
+            request.scratch,
+            pack,
+            WorkspacePackIdentity {
+                scope,
+                native: imported.commit,
+                snapshot: imported.snapshot,
+                origin: request.commit,
+            },
+            retained::Bounds {
+                objects: imported.objects.len().max(seen.len()),
+                source_bytes: imported.encoded_bytes.max(source.bytes),
+                edges: request.limits.edges,
+                path_visits: request.limits.path_visits,
+            },
+            deadline,
+        );
+    }
+    Ok(imported)
 }

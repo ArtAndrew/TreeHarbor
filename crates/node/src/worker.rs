@@ -285,7 +285,7 @@ impl Node {
         db: &mut Metadata,
         heartbeat: &mut Metadata,
         request: Prepare<'_>,
-        git: &Path,
+        git: crate::GitPreparation<'_>,
     ) -> Result<MaterializedTree> {
         self.prepare_inner(db, heartbeat, request, Some(git), None)
             .await
@@ -296,7 +296,7 @@ impl Node {
         db: &mut Metadata,
         heartbeat: &mut Metadata,
         request: Prepare<'_>,
-        git: Option<&Path>,
+        git: Option<crate::GitPreparation<'_>>,
         driver: &Path,
     ) -> Result<MaterializedTree> {
         self.prepare_inner(db, heartbeat, request, git, Some(driver))
@@ -308,7 +308,7 @@ impl Node {
         db: &mut Metadata,
         heartbeat: &mut Metadata,
         request: Prepare<'_>,
-        git: Option<&Path>,
+        git: Option<crate::GitPreparation<'_>>,
         cow_driver: Option<&Path>,
     ) -> Result<MaterializedTree> {
         let Prepare {

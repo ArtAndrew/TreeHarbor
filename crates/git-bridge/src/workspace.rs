@@ -1,14 +1,16 @@
 //! Build private Git metadata for an exact, already materialized working tree.
-use crate::{Error, HashAlgorithm, Limits, Result, check_deadline, check_limits, private_parent};
-use crate::{process::Git, stream};
+use crate::{
+    Error, HashAlgorithm, Limits, Result, WorkspacePack, check_deadline, check_limits, origin,
+    private_parent, process::Git, stream,
+};
 use std::{
     collections::BTreeMap,
     fs::{self, File, Permissions},
     os::unix::fs::PermissionsExt,
-    path::Path,
+    path::{Path, PathBuf},
     time::{Duration, Instant},
 };
-use treeharbor_core::{GitOid, ObjectId, ObjectStore, RevisionRef};
+use treeharbor_core::{GitOid, ObjectId, ObjectStore};
 
 pub struct WorkspaceSeed<'a> {
     /// Trusted operator-selected executable.
@@ -28,6 +30,41 @@ pub struct WorkspaceSeed<'a> {
 /// when a prior call failed after rename. The caller must reconcile or discard
 /// the whole unexposed placement in that case. Never invoke this on agent output.
 pub fn seed_workspace(store: &impl ObjectStore, request: WorkspaceSeed<'_>) -> Result<()> {
+    let native = request.native;
+    let limits = request.limits;
+    seed(request, |scratch, algorithm, oid, deadline| {
+        let pack = scratch.join("objects.pack");
+        let graph = stream::write(
+            store,
+            &BTreeMap::from([("refs/heads/workspace".into(), native)]),
+            &pack,
+            algorithm,
+            limits,
+            deadline,
+        )?;
+        if graph.commits.get(&native).map(String::as_str) != Some(oid) {
+            return Err(Error::InvalidProjection);
+        }
+        Ok(pack)
+    })
+}
+
+/// Install a private copy of the complete pack retained by a trusted import.
+/// The caller still verifies and materializes the authoritative native tree.
+pub fn seed_workspace_from_pack(pack: WorkspacePack, request: WorkspaceSeed<'_>) -> Result<()> {
+    if pack.origin != request.expected || pack.native != request.native {
+        return Err(Error::InvalidProjection);
+    }
+    // Retain ownership of the scratch copy until index-pack has finished.
+    let result = seed(request, |_, _, _, _| Ok(pack.path().to_owned()));
+    drop(pack);
+    result
+}
+
+fn seed(
+    request: WorkspaceSeed<'_>,
+    prepare_pack: impl FnOnce(&Path, HashAlgorithm, &str, Instant) -> Result<PathBuf>,
+) -> Result<()> {
     check_limits(request.limits, request.git)?;
     let deadline = Instant::now() + request.limits.timeout;
     let parent = private_parent(&request.files.join(".git"))?;
@@ -42,26 +79,11 @@ pub fn seed_workspace(store: &impl ObjectStore, request: WorkspaceSeed<'_>) -> R
     let metadata = scratch.path().join("metadata");
     fs::create_dir(&metadata)?;
     fs::set_permissions(&metadata, Permissions::from_mode(0o700))?;
-    let pack = scratch.path().join("objects.pack");
-    let algorithm = match request.expected {
-        GitOid::Sha1(_) => HashAlgorithm::Sha1,
-        GitOid::Sha256(_) => HashAlgorithm::Sha256,
+    let (algorithm, oid) = match request.expected {
+        GitOid::Sha1(bytes) => (HashAlgorithm::Sha1, origin::hex(&bytes)),
+        GitOid::Sha256(bytes) => (HashAlgorithm::Sha256, origin::hex(&bytes)),
     };
-    let graph = stream::write(
-        store,
-        &BTreeMap::from([("refs/heads/workspace".into(), request.native)]),
-        &pack,
-        algorithm,
-        request.limits,
-        deadline,
-    )?;
-    let oid = graph
-        .commits
-        .get(&request.native)
-        .ok_or(Error::InvalidProjection)?;
-    if format!("git:{}:{oid}", algorithm.name()) != RevisionRef::Git(request.expected).to_string() {
-        return Err(Error::InvalidProjection);
-    }
+    let pack = prepare_pack(scratch.path(), algorithm, &oid, deadline)?;
     let git = Git::new(request.git.canonicalize()?, scratch.path(), deadline);
     git.run(
         Some(&metadata),
@@ -91,7 +113,7 @@ pub fn seed_workspace(store: &impl ObjectStore, request: WorkspaceSeed<'_>) -> R
             "update-ref".into(),
             "--no-deref".into(),
             "HEAD".into(),
-            oid.into(),
+            oid.clone().into(),
         ],
         None,
         4096,

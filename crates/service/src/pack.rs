@@ -18,6 +18,7 @@ use treeharbor_core::{
     Changes, Commit, Directory, Entry, EntryMode, EntryRef, MAX_PAYLOAD, Name, Object, ObjectId,
     ObjectStore, RepoPath, SourceProfile,
 };
+use treeharbor_git_bridge::WorkspacePackScope;
 use treeharbor_storage::{LocalStore, TenantId};
 
 pub const MAX_MANIFEST: usize = 128 * 1024 * 1024;
@@ -682,6 +683,19 @@ pub struct GitCapture<'a> {
 /// A complete local result is published only after all native frames and its
 /// manifest are durable and validated. Does not contact or update a server.
 pub fn capture_git(request: GitCapture<'_>) -> Result<Pack> {
+    capture_git_inner(request, None)
+}
+
+/// Also prepare a disposable Git pack for a node that can access this same
+/// private spool. Source import remains usable when retention is ineligible.
+pub fn capture_git_with_workspace_pack(
+    request: GitCapture<'_>,
+    scope: &WorkspacePackScope,
+) -> Result<Pack> {
+    capture_git_inner(request, Some(scope))
+}
+
+fn capture_git_inner(request: GitCapture<'_>, scope: Option<&WorkspacePackScope>) -> Result<Pack> {
     let parent = files::private_directory(request.output.parent().ok_or(Error::Output)?)
         .map_err(|_| Error::Output)?;
     let name = request.output.file_name().ok_or(Error::Output)?;
@@ -694,16 +708,17 @@ pub fn capture_git(request: GitCapture<'_>) -> Result<Pack> {
         .tempdir_in(&parent)?;
     fs::set_permissions(stage.path(), fs::Permissions::from_mode(0o700))?;
     let store = LocalStore::open(stage.path(), &TenantId::new("native-pack")?)?;
-    let imported = treeharbor_git_bridge::import(
-        &store,
-        treeharbor_git_bridge::Import {
-            git: request.git,
-            bundle: request.bundle,
-            scratch: stage.path(),
-            commit: request.commit,
-            limits: request.limits,
-        },
-    )?;
+    let import = treeharbor_git_bridge::Import {
+        git: request.git,
+        bundle: request.bundle,
+        scratch: stage.path(),
+        commit: request.commit,
+        limits: request.limits,
+    };
+    let imported = match scope {
+        Some(scope) => treeharbor_git_bridge::import_with_workspace_pack(&store, import, scope)?,
+        None => treeharbor_git_bridge::import(&store, import)?,
+    };
     let manifest = FullManifest {
         version: 2,
         selection: "full".into(),
