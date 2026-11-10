@@ -524,3 +524,37 @@ To recompute a row from the raw bundle, select its named run(s), filter
 partition by `wave == 0`. Take the median `all_first_reads_seconds` in each
 partition and multiply by 1,000. Do not pool group timings with per-workspace
 observations or combine different executable hashes without labeling them.
+
+## Adjacent revisions on signed 0.1.16 — 10 November 2026
+
+The signed ARM64 CLI ran the same four-task Connected workload on the
+8,195-entry fixture and a child commit that edits eight 4 KiB files. Each
+revision used fresh guarded slots and an empty dedicated source volume per
+format. The Git worktree baseline used two checkout workers on the same
+workspace filesystems. Import was already complete and OS caches were
+uncontrolled. Readiness includes the last of four tasks reading its first file.
+
+| Revision | First batch, TreeHarbor / Git | Median of five repeat batches | Sum of six batches |
+| --- | ---: | ---: | ---: |
+| Original | 1,851.4 / 534.4 ms | 153.4 / 395.2 ms | 2,633.3 / 2,491.5 ms |
+| Eight edits | 1,763.1 / 509.5 ms | 143.9 / 355.2 ms | 2,498.8 / 2,286.9 ms |
+
+Git worktree had lower total preparation time over the six batches for
+each revision. This is a baseline for the cost of building an image for a
+new revision. It uses separate nodes per revision and does not measure
+coexisting revisions or incremental construction. Cleanup timings are in
+the raw data and excluded from the table. Neither agent execution nor
+checks ran in these measurements.
+
+To recreate the child of the fixture above, sort files with
+`git ls-files -z` and select the first eight regular, non-symlink files of
+exactly 4,096 bytes. XOR the first byte of each with 255. Commit just those
+files as `Benchmark Fixture <fixture@example.invalid>` on
+`2026-11-10T07:00:00Z` (author and committer) with subject
+`Edit eight files for the revision change fixture`. The child is
+`43c4be83b4145f8d1dee7fbd1b6f195162d5162f`. Follow the dedicated-source
+setup above with `--git-checkout-workers 2` and `--seed 721` for both
+revisions. Use the verified packaged driver and fresh dedicated volumes
+for each run. [Original raw report](benchmarks/connected-cow-signed-arm64-adjacent-base-20261110.json)
+· [Child raw report](benchmarks/connected-cow-signed-arm64-adjacent-update-20261110.json)
+· [Signed release evidence](evidence/cow-workspace-release-20261109.json)

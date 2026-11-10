@@ -40,7 +40,7 @@ pub(crate) struct Storage {
     #[cfg(target_os = "linux")]
     pub cow_image: Arc<AsyncMutex<()>>,
     #[cfg(target_os = "linux")]
-    pub cow_volume: Mutex<Option<Arc<treeharbor_runtime::Volume>>>,
+    pub cow_volume: Mutex<Option<crate::cow_volume::SourceVolume>>,
     lock: File,
 }
 impl Storage {

@@ -10,7 +10,7 @@ use uuid::Uuid;
 
 /// Operator-provisioned local paths. The caller independently authenticates
 /// the immutable lower layer and keeps it pinned for the full workspace life.
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct OverlayLayout {
     pub lower: PathBuf,

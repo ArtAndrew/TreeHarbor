@@ -253,7 +253,7 @@ class Harness:
         return ["node", action, "--config", str(self.config), "--credential-file", str(node["credential"]),
                 "--root", str(node["root"]), "--storage", node["storage"]]
 
-    def placement_profile(self, node=0, timeout=10000):
+    def private_volume(self):
         number = len(self.mounts)
         backing = self.root / f"volume-{number}.ext4"
         with backing.open("wb") as file:
@@ -266,6 +266,10 @@ class Harness:
         command("sudo", "mount", "--make-private", mount)
         command("sudo", "chown", f"{os.getuid()}:{os.getgid()}", mount)
         mount.chmod(0o700)
+        return number, mount
+
+    def placement_profile(self, node=0, timeout=10000):
+        number, mount = self.private_volume()
         placement = mount / "placement"
         placement.mkdir(mode=0o700)
         slot = str(uuid.uuid4())

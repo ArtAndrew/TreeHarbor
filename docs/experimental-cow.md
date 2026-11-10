@@ -54,8 +54,8 @@ letters, digits, `/`, `.`, `_` and `-`, without symlink components.
 
 Keep the node's parent directory private (`0700`). A source image is keyed to
 the exact repository, epoch, revision, profile and preparation limits. Reuse
-requires those identities to match. Use a separate node identity and fresh slots
-for another source identity; automatic image rotation is not implemented.
+requires those identities to match. The released single-image profile requires
+a separate node identity and fresh slots for another source identity.
 Keep the configured workspace byte limit at most 256 MiB, and use the same
 preparation limits for repeat requests. These are preview resource bounds,
 not license restrictions.
@@ -143,6 +143,42 @@ an empty `source` directory owned by the node account, then use
 `--limit-bytes` (64 MiB–1 GiB). It cannot also be a writable workspace slot.
 The ordinary node-parent source image requires no separate source volume.
 
+## Multiple revisions on one source volume
+
+Development builds with `cow-source-register --max-images` can opt a fresh node
+and its dedicated source volume into 2–16 exact images. For example, add
+`--max-images 4` at registration. The physical volume limit still applies.
+The published 0.1.17-alpha.1 package uses the single-image profile.
+
+Prepare each task from its own pinned revision and registered writable slot.
+The first preparation for a key builds its lower image. Later preparations
+with that key reuse it. A new revision builds a separate image and leaves
+older views attached to their original files. The node checks the recorded
+image again when reopening, capturing or detaching a workspace.
+
+The limit counts reserved directories, including an interrupted build that can
+be retried for the same key. A full cache refuses an unseen key and still
+serves existing images. There is no automatic eviction or in-place conversion
+of an existing registration. Use a fresh node and source volume for more
+images, then capture and drain the old node before retiring its volume. Source
+images and reservations are retained even after workspace cleanup.
+
+### Local record versions
+
+The source volume claim and the node's copy use compact UTF-8 JSON with no
+trailing newline. Version 1 has fields `version`, `storage`, `volume`; it
+uses `source/image`. Version 2 appends `max_images` and uses
+`source/images/<64 lowercase hex digits>/image`, with the same exact image
+key already recorded in `overlay-pin.json`. Publication and workspace pin
+records keep their existing formats.
+
+The version 1 detach journal contains `version`, `binding`, `placement`.
+For a version 2 source volume the detach journal is version 2 and appends
+`image`, the pinned image as `sha256:<64 lowercase hex digits>`. It is
+durable before unmount, so a replay can recover the exact lower path even
+after partial deletion of slot files. Neither journal authorizes a changed
+mount or deletes a lower image.
+
 ## Stop, retry and recover
 
 - Stop an agent through its authenticated run-stop/capture workflow. Killing
@@ -190,13 +226,12 @@ checks do not certify a production deployment or an installable release.
 
 The preview preparation path requires the explicitly supplied, protected mount
 helper and operator-provisioned volumes. No agent chooses mount paths or
-receives mount privileges. There is one bounded source image per node, with
-no automatic revision rotation or image eviction. The prototype currently
-requires workspace limits at most 256 MiB. This is an operational limit,
+receives mount privileges. The signed profile has one bounded source image per
+node. The prototype requires workspace limits at most 256 MiB. This is an operational limit,
 not a license quota.
 
-Automatic remount after reboot, missing-volume recovery and multi-image
-retention are unfinished. A changed or missing mount fails closed and retains
+Automatic remount after reboot, missing-volume recovery and image eviction
+are unfinished. A changed or missing mount fails closed and retains
 the associated state for operator recovery. Do not adopt this path for
 unattended workloads or treat an existing node backup as a complete backup
 of the separate source and workspace volumes.
@@ -219,5 +254,5 @@ workflow. A separate installation of the signed ARM64 archive passed the
 same-node recovery and overlapping-task scenario with PostgreSQL and gVisor.
 See the [release evidence](evidence/cow-workspace-release-20261109.json).
 This release does not claim a new live GitHub PR trial or an LLM benchmark.
-General cache rotation, broader workloads and full Connected/Standalone
+Cache eviction, broader workloads and full Connected/Standalone
 operational certification follow as separate increments.

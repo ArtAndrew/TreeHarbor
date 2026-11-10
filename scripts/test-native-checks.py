@@ -235,13 +235,20 @@ class Checks(managed.Harness):
         agents = [self.case("overlap-edit", content, self.secret, node=0, agent=index,
                             timeout=120000, selected=True, overlay=overlay)
                   for index, content in enumerate((left, right))]
-        assert agents[0]["credential"] != agents[1]["credential"]
-        assert agents[0]["node"] == agents[1]["node"]
+        lowers = {}
         if overlay:
             self.driver_contract(agents[0])
+            assert agents[0]["files"].parents[1] == agents[1]["files"].parents[1]
+            lowers[agents[0]["files"].parents[1] / "image/files/same.txt"] = b"base\n"
+        return self.run_shared_agents(agents, (left, right), lowers, recover_worker=recover_worker)
+
+    def run_shared_agents(self, agents, contents, lowers, recover_worker=False, retained=None):
+        assert agents[0]["credential"] != agents[1]["credential"]
+        assert agents[0]["node"] == agents[1]["node"]
+        overlay = bool(lowers)
         # A deliberately wrong-node cleanup must fail independently, without
         # aborting the two selected agents or borrowing the other node's rights.
-        _, foreign_node, foreign_slot, _, _ = self.placement_profile(node=1)
+        _, foreign_node, foreign_slot, _, _ = self.placement_profile(node=1 - agents[0]["node_index"])
         foreign = str(uuid.uuid4())
         self.client("workspace-create", "--key", "foreign-" + foreign, "--authority", "standalone",
                     "--epoch", "1", "--workspace", foreign, "--base", self.revision,
@@ -264,9 +271,15 @@ class Checks(managed.Harness):
         managed.wait_until(lambda: all(self.status(agent)["state"] == "running"
                                        and (agent["files"] / "same.txt").read_text() == content
                                        and (agent["files"] / "overlap-heartbeat").is_file()
-                                       for agent, content in zip(agents, (left, right))))
+                                       for agent, content in zip(agents, contents)))
         assert agents[0]["attempt"] != agents[1]["attempt"]
         assert agents[0]["files"] != agents[1]["files"]
+        if retained:
+            old = agents[0]
+            managed.wait_until(lambda: self.sql("SELECT generation FROM th_outbox WHERE kind='run.execute' "
+                                               f"AND payload->>'run'='{old['run']}'") == "2")
+            assert managed.docker("inspect", "--format", "{{.Id}}",
+                                  "treeharbor-" + old["attempt"]).stdout.strip() == retained
         if recover_worker:
             containers = [managed.docker("inspect", "--format", "{{.Id}}", "treeharbor-" + a["attempt"]).stdout.strip()
                           for a in agents]
@@ -284,15 +297,13 @@ class Checks(managed.Harness):
             for agent, container in zip(agents, containers):
                 assert managed.docker("inspect", "--format", "{{.Id}}", "treeharbor-" + agent["attempt"]).stdout.strip() == container
             print("PASS shared node recovery: killed worker reclaimed the same two running containers", flush=True)
-        if overlay:
-            lower = agents[0]["files"].parents[1] / "image/files/same.txt"
-            assert agents[0]["files"].parents[1] == agents[1]["files"].parents[1]
-            assert lower.read_bytes() == b"base\n"
+        for lower, expected in lowers.items():
+            assert lower.read_bytes() == expected
         survivor = agents[1]["files"] / "overlap-heartbeat"
         before = survivor.stat().st_size
         self.stop(agents[0])
         changes, cleanups = [], []
-        for index, (agent, seal, content) in enumerate(zip(agents, seals, (left, right))):
+        for index, (agent, seal, content) in enumerate(zip(agents, seals, contents)):
             if index == 1:
                 assert self.status(agent)["state"] == "running"
                 managed.wait_until(lambda: survivor.stat().st_size > before)
@@ -314,7 +325,9 @@ class Checks(managed.Harness):
             assert not list(placement.iterdir())
             assert (placement.stat().st_dev, placement.stat().st_ino) == identity
             if overlay:
-                assert not agent["files"].exists() and lower.read_bytes() == b"base\n"
+                assert not agent["files"].exists()
+                for lower, expected in lowers.items():
+                    assert lower.read_bytes() == expected
             # Completed cleanup can be replayed without locking the node or
             # opening the old placement while the other task is still running.
             replay = self.start_cleanup(agent)
@@ -325,7 +338,7 @@ class Checks(managed.Harness):
             cleanups.append(receipt)
             if index == 0:
                 assert self.status(agents[1])["state"] == "running"
-                assert (agents[1]["files"] / "same.txt").read_text() == right
+                assert (agents[1]["files"] / "same.txt").read_text() == contents[1]
                 before = survivor.stat().st_size
                 managed.wait_until(lambda: survivor.stat().st_size > before)
                 if overlay:
@@ -358,6 +371,72 @@ class Checks(managed.Harness):
         print("PASS shared node: exact completed selection is replayable without recreating runtimes or captures", flush=True)
         print("PASS shared node: a wrong-node selection failed without cancelling either agent or deleting foreign files", flush=True)
         return changes
+
+    def revision_images(self, updated_revision):
+        node = self.nodes[1]
+        _, mount = self.private_volume()
+        source = mount / "source"
+        source.mkdir(mode=0o700)
+        register = [*self.node_args(node, "cow-source-register"), "--mount", mount,
+                    "--limit-bytes", "134217728"]
+        assert self.value(*register, "--max-images", "2")["state"] == "source-volume-registered"
+        assert self.cli(*register, "--max-images", "3", check=False).returncode != 0
+
+        edits = ("from original\n", "from updated\n")
+        old = self.case("overlap-edit", edits[0], self.secret, node=1, agent=0,
+                        timeout=120000, selected=True, overlay=True)
+        worker = self.start(old)
+        heartbeat = old["files"] / "overlap-heartbeat"
+        managed.wait_until(lambda: self.status(old)["state"] == "running" and heartbeat.is_file())
+        container = managed.docker("inspect", "--format", "{{.Id}}", "treeharbor-" + old["attempt"]).stdout.strip()
+        worker.kill()
+        worker.communicate(timeout=10)
+        assert worker.returncode == -9
+        self.expire_dead_worker(old)
+        before = heartbeat.stat().st_size
+        new = self.case("overlap-edit", edits[1], self.secret, "alpha + beta\n", node=1, agent=1,
+                        timeout=120000, selected=True, overlay=True,
+                        base=updated_revision, source=b"alpha + beta\n")
+        managed.wait_until(lambda: heartbeat.stat().st_size > before)
+        assert self.status(old)["state"] == "running" and old["files"].is_mount()
+
+        keys = [json.loads((case["mount"] / "placement/overlay-pin.json").read_bytes())["image"]
+                for case in (old, new)]
+        image_dirs = {source / "images" / key.removeprefix("sha256:") for key in keys}
+        assert len(image_dirs) == 2 and set((source / "images").iterdir()) == image_dirs
+        lowers = {source / "images" / key.removeprefix("sha256:") / "image/files/same.txt": expected
+                  for key, expected in zip(keys, (b"base\n", b"alpha + beta\n"))}
+
+        _, _, slot, rejected_mount, _ = self.placement_profile(node=1)
+        rejected = str(uuid.uuid4())
+        self.client("workspace-create", "--key", "full-images-" + rejected, "--authority", "standalone",
+                    "--epoch", "1", "--workspace", rejected, "--base", self.genesis,
+                    "--profile-digest", self.source_profile, credential=self.agents[1])
+        reply = self.cli(*self.node_args(node, "prepare-once"), "--workspace", rejected, "--slot", slot,
+                         "--cow-driver", os.environ["TH_TEST_OVERLAY_DRIVER"], check=False)
+        assert reply.returncode != 0 and "revision image limit" in reply.stderr, reply.stderr
+        assert set((source / "images").iterdir()) == image_dirs
+        assert not (rejected_mount / "placement/overlay-pin.json").exists()
+
+        changes = self.run_shared_agents([old, new], edits, lowers, retained=container)
+        assert [change["base_revision"] for change in changes] == [self.revision, updated_revision]
+        for case, key in zip((old, new), keys):
+            status = self.client("workspace-status", "--workspace", case["workspace"],
+                                 credential=case["credential"])
+            marker = node["root"] / "cleanup" / status["cleanup"]["id"] / "overlay-detach.json"
+            detached = json.loads(marker.read_bytes())
+            assert detached["version"] == 2 and detached["image"] == key
+        self.client("workspace-delete", "--key", "drain-" + rejected, "--authority", "standalone",
+                    "--epoch", "1", "--workspace", rejected, "--generation", "1", credential=self.agents[1])
+        assert self.value(*self.node_args(node, "cleanup-once"), "--workspace", rejected)["state"] == "deleted"
+        repeated = self.case("isolation", "reuse\n", self.secret, node=1, agent=1, selected=True,
+                             overlay=True, base=updated_revision, source=b"alpha + beta\n")
+        self.finish(repeated, self.start(repeated))
+        self.cleanup_workspace(repeated, fault="receipt")
+        assert set((source / "images").iterdir()) == image_dirs
+        for lower, expected in lowers.items():
+            assert lower.read_bytes() == expected
+        print("PASS revision images: two live revisions, exact recovery, full-cache refusal and retained changes", flush=True)
 
     def overlapping_agents(self, shared_node=False, recover_worker=False):
         left, right, merged = "alpha\n", "beta\n", "alpha + beta\n"
@@ -527,6 +606,8 @@ class Checks(managed.Harness):
         self.ci = self.principal("ci", "validator", ["read", "validation.report"])
         self.initialize_empty_main()
         overlap = self.overlapping_agents(shared_node=shared_node, recover_worker=recover_shared_worker)
+        if shared_node and os.environ.get("TH_TEST_OVERLAY_DRIVER"):
+            self.revision_images(overlap[0]["revision"])
         if overlap_only:
             return
         agent = self.case("isolation", "candidate\n", self.secret)
