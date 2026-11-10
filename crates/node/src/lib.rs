@@ -42,6 +42,8 @@ pub enum Error {
     Incomplete,
     #[error("invalid node configuration")]
     Configuration,
+    #[error("source volume has reached its configured revision image limit")]
+    ImageLimit,
     #[error("workspace cleanup exceeded its traversal budget; cleanup remains incomplete")]
     CleanupLimit,
 }

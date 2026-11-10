@@ -9,6 +9,25 @@ below retain evidence from individual increments. Their earlier statements about
 unfinished work describe the scope at that time; they are not a replacement for
 the current overview or the full [release gate ledger](#release-gate-ledger).
 
+## Bounded revision images — development
+
+Fresh dedicated ext4 source volumes can opt in to
+[multiple exact images](experimental-cow.md#multiple-revisions-on-one-source-volume).
+The existing single-image profile remains available. The node reopens and
+detaches each workspace using its original lower image, and refuses new keys
+when the configured capacity is full.
+
+A development ARM64 run with PostgreSQL and gVisor prepared an updated
+revision while the original runtime kept writing after worker loss. The
+worker reclaimed that container, and both agents' retained proposals recorded
+their respective bases. Cleanup of the first workspace left the other running.
+The test refused a third image at capacity, reused an existing image, and
+replayed cleanup after a worker died before the database acknowledgement.
+
+[Signed 0.1.16 benchmark data](benchmark-preparation.md#adjacent-revisions-on-signed-0116--10-november-2026)
+records the first-build cost on two adjacent revisions. The new profile
+provides coexistence. It still builds a new image on a cache miss.
+
 ## Standalone empty repository — 0.1.17-alpha.1
 
 [`source-pack --empty`](native-integration.md#start-a-new-project-with-empty-history)

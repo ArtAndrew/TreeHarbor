@@ -49,6 +49,8 @@ struct Retirement {
     version: u8,
     binding: String,
     placement: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    image: Option<String>,
 }
 
 struct ImageGuard {
@@ -69,20 +71,67 @@ pub(crate) fn directory(storage: &Storage) -> Result<PathBuf> {
     Ok(parent.join(format!(".treeharbor-cow-{}", storage.identity.storage())))
 }
 
-fn source_directory(storage: &Storage) -> Result<PathBuf> {
+fn image_path(
+    source: &Path,
+    max_images: Option<u8>,
+    key: Option<ObjectId>,
+    reserve: bool,
+) -> Result<PathBuf> {
+    let Some(max_images) = max_images else {
+        return Ok(source.join("image"));
+    };
+    let cache = source.join("images");
+    let actual = if reserve {
+        private::make_directory(&cache)?
+    } else {
+        private::directory(&cache)?
+    };
+    let device = fs::metadata(source)?.dev();
+    if actual != cache || fs::metadata(&cache)?.dev() != device {
+        return Err(Error::Identity);
+    }
+    let entry = cache.join(key.ok_or(Error::Identity)?.hex());
+    let actual = if reserve && !entry.try_exists()? {
+        for (index, item) in fs::read_dir(&cache)?.enumerate() {
+            item?;
+            if index + 1 >= usize::from(max_images) {
+                return Err(Error::ImageLimit);
+            }
+        }
+        private::make_directory(&entry)?
+    } else {
+        private::directory(&entry)?
+    };
+    // The dedicated volume and both path components must still be private and
+    // resolve to the registered path, even when reopening an old placement.
+    if actual != entry || fs::metadata(&entry)?.dev() != device {
+        return Err(Error::Identity);
+    }
+    Ok(entry.join("image"))
+}
+
+fn source_image(storage: &Storage, key: Option<ObjectId>) -> Result<(PathBuf, bool)> {
     match cow_volume::open(storage)? {
-        Some(volume) => Ok(volume.files().to_owned()),
-        None => directory(storage),
+        Some(source) => Ok((
+            image_path(source.volume.files(), source.max_images, key, false)?,
+            source.max_images.is_some(),
+        )),
+        None => Ok((directory(storage)?.join("image"), false)),
     }
 }
 
-fn layout(operation: &Operation, binding: [u8; 32]) -> Result<OverlayLayout> {
-    let dir = directory(&operation.storage)?;
+fn view_path(operation: &Operation, binding: [u8; 32]) -> Result<PathBuf> {
+    Ok(directory(&operation.storage)?
+        .join("views")
+        .join(ObjectId::from_bytes(binding).hex()))
+}
+
+fn layout(operation: &Operation, binding: [u8; 32], image: &Path) -> Result<OverlayLayout> {
     Ok(OverlayLayout {
-        lower: source_directory(&operation.storage)?.join("image/files"),
+        lower: image.join("files"),
         upper: operation.root.join("overlay-upper"),
         work: operation.root.join("overlay-work"),
-        files: dir.join("views").join(ObjectId::from_bytes(binding).hex()),
+        files: view_path(operation, binding)?,
     })
 }
 
@@ -159,9 +208,9 @@ pub(crate) async fn prepare(
     }
     let plan = request.plan;
     let dir = directory(&operation.storage)?;
-    let (key, tree, manifest) = {
-        // One bounded image per local storage identity. Its path is never
-        // replaced, even after a crash or a request for a different revision.
+    let (image, key, tree, manifest) = {
+        // Serialize source registration and publication. Neither a published
+        // image nor the lower path of an existing view is ever replaced.
         let guard = Arc::new(ImageGuard {
             _operation: operation.clone(),
             _lock: operation.storage.cow_image.clone().lock_owned().await,
@@ -172,23 +221,29 @@ pub(crate) async fn prepare(
         let source_volume = cow_volume::open(&operation.storage)?;
         let source_dir = source_volume
             .as_ref()
-            .map_or_else(|| dir.clone(), |volume| volume.files().to_owned());
-        let image = source_dir.join("image");
+            .map_or(dir.as_path(), |source| source.volume.files());
+        let max_images = source_volume.as_ref().and_then(|source| source.max_images);
         private::make_directory(&dir)?;
-        let warm = image.try_exists()?;
-        let root = if warm && git.is_some() {
-            db.cached_git_preparation_root(request.authorization, plan)
-                .await?
-        } else {
-            let source = db
-                .open_read_session(plan.scope(), plan.source_holder(), 60)
-                .await?;
-            let root = source.root().id();
-            db.close_read_session(source).await?;
-            root
-        };
+        let root =
+            if git.is_some() && (max_images.is_some() || source_dir.join("image").try_exists()?) {
+                db.cached_git_preparation_root(request.authorization, plan)
+                    .await?
+            } else {
+                let source = db
+                    .open_read_session(plan.scope(), plan.source_holder(), 60)
+                    .await?;
+                let root = source.root().id();
+                db.close_read_session(source).await?;
+                root
+            };
         let key = image_key(request, root)?;
-        if warm {
+        let image = image_path(
+            source_dir,
+            max_images,
+            Some(ObjectId::from_bytes(key)),
+            true,
+        )?;
+        if image.try_exists()? {
             let manifest = PublicationReceipt::load(&image, key)?.manifest_digest()?;
             let tree = MaterializedTree::load_baseline(
                 &image,
@@ -200,15 +255,15 @@ pub(crate) async fn prepare(
                 },
                 request.limits,
             )?;
-            (key, tree, manifest)
+            (image, key, tree, manifest)
         } else {
             let staging = source_dir.join("staging");
             let tenant = plan.scope().tenant();
             clear_unpublished(&operation, &staging, tenant)?;
             let materializer = Materializer::open(&staging, 1)?;
             let mut publication = Publication::new(image.clone(), key, guard);
-            if let Some(volume) = &source_volume
-                && let Some(fd) = volume.preparation_sync_fd()?
+            if let Some(source) = &source_volume
+                && let Some(fd) = source.volume.preparation_sync_fd()?
             {
                 publication = publication.with_volume_sync(fd);
             }
@@ -245,7 +300,7 @@ pub(crate) async fn prepare(
                     .await?
             };
             let manifest = PublicationReceipt::load(&image, key)?.manifest_digest()?;
-            (key, tree, manifest)
+            (image, key, tree, manifest)
         }
     };
     let driver = driver.to_owned();
@@ -253,7 +308,12 @@ pub(crate) async fn prepare(
     tokio::task::spawn_blocking(move || {
         operation.verify()?;
         let volume = operation.volume.as_ref().ok_or(Error::Configuration)?;
-        let paths = layout(&operation, binding)?;
+        // The dedicated source volume could have disappeared between image
+        // publication and attachment. Recheck its registered identity here.
+        if source_image(&operation.storage, Some(ObjectId::from_bytes(key)))?.0 != image {
+            return Err(Error::Identity);
+        }
+        let paths = layout(&operation, binding, &image)?;
         private::make_directory(paths.files.parent().ok_or(Error::Private)?)?;
         private::make_directory(&paths.upper)?;
         private::make_directory(&paths.work)?;
@@ -310,6 +370,15 @@ pub(crate) fn open(
     binding: [u8; 32],
     manifest: [u8; 32],
 ) -> Result<OverlayView> {
+    let (paths, pin, _) = pinned_layout(operation, binding, manifest)?;
+    open_attached(operation, paths, &pin)
+}
+
+fn pinned_layout(
+    operation: &Operation,
+    binding: [u8; 32],
+    manifest: [u8; 32],
+) -> Result<(OverlayLayout, Vec<u8>, Option<ObjectId>)> {
     let pin_bytes = private::read(&operation.root.join(PIN), MAX_RECORD)?;
     let pin: Pin = serde_json::from_slice(&pin_bytes)?;
     if pin.version != 1
@@ -319,22 +388,23 @@ pub(crate) fn open(
     {
         return Err(Error::Identity);
     }
-    let root = source_directory(&operation.storage)?;
-    let key = *pin
-        .image
-        .parse::<ObjectId>()
-        .map_err(|_| Error::Identity)?
-        .as_bytes();
-    if PublicationReceipt::load(&root.join("image"), key)?.manifest_digest()? != manifest {
+    let key = pin.image.parse::<ObjectId>().map_err(|_| Error::Identity)?;
+    let (image, multi) = source_image(&operation.storage, Some(key))?;
+    if PublicationReceipt::load(&image, *key.as_bytes())?.manifest_digest()? != manifest {
         return Err(Error::Identity);
     }
-    let mounted = OverlayView::observe(
-        operation.volume.as_ref().ok_or(Error::Identity)?,
-        layout(operation, binding)?,
-    )?;
+    Ok((
+        layout(operation, binding, &image)?,
+        pin_bytes,
+        multi.then_some(key),
+    ))
+}
+
+fn open_attached(operation: &Operation, paths: OverlayLayout, pin: &[u8]) -> Result<OverlayView> {
+    let mounted = OverlayView::observe(operation.volume.as_ref().ok_or(Error::Identity)?, paths)?;
     let expected = serde_json::to_vec(&Attached {
         version: 1,
-        pin: digest(&pin_bytes),
+        pin: digest(pin),
         placement: text(mounted.placement_digest()?),
     })?;
     if private::read(&operation.root.join(ATTACHED), MAX_RECORD)? != expected
@@ -355,52 +425,63 @@ pub(crate) fn detach(
     manifest: [u8; 32],
 ) -> Result<()> {
     operation.verify()?;
-    let paths = layout(operation, binding)?;
+    let files = view_path(operation, binding)?;
     let marker = journal.join(RETIRED);
-    let present = OverlayView::mount_present(&paths.files)?;
-    if present {
-        let view = open(operation, binding, manifest)?;
+    if OverlayView::mount_present(&files)? {
+        let (paths, pin, image) = pinned_layout(operation, binding, manifest)?;
+        let view = open_attached(operation, paths.clone(), &pin)?;
         let record = serde_json::to_vec(&Retirement {
-            version: 1,
+            version: if image.is_some() { 2 } else { 1 },
             binding: text(binding),
             placement: text(view.placement_digest()?),
+            image: image.map(|key| key.to_string()),
         })?;
         view.verify()?;
         checked_record(&marker, &record)?;
         drop(view);
+        invoke(driver, "unmount", &paths)?;
     } else {
         // A missing mount before cleanup was admitted is an interrupted or
         // replaced placement, never proof that deletion is safe.
-        read_retirement(&marker, binding)?;
+        let (_, key) = read_retirement(&marker, binding)?;
+        let (image, multi) = source_image(&operation.storage, key)?;
+        if multi != key.is_some() {
+            return Err(Error::Identity);
+        }
+        if operation.root.join("overlay-work").try_exists()? {
+            invoke(driver, "unmount", &layout(operation, binding, &image)?)?;
+        }
     }
-    if present || paths.work.try_exists()? {
-        invoke(driver, "unmount", &paths)?;
-    }
-    if OverlayView::mount_present(&paths.files)? {
+    if OverlayView::mount_present(&files)? {
         return Err(Error::Incomplete);
     }
-    if paths.files.try_exists()? {
-        private::directory(&paths.files)?;
-        fs::remove_dir(&paths.files)?;
-        fs::File::open(paths.files.parent().ok_or(Error::Private)?)?.sync_all()?;
+    if files.try_exists()? {
+        private::directory(&files)?;
+        fs::remove_dir(&files)?;
+        fs::File::open(files.parent().ok_or(Error::Private)?)?.sync_all()?;
     }
     operation.verify()
 }
 
-fn read_retirement(path: &Path, binding: [u8; 32]) -> Result<[u8; 32]> {
+fn read_retirement(path: &Path, binding: [u8; 32]) -> Result<([u8; 32], Option<ObjectId>)> {
     let bytes = private::read(path, MAX_RECORD)?;
     let record: Retirement = serde_json::from_slice(&bytes)?;
-    if record.version != 1
+    if !matches!((record.version, &record.image), (1, None) | (2, Some(_)))
         || record.binding != text(binding)
         || serde_json::to_vec(&record)? != bytes
     {
         return Err(Error::Identity);
     }
-    Ok(*record
+    let placement = *record
         .placement
         .parse::<ObjectId>()
         .map_err(|_| Error::Identity)?
-        .as_bytes())
+        .as_bytes();
+    let image = record
+        .image
+        .map(|key| key.parse::<ObjectId>().map_err(|_| Error::Identity))
+        .transpose()?;
+    Ok((placement, image))
 }
 
 pub(crate) fn cleanup_context(
@@ -409,10 +490,10 @@ pub(crate) fn cleanup_context(
     binding: [u8; 32],
     manifest: [u8; 32],
 ) -> Result<(PathBuf, [u8; 32])> {
-    let files = layout(operation, binding)?.files;
+    let files = view_path(operation, binding)?;
     let marker = journal.join(RETIRED);
     let placement = if marker.try_exists()? {
-        read_retirement(&marker, binding)?
+        read_retirement(&marker, binding)?.0
     } else {
         open(operation, binding, manifest)?.placement_digest()?
     };
@@ -452,12 +533,49 @@ mod tests {
             version: 1,
             binding: text([0x11; 32]),
             placement: text([0x44; 32]),
+            image: None,
         })
         .unwrap();
         assert_eq!(retirement.len(), 183);
         assert_eq!(
             digest(&retirement),
             "sha256:8066d01f1035ce627d7f92b356b71fd746237ca79cf9e020c4f8b2d0497e9ec6"
+        );
+        let retirement = serde_json::to_vec(&Retirement {
+            version: 2,
+            binding: text([0x11; 32]),
+            placement: text([0x44; 32]),
+            image: Some(text([0x22; 32])),
+        })
+        .unwrap();
+        assert_eq!(
+            digest(&retirement),
+            "sha256:48259624d97e97efb7d5234915d2c79e864bc972980b72d6f5ad3d6816fb1f87"
+        );
+    }
+
+    #[test]
+    fn revision_images_are_distinct_and_existing_reservations_survive_a_full_cache() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = tempfile::Builder::new()
+            .permissions(fs::Permissions::from_mode(0o700))
+            .tempdir()
+            .unwrap();
+        let source = root.path().canonicalize().unwrap();
+        let key = |byte| Some(ObjectId::from_bytes([byte; 32]));
+        let first = image_path(&source, Some(2), key(1), true).unwrap();
+        private::make_directory(&first).unwrap();
+        let second = image_path(&source, Some(2), key(2), true).unwrap();
+        assert_ne!(first, second);
+        assert!(matches!(
+            image_path(&source, Some(2), key(3), true),
+            Err(Error::ImageLimit)
+        ));
+        assert_eq!(image_path(&source, Some(2), key(2), true).unwrap(), second);
+        assert_eq!(image_path(&source, Some(2), key(1), false).unwrap(), first);
+        assert_eq!(
+            image_path(&source, None, None, false).unwrap(),
+            source.join("image")
         );
     }
 }

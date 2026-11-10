@@ -86,6 +86,9 @@ pub enum Action {
         mount: PathBuf,
         #[arg(long, value_parser=clap::value_parser!(u64).range(67_108_864..=1_073_741_824))]
         limit_bytes: u64,
+        /// Opt in to storing multiple exact images on this new source volume.
+        #[arg(long, value_parser=clap::value_parser!(u8).range(2..=16))]
+        max_images: Option<u8>,
     },
     /// Capture one owner-requested, removed managed run and publish its snapshot.
     SealOnce {
@@ -247,16 +250,23 @@ pub async fn run(action: Action) -> Result<bool> {
             return Ok(true);
         }
         Action::CowSourceRegister {
-            mount, limit_bytes, ..
+            mount,
+            limit_bytes,
+            max_images,
+            ..
         } => {
             #[cfg(not(target_os = "linux"))]
             {
-                let _ = (mount, limit_bytes);
+                let _ = (mount, limit_bytes, max_images);
                 return Err(Error::Config);
             }
             #[cfg(target_os = "linux")]
             {
-                node.register_cow_source_volume(&mount, limit_bytes)?;
+                if let Some(max_images) = max_images {
+                    node.register_cow_revision_cache(&mount, limit_bytes, max_images)?;
+                } else {
+                    node.register_cow_source_volume(&mount, limit_bytes)?;
+                }
                 println!("{}", json!({"state":"source-volume-registered"}));
                 return Ok(true);
             }

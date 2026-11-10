@@ -106,7 +106,8 @@ fn main() {
                 .is_err()
             );
             if args[1] == "overlap-edit" {
-                assert_eq!(fs::read("same.txt").unwrap(), b"base\n");
+                let expected = args.get(4).map_or(b"base\n".as_slice(), String::as_bytes);
+                assert_eq!(fs::read("same.txt").unwrap(), expected);
             }
             fs::write("same.txt", args[2].as_bytes()).unwrap();
             assert_eq!(fs::read("same.txt").unwrap(), args[2].as_bytes());

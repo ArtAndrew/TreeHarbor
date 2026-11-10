@@ -280,8 +280,9 @@ pub(crate) async fn git_source_context(
 }
 
 impl Metadata {
-    /// Reuse already verified local Git source bytes for this live preparation.
+    /// Identify already verified local Git source for this live preparation.
     /// No catalog object is read and no temporary object hold is needed.
+    /// A caller with a cache miss must still open a full source lease.
     pub async fn cached_git_preparation_root(
         &mut self,
         auth: &Authorization,

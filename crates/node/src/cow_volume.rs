@@ -1,4 +1,4 @@
-//! Optional, operator-owned filesystem for a shared prepared source image.
+//! Optional, operator-owned filesystem for prepared source images.
 use crate::{Error, Node, Result, private, storage::Storage};
 use serde::{Deserialize, Serialize};
 use std::{fs, os::unix::fs::MetadataExt, path::Path, sync::Arc};
@@ -15,6 +15,14 @@ struct Registration {
     version: u8,
     storage: Uuid,
     volume: VolumeIdentity,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    max_images: Option<u8>,
+}
+
+#[derive(Clone)]
+pub(crate) struct SourceVolume {
+    pub volume: Arc<Volume>,
+    pub max_images: Option<u8>,
 }
 
 fn record(storage: &Storage) -> Result<Option<(Registration, Vec<u8>)>> {
@@ -26,8 +34,10 @@ fn record(storage: &Storage) -> Result<Option<(Registration, Vec<u8>)>> {
     }
     let bytes = private::read(&path, LIMIT)?;
     let registration: Registration = serde_json::from_slice(&bytes)?;
-    if registration.version != 1
-        || registration.storage != storage.identity.storage()
+    if !matches!(
+        (registration.version, registration.max_images),
+        (1, None) | (2, Some(2..=16))
+    ) || registration.storage != storage.identity.storage()
         || serde_json::to_vec(&registration)? != bytes
     {
         return Err(Error::Identity);
@@ -52,6 +62,23 @@ impl Node {
     /// Attach an empty, independent ext4 source filesystem before this node's
     /// first overlay preparation. Never mount, move or replace an existing image.
     pub fn register_cow_source_volume(&self, mount: &Path, limit: u64) -> Result<()> {
+        self.register_cow_volume(mount, limit, None)
+    }
+
+    /// Opt a new source volume into a bounded set of immutable revision images.
+    pub fn register_cow_revision_cache(
+        &self,
+        mount: &Path,
+        limit: u64,
+        max_images: u8,
+    ) -> Result<()> {
+        if !(2..=16).contains(&max_images) {
+            return Err(Error::Configuration);
+        }
+        self.register_cow_volume(mount, limit, Some(max_images))
+    }
+
+    fn register_cow_volume(&self, mount: &Path, limit: u64, max_images: Option<u8>) -> Result<()> {
         let _registration = self.volume_registration.lock().map_err(|_| Error::Busy)?;
         let _image = self.storage.cow_image.try_lock().map_err(|_| Error::Busy)?;
         self.storage.verify()?;
@@ -68,9 +95,10 @@ impl Node {
             return Err(Error::Identity);
         }
         let bytes = serde_json::to_vec(&Registration {
-            version: 1,
+            version: if max_images.is_some() { 2 } else { 1 },
             storage: self.identity().storage(),
             volume: identity.clone(),
+            max_images,
         })?;
         if bytes.len() > LIMIT {
             return Err(Error::Configuration);
@@ -105,7 +133,7 @@ impl Node {
     }
 }
 
-pub(crate) fn open(storage: &Storage) -> Result<Option<Arc<Volume>>> {
+pub(crate) fn open(storage: &Storage) -> Result<Option<SourceVolume>> {
     let mut held = storage.cow_volume.lock().map_err(|_| Error::Busy)?;
     let Some((registration, bytes)) = record(storage)? else {
         if held.is_some() {
@@ -114,20 +142,24 @@ pub(crate) fn open(storage: &Storage) -> Result<Option<Arc<Volume>>> {
         return Ok(None);
     };
     if held.is_none() {
-        *held = Some(Arc::new(Volume::open(
-            &registration.volume.mount,
-            &registration.volume.files,
-            registration.volume.limit_bytes,
-        )?));
+        *held = Some(SourceVolume {
+            volume: Arc::new(Volume::open(
+                &registration.volume.mount,
+                &registration.volume.files,
+                registration.volume.limit_bytes,
+            )?),
+            max_images: registration.max_images,
+        });
     }
-    let volume = held.as_ref().ok_or(Error::Identity)?;
-    volume.verify()?;
-    if volume.identity() != &registration.volume
+    let source = held.as_ref().ok_or(Error::Identity)?;
+    source.volume.verify()?;
+    if source.volume.identity() != &registration.volume
+        || source.max_images != registration.max_images
         || private::read(&registration.volume.mount.join(OWNER), LIMIT)? != bytes
     {
         return Err(Error::Identity);
     }
-    Ok(Some(volume.clone()))
+    Ok(Some(source.clone()))
 }
 
 #[cfg(test)]
@@ -136,7 +168,7 @@ mod tests {
 
     #[test]
     fn registration_matches_independent_vector() {
-        let record = Registration {
+        let mut record = Registration {
             version: 1,
             storage: Uuid::from_u128(2),
             volume: VolumeIdentity {
@@ -149,10 +181,17 @@ mod tests {
                 capacity_bytes: 120000000,
                 limit_bytes: 134217728,
             },
+            max_images: None,
         };
         assert_eq!(
             serde_json::to_vec(&record).unwrap(),
             include_bytes!("../tests/fixtures/cow-volume-v1.json")
+        );
+        record.version = 2;
+        record.max_images = Some(4);
+        assert_eq!(
+            serde_json::to_vec(&record).unwrap(),
+            include_bytes!("../tests/fixtures/cow-volume-v2.json")
         );
     }
 
@@ -181,6 +220,10 @@ mod tests {
         );
         node.register_cow_source_volume(&mount, 64 * 1024 * 1024)
             .unwrap();
+        assert!(
+            node.register_cow_revision_cache(&mount, 64 * 1024 * 1024, 2)
+                .is_err()
+        );
         node.register_cow_source_volume(&mount, 64 * 1024 * 1024)
             .unwrap();
         let marker = mount.join(OWNER);
@@ -211,7 +254,7 @@ mod tests {
         assert!(open(&node.storage).is_err());
         assert_eq!(fs::read(&retained).unwrap(), b"original image");
         fs::write(&marker, original).unwrap();
-        volume.verify().unwrap();
+        volume.volume.verify().unwrap();
         drop(volume);
         drop(node);
         let reopened = Node::open(&path, "tenant", "source-node", storage, 1).unwrap();
@@ -219,7 +262,8 @@ mod tests {
             .register_cow_source_volume(&mount, 64 * 1024 * 1024)
             .unwrap();
         let volume = open(&reopened.storage).unwrap().unwrap();
-        assert_eq!(volume.files(), mount.join("source"));
+        assert_eq!(volume.volume.files(), mount.join("source"));
+        assert_eq!(volume.max_images, None);
         assert_eq!(fs::read(retained).unwrap(), b"original image");
         // The fixture's caller unmounts and removes its disposable backing disk.
     }
