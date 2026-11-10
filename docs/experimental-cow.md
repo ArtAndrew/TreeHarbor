@@ -145,8 +145,8 @@ The ordinary node-parent source image requires no separate source volume.
 
 ## Multiple revisions on one source volume
 
-Development builds with `cow-source-register --max-images` can opt a fresh node
-and its dedicated source volume into 2–16 exact images. For example, add
+Starting with 0.1.18-alpha.1, `cow-source-register --max-images` can opt a
+fresh node and its dedicated source volume into 2–16 exact images. For example, add
 `--max-images 4` at registration. The physical volume limit still applies.
 The published 0.1.17-alpha.1 package uses the single-image profile.
 

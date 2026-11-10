@@ -74,8 +74,9 @@ and the converted native pack. It contains source code and must be protected lik
 the repository. No App key or token is persisted there. After successful completion
 the server holds the accepted source graph independently of these local files.
 
-Development builds may also keep a bounded [Git workspace pack](local-node.md#reuse-an-imported-git-pack)
-inside `pack/workspace-git-v1`. This derived data is useful to a node on the same
+Starting with 0.1.18-alpha.1, imports may keep a bounded
+[Git workspace pack](local-node.md#reuse-an-imported-git-pack) inside
+`pack/workspace-git-v1`. This derived data is useful to a node on the same
 host with access to the private import directory. Import completion and retries
 work with older directories or with the derived files deleted.
 

@@ -147,8 +147,8 @@ data migration.
 
 ### Reuse an imported Git pack
 
-A development build can reuse the pack from a fresh Connected import when the
-bridge and node run under the same trusted OS account. Add
+Starting with 0.1.18-alpha.1, a node can reuse a pack from a fresh Connected
+import when the bridge and node run under the same trusted OS account. Add
 `--git-import-pack /absolute/private/import-1/pack` to the existing
 `node prepare-once --workspace WORKSPACE_UUID --git /usr/bin/git` command. The
 same option works for `node prepare-batch` when the selected workspaces share

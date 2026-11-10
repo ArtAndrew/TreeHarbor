@@ -6,9 +6,9 @@ Run agents from the same commit, keep their changes after workspace cleanup,
 and send each change to GitHub as a draft PR. Built for platform teams running
 code migrations and maintenance jobs with their own agents.
 
-[**Install v0.1.17-alpha.1**](docs/try-treeharbor.md) ·
+[**Install v0.1.18-alpha.1**](docs/try-treeharbor.md) ·
 [Watch the 36-second demo](docs/demo.md) ·
-[Signed Linux packages](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.17-alpha.1)
+[Signed Linux packages](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.18-alpha.1)
 
 **Alpha for test repositories.** Setup is manual on Linux with PostgreSQL.
 The two-agent walkthrough uses gVisor for execution isolation.
@@ -31,11 +31,13 @@ a [Rust CLI](docs/agent-commands.md) and an [experimental MCP adapter](docs/mcp.
 
 ## Reuse the source between tasks
 
-[Copy-on-write workspaces](docs/experimental-cow.md) share one prepared source
-image and give each agent a writable layer. In an 8,195-file prototype test,
-the median time until all four tasks read a file was **161 ms vs. 335 ms**
-with Git worktree on repeat batches. The first batch took **2.07 s vs. 0.57 s**.
-[Method and raw data](docs/benchmark-preparation.md#shared-source-images--9-november-2026)
+[Copy-on-write workspaces](docs/experimental-cow.md) reuse prepared source and
+give each agent a writable layer. In a Linux ARM64 development benchmark with
+four workspaces and 8,195 files, reusing the imported Git pack cut first
+preparation from **1.70–1.73 s to 0.85–0.87 s** after import. Git worktree
+took **about 0.51 s** on those first reuse runs. Repeat batches took
+**0.14–0.16 s** with TreeHarbor and **about 0.65 s** with Git worktree.
+[Method and raw data](docs/benchmark-preparation.md#reusing-the-pack-from-import--10-november-2026)
 
 ## What inspired it
 
