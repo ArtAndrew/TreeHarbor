@@ -9,6 +9,25 @@ below retain evidence from individual increments. Their earlier statements about
 unfinished work describe the scope at that time; they are not a replacement for
 the current overview or the full [release gate ledger](#release-gate-ledger).
 
+## Controller source checkout — development
+
+[`source-checkout`](source-reads.md#prepare-a-controller-directory) prepares a
+private directory on a controller's host from an owned workspace and its
+registered selection. It verifies the snapshot, paginated directories, selected
+blobs, modes and links, then checks the live fence before a no-clobber rename.
+It uses the existing Unix and HTTPS APIs and requires no server upgrade.
+
+The macOS ARM64 CLI/HTTPS/PostgreSQL integration test passed for a full and a
+sparse checkout. It checked executable modes, relative links, refusal to
+overwrite edits, stale generation, byte limit, task close and token revocation.
+The same scenario submits a ChangeSet, loses the reply and recovers its single
+receipt after restart. Managed remote worker leases and dispatch remain open.
+
+A separate macOS ARM64 development client used the signed Linux ARM64
+0.1.18-alpha.1 server over TLS. It selected an executable from the second
+page of a 259-entry directory, copied only the requested files and refused
+an escaping chain of symlinks without publishing the destination.
+
 ## Reuse an imported Git pack — 0.1.18-alpha.1
 
 A co-located node can take a verified Git pack from a fresh Connected import

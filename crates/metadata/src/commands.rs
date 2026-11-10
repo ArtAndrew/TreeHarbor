@@ -226,12 +226,12 @@ enum Command {
 }
 #[derive(Deserialize)]
 #[serde(tag = "kind", rename_all = "lowercase", deny_unknown_fields)]
-enum ProfileWire {
+pub enum ProfileWire {
     Full {},
     Sparse { paths_hex: Vec<String> },
 }
 impl ProfileWire {
-    fn decode(self) -> Result<SourceProfile, CommandError> {
+    pub fn decode(self) -> Result<SourceProfile, CommandError> {
         match self {
             Self::Full {} => Ok(SourceProfile::full()),
             Self::Sparse { paths_hex } => {

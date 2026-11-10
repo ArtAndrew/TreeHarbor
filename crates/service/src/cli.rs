@@ -678,6 +678,19 @@ enum Agent {
         #[arg(long,default_value_t=128,value_parser=clap::value_parser!(u16).range(1..=256))]
         limit: u16,
     },
+    /// Write the exact workspace's registered source selection into a new directory.
+    SourceCheckout {
+        #[command(flatten)]
+        source: SourceContext,
+        #[arg(long)]
+        output: PathBuf,
+        /// Maximum total file and link bytes written to the new directory.
+        #[arg(long, default_value_t = 268_435_456, value_parser = clap::value_parser!(u64).range(1..=4_294_967_296))]
+        max_bytes: u64,
+        /// Deadline for reading and preparing the directory before publication.
+        #[arg(long, default_value_t = 300, value_parser = clap::value_parser!(u64).range(1..=3600))]
+        deadline_seconds: u64,
+    },
     /// Import a completed source pack; keep the same state file to resume.
     SourceImport {
         #[arg(long)]
@@ -1057,7 +1070,8 @@ impl Agent {
             | Self::SourcePut { .. }
             | Self::SourceImport { .. }
             | Self::SourceFile { .. }
-            | Self::SourceList { .. } => return Err(Error::Config), // separate data path below
+            | Self::SourceList { .. }
+            | Self::SourceCheckout { .. } => return Err(Error::Config), // separate data path below
             Self::ProfilePut {
                 mutation,
                 full,
@@ -1468,6 +1482,24 @@ pub async fn run(cli: Cli) -> Result<bool> {
                     let reply=crate::download::read_from(endpoint,&credential,source.fence(),json!({"kind":"list","path_hex":crate::pack::hex(path.as_bytes()),"after_hex":after_hex,"limit":limit}),Duration::from_millis(timeout_ms)).await?;
                     println!("{}", reply.metadata);
                     return Ok(reply.status.is_success());
+                }
+                Agent::SourceCheckout {
+                    source,
+                    output,
+                    max_bytes,
+                    deadline_seconds,
+                } => {
+                    let source = crate::source_checkout::Source {
+                        endpoint,
+                        credential: &credential,
+                        fence: source.fence(),
+                        request_timeout: Duration::from_millis(timeout_ms),
+                    };
+                    let receipt = source
+                        .checkout(&output, max_bytes, Duration::from_secs(deadline_seconds))
+                        .await?;
+                    println!("{receipt}");
+                    return Ok(true);
                 }
                 other => other,
             };

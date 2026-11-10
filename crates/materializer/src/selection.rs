@@ -19,7 +19,8 @@ impl Selection {
             paths: profile.paths().map(<[RepoPath]>::to_vec),
         }
     }
-    pub(crate) fn relevant(&self, path: &RepoPath) -> bool {
+    /// Includes explicitly selected paths, their descendants and necessary ancestors.
+    pub fn relevant(&self, path: &RepoPath) -> bool {
         self.paths.as_ref().is_none_or(|paths| {
             paths
                 .iter()

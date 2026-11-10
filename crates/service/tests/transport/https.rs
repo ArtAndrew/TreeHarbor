@@ -188,6 +188,10 @@ async fn https_agent_reads_and_replays_durable_changes_with_scoped_authority() {
     let dir = f.dir.path().join("input");
     fs::create_dir(&dir).unwrap();
     fs::write(dir.join("main.rs"), b"original\n").unwrap();
+    fs::create_dir(dir.join("src")).unwrap();
+    fs::write(dir.join("src/tool"), b"run me\n").unwrap();
+    fs::set_permissions(dir.join("src/tool"), fs::Permissions::from_mode(0o700)).unwrap();
+    std::os::unix::fs::symlink("../main.rs", dir.join("src/original")).unwrap();
     let pack = f.dir.path().join("pack");
     let output = Command::new(&f.binary)
         .args(["source-pack", "--directory"])
@@ -197,6 +201,8 @@ async fn https_agent_reads_and_replays_durable_changes_with_scoped_authority() {
         .args([
             "--path",
             "main.rs",
+            "--path",
+            "src",
             "--author-name",
             "Test",
             "--author-email",
@@ -229,6 +235,17 @@ async fn https_agent_reads_and_replays_durable_changes_with_scoped_authority() {
         "--epoch",
         "1",
         "--full",
+    ]));
+    let sparse = ok(f.cli(&[
+        "profile-put",
+        "--key",
+        "sparse",
+        "--authority",
+        authority,
+        "--epoch",
+        "1",
+        "--path",
+        "src/tool",
     ]));
 
     assert!(
@@ -388,6 +405,127 @@ async fn https_agent_reads_and_replays_durable_changes_with_scoped_authority() {
         ],
     ));
     assert_eq!(fs::read(&download).unwrap(), b"original\n");
+    let checkout = |url: &str, workspace: &str, generation: &str, output: &str, limit: &[&str]| {
+        remote(
+            &f,
+            url,
+            &trust,
+            &[
+                &[
+                    "source-checkout",
+                    "--authority",
+                    authority,
+                    "--epoch",
+                    "1",
+                    "--workspace",
+                    workspace,
+                    "--generation",
+                    generation,
+                    "--output",
+                    output,
+                ][..],
+                limit,
+            ]
+            .concat(),
+        )
+    };
+    let full_dir = f.dir.path().join("full-checkout");
+    let full = ok(checkout(
+        &url,
+        workspace,
+        "1",
+        full_dir.to_str().unwrap(),
+        &[],
+    ));
+    assert_eq!(full["base"], imported["revision"]);
+    assert_eq!(full["snapshot"], read["snapshot"]);
+    assert_eq!(full["profile_digest"], profile["profile_digest"]);
+    assert_eq!(full["entries"], 4);
+    assert_eq!(fs::read(full_dir.join("main.rs")).unwrap(), b"original\n");
+    assert_eq!(fs::read(full_dir.join("src/tool")).unwrap(), b"run me\n");
+    assert_eq!(
+        fs::metadata(full_dir.join("src/tool"))
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777,
+        0o700
+    );
+    assert_eq!(
+        fs::read_link(full_dir.join("src/original")).unwrap(),
+        Path::new("../main.rs")
+    );
+    fs::write(full_dir.join("main.rs"), b"local edits\n").unwrap();
+    assert!(
+        !checkout(&url, workspace, "1", full_dir.to_str().unwrap(), &[])
+            .status
+            .success()
+    );
+    assert_eq!(
+        fs::read(full_dir.join("main.rs")).unwrap(),
+        b"local edits\n"
+    );
+
+    let sparse_intent = f.dir.path().join("sparse-intent.json");
+    let sparse_run = ok(remote(
+        &f,
+        &url,
+        &trust,
+        &[
+            "api-run-new",
+            "--state",
+            sparse_intent.to_str().unwrap(),
+            "--authority",
+            authority,
+            "--epoch",
+            "1",
+            "--base",
+            imported["revision"].as_str().unwrap(),
+            "--profile-digest",
+            sparse["profile_digest"].as_str().unwrap(),
+            "--agent",
+            "remote-controller",
+            "--task",
+            "sparse",
+        ],
+    ));
+    let sparse_workspace = sparse_run["workspace"].as_str().unwrap();
+    let sparse_dir = f.dir.path().join("sparse-checkout");
+    let sparse_checkout = ok(checkout(
+        &url,
+        sparse_workspace,
+        "1",
+        sparse_dir.to_str().unwrap(),
+        &[],
+    ));
+    assert_eq!(sparse_checkout["snapshot"], full["snapshot"]);
+    assert_eq!(sparse_checkout["profile_digest"], sparse["profile_digest"]);
+    assert_eq!(sparse_checkout["entries"], 2);
+    assert_eq!(fs::read(sparse_dir.join("src/tool")).unwrap(), b"run me\n");
+    assert!(!sparse_dir.join("main.rs").exists());
+    assert!(sparse_dir.join("src/original").symlink_metadata().is_err());
+
+    let rejected_dir = f.dir.path().join("rejected-checkout");
+    for (generation, limits) in [("2", &[][..]), ("1", &["--max-bytes", "10"][..])] {
+        assert!(
+            !checkout(
+                &url,
+                workspace,
+                generation,
+                rejected_dir.to_str().unwrap(),
+                limits
+            )
+            .status
+            .success()
+        );
+        assert!(!rejected_dir.exists());
+    }
+    assert!(!fs::read_dir(f.dir.path()).unwrap().any(|e| {
+        e.unwrap()
+            .file_name()
+            .as_encoded_bytes()
+            .starts_with(b".treeharbor-checkout-")
+    }));
     let upload = Uuid::new_v4().to_string();
     ok(remote(
         &f,
@@ -501,6 +639,12 @@ async fn https_agent_reads_and_replays_durable_changes_with_scoped_authority() {
         ],
     ));
     assert_eq!(ok(remote(&f, &url, &trust, &submit)), accepted);
+    assert!(
+        !checkout(&url, workspace, "1", rejected_dir.to_str().unwrap(), &[])
+            .status
+            .success()
+    );
+    assert!(!rejected_dir.exists());
     let retained = ok(remote(
         &f,
         &url,
@@ -543,6 +687,18 @@ async fn https_agent_reads_and_replays_durable_changes_with_scoped_authority() {
         serde_json::from_slice::<Value>(&revoked.stdout).unwrap()["error"]["code"],
         "unauthenticated"
     );
+    assert!(
+        !checkout(
+            &url,
+            sparse_workspace,
+            "1",
+            rejected_dir.to_str().unwrap(),
+            &[]
+        )
+        .status
+        .success()
+    );
+    assert!(!rejected_dir.exists());
     assert!(
         !fs::read_to_string(f.dir.path().join("server.log"))
             .unwrap()

@@ -395,17 +395,7 @@ impl Stage {
                 }
             }
         }
-        validate_links(&self.links, |path| {
-            let path = self.path(path);
-            match fs::symlink_metadata(&path) {
-                Ok(meta) if meta.file_type().is_symlink() => {
-                    Ok(Some(fs::read_link(path)?.into_os_string().into_vec()))
-                }
-                Ok(_) => Ok(None),
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
-                Err(e) => Err(e.into()),
-            }
-        })?;
+        validate_workspace_links(&self.files(), &self.links)?;
         let file = OpenOptions::new()
             .write(true)
             .create_new(true)
@@ -496,11 +486,28 @@ fn check_link_target(target: &[u8]) -> Result<()> {
     }
     Ok(())
 }
+/// Check links in an exclusively owned staging tree before exposing it to a writer.
+/// The caller supplies every link and its exact target, including dangling links.
+pub fn validate_workspace_links(root: &Path, links: &BTreeMap<Vec<u8>, Vec<u8>>) -> Result<()> {
+    validate_links(links, |path| {
+        let path = root.join(std::ffi::OsStr::from_bytes(path));
+        match fs::symlink_metadata(&path) {
+            Ok(meta) if meta.file_type().is_symlink() => {
+                Ok(Some(fs::read_link(path)?.into_os_string().into_vec()))
+            }
+            Ok(_) => Ok(None),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(e.into()),
+        }
+    })
+}
 fn validate_links(
     links: &BTreeMap<Vec<u8>, Vec<u8>>,
     mut lookup: impl FnMut(&[u8]) -> Result<Option<Vec<u8>>>,
 ) -> Result<()> {
     for (link, target) in links {
+        RepoPath::new(link.clone())?;
+        check_link_target(target)?;
         let mut queue: VecDeque<Vec<u8>> = link.split(|b| *b == b'/').map(<[u8]>::to_vec).collect();
         queue.pop_back();
         queue.extend(target.split(|b| *b == b'/').map(<[u8]>::to_vec));

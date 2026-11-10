@@ -13,6 +13,7 @@ mod selection;
 #[cfg(target_os = "linux")]
 mod view;
 pub use capture::{CaptureArtifact, CaptureExpectation};
+pub use filesystem::validate_workspace_links;
 pub use publication::{Publication, PublicationReceipt};
 pub use recovery::BaselineExpectation;
 pub use seed::SourceSeed;
