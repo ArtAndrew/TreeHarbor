@@ -1,6 +1,6 @@
 # Implementation status
 
-Updated: 2026-11-09. This file describes implemented behavior and remaining release
+Updated: 2026-11-10. This file describes implemented behavior and remaining release
 gates. A foundation milestone does not complete either mode.
 
 For a concise current overview, see [what works today](../README.md#what-works-today)
@@ -8,6 +8,24 @@ and [release readiness](../README.md#what-remains-before-a-full-release). The en
 below retain evidence from individual increments. Their earlier statements about
 unfinished work describe the scope at that time; they are not a replacement for
 the current overview or the full [release gate ledger](#release-gate-ledger).
+
+## Pinned first-run guide — 2026-11-10
+
+The [first-run guide](try-treeharbor.md) pins the existing signed 0.1.16-alpha.1
+archive and uses its bundled helper with the Git-compatible workspace option.
+It gives the exact download, attestation and installation commands and separates
+the install checkpoint from service, App and runtime preparation.
+
+A fresh public ARM64 download matched the release source commit
+`c48c14b52c64a8ffb8b32cfd26ae4a565216a359` and checksum. Installation in a new
+Linux directory preserved the CLI, runtime init and pair helper digests.
+`python3 -Bu scripts/test-native-checks.py --overlap-only` then used those
+installed binaries on a disposable PostgreSQL/gVisor fixture with external
+network disabled. Both agent placements were cleaned up, the overlapping changes
+required resolution and fresh checks/review, and ordinary Git restored the
+retained history. This run covers the local native lifecycle. The complete
+Git-compatible flow with live GitHub publication and a real coding agent has
+its own acceptance gate.
 
 Earlier full CI baseline: [PR89](https://github.com/ArtAndrew/TreeHarbor/pull/89),
 published on 2026-10-28 after all six required checks passed. Both Linux runtime

@@ -10,10 +10,11 @@ not a five-minute deployment or a ready-made LLM connector.
 
 The reference deployment uses PostgreSQL 18 over a trusted local Unix socket,
 local durable object storage, Docker/cgroup v2 and the supported external gVisor
-runtime. The operator also needs Git and Python 3.11+. Workspaces contain native
-files **without `.git`**. Check whether your intended agent/tools can work that way
-before provisioning the host. The included scripted fixture works with this format;
-it does not prove compatibility with every coding agent.
+runtime. The operator also needs Git and Python 3.11+. Choose a full
+[Git-compatible workspace](local-node.md#prepare-an-existing-native-workspace)
+for tasks that need Git commands, as in the [first-run guide](try-treeharbor.md).
+Native file workspaces remain available for tasks that need only source files.
+Each format uses separately registered volumes for the managed tasks in this guide.
 
 Start with a disposable repository and dedicated test infrastructure. Keep source
 backups. The external runtime supplies process isolation and resource limits;
@@ -22,16 +23,9 @@ are in [GitHub connection](github-connection.md) and [managed runs](managed-runs
 
 ## 2. Install the existing package
 
-Follow the release's download, checksum and signature commands, then install into
-a fresh prefix. No local Rust build is needed for the product binaries. Resolve
-the executable for the prepared-agent helper. Set `TH_INSTALL_PREFIX` to the
-absolute prefix you chose in the release installation commands:
-
-```sh
-: "${TH_INSTALL_PREFIX:?Set TH_INSTALL_PREFIX to the absolute prefix used by install.sh}"
-TH_BIN=$(realpath "$TH_INSTALL_PREFIX/bin/treeharbor")
-"$TH_BIN" --version
-```
+Follow [the pinned installation commands](try-treeharbor.md#1-install-a-signed-linux-package)
+to verify and install the package in a fresh prefix. They set `TH_BIN` to the
+resolved binary and `TH_EXAMPLE` to the matching helper in the verified archive.
 
 Commands shown as
 `./target/debug/treeharbor` in development guides can use `"$TH_BIN"` instead.
@@ -124,11 +118,10 @@ Follow these guides in order, using the same repository/binding/authority epoch:
    including two independently registered bounded placements and an approved image.
 4. Run the example's `initialize`, `request`, `execute`, `capture`, `publish`, `status`
    phases with the original private configuration/journals. Save exact PR identities.
-5. [Export retained proposals](github-projection.md), then [drain/clean up](workspace-cleanup.md)
-   through the owning Agent and assigned Node. Revoke temporary credentials afterward.
-   The installed trial also verified export after cleanup; retain the source before
-   deleting private journals or backups. Never unmount active tasks or delete metadata
-   manually to force cleanup.
+5. [Verify the exports and clean up](try-treeharbor.md#4-verify-the-exit-path-and-clean-up)
+   both workspaces through their owning Agents and assigned Nodes. Keep each
+   placement mounted until its cleanup is confirmed. Retain exports and journals,
+   then revoke temporary credentials.
 
 An unknown publication response requires preserving the original IDs and journals,
 not creating another PR intent. The Rust publisher performs bounded read-only
