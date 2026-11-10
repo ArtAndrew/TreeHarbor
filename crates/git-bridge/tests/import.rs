@@ -1,5 +1,6 @@
 #![cfg(unix)]
 use std::{
+    cell::Cell,
     collections::BTreeMap,
     fs,
     io::Write,
@@ -371,6 +372,25 @@ fn unsupported_lfs_submodule_and_non_utf8_metadata_fail_explicitly() {
 fn workspace_seed_keeps_exact_head_and_private_git_mutations() {
     use treeharbor_git_bridge::{Error, WorkspaceSeed, seed_workspace};
 
+    struct CountLeafReads<'a> {
+        store: &'a LocalStore,
+        leaf: ObjectId,
+        reads: Cell<usize>,
+    }
+
+    impl ObjectStore for CountLeafReads<'_> {
+        fn get(&self, id: ObjectId) -> treeharbor_core::Result<Object> {
+            if id == self.leaf {
+                self.reads.set(self.reads.get() + 1);
+            }
+            self.store.get(id)
+        }
+
+        fn put(&self, object: &Object) -> treeharbor_core::Result<ObjectId> {
+            self.store.put(object)
+        }
+    }
+
     for algorithm in [HashAlgorithm::Sha1, HashAlgorithm::Sha256] {
         let f = Fixture::new(algorithm);
         let parent_tree = f.tree(&[]);
@@ -382,6 +402,11 @@ fn workspace_seed_keeps_exact_head_and_private_git_mutations() {
         let bundle = f.bundle(&head, "workspace.bundle");
         let store = f.store("workspace-store");
         let imported = import(&store, f.request(&bundle, &head)).unwrap();
+        let counted = CountLeafReads {
+            store: &store,
+            leaf: Object::Blob(body.to_vec()).id().unwrap(),
+            reads: Cell::new(0),
+        };
         let first = f.dir.path().join("first");
         let second = f.dir.path().join("second");
         for files in [&first, &second] {
@@ -390,8 +415,9 @@ fn workspace_seed_keeps_exact_head_and_private_git_mutations() {
             fs::write(files.join("file"), body).unwrap();
         }
         let seed = |files: &Path, expected: &str| {
-            seed_workspace(
-                &store,
+            counted.reads.set(0);
+            let result = seed_workspace(
+                &counted,
                 WorkspaceSeed {
                     git: Path::new("/usr/bin/git"),
                     files,
@@ -399,7 +425,11 @@ fn workspace_seed_keeps_exact_head_and_private_git_mutations() {
                     expected: oid(expected, algorithm),
                     limits: Limits::default(),
                 },
-            )
+            );
+            if result.is_ok() {
+                assert_eq!(counted.reads.get(), 1);
+            }
+            result
         };
         assert!(matches!(
             seed(&first, &parent),

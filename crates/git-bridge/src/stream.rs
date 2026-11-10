@@ -9,12 +9,18 @@ pub(crate) struct Graph {
     pub has_origins: bool,
 }
 fn get(store: &impl ObjectStore, id: ObjectId) -> Result<Object> {
+    checked_object(store, id).map(|(object, _)| object)
+}
+
+fn checked_object(store: &impl ObjectStore, id: ObjectId) -> Result<(Object, usize)> {
     let object = store.get(id)?;
-    if object.id()? != id {
+    let frame = object.encode()?;
+    if ObjectId::hash_frame(&frame) != id {
         return Err(Error::InvalidProjection);
     }
-    Ok(object)
+    Ok((object, frame.len()))
 }
+
 /// Iterative child-first traversal validates *all* typed edges, not only Git
 /// projection edges. An inconsistent store or missing delta fails the export.
 pub(crate) fn ordered(
@@ -23,19 +29,33 @@ pub(crate) fn ordered(
     limits: Limits,
     deadline: Instant,
 ) -> Result<(Vec<ObjectId>, u64)> {
+    let mut order = Vec::new();
+    let bytes = visit_ordered(store, refs, limits, deadline, |id, _| {
+        order.push(id);
+        Ok(())
+    })?;
+    Ok((order, bytes))
+}
+
+fn visit_ordered(
+    store: &impl ObjectStore,
+    refs: &BTreeMap<String, ObjectId>,
+    limits: Limits,
+    deadline: Instant,
+    mut visit: impl FnMut(ObjectId, Option<Object>) -> Result<()>,
+) -> Result<u64> {
     let mut state = BTreeMap::<ObjectId, (u8, bool)>::new();
     let mut pending = Vec::new();
     for id in refs.values() {
         pending.push((*id, 5, false));
     }
-    let mut result = Vec::new();
     let mut bytes = 0u64;
     let mut edges = 0usize;
     while let Some((id, expected, finish)) = pending.pop() {
         check_deadline(deadline)?;
         if finish {
             state.get_mut(&id).ok_or(Error::InvalidProjection)?.1 = true;
-            result.push(id);
+            visit(id, None)?;
             continue;
         }
         if let Some((kind, done)) = state.get(&id) {
@@ -47,12 +67,12 @@ pub(crate) fn ordered(
         if state.len() >= limits.objects {
             return Err(Error::Limit);
         }
-        let object = get(store, id)?;
+        let (object, encoded_length) = checked_object(store, id)?;
         if object.kind() != expected {
             return Err(Error::InvalidProjection);
         }
         bytes = bytes
-            .checked_add(object.encode()?.len() as u64)
+            .checked_add(encoded_length as u64)
             .ok_or(Error::Limit)?;
         if bytes > limits.source_bytes {
             return Err(Error::Limit);
@@ -62,11 +82,18 @@ pub(crate) fn ordered(
         if edges > limits.edges {
             return Err(Error::Limit);
         }
-        state.insert(id, (expected, false));
-        pending.push((id, expected, true));
-        pending.extend(refs.into_iter().map(|(id, kind)| (id, kind, false)));
+        let leaf = refs.is_empty();
+        state.insert(id, (expected, leaf));
+        if leaf {
+            // Project leaves from the bytes already checked by this traversal.
+            // Keep only identities for unfinished ancestors, even on deep DAGs.
+            visit(id, Some(object))?;
+        } else {
+            pending.push((id, expected, true));
+            pending.extend(refs.into_iter().map(|(id, kind)| (id, kind, false)));
+        }
     }
-    Ok((result, bytes))
+    Ok(bytes)
 }
 
 pub(crate) fn check_paths(
@@ -115,15 +142,19 @@ pub(crate) fn write(
     limits: Limits,
     deadline: Instant,
 ) -> Result<Graph> {
-    let (order, bytes) = ordered(store, refs, limits, deadline)?;
     let mut pack = pack::Pack::new(path, algorithm, limits.stream_bytes, deadline)?;
     let mut ids = BTreeMap::<ObjectId, Vec<u8>>::new();
     let mut commits = BTreeMap::new();
     let mut visits = 0usize;
     let mut has_origins = false;
-    for id in &order {
-        check_deadline(deadline)?;
-        let oid = match get(store, *id)? {
+    let mut objects = 0;
+    let bytes = visit_ordered(store, refs, limits, deadline, |id, leaf| {
+        objects += 1;
+        let object = match leaf {
+            Some(checked) => checked,
+            None => get(store, id)?,
+        };
+        let oid = match object {
             Object::Blob(bytes) => pack.put("blob", &bytes)?,
             Object::Directory(dir) => {
                 // Git orders a directory name as if it had a trailing slash.
@@ -174,20 +205,21 @@ pub(crate) fn write(
                     origin::native_payload(&c, tree, &parents)?
                 };
                 let oid = pack.put("commit", &raw)?;
-                commits.insert(*id, origin::hex(&oid));
+                commits.insert(id, origin::hex(&oid));
                 oid
             }
-            Object::ChangeOperations(_) => continue,
+            Object::ChangeOperations(_) => return Ok(()),
         };
-        ids.insert(*id, oid);
-    }
+        ids.insert(id, oid);
+        Ok(())
+    })?;
     pack.finish()?;
     if std::fs::metadata(path)?.len() > limits.stream_bytes {
         return Err(Error::Limit);
     }
     Ok(Graph {
         commits,
-        objects: order.len(),
+        objects,
         bytes,
         has_origins,
     })
