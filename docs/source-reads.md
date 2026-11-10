@@ -2,8 +2,8 @@
 
 After [importing source](native-import.md) and creating a logical workspace, its
 owner can list directories and download files from that workspace's exact native
-base. These commands do not read an agent's working directory, materialize a
-workspace, launch a runtime or mark files ready for execution.
+base. These commands read the baseline. The execution environment and any later
+agent edits belong to the controller.
 
 Use a credential with `read`, owned by the principal that created the workspace.
 Supply its current generation, repository authority and epoch. They are explicit
@@ -54,13 +54,41 @@ workspace's repository. It does not expand a prepared directory or change the
 workspace generation/profile. Credentials and workspace ownership supply access
 control. There is no public arbitrary-digest read route.
 
+## Prepare a controller directory
+
+Development builds include `source-checkout`. It uses the registered full or
+sparse profile and writes its files to a new directory on the client machine.
+Use the same workspace, generation, authority and epoch as for a single file.
+
+```sh
+treeharbor client --socket "$TH_SOCKET" --credential-file "$TH_CREDENTIAL" \
+  source-checkout --workspace "$WORKSPACE" --generation 1 \
+  --authority standalone --epoch 1 --output "$TH_PRIVATE/checkout"
+```
+
+The client verifies the directory tree and selected blobs against the pinned
+snapshot and checks the live workspace again before publishing. Regular files
+have mode `0600`, executables `0700`. The staged tree must have safe relative
+links. Existing paths are preserved. A failed read or validation leaves the
+destination absent. If an error follows the final rename, inspect the directory
+before retrying. A hard process kill can leave a private `.treeharbor-checkout-*`
+staging directory for the controller to clean up.
+
+The command defaults to 256 MiB of file and link bytes and a five-minute
+preparation deadline. Use `--max-bytes` and `--deadline-seconds` to tune them.
+The client checks at most 100,000 listed entries, including skipped siblings.
+It reads directories and files individually, which suits small and sparse
+selections. Plan for the per-file round trips before using it on a large tree.
+The result reports the native base, snapshot, profile, entry count and byte count.
+The controller owns the directory, execution isolation and cleanup.
+
 ## HTTP protocol, version 1
 
 `POST /v1/source/read` accepts JSON, a Bearer credential and the local service's
-fixed `Host: treeharbor.local`. Query strings, browser Origin headers, ambiguous
-headers and unsupported methods are rejected by the shared transport boundary.
-The private Unix socket transport is still the only supported deployment; remote
-TLS and MCP remain pending.
+fixed `Host: treeharbor.local` over the private Unix socket. With the optional
+[HTTPS listener](agent-https.md), use its configured origin as `Host`. Query
+strings, browser Origin headers, ambiguous headers and unsupported methods are
+rejected by the shared transport boundary.
 
 ```json
 {

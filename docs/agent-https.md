@@ -74,6 +74,17 @@ ChangeSet submission and closing the task. Keep the same request keys, IDs and
 state file after a lost connection. The original receipt can be returned after
 the task closes. Query `api-run-status` for its current state.
 
+Development clients can prepare the registered selection in a new directory.
+Keep the controller credential outside the directory given to the agent.
+
+```sh
+th source-checkout --workspace "$WORKSPACE" --generation 1 \
+  --authority connected --epoch 1 --output /private/controller/task-files
+```
+
+Use the workspace and generation returned at task creation. See the
+[checkout limits and failure behavior](source-reads.md#prepare-a-controller-directory).
+
 | Remote operation | CLI |
 | --- | --- |
 | Repository and registered profile | `repository-info`, `profile-get` |

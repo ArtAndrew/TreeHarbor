@@ -27,6 +27,7 @@ mod review;
 mod seals;
 pub mod server;
 mod source;
+mod source_checkout;
 mod source_export;
 mod source_read;
 mod webhooks;
@@ -102,6 +103,18 @@ pub enum Error {
     Credential,
     #[error("invalid source profile; use full selection or bounded repository-relative paths")]
     Profile,
+    #[error("source checkout was rejected by the service (HTTP {status})")]
+    CheckoutRejected { status: u16 },
+    #[error("source checkout received inconsistent source or a missing profile path")]
+    CheckoutState,
+    #[error("source checkout requires a new destination under an owner-private directory")]
+    CheckoutOutput,
+    #[error("source checkout could not sync the parent after publication; inspect the destination")]
+    CheckoutDurability,
+    #[error("source checkout exceeded its deadline")]
+    CheckoutDeadline,
+    #[error("source checkout failed filesystem validation: {0}")]
+    CheckoutFilesystem(treeharbor_materializer::Error),
     #[error("native source import failed: {0}")]
     Pack(#[from] pack::Error),
     #[error(
