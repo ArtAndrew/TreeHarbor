@@ -14,6 +14,11 @@ evidence of adoption or production readiness.
 | **Standalone S2** | Own native history, review, checks and integration without Git/GitHub on the native path | Complete the native lifecycle and fenced migration on the shared Rust core, under the same ELv2. Prioritize after the first Connected usage evidence. |
 
 Available packages and their exact scope are listed in [signed alpha releases](https://github.com/ArtAndrew/TreeHarbor/releases).
+[0.1.19-alpha.1](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.19-alpha.1) adds [source checkout](docs/source-reads.md#prepare-a-controller-directory)
+and [leased tasks](docs/remote-tasks-v1.md) for external controllers. The
+signed ARM64 trial verified a populated schema upgrade and handoff across
+two Linux worker nodes.
+
 [0.1.18-alpha.1](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.18-alpha.1)
 adds [imported Git pack reuse](docs/local-node.md#reuse-an-imported-git-pack) and
 [multiple pinned images](docs/experimental-cow.md#multiple-revisions-on-one-source-volume)

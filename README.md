@@ -6,9 +6,9 @@ Run agents from the same commit, keep their changes after workspace cleanup,
 and send each change to GitHub as a draft PR. Built for platform teams running
 code migrations and maintenance jobs with their own agents.
 
-[**Install v0.1.18-alpha.1**](docs/try-treeharbor.md) ·
+[**Install v0.1.19-alpha.1**](docs/try-treeharbor.md) ·
 [Watch the 36-second demo](docs/demo.md) ·
-[Signed Linux packages](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.18-alpha.1)
+[Signed Linux packages](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.19-alpha.1)
 
 **Alpha for test repositories.** Setup is manual on Linux with PostgreSQL.
 The two-agent walkthrough uses gVisor for execution isolation.
@@ -25,9 +25,9 @@ The two-agent walkthrough uses gVisor for execution isolation.
   publish changes under TreeHarbor review and check policies, and export the
   history to Git when needed.
 
-If you already run agents on your own workers, your controller can read pinned
-source and submit changes over the [HTTPS API](docs/agent-https.md). There is also
-a [Rust CLI](docs/agent-commands.md) and an [experimental MCP adapter](docs/mcp.md).
+Use your own agent controllers to claim tasks, download pinned source and submit
+changes over HTTPS. [Controller guide](docs/remote-tasks-v1.md) ·
+[Rust CLI](docs/agent-commands.md) · [Experimental MCP adapter](docs/mcp.md).
 
 ## Reuse the source between tasks
 

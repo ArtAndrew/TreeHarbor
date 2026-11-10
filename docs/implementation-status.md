@@ -36,6 +36,12 @@ after reboot. The second worker recovered the original acceptance after a lost
 response. The retained patch matched the expected bytes in ordinary Git.
 [Implementation PR and CI](https://github.com/ArtAndrew/TreeHarbor/pull/177)
 
+The independent trial was repeated with the signed 0.1.19-alpha.1 archive.
+It verified the cold backup inventory, the old and new schema boundary,
+process rejoin, reassignment, one retained receipt and the exact Git patch.
+[Release](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.19-alpha.1) ·
+[Signed Linux jobs](https://github.com/ArtAndrew/TreeHarbor/actions/runs/42857008927)
+
 ## Controller source checkout — 0.1.19-alpha.1
 
 [`source-checkout`](source-reads.md#prepare-a-controller-directory) prepares a
