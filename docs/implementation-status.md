@@ -9,6 +9,24 @@ below retain evidence from individual increments. Their earlier statements about
 unfinished work describe the scope at that time; they are not a replacement for
 the current overview or the full [release gate ledger](#release-gate-ledger).
 
+## Leased controller tasks — development
+
+[Remote task assignment](remote-tasks-v1.md) queues an exact registered base
+and profile for named external controllers. Each worker uses a distinct agent
+principal. The server allocates a new workspace and run on reclaim, rejects
+expired source and proposal access, and stores the first accepted ChangeSet
+with the task's terminal state. Acceptance closes the logical workspace and
+preserves independent ChangeSet pins. Runtime execution and its local journal
+remain with the controller.
+
+The PostgreSQL tests raced two workers, replayed claim and renewal, fenced an
+expired source session and active upload, and reclaimed with a new run. A
+forced receipt failure rolled back both the accepted version and task state.
+Retry and cleanup preserved the accepted graph. The HTTPS CLI test exercised
+expiry on the database clock, delivery of the same base to a second worker,
+submission and receipt replay. Populated legacy migration and API tests passed.
+Managed remote runtime recovery on two separate hosts remains a release gate.
+
 ## Controller source checkout — development
 
 [`source-checkout`](source-reads.md#prepare-a-controller-directory) prepares a

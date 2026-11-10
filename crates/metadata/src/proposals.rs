@@ -6,6 +6,7 @@ use crate::{
     catalog::{ObjectKey, ObjectLease, lease_pin_in, live_lease, publish_in, reserve_in, settings},
     intake::{ChangeSubmission, CommandContext},
     reads::{ReadBatch, ReadNode, ReadSession},
+    remote_tasks::{AttemptTarget, RemoteAttempt, live_attempt_in},
     uploads::UploadLimits,
 };
 use serde_json::{Value, json};
@@ -21,6 +22,7 @@ pub(crate) struct RunSource {
     pub snapshot: ObjectId,
     pub pin: String,
     pub external_api: bool,
+    pub remote_attempt: Option<RemoteAttempt>,
 }
 pub(crate) async fn run_source_in(
     tx: &Transaction<'_>,
@@ -48,6 +50,12 @@ pub(crate) async fn run_source_in(
               AND r.state='recorded' AND r.runtime IS NULL AND r.started_at IS NULL
               AND w.node IS NULL AND w.runtime IS NULL))"#,
         &[&scope.tenant,&scope.repository,&run,&principal,&epoch,&generation]).await?.ok_or(Error::ExecutionState)?;
+    let external_api = row.get::<_, &str>(3) == "external_api";
+    let remote_attempt = if external_api {
+        live_attempt_in(tx, scope, principal, AttemptTarget::Run(run)).await?
+    } else {
+        None
+    };
     Ok(RunSource {
         revision: row.get::<_, String>(0).parse()?,
         snapshot: ObjectId::from_bytes(
@@ -56,7 +64,8 @@ pub(crate) async fn run_source_in(
                 .map_err(|_| Error::SchemaMismatch)?,
         ),
         pin: row.get(2),
-        external_api: row.get::<_, String>(3) == "external_api",
+        external_api,
+        remote_attempt,
     })
 }
 

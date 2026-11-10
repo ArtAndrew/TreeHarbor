@@ -365,8 +365,10 @@ impl Metadata {
 
     /// Caller must authenticate repository read access; a UUID is not a capability.
     pub async fn change_version(&self, scope: &Scope, id: Uuid, version: i64) -> Result<Value> {
-        let row=self.client.query_opt(r#"SELECT v.run,v.base_revision,v.base_snapshot,v.operations,v.result_snapshot,r.origin
-            FROM th_change_versions v JOIN th_agent_runs r USING(tenant,repository,run) WHERE v.tenant=$1 AND v.repository=$2 AND v.changeset=$3 AND v.version=$4"#,
+        let row=self.client.query_opt(r#"SELECT v.run,v.base_revision,v.base_snapshot,v.operations,v.result_snapshot,r.origin,a.task,a.generation
+            FROM th_change_versions v JOIN th_agent_runs r USING(tenant,repository,run)
+            LEFT JOIN th_remote_task_attempts a USING(tenant,repository,run)
+            WHERE v.tenant=$1 AND v.repository=$2 AND v.changeset=$3 AND v.version=$4"#,
             &[&scope.tenant,&scope.repository,&id,&version]).await?.ok_or(Error::NotFound)?;
         let object = |index| -> Result<String> {
             let raw: Vec<u8> = row.get(index);
@@ -380,6 +382,9 @@ impl Metadata {
         if row.get::<_, String>(5) == "external_api" {
             result["run_origin"] = json!("external_api");
             result["execution_observed"] = json!(false);
+        }
+        if let Some(task) = row.get::<_, Option<Uuid>>(6) {
+            result["remote_task"] = json!({"task":task,"attempt":row.get::<_,i64>(7)});
         }
         Ok(result)
     }
@@ -460,6 +465,9 @@ impl Mutation<'_> {
         if source.snapshot != applied.base_snapshot() {
             return Err(Error::ReceiptMismatch);
         }
+        if source.remote_attempt.is_some() && change.previous_version != 0 {
+            return Err(Error::VersionConflict);
+        }
         let base_revision = source.revision.to_string();
         if change.previous_version == 0 {
             let inserted=self.tx.execute("INSERT INTO th_changesets (tenant,repository,changeset,principal,latest_version) VALUES ($1,$2,$3,$4,1) ON CONFLICT DO NOTHING",
@@ -504,6 +512,9 @@ impl Mutation<'_> {
         if source.external_api {
             result["run_origin"] = json!("external_api");
             result["execution_observed"] = json!(false);
+        }
+        if let Some(attempt) = &source.remote_attempt {
+            result["remote_task"] = self.accept_remote_task(attempt, change.id).await?;
         }
         Ok(result)
     }

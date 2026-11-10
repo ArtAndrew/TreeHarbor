@@ -107,12 +107,16 @@ fn address(f: &Fixture) -> SocketAddr {
 }
 
 fn remote(f: &Fixture, url: &str, trust: &Path, args: &[&str]) -> Output {
+    remote_as(f, url, trust, &f.credential_path, args)
+}
+
+fn remote_as(f: &Fixture, url: &str, trust: &Path, credential: &Path, args: &[&str]) -> Output {
     Command::new(&f.binary)
         .env("PATH", "/treeharbor-test-no-executables")
         .args(["client", "--https", url, "--ca-cert"])
         .arg(trust)
         .arg("--credential-file")
-        .arg(&f.credential_path)
+        .arg(credential)
         .args(args)
         .output()
         .unwrap()
@@ -185,6 +189,7 @@ async fn https_agent_reads_and_replays_durable_changes_with_scoped_authority() {
     let addr = address(&f);
     let url = format!("https://{addr}");
     let importer = f.credential();
+    let operator = f.credential_path.clone();
     let dir = f.dir.path().join("input");
     fs::create_dir(&dir).unwrap();
     fs::write(dir.join("main.rs"), b"original\n").unwrap();
@@ -671,6 +676,16 @@ async fn https_agent_reads_and_replays_durable_changes_with_scoped_authority() {
             .get::<_, i64>(0),
         1
     );
+    remote_task_reclaim(
+        &f,
+        &url,
+        &trust,
+        &operator,
+        imported["revision"].as_str().unwrap(),
+        profile["profile_digest"].as_str().unwrap(),
+        &read["object"],
+    )
+    .await;
     let token: Value = serde_json::from_slice(&fs::read(&f.credential_path).unwrap()).unwrap();
     f.admin_ok(&[
         "token-revoke",
@@ -706,4 +721,214 @@ async fn https_agent_reads_and_replays_durable_changes_with_scoped_authority() {
     );
     drop(server);
     f.cleanup().await;
+}
+
+async fn remote_task_reclaim(
+    f: &Fixture,
+    url: &str,
+    trust: &Path,
+    operator: &Path,
+    base: &str,
+    profile: &str,
+    original: &Value,
+) {
+    let authority = Authority::Connected.as_str();
+    let repository = f.scope.repository().to_string();
+    let b = f.dir.path().join("worker-b.json");
+    f.admin_ok(&[
+        "principal-create",
+        "--tenant",
+        f.scope.tenant(),
+        "--principal",
+        "worker-b",
+        "--kind",
+        "agent",
+    ]);
+    let access = [
+        "--tenant",
+        f.scope.tenant(),
+        "--repository",
+        &repository,
+        "--principal",
+        "worker-b",
+        "--permission",
+        "read",
+        "--permission",
+        "workspace.write",
+        "--permission",
+        "change.write",
+    ];
+    f.admin_ok(&[&["access-set"][..], &access].concat());
+    f.admin_ok(
+        &[
+            &["token-issue"][..],
+            &access,
+            &["--output", b.to_str().unwrap()],
+        ]
+        .concat(),
+    );
+
+    let task = Uuid::new_v4().to_string();
+    let enqueue = [
+        "remote-task-enqueue",
+        "--key",
+        "enqueue-remote",
+        "--authority",
+        authority,
+        "--epoch",
+        "1",
+        "--task",
+        &task,
+        "--base",
+        base,
+        "--profile-digest",
+        profile,
+        "--agent",
+        "remote-controller",
+        "--label",
+        "edit-file",
+        "--worker",
+        "agent-a",
+        "--worker",
+        "worker-b",
+    ];
+    assert_eq!(
+        ok(f.cli_with_credential(operator, &enqueue))["state"],
+        "queued"
+    );
+    assert!(
+        !remote_as(f, url, trust, operator, &enqueue)
+            .status
+            .success()
+    );
+    let claim = |credential: &Path, key: &str, ttl: &str| {
+        ok(remote_as(
+            f,
+            url,
+            trust,
+            credential,
+            &[
+                "remote-task-claim",
+                "--key",
+                key,
+                "--authority",
+                authority,
+                "--epoch",
+                "1",
+                "--task",
+                &task,
+                "--ttl-seconds",
+                ttl,
+            ],
+        ))
+    };
+    let first = claim(&f.credential_path, "claim-remote-a", "4");
+    assert_eq!(first["attempt"], 1);
+    assert_eq!(claim(&f.credential_path, "claim-remote-a", "4"), first);
+    let deadline = Instant::now() + Duration::from_secs(12);
+    loop {
+        let status = ok(remote(
+            f,
+            url,
+            trust,
+            &["remote-task-status", "--task", &task],
+        ));
+        if status["lease_active"] == false {
+            break;
+        }
+        assert!(Instant::now() < deadline, "worker lease did not expire");
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    let expired = remote(
+        f,
+        url,
+        trust,
+        &[
+            "source-list",
+            "--authority",
+            authority,
+            "--epoch",
+            "1",
+            "--workspace",
+            first["workspace"].as_str().unwrap(),
+            "--generation",
+            "1",
+        ],
+    );
+    assert!(!expired.status.success());
+    assert_eq!(
+        serde_json::from_slice::<Value>(&expired.stdout).unwrap()["error"]["code"],
+        "lease_expired"
+    );
+
+    let second = claim(&b, "claim-remote-b", "120");
+    assert_eq!(second["attempt"], 2);
+    assert_eq!(second["base"], first["base"]);
+    let files = f.dir.path().join("reclaimed-source");
+    let worker = |args: &[&str]| ok(remote_as(f, url, trust, &b, args));
+    worker(&[
+        "source-checkout",
+        "--authority",
+        authority,
+        "--epoch",
+        "1",
+        "--workspace",
+        second["workspace"].as_str().unwrap(),
+        "--generation",
+        "1",
+        "--output",
+        files.to_str().unwrap(),
+    ]);
+    let file = files.join("main.rs");
+    assert_eq!(fs::read(&file).unwrap(), b"original\n");
+    fs::write(&file, b"replacement after reassignment\n").unwrap();
+    let upload = Uuid::new_v4().to_string();
+    worker(&[
+        "change-begin",
+        "--key",
+        "remote-begin",
+        "--authority",
+        authority,
+        "--epoch",
+        "1",
+        "--upload",
+        &upload,
+        "--run",
+        second["run"].as_str().unwrap(),
+        "--generation",
+        "1",
+    ]);
+    let uploaded = worker(&[
+        "change-put",
+        "--upload",
+        &upload,
+        "--file",
+        file.to_str().unwrap(),
+    ]);
+    let operations = f.dir.path().join("remote-operations.json");
+    files::write_private(&operations, &serde_json::to_vec(&json!([{"path_hex":"6d61696e2e7273",
+        "expected":{"mode":33188,"object":original}, "replacement":{"mode":33188,"object":uploaded["object"]}}])).unwrap()).unwrap();
+    let changeset = Uuid::new_v4().to_string();
+    let submit = [
+        "change-submit",
+        "--key",
+        "remote-submit",
+        "--authority",
+        authority,
+        "--epoch",
+        "1",
+        "--upload",
+        &upload,
+        "--changeset",
+        &changeset,
+        "--operations",
+        operations.to_str().unwrap(),
+    ];
+    let accepted = worker(&submit);
+    assert_eq!(accepted["remote_task"], json!({"task":task,"attempt":2}));
+    assert_eq!(worker(&submit), accepted);
+    let completed = ok(f.cli_with_credential(operator, &["remote-task-status", "--task", &task]));
+    assert_eq!(completed["changeset"], changeset);
+    assert_eq!(completed["state"], "accepted");
+    assert_eq!(completed["lease_active"], false);
 }

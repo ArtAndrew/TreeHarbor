@@ -627,6 +627,54 @@ enum Agent {
         #[arg(long,value_parser=clap::value_parser!(i64).range(1..))]
         generation: i64,
     },
+    /// Queue a pinned task for explicitly assigned external worker principals.
+    RemoteTaskEnqueue {
+        #[command(flatten)]
+        mutation: Mutation,
+        #[arg(long)]
+        task: Uuid,
+        #[arg(long)]
+        base: String,
+        #[arg(long)]
+        profile_digest: String,
+        #[arg(long)]
+        agent: String,
+        #[arg(long)]
+        label: String,
+        #[arg(long = "worker", required = true)]
+        workers: Vec<String>,
+    },
+    /// Claim one eligible task. Preserve the key on an uncertain response.
+    RemoteTaskClaim {
+        #[command(flatten)]
+        mutation: Mutation,
+        #[arg(long)]
+        task: Option<Uuid>,
+        #[arg(long, default_value_t = 120, value_parser = clap::value_parser!(i32).range(1..=3600))]
+        ttl_seconds: i32,
+    },
+    /// Extend an active lease for the current attempt.
+    RemoteTaskRenew {
+        #[command(flatten)]
+        mutation: Mutation,
+        #[arg(long)]
+        task: Uuid,
+        #[arg(long, value_parser = clap::value_parser!(i64).range(1..=16))]
+        attempt: i64,
+        #[arg(long, default_value_t = 120, value_parser = clap::value_parser!(i32).range(1..=3600))]
+        ttl_seconds: i32,
+    },
+    RemoteTaskStatus {
+        #[arg(long)]
+        task: Uuid,
+    },
+    /// Cancel a pending assignment and revoke its source and proposal access.
+    RemoteTaskCancel {
+        #[command(flatten)]
+        mutation: Mutation,
+        #[arg(long)]
+        task: Uuid,
+    },
     /// Request a run from exactly prepared files and an operator-approved profile.
     RunRequest {
         #[command(flatten)]
@@ -1024,6 +1072,39 @@ impl Agent {
                 generation,
             } => {
                 json!({"method":"api_run_close","key":mutation.key,"authority":Authority::from(mutation.authority).as_str(),"epoch":mutation.epoch,"run":run.to_string(),"generation":generation})
+            }
+            Self::RemoteTaskEnqueue {
+                mutation,
+                task,
+                base,
+                profile_digest,
+                agent,
+                label,
+                workers,
+            } => {
+                json!({"method":"remote_task_enqueue","key":mutation.key,"authority":Authority::from(mutation.authority).as_str(),"epoch":mutation.epoch,
+                    "task":task,"base":base,"profile_digest":profile_digest,"agent":agent,"label":label,"workers":workers})
+            }
+            Self::RemoteTaskClaim {
+                mutation,
+                task,
+                ttl_seconds,
+            } => {
+                json!({"method":"remote_task_claim","key":mutation.key,"authority":Authority::from(mutation.authority).as_str(),"epoch":mutation.epoch,
+                    "task":task,"ttl_seconds":ttl_seconds})
+            }
+            Self::RemoteTaskRenew {
+                mutation,
+                task,
+                attempt,
+                ttl_seconds,
+            } => {
+                json!({"method":"remote_task_renew","key":mutation.key,"authority":Authority::from(mutation.authority).as_str(),"epoch":mutation.epoch,
+                    "task":task,"attempt":attempt,"ttl_seconds":ttl_seconds})
+            }
+            Self::RemoteTaskStatus { task } => json!({"method":"remote_task_status","task":task}),
+            Self::RemoteTaskCancel { mutation, task } => {
+                json!({"method":"remote_task_cancel","key":mutation.key,"authority":Authority::from(mutation.authority).as_str(),"epoch":mutation.epoch,"task":task})
             }
             Self::RunRequest {
                 mutation,
