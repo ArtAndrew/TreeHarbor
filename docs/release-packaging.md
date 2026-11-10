@@ -144,6 +144,31 @@ PostgreSQL, Docker/gVisor, bounded volumes and host access are separate prerequi
 Removing the CLI symlink and that version directory uninstalls the package; retain
 repository state and backups separately.
 
+### Upgrade from 0.1.18-alpha.1
+
+Capture any work you want to retain, then drain active workspaces and stop the
+service, controllers, nodes and other writers. Keep the old installation and
+take a [cold backup](backup-restore.md) of schema 032, the object store and the
+private state your deployment needs. Verify the backup before changing the schema.
+
+Verify and install 0.1.19-alpha.1 into a separate prefix. With all writers still
+stopped, use the new binary and the existing private service configuration.
+
+```sh
+"$TH_NEW_PREFIX/bin/treeharbor" admin --config "$TH_CONFIG" migrate
+"$TH_NEW_PREFIX/bin/treeharbor" doctor --config "$TH_CONFIG"
+```
+
+Schema 033 adds records for [remote tasks and attempts](remote-tasks-v1.md).
+Start the new service and check a retained ChangeSet before reconnecting workers.
+Use the new binaries for the service and its nodes. Verify the version and
+authority before admitting a new task.
+
+The old binary requires schema 032. To return to 0.1.18-alpha.1 after migration,
+preserve changes accepted since the backup, stop and fence the new deployment,
+and restore the pre-upgrade database and object state as a separate deployment.
+Reconcile any external GitHub effects before reconnecting a Connected repository.
+
 ### Upgrade from 0.1.17-alpha.1
 
 Install the verified 0.1.18-alpha.1 archive into a new prefix and keep the

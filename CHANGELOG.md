@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.1.19-alpha.1 — remote task assignment
+
+- Prepare the exact registered source selection on an external worker with
+  [`source-checkout`](docs/source-reads.md#prepare-a-controller-directory).
+  The client verifies the pinned tree and publishes a new directory without
+  overwriting an existing one.
+- [Assign tasks to named workers](docs/remote-tasks-v1.md) over HTTPS. An expired
+  lease fences the old attempt. The first accepted ChangeSet completes the task
+  and survives workspace closure and a lost response. Controllers supply
+  execution, isolation and their local process journal.
+- [Upgrade to schema 033](docs/release-packaging.md#upgrade-from-0118-alpha1)
+  with a cold backup and a stopped service. Existing source and proposal records
+  retain their identities.
+
 ## 0.1.18-alpha.1 — faster Git-compatible preparation and multiple revisions
 
 - Reuse the verified pack from a fresh Connected import with

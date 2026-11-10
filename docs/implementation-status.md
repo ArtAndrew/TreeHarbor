@@ -9,7 +9,7 @@ below retain evidence from individual increments. Their earlier statements about
 unfinished work describe the scope at that time; they are not a replacement for
 the current overview or the full [release gate ledger](#release-gate-ledger).
 
-## Leased controller tasks — development
+## Leased controller tasks — 0.1.19-alpha.1
 
 [Remote task assignment](remote-tasks-v1.md) queues an exact registered base
 and profile for named external controllers. Each worker uses a distinct agent
@@ -27,7 +27,16 @@ expiry on the database clock, delivery of the same base to a second worker,
 submission and receipt replay. Populated legacy migration and API tests passed.
 Managed remote runtime recovery on two separate hosts remains a release gate.
 
-## Controller source checkout — development
+An independent ARM64 development trial started with the signed 0.1.18-alpha.1
+installation and migrated a populated database from schema 032 to 033. Two Linux
+worker VMs used an external controller and gVisor. The controller rejoined the
+same running process after a disconnect. After the first node stopped, the
+second claimed the expired task, and the first node's late proposal was refused
+after reboot. The second worker recovered the original acceptance after a lost
+response. The retained patch matched the expected bytes in ordinary Git.
+[Implementation PR and CI](https://github.com/ArtAndrew/TreeHarbor/pull/177)
+
+## Controller source checkout — 0.1.19-alpha.1
 
 [`source-checkout`](source-reads.md#prepare-a-controller-directory) prepares a
 private directory on a controller's host from an owned workspace and its
