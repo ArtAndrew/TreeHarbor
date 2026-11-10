@@ -23,6 +23,7 @@ pub mod profiles;
 pub mod proposals;
 pub mod reads;
 pub mod rebases;
+pub mod remote_tasks;
 pub mod review;
 pub mod runs;
 pub mod seals;
@@ -61,6 +62,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/030_github_report_trust.sql"),
     include_str!("../migrations/031_github_check_dispatch_policy.sql"),
     include_str!("../migrations/032_external_api_runs.sql"),
+    include_str!("../migrations/033_remote_tasks.sql"),
 ];
 const MAX_JSON: usize = 1024 * 1024;
 

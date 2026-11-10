@@ -85,6 +85,10 @@ th source-checkout --workspace "$WORKSPACE" --generation 1 \
 Use the workspace and generation returned at task creation. See the
 [checkout limits and failure behavior](source-reads.md#prepare-a-controller-directory).
 
+Development builds also support [leased task assignment](remote-tasks-v1.md)
+for controllers with distinct worker credentials. Operators enqueue and cancel
+through the local socket. Workers claim, renew and inspect assignments over HTTPS.
+
 | Remote operation | CLI |
 | --- | --- |
 | Repository and registered profile | `repository-info`, `profile-get` |

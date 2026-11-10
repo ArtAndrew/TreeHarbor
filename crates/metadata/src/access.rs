@@ -124,11 +124,16 @@ impl Permission {
             | "native.validation.report.v1"
             | "native.validation.revoke.v1" => Ok(Self::ValidationReport),
             "native.review.record.v1" | "native.review.revoke.v1" => Ok(Self::Review),
-            "base.register.v1" | "source.begin.v1" | "source.finish.v1" | "source.abort.v1" => {
-                Ok(Self::RepositoryWrite)
-            }
+            "base.register.v1"
+            | "source.begin.v1"
+            | "source.finish.v1"
+            | "source.abort.v1"
+            | "remote.task.enqueue.v1"
+            | "remote.task.cancel.v1" => Ok(Self::RepositoryWrite),
             "api.run.create.v1"
             | "api.run.close.v1"
+            | "remote.task.claim.v1"
+            | "remote.task.renew.v1"
             | "workspace.create.v1"
             | "workspace.drain.v1"
             | "profile.put.v1"

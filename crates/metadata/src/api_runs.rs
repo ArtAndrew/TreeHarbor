@@ -57,18 +57,7 @@ impl Metadata {
             Begin::Replay(value) => return Ok(value),
             Begin::Fresh(tx) => tx,
         };
-        let s = &ctx.scope;
-        if tx.tx.query_one("SELECT EXISTS(SELECT 1 FROM th_workspaces WHERE tenant=$1 AND repository=$2 AND workspace=$3) OR EXISTS(SELECT 1 FROM th_agent_runs WHERE tenant=$1 AND repository=$2 AND run=$4)", &[&s.tenant(),&s.repository(),&spec.workspace,&spec.run]).await?.get::<_,bool>(0) {
-            return Err(Error::ExecutionState);
-        }
-        tx.create_api_workspace_effect(&WorkspaceSpec {
-            id: spec.workspace,
-            base: spec.base,
-            profile: spec.profile,
-            format: WorkspaceFormat::Native,
-        })
-        .await?;
-        tx.tx.execute("INSERT INTO th_agent_runs(tenant,repository,run,workspace,workspace_generation,epoch,principal,agent,task,origin,state,runtime,started_at) VALUES($1,$2,$3,$4,1,$5,$6,$7,$8,'external_api','recorded',NULL,NULL)", &[&s.tenant(),&s.repository(),&spec.run,&spec.workspace,&ctx.epoch,&ctx.principal,&spec.agent,&spec.task]).await?;
+        tx.create_api_run_effect(spec).await?;
         tx.complete(
             json!({"run":spec.run.to_string(),"workspace":spec.workspace.to_string(),
             "generation":1,"epoch":ctx.epoch,"base":spec.base.to_string(),
@@ -122,10 +111,43 @@ impl Metadata {
 }
 
 impl Mutation<'_> {
+    pub(crate) async fn create_api_run_effect(&self, spec: &ApiRunSpec) -> Result<()> {
+        let ctx = &self.request;
+        let s = &ctx.scope;
+        if self.tx.query_one("SELECT EXISTS(SELECT 1 FROM th_workspaces WHERE tenant=$1 AND repository=$2 AND workspace=$3) OR EXISTS(SELECT 1 FROM th_agent_runs WHERE tenant=$1 AND repository=$2 AND run=$4)", &[&s.tenant(),&s.repository(),&spec.workspace,&spec.run]).await?.get::<_,bool>(0) {
+            return Err(Error::ExecutionState);
+        }
+        self.create_api_workspace_effect(&WorkspaceSpec {
+            id: spec.workspace,
+            base: spec.base,
+            profile: spec.profile,
+            format: WorkspaceFormat::Native,
+        })
+        .await?;
+        self.tx.execute("INSERT INTO th_agent_runs(tenant,repository,run,workspace,workspace_generation,epoch,principal,agent,task,origin,state,runtime,started_at) VALUES($1,$2,$3,$4,1,$5,$6,$7,$8,'external_api','recorded',NULL,NULL)", &[&s.tenant(),&s.repository(),&spec.run,&spec.workspace,&ctx.epoch,&ctx.principal,&spec.agent,&spec.task]).await?;
+        Ok(())
+    }
+
     pub(crate) async fn close_api_workspace_effect(
         &self,
         workspace: Uuid,
         generation: i64,
+    ) -> Result<Value> {
+        let ctx = &self.request;
+        let s = &ctx.scope;
+        if self.tx.query_opt("SELECT 1 FROM th_remote_task_attempts WHERE tenant=$1 AND repository=$2 AND workspace=$3",
+            &[&s.tenant(),&s.repository(),&workspace]).await?.is_some() {
+            return Err(Error::ExecutionState);
+        }
+        self.close_api_workspace_for(workspace, generation, &ctx.principal)
+            .await
+    }
+
+    pub(crate) async fn close_api_workspace_for(
+        &self,
+        workspace: Uuid,
+        generation: i64,
+        principal: &str,
     ) -> Result<Value> {
         let next = generation
             .checked_add(1)
@@ -145,7 +167,7 @@ impl Mutation<'_> {
             AND NOT EXISTS(SELECT 1 FROM th_workspace_preparations p WHERE p.tenant=w.tenant AND p.repository=w.repository AND p.workspace=w.workspace)
             AND NOT EXISTS(SELECT 1 FROM th_managed_runs m WHERE m.tenant=r.tenant AND m.repository=r.repository AND m.run=r.run)
             AND NOT EXISTS(SELECT 1 FROM th_workspace_cleanups c WHERE c.tenant=w.tenant AND c.repository=w.repository AND c.workspace=w.workspace)"#,
-            &[&s.tenant(),&s.repository(),&workspace,&ctx.principal,&ctx.epoch,&generation]).await?.ok_or(Error::ExecutionState)?;
+            &[&s.tenant(),&s.repository(),&workspace,&principal,&ctx.epoch,&generation]).await?.ok_or(Error::ExecutionState)?;
         let holder: String = row.get(0);
         let run: Uuid = row.get(1);
         self.tx.execute("UPDATE th_agent_runs SET state='closed' WHERE tenant=$1 AND repository=$2 AND run=$3", &[&s.tenant(),&s.repository(),&run]).await?;

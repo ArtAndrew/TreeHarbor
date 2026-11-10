@@ -199,6 +199,41 @@ enum Command {
         run: String,
         generation: i64,
     },
+    RemoteTaskEnqueue {
+        key: String,
+        authority: Mode,
+        epoch: i64,
+        task: String,
+        base: String,
+        profile_digest: String,
+        agent: String,
+        label: String,
+        workers: Vec<String>,
+    },
+    RemoteTaskClaim {
+        key: String,
+        authority: Mode,
+        epoch: i64,
+        task: Option<String>,
+        ttl_seconds: i32,
+    },
+    RemoteTaskRenew {
+        key: String,
+        authority: Mode,
+        epoch: i64,
+        task: String,
+        attempt: i64,
+        ttl_seconds: i32,
+    },
+    RemoteTaskStatus {
+        task: String,
+    },
+    RemoteTaskCancel {
+        key: String,
+        authority: Mode,
+        epoch: i64,
+        task: String,
+    },
     RunRequest {
         key: String,
         authority: Mode,
@@ -326,6 +361,9 @@ impl Command {
                 | Self::ApiRunCreate { .. }
                 | Self::ApiRunStatus { .. }
                 | Self::ApiRunClose { .. }
+                | Self::RemoteTaskClaim { .. }
+                | Self::RemoteTaskRenew { .. }
+                | Self::RemoteTaskStatus { .. }
                 | Self::ChangeBegin { .. }
                 | Self::ChangeStatus { .. }
                 | Self::ChangeAbort { .. }
@@ -344,9 +382,13 @@ impl Command {
             Self::SourceBegin { .. }
             | Self::SourceFinish { .. }
             | Self::SourceAbort { .. }
+            | Self::RemoteTaskEnqueue { .. }
+            | Self::RemoteTaskCancel { .. }
             | Self::SourceStatus { .. } => Permission::RepositoryWrite,
             Self::ApiRunCreate { .. }
             | Self::ApiRunClose { .. }
+            | Self::RemoteTaskClaim { .. }
+            | Self::RemoteTaskRenew { .. }
             | Self::WorkspaceCreate { .. }
             | Self::WorkspaceDelete { .. }
             | Self::RunRequest { .. }
@@ -561,6 +603,74 @@ impl Metadata {
                     generation,
                 )
                 .await?
+            }
+            Command::RemoteTaskEnqueue {
+                key,
+                authority,
+                epoch,
+                task,
+                base,
+                profile_digest,
+                agent,
+                label,
+                workers,
+            } => {
+                self.enqueue_remote_task(
+                    &auth.context(key, authority.into(), epoch),
+                    &crate::remote_tasks::RemoteTaskSpec {
+                        task: uuid(&task)?,
+                        base: base.parse().map_err(|_| CommandError::InvalidRequest)?,
+                        profile: profile_digest
+                            .parse()
+                            .map_err(|_| CommandError::InvalidRequest)?,
+                        agent,
+                        label,
+                        workers,
+                    },
+                )
+                .await?
+            }
+            Command::RemoteTaskClaim {
+                key,
+                authority,
+                epoch,
+                task,
+                ttl_seconds,
+            } => {
+                self.claim_remote_task(
+                    &auth.context(key, authority.into(), epoch),
+                    task.as_deref().map(uuid).transpose()?,
+                    ttl_seconds,
+                )
+                .await?
+            }
+            Command::RemoteTaskRenew {
+                key,
+                authority,
+                epoch,
+                task,
+                attempt,
+                ttl_seconds,
+            } => {
+                self.renew_remote_task(
+                    &auth.context(key, authority.into(), epoch),
+                    uuid(&task)?,
+                    attempt,
+                    ttl_seconds,
+                )
+                .await?
+            }
+            Command::RemoteTaskStatus { task } => {
+                self.remote_task_status(&auth, uuid(&task)?).await?
+            }
+            Command::RemoteTaskCancel {
+                key,
+                authority,
+                epoch,
+                task,
+            } => {
+                self.cancel_remote_task(&auth.context(key, authority.into(), epoch), uuid(&task)?)
+                    .await?
             }
             Command::RunRequest {
                 key,

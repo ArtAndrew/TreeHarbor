@@ -1,4 +1,6 @@
 use super::*;
+#[path = "remote_tasks.rs"]
+mod remote_tasks;
 use treeharbor_metadata::{
     access::{Authorization, Permission as P, PrincipalKind},
     api_runs::ApiRunSpec,

@@ -74,6 +74,15 @@ async fn context_in(
     {
         return Err(Error::ExecutionState);
     }
+    if row.get::<_, &str>(6) == "source_ready" {
+        crate::remote_tasks::live_attempt_in(
+            tx,
+            scope,
+            auth.principal(),
+            crate::remote_tasks::AttemptTarget::Workspace(fence.workspace),
+        )
+        .await?;
+    }
     let profile: Vec<u8> = row
         .get::<_, Option<Vec<u8>>>(2)
         .ok_or(Error::ExecutionState)?;
