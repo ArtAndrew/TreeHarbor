@@ -1,7 +1,7 @@
 //! Trusted local administration is deliberately separate from agent HTTP commands.
 use crate::{
     Error, Result,
-    client::{self, Credential},
+    client::{self, Credential, Endpoint},
     config::Config,
     database::Database,
     files,
@@ -20,7 +20,7 @@ use uuid::Uuid;
 #[command(
     name = "treeharbor",
     version,
-    about = "TreeHarbor development transport (local Unix socket)"
+    about = "TreeHarbor authenticated source and change service"
 )]
 pub struct Cli {
     #[command(subcommand)]
@@ -125,6 +125,9 @@ enum Command {
     Serve {
         #[arg(long)]
         config: PathBuf,
+        /// Opt in to the restricted agent HTTPS listener using a private config file.
+        #[arg(long)]
+        https_config: Option<PathBuf>,
     },
     /// Trusted database administration; never expose this command to an agent.
     Admin {
@@ -135,8 +138,14 @@ enum Command {
     },
     /// Use a repository-scoped credential without database access.
     Client {
-        #[arg(long)]
-        socket: PathBuf,
+        #[arg(long, required_unless_present = "https", conflicts_with = "https")]
+        socket: Option<PathBuf>,
+        /// HTTPS origin of the operator's restricted agent endpoint.
+        #[arg(long, requires = "ca_cert")]
+        https: Option<String>,
+        /// Private file containing the CA certificate used to verify the server.
+        #[arg(long, requires = "https")]
+        ca_cert: Option<PathBuf>,
         #[arg(long)]
         credential_file: PathBuf,
         #[arg(long, default_value_t=15_000, value_parser=clap::value_parser!(u64).range(100..=60_000))]
@@ -1239,14 +1248,21 @@ pub async fn run(cli: Cli) -> Result<bool> {
             crate::webhooks::serve(&config).await?;
             Ok(true)
         }
-        Command::Serve { config } => {
+        Command::Serve {
+            config,
+            https_config,
+        } => {
             let config = Config::load(&config)?;
             let mut terminate =
                 tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
             let mut interrupt =
                 tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt())?;
-            let server = Server::bind(config).await?;
-            println!("{}", json!({"status":"listening","socket":server.socket()}));
+            let server = Server::bind_with_https(config, https_config.as_deref()).await?;
+            let mut status = json!({"status":"listening","socket":server.socket()});
+            if let Some(address) = server.https_address() {
+                status["https"] = json!(address.to_string());
+            }
+            println!("{status}");
             server
                 .run(async {
                     tokio::select! { _=terminate.recv()=>{}, _=interrupt.recv()=>{} }
@@ -1256,10 +1272,22 @@ pub async fn run(cli: Cli) -> Result<bool> {
         }
         Command::Client {
             socket,
+            https,
+            ca_cert,
             credential_file,
             timeout_ms,
             action,
         } => {
+            let remote = match (https, ca_cert) {
+                (Some(url), Some(ca)) => Some(crate::https::Client::new(&url, &ca)?),
+                (None, None) => None,
+                _ => return Err(Error::Config),
+            };
+            let endpoint = match (socket.as_deref(), remote.as_ref()) {
+                (Some(socket), None) => Endpoint::Unix(socket),
+                (None, Some(remote)) => Endpoint::Https(remote),
+                _ => return Err(Error::Config),
+            };
             let credential = Credential::load(&credential_file)?;
             let action = match action {
                 Agent::RestoreVerifySource {
@@ -1268,7 +1296,7 @@ pub async fn run(cli: Cli) -> Result<bool> {
                     decision_key,
                     git_revision,
                 } => {
-                    let reply=client::restore_verify_source(&socket,&credential,json!({"key":key,"epoch":epoch,"decision_key":decision_key,"git_revision":git_revision}),Duration::from_millis(timeout_ms)).await?;
+                    let reply=client::restore_verify_source(endpoint.local_socket()?,&credential,json!({"key":key,"epoch":epoch,"decision_key":decision_key,"git_revision":git_revision}),Duration::from_millis(timeout_ms)).await?;
                     println!("{}", reply.body);
                     return Ok(reply.status.is_success());
                 }
@@ -1284,7 +1312,7 @@ pub async fn run(cli: Cli) -> Result<bool> {
                 } => {
                     let reply = crate::api_run_new::send(crate::api_run_new::Request {
                         state: &state,
-                        socket: &socket,
+                        endpoint,
                         credential: &credential,
                         authority: authority.into(),
                         epoch,
@@ -1305,7 +1333,7 @@ pub async fn run(cli: Cli) -> Result<bool> {
                 } => {
                     let reply = crate::native_advance::send(crate::native_advance::Request {
                         state: &state,
-                        socket: &socket,
+                        socket: endpoint.local_socket()?,
                         credential: &credential,
                         target: &target,
                         epoch,
@@ -1324,7 +1352,7 @@ pub async fn run(cli: Cli) -> Result<bool> {
                 } => {
                     let reply = crate::workspace_new::send(crate::workspace_new::Request {
                         state: &state,
-                        socket: &socket,
+                        socket: endpoint.local_socket()?,
                         credential: &credential,
                         authority: authority.into(),
                         epoch,
@@ -1344,7 +1372,7 @@ pub async fn run(cli: Cli) -> Result<bool> {
                     metadata_only,
                     query,
                 } => {
-                    let reply=client::review(&socket,&credential,json!({"authority":Authority::from(authority).as_str(),"epoch":epoch,"query":query.wire(),"limit":limit,"after":after,"text":!metadata_only}),Duration::from_millis(timeout_ms)).await?;
+                    let reply=client::review_to(endpoint,&credential,json!({"authority":Authority::from(authority).as_str(),"epoch":epoch,"query":query.wire(),"limit":limit,"after":after,"text":!metadata_only}),Duration::from_millis(timeout_ms)).await?;
                     println!("{}", reply.body);
                     return Ok(reply.status.is_success());
                 }
@@ -1353,7 +1381,7 @@ pub async fn run(cli: Cli) -> Result<bool> {
                     epoch,
                     query,
                 } => {
-                    let reply=client::history(&socket,&credential,json!({"authority":Authority::from(authority).as_str(),"epoch":epoch,"query":query.wire()}),Duration::from_millis(timeout_ms)).await?;
+                    let reply=client::history_to(endpoint,&credential,json!({"authority":Authority::from(authority).as_str(),"epoch":epoch,"query":query.wire()}),Duration::from_millis(timeout_ms)).await?;
                     println!("{}", reply.body);
                     return Ok(reply.status.is_success());
                 }
@@ -1369,7 +1397,7 @@ pub async fn run(cli: Cli) -> Result<bool> {
                         return Err(Error::Config);
                     };
                     let reply = crate::archive::download(
-                        &socket,
+                        endpoint.local_socket()?,
                         &credential,
                         treeharbor_metadata::exports::ExportFence {
                             authority: authority.into(),
@@ -1396,8 +1424,8 @@ pub async fn run(cli: Cli) -> Result<bool> {
                     if output.try_exists()? {
                         return Err(Error::Config);
                     }
-                    let reply = crate::download::read(
-                        &socket,
+                    let reply = crate::download::read_from(
+                        endpoint,
                         &credential,
                         source.fence(),
                         json!({"kind":"file","path_hex":crate::pack::hex(path.as_bytes())}),
@@ -1422,7 +1450,7 @@ pub async fn run(cli: Cli) -> Result<bool> {
                         treeharbor_core::RepoPath::new(path.as_bytes().to_vec())
                             .map_err(|_| Error::Config)?;
                     }
-                    let reply=crate::download::read(&socket,&credential,source.fence(),json!({"kind":"list","path_hex":crate::pack::hex(path.as_bytes()),"after_hex":after_hex,"limit":limit}),Duration::from_millis(timeout_ms)).await?;
+                    let reply=crate::download::read_from(endpoint,&credential,source.fence(),json!({"kind":"list","path_hex":crate::pack::hex(path.as_bytes()),"after_hex":after_hex,"limit":limit}),Duration::from_millis(timeout_ms)).await?;
                     println!("{}", reply.metadata);
                     return Ok(reply.status.is_success());
                 }
@@ -1436,11 +1464,12 @@ pub async fn run(cli: Cli) -> Result<bool> {
                 ttl_seconds,
             } = action
             {
+                let socket = endpoint.local_socket()?;
                 let pack = tokio::task::spawn_blocking(move || crate::pack::Pack::open(&pack))
                     .await
                     .map_err(|_| Error::ImportWorker)??;
                 let reply = crate::import::send(crate::import::Request {
-                    socket: &socket,
+                    socket,
                     credential: &credential,
                     pack,
                     state: &state,
@@ -1464,7 +1493,7 @@ pub async fn run(cli: Cli) -> Result<bool> {
                 let body=json!({"version":1,"tenant":credential.scope.tenant(),"repository":credential.scope.repository().to_string(),"key":mutation.key,"authority":Authority::from(mutation.authority).as_str(),"epoch":mutation.epoch,
                     "seal":seal.to_string(),"changeset":changeset.to_string(),"previous_version":previous_version,"ttl_seconds":ttl_seconds}).to_string().into_bytes();
                 let reply = client::send_seal_accept(
-                    &socket,
+                    endpoint.local_socket()?,
                     &credential.token,
                     body,
                     Duration::from_millis(timeout_ms),
@@ -1476,7 +1505,7 @@ pub async fn run(cli: Cli) -> Result<bool> {
             if let Agent::RebasePrepare { key, epoch, rebase } = action {
                 let body=json!({"version":1,"tenant":credential.scope.tenant(),"repository":credential.scope.repository().to_string(),"key":key,"epoch":epoch,"rebase":rebase.to_string()}).to_string().into_bytes();
                 let reply = client::send_rebase_prepare(
-                    &socket,
+                    endpoint.local_socket()?,
                     &credential.token,
                     body,
                     Duration::from_millis(timeout_ms),
@@ -1493,7 +1522,7 @@ pub async fn run(cli: Cli) -> Result<bool> {
             {
                 let body=json!({"version":1,"tenant":credential.scope.tenant(),"repository":credential.scope.repository().to_string(),"key":key,"epoch":epoch,"candidate":candidate.to_string()}).to_string().into_bytes();
                 let reply = client::send_native_prepare(
-                    &socket,
+                    endpoint.local_socket()?,
                     &credential.token,
                     body,
                     Duration::from_millis(timeout_ms),
@@ -1507,8 +1536,8 @@ pub async fn run(cli: Cli) -> Result<bool> {
                 let object = treeharbor_core::Object::Blob(bytes);
                 let frame = object.encode().map_err(|_| Error::Size)?;
                 let id = treeharbor_core::ObjectId::hash_frame(&frame);
-                let reply = client::send_change_blob(
-                    &socket,
+                let reply = client::send_change_blob_to(
+                    endpoint,
                     &credential,
                     upload,
                     id,
@@ -1536,8 +1565,8 @@ pub async fn run(cli: Cli) -> Result<bool> {
                 let body=json!({"version":1,"tenant":credential.scope.tenant(),"repository":credential.scope.repository().to_string(),
                     "key":mutation.key,"authority":Authority::from(mutation.authority).as_str(),"epoch":mutation.epoch,
                     "upload":upload.to_string(),"changeset":changeset.to_string(),"previous_version":previous_version,"operations":operations}).to_string().into_bytes();
-                let reply = client::send_proposal(
-                    &socket,
+                let reply = client::send_proposal_to(
+                    endpoint,
                     &credential.token,
                     body,
                     Duration::from_millis(timeout_ms),
@@ -1552,13 +1581,14 @@ pub async fn run(cli: Cli) -> Result<bool> {
                 file,
             } = action
             {
+                let socket = endpoint.local_socket()?;
                 let id: treeharbor_core::ObjectId = object.parse().map_err(|_| Error::Config)?;
                 let bytes = files::read_private(
                     &file,
                     treeharbor_core::FRAME_HEADER + treeharbor_core::MAX_PAYLOAD,
                 )?;
                 let reply = client::send_object(
-                    &socket,
+                    socket,
                     &credential,
                     upload,
                     id,
@@ -1570,8 +1600,8 @@ pub async fn run(cli: Cli) -> Result<bool> {
                 return Ok(reply.status.is_success());
             }
             let body = credential.request(action.json()?).to_string().into_bytes();
-            let reply = client::send(
-                &socket,
+            let reply = client::send_to(
+                endpoint,
                 &credential.token,
                 body,
                 Duration::from_millis(timeout_ms),

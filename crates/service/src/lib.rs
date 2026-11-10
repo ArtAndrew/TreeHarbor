@@ -1,4 +1,4 @@
-//! Authenticated local HTTP transport and CLI support. Unix-only at this stage.
+//! Authenticated HTTP transport and CLI support on Unix hosts.
 #![cfg(unix)]
 mod api_run_new;
 pub mod archive;
@@ -12,6 +12,7 @@ pub mod download;
 pub mod files;
 mod github;
 mod history;
+mod https;
 pub mod import;
 mod init;
 mod mcp;
@@ -33,6 +34,12 @@ mod workspace_new;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    #[error(
+        "HTTPS requires a valid origin, private PEM files and a trusted matching server identity"
+    )]
+    Https,
+    #[error("this operation requires the local Unix socket")]
+    LocalOperation,
     #[error(
         "local initialization refused or incomplete; use valid private input, a short absolute path and a new directory under a private parent; preserve any existing output for inspection"
     )]

@@ -319,6 +319,21 @@ impl From<Mode> for Authority {
     }
 }
 impl Command {
+    fn agent_https_allowed(&self) -> bool {
+        matches!(
+            self,
+            Self::RepositoryInfo {}
+                | Self::ApiRunCreate { .. }
+                | Self::ApiRunStatus { .. }
+                | Self::ApiRunClose { .. }
+                | Self::ChangeBegin { .. }
+                | Self::ChangeStatus { .. }
+                | Self::ChangeAbort { .. }
+                | Self::SourceProfileGet { .. }
+                | Self::OperationStatus { .. }
+        )
+    }
+
     fn permission(&self) -> Permission {
         match self {
             Self::Github { request } => request.permission(),
@@ -361,6 +376,19 @@ fn decode(bytes: &[u8]) -> Result<Envelope, CommandError> {
     }
     Ok(envelope)
 }
+
+/// Use the same versioned decoder as the dispatcher before sending a command
+/// over the restricted agent HTTPS surface.
+pub fn agent_https_command_allowed(bytes: &[u8]) -> Result<bool, CommandError> {
+    Ok(decode(bytes)?.command.agent_https_allowed())
+}
+
+#[derive(Clone, Copy)]
+pub enum CommandIngress {
+    Local,
+    AgentHttps,
+}
+
 impl Metadata {
     /// Repository identities select a scope; they never establish authority.
     /// The credential is obtained by the adapter, not from model/agent JSON.
@@ -380,7 +408,24 @@ impl Metadata {
         bytes: &[u8],
         backend: Option<&str>,
     ) -> Result<Value, CommandError> {
+        self.execute_command_at_ingress(credential, bytes, backend, CommandIngress::Local)
+            .await
+    }
+
+    /// The network agent listener cannot call GitHub, validation, native queue,
+    /// managed runtime, or source-administration commands, even with a token
+    /// that can perform them on the local socket.
+    pub async fn execute_command_at_ingress(
+        &mut self,
+        credential: &SecretToken,
+        bytes: &[u8],
+        backend: Option<&str>,
+        ingress: CommandIngress,
+    ) -> Result<Value, CommandError> {
         let request = decode(bytes)?;
+        if matches!(ingress, CommandIngress::AgentHttps) && !request.command.agent_https_allowed() {
+            return Err(Error::Forbidden.into());
+        }
         let scope = Scope::new(request.tenant, uuid(&request.repository)?)?;
         let auth = self
             .authorize(credential, &scope, request.command.permission())

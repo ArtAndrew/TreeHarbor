@@ -1,4 +1,4 @@
-use crate::{Error, Result, files};
+use crate::{Error, Result, files, https};
 use bytes::Bytes;
 use http_body_util::{BodyExt, Full, Limited};
 use hyper::{Request, StatusCode, header};
@@ -11,7 +11,10 @@ use std::{
     path::Path,
     time::Duration,
 };
-use tokio::{io::AsyncWriteExt, net::UnixStream};
+use tokio::{
+    io::{AsyncRead, AsyncWrite, AsyncWriteExt},
+    net::UnixStream,
+};
 use treeharbor_metadata::{Scope, access::SecretToken, commands::MAX_REQUEST_BYTES};
 use uuid::Uuid;
 
@@ -50,6 +53,22 @@ pub struct Reply {
     pub status: StatusCode,
     pub body: Value,
 }
+
+#[derive(Clone, Copy)]
+pub(crate) enum Endpoint<'a> {
+    Unix(&'a Path),
+    Https(&'a https::Client),
+}
+
+impl<'a> Endpoint<'a> {
+    pub fn local_socket(self) -> Result<&'a Path> {
+        match self {
+            Self::Unix(path) => Ok(path),
+            Self::Https(_) => Err(Error::LocalOperation),
+        }
+    }
+}
+
 const MAX_RESPONSE: usize = 1024 * 1024 + 64 * 1024;
 /// One request per connection; neither tokens nor bodies are logged. Transport
 /// errors/timeouts cannot prove whether a submitted mutation committed.
@@ -59,11 +78,26 @@ pub async fn send(
     body: Vec<u8>,
     timeout: Duration,
 ) -> Result<Reply> {
+    send_to(Endpoint::Unix(socket), token, body, timeout).await
+}
+
+pub(crate) async fn send_to(
+    endpoint: Endpoint<'_>,
+    token: &SecretToken,
+    body: Vec<u8>,
+    timeout: Duration,
+) -> Result<Reply> {
     if body.len() > MAX_REQUEST_BYTES {
         return Err(Error::Size);
     }
-    send_request(
-        socket,
+    if matches!(endpoint, Endpoint::Https(_))
+        && !treeharbor_metadata::commands::agent_https_command_allowed(&body)
+            .map_err(|_| Error::Config)?
+    {
+        return Err(Error::LocalOperation);
+    }
+    send_request_to(
+        endpoint,
         token,
         "POST",
         "/v1/commands".into(),
@@ -82,7 +116,16 @@ pub async fn send_object(
     frame: Vec<u8>,
     timeout: Duration,
 ) -> Result<Reply> {
-    send_uploaded_object(socket, credential, upload, id, frame, timeout, "source").await
+    send_uploaded_object(
+        Endpoint::Unix(socket),
+        credential,
+        upload,
+        id,
+        frame,
+        timeout,
+        "source",
+    )
+    .await
 }
 pub async fn send_change_blob(
     socket: &Path,
@@ -92,7 +135,26 @@ pub async fn send_change_blob(
     frame: Vec<u8>,
     timeout: Duration,
 ) -> Result<Reply> {
-    send_uploaded_object(socket, credential, upload, id, frame, timeout, "changes").await
+    send_change_blob_to(
+        Endpoint::Unix(socket),
+        credential,
+        upload,
+        id,
+        frame,
+        timeout,
+    )
+    .await
+}
+
+pub(crate) async fn send_change_blob_to(
+    endpoint: Endpoint<'_>,
+    credential: &Credential,
+    upload: Uuid,
+    id: treeharbor_core::ObjectId,
+    frame: Vec<u8>,
+    timeout: Duration,
+) -> Result<Reply> {
+    send_uploaded_object(endpoint, credential, upload, id, frame, timeout, "changes").await
 }
 pub async fn send_github_source_object(
     socket: &Path,
@@ -102,10 +164,19 @@ pub async fn send_github_source_object(
     frame: Vec<u8>,
     timeout: Duration,
 ) -> Result<Reply> {
-    send_uploaded_object(socket, credential, upload, id, frame, timeout, "github").await
+    send_uploaded_object(
+        Endpoint::Unix(socket),
+        credential,
+        upload,
+        id,
+        frame,
+        timeout,
+        "github",
+    )
+    .await
 }
 async fn send_uploaded_object(
-    socket: &Path,
+    endpoint: Endpoint<'_>,
     credential: &Credential,
     upload: Uuid,
     id: treeharbor_core::ObjectId,
@@ -124,8 +195,8 @@ async fn send_uploaded_object(
         upload,
         id
     );
-    send_request(
-        socket,
+    send_request_to(
+        endpoint,
         &credential.token,
         "PUT",
         path,
@@ -202,11 +273,20 @@ pub async fn send_proposal(
     body: Vec<u8>,
     timeout: Duration,
 ) -> Result<Reply> {
+    send_proposal_to(Endpoint::Unix(socket), token, body, timeout).await
+}
+
+pub(crate) async fn send_proposal_to(
+    endpoint: Endpoint<'_>,
+    token: &SecretToken,
+    body: Vec<u8>,
+    timeout: Duration,
+) -> Result<Reply> {
     if body.len() > MAX_REQUEST_BYTES {
         return Err(Error::Size);
     }
-    send_request(
-        socket,
+    send_request_to(
+        endpoint,
         token,
         "POST",
         "/v1/changes/submit".into(),
@@ -225,8 +305,29 @@ async fn send_request(
     body: Vec<u8>,
     timeout: Duration,
 ) -> Result<Reply> {
+    send_request_to(
+        Endpoint::Unix(socket),
+        token,
+        method,
+        uri,
+        content_type,
+        body,
+        timeout,
+    )
+    .await
+}
+
+async fn send_request_to(
+    endpoint: Endpoint<'_>,
+    token: &SecretToken,
+    method: &'static str,
+    uri: String,
+    content_type: &'static str,
+    body: Vec<u8>,
+    timeout: Duration,
+) -> Result<Reply> {
     let raw = exchange(
-        socket,
+        endpoint,
         token,
         Exchange {
             method,
@@ -248,23 +349,25 @@ async fn send_request(
 pub async fn history(
     socket: &Path,
     credential: &Credential,
-    mut fields: Value,
+    fields: Value,
     timeout: Duration,
 ) -> Result<Reply> {
-    fields["version"] = json!(1);
-    fields["tenant"] = json!(credential.scope.tenant());
-    fields["repository"] = json!(credential.scope.repository().to_string());
-    let body = serde_json::to_vec(&fields).map_err(|_| Error::Config)?;
-    if body.len() > MAX_REQUEST_BYTES {
-        return Err(Error::Size);
-    }
-    send_request(
-        socket,
+    history_to(Endpoint::Unix(socket), credential, fields, timeout).await
+}
+
+pub(crate) async fn history_to(
+    endpoint: Endpoint<'_>,
+    credential: &Credential,
+    fields: Value,
+    timeout: Duration,
+) -> Result<Reply> {
+    send_request_to(
+        endpoint,
         &credential.token,
         "POST",
         "/v1/history/read".into(),
         "application/json",
-        body,
+        scoped_fields(credential, fields)?,
         timeout,
     )
     .await
@@ -297,23 +400,25 @@ pub async fn restore_verify_source(
 pub async fn review(
     socket: &Path,
     credential: &Credential,
-    mut fields: Value,
+    fields: Value,
     timeout: Duration,
 ) -> Result<Reply> {
-    fields["version"] = json!(1);
-    fields["tenant"] = json!(credential.scope.tenant());
-    fields["repository"] = json!(credential.scope.repository().to_string());
-    let body = serde_json::to_vec(&fields).map_err(|_| Error::Config)?;
-    if body.len() > MAX_REQUEST_BYTES {
-        return Err(Error::Size);
-    }
-    send_request(
-        socket,
+    review_to(Endpoint::Unix(socket), credential, fields, timeout).await
+}
+
+pub(crate) async fn review_to(
+    endpoint: Endpoint<'_>,
+    credential: &Credential,
+    fields: Value,
+    timeout: Duration,
+) -> Result<Reply> {
+    send_request_to(
+        endpoint,
         &credential.token,
         "POST",
         "/v1/review/diff".into(),
         "application/json",
-        body,
+        scoped_fields(credential, fields)?,
         timeout,
     )
     .await
@@ -334,11 +439,45 @@ struct Exchange {
     output: Option<std::fs::File>,
 }
 async fn exchange(
-    socket: &Path,
+    endpoint: Endpoint<'_>,
     token: &SecretToken,
     request: Exchange,
     timeout: Duration,
 ) -> Result<RawReply> {
+    tokio::time::timeout(timeout, async {
+        match endpoint {
+            Endpoint::Unix(socket) => {
+                files::private_directory(socket.parent().ok_or(Error::UnsafeFile)?)?;
+                let meta = fs::symlink_metadata(socket)?;
+                if !meta.file_type().is_socket()
+                    || meta.uid() != rustix::process::geteuid().as_raw()
+                    || meta.mode() & 0o077 != 0
+                {
+                    return Err(Error::UnsafeFile);
+                }
+                let stream = UnixStream::connect(socket).await?;
+                exchange_on(stream, "treeharbor.local", token, request).await
+            }
+            Endpoint::Https(client) => {
+                // Construct the HTTP request only after authenticating the TLS peer.
+                let stream = client.connect().await?;
+                exchange_on(stream, &client.authority, token, request).await
+            }
+        }
+    })
+    .await
+    .map_err(|_| Error::Timeout)?
+}
+
+async fn exchange_on<S>(
+    stream: S,
+    authority: &str,
+    token: &SecretToken,
+    request: Exchange,
+) -> Result<RawReply>
+where
+    S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
+{
     let Exchange {
         method,
         uri,
@@ -347,116 +486,93 @@ async fn exchange(
         max_response,
         output,
     } = request;
-    files::private_directory(socket.parent().ok_or(Error::UnsafeFile)?)?;
-    let meta = fs::symlink_metadata(socket)?;
-    if !meta.file_type().is_socket()
-        || meta.uid() != rustix::process::geteuid().as_raw()
-        || meta.mode() & 0o077 != 0
-    {
-        return Err(Error::UnsafeFile);
+    let (mut sender, connection) = hyper::client::conn::http1::handshake(TokioIo::new(stream))
+        .await
+        .map_err(|_| Error::Http)?;
+    // Abort on timeout/cancellation too; dropping a JoinHandle alone detaches it.
+    struct Driver(tokio::task::JoinHandle<()>);
+    impl Drop for Driver {
+        fn drop(&mut self) {
+            self.0.abort();
+        }
     }
-    tokio::time::timeout(timeout, async {
-        let stream = UnixStream::connect(socket).await?;
-        let (mut sender, connection) = hyper::client::conn::http1::handshake(TokioIo::new(stream))
-            .await
-            .map_err(|_| Error::Http)?;
-        // Abort on timeout/cancellation too; dropping a JoinHandle alone detaches it.
-        struct Driver(tokio::task::JoinHandle<()>);
-        impl Drop for Driver {
-            fn drop(&mut self) {
-                self.0.abort();
-            }
-        }
-        let _driver = Driver(tokio::spawn(async move {
-            let _ = connection.await;
-        }));
-        let mut request = Request::builder()
-            .method(method)
-            .uri(uri)
-            .header(header::HOST, "treeharbor.local")
-            .header(header::CONTENT_TYPE, content_type)
-            .header(header::CONNECTION, "close")
-            .body(Full::new(Bytes::from(body)))
-            .map_err(|_| Error::Http)?;
-        let mut authorization =
-            header::HeaderValue::from_str(&format!("Bearer {}", token.expose()))
-                .map_err(|_| Error::Credential)?;
-        authorization.set_sensitive(true);
-        request
-            .headers_mut()
-            .insert(header::AUTHORIZATION, authorization);
-        let response = sender
-            .send_request(request)
-            .await
-            .map_err(|_| Error::Http)?;
-        let status = response.status();
-        let headers = response.headers().clone();
-        if status.is_success()
-            && let Some(output) = output
+    let _driver = Driver(tokio::spawn(async move {
+        let _ = connection.await;
+    }));
+    let mut request = Request::builder()
+        .method(method)
+        .uri(uri)
+        .header(header::HOST, authority)
+        .header(header::CONTENT_TYPE, content_type)
+        .header(header::CONNECTION, "close")
+        .body(Full::new(Bytes::from(body)))
+        .map_err(|_| Error::Http)?;
+    let mut authorization = header::HeaderValue::from_str(&format!("Bearer {}", token.expose()))
+        .map_err(|_| Error::Credential)?;
+    authorization.set_sensitive(true);
+    request
+        .headers_mut()
+        .insert(header::AUTHORIZATION, authorization);
+    let response = sender
+        .send_request(request)
+        .await
+        .map_err(|_| Error::Http)?;
+    let status = response.status();
+    let headers = response.headers().clone();
+    if status.is_success()
+        && let Some(output) = output
+    {
+        if status != StatusCode::OK
+            || headers
+                .get(header::CONTENT_TYPE)
+                .is_none_or(|v| v != crate::archive::CONTENT_TYPE)
         {
-            if status != StatusCode::OK
-                || headers
-                    .get(header::CONTENT_TYPE)
-                    .is_none_or(|v| v != crate::archive::CONTENT_TYPE)
-            {
-                return Err(Error::Http);
-            }
-            let mut file = tokio::fs::File::from_std(output);
-            let mut body = response.into_body();
-            let mut total = 0u64;
-            while let Some(frame) = body.frame().await {
-                let frame = frame.map_err(|_| Error::Http)?;
-                let data = frame.into_data().map_err(|_| Error::Http)?;
-                total = total.checked_add(data.len() as u64).ok_or(Error::Size)?;
-                if total > crate::archive::MAX_ARCHIVE {
-                    return Err(Error::Size);
-                }
-                file.write_all(&data).await?;
-            }
-            file.flush().await?;
-            return Ok(RawReply {
-                status,
-                headers,
-                bytes: Bytes::new(),
-                file: Some(file.into_std().await),
-            });
+            return Err(Error::Http);
         }
-        let bytes = Limited::new(response.into_body(), max_response)
-            .collect()
-            .await
-            .map_err(|_| Error::Http)?
-            .to_bytes();
-        Ok(RawReply {
+        let mut file = tokio::fs::File::from_std(output);
+        let mut body = response.into_body();
+        let mut total = 0u64;
+        while let Some(frame) = body.frame().await {
+            let frame = frame.map_err(|_| Error::Http)?;
+            let data = frame.into_data().map_err(|_| Error::Http)?;
+            total = total.checked_add(data.len() as u64).ok_or(Error::Size)?;
+            if total > crate::archive::MAX_ARCHIVE {
+                return Err(Error::Size);
+            }
+            file.write_all(&data).await?;
+        }
+        file.flush().await?;
+        return Ok(RawReply {
             status,
             headers,
-            bytes,
-            file: None,
-        })
+            bytes: Bytes::new(),
+            file: Some(file.into_std().await),
+        });
+    }
+    let bytes = Limited::new(response.into_body(), max_response)
+        .collect()
+        .await
+        .map_err(|_| Error::Http)?
+        .to_bytes();
+    Ok(RawReply {
+        status,
+        headers,
+        bytes,
+        file: None,
     })
-    .await
-    .map_err(|_| Error::Timeout)?
 }
 
 /// The scope always comes from the credential file, never caller-supplied fields.
 pub(crate) async fn source_read(
-    socket: &Path,
+    endpoint: Endpoint<'_>,
     credential: &Credential,
-    mut fields: Value,
+    fields: Value,
     file: bool,
     timeout: Duration,
 ) -> Result<RawReply> {
-    if !fields.is_object() {
-        return Err(Error::Config);
-    }
-    fields["version"] = json!(1);
-    fields["tenant"] = json!(credential.scope.tenant());
-    fields["repository"] = json!(credential.scope.repository().to_string());
-    let body = serde_json::to_vec(&fields).map_err(|_| Error::Config)?;
-    if body.len() > MAX_REQUEST_BYTES {
-        return Err(Error::Size);
-    }
+    let body = scoped_fields(credential, fields)?;
     exchange(
-        socket,
+        endpoint,
         &credential.token,
         Exchange {
             method: "POST",
@@ -553,7 +669,7 @@ async fn export_request(
 ) -> Result<RawReply> {
     let body = scoped_fields(credential, fields)?;
     exchange(
-        socket,
+        Endpoint::Unix(socket),
         &credential.token,
         Exchange {
             method: "POST",

@@ -9,6 +9,28 @@ below retain evidence from individual increments. Their earlier statements about
 unfinished work describe the scope at that time; they are not a replacement for
 the current overview or the full [release gate ledger](#release-gate-ledger).
 
+## Restricted agent HTTPS — development, 2026-11-10
+
+The [agent HTTPS profile](agent-https.md) adds an opt-in TLS 1.3 listener next to
+the local Unix socket. An external controller can register a task, read its exact
+source and submit an immutable proposal with its repository-scoped credential.
+The CLI checks the certificate and server name against an explicitly provided CA.
+The listener limits its own connections and rejects operator-only routes and
+command methods even when the token has the corresponding local permissions.
+
+The Connected PostgreSQL transport test exercised the actual CLI, TLS and object
+store. It rejected a wrong CA, name, tenant and repository, a revoked token,
+oversized JSON, plaintext and local-only operations. The handshake deadline
+closed an idle connection. The test left a submission reply unread, verified
+its commit in PostgreSQL, killed the server, and recovered the same receipt
+and a single stored ChangeSet version on retry. The accepted diff remained
+readable after logical close. Existing Unix-socket proposal replay passed in
+both authority modes.
+
+This profile is available from source. The signed 0.1.16 preview uses the local
+socket. The HTTPS profile uses the controller's own execution environment.
+Managed worker scheduling and execution on separate hosts remain open.
+
 ## Pinned first-run guide — 2026-11-10
 
 The [first-run guide](try-treeharbor.md) pins the existing signed 0.1.16-alpha.1

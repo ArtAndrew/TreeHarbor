@@ -1,13 +1,12 @@
 # Local server and CLI
 
-This development transport works on Linux/macOS. It exposes the existing
-authenticated commands over HTTP/1.1 on an owner-private Unix socket. It does not
-bind a TCP port. The [Connected PR Preview](connected-pr-preview.md) provides
-signed Linux packages and one operator-assisted workflow; the full Connected and
-Standalone releases remain incomplete. A remote command TLS connector is not
-implemented. The experimental
-[MCP stdio adapter](mcp.md) uses this same scoped local service. A separate
-experimental [managed-run worker](managed-runs.md) supports Linux/gVisor execution.
+The local service works on Linux and macOS. It exposes authenticated commands
+over HTTP/1.1 on an owner-private Unix socket. Development builds can also enable
+a restricted [agent HTTPS listener](agent-https.md). The
+[Connected PR Preview](connected-pr-preview.md) provides signed Linux packages
+and one operator-assisted workflow. The experimental [MCP stdio adapter](mcp.md)
+uses the scoped local service, and the [managed-run worker](managed-runs.md)
+supports local Linux/gVisor execution.
 
 For an installed package, use its resolved `treeharbor` executable in place of
 `./target/debug/treeharbor` below; compiling from source is optional. The example

@@ -1,7 +1,7 @@
 //! Validate source responses before publishing any file to the caller's disk.
 use crate::{
     Error, Result,
-    client::{self, Credential, RawReply},
+    client::{self, Credential, Endpoint, RawReply},
 };
 use hyper::StatusCode;
 use serde_json::{Value, json};
@@ -37,8 +37,25 @@ pub async fn read(
     operation: Value,
     timeout: Duration,
 ) -> Result<SourceReply> {
+    read_from(
+        Endpoint::Unix(socket),
+        credential,
+        fence,
+        operation,
+        timeout,
+    )
+    .await
+}
+
+pub(crate) async fn read_from(
+    endpoint: Endpoint<'_>,
+    credential: &Credential,
+    fence: SourceFence,
+    operation: Value,
+    timeout: Duration,
+) -> Result<SourceReply> {
     let file = operation["kind"] == "file";
-    let reply=client::source_read(socket,credential,json!({"workspace":fence.workspace.to_string(),"generation":fence.generation,"authority":fence.authority.as_str(),"epoch":fence.epoch,"operation":operation}),file,timeout).await?;
+    let reply=client::source_read(endpoint,credential,json!({"workspace":fence.workspace.to_string(),"generation":fence.generation,"authority":fence.authority.as_str(),"epoch":fence.epoch,"operation":operation}),file,timeout).await?;
     decode_reply(reply, fence, file).await
 }
 async fn decode_reply(reply: RawReply, fence: SourceFence, file: bool) -> Result<SourceReply> {

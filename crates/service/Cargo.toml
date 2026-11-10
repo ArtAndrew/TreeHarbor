@@ -1,6 +1,6 @@
 [package]
 name = "treeharbor-service"
-description = "TreeHarbor local authenticated HTTP service and command-line client"
+description = "TreeHarbor authenticated service and command-line client"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -36,6 +36,8 @@ uuid.workspace = true
 thiserror.workspace = true
 hyper.workspace = true
 hyper-util.workspace = true
+rustls = { version = "=0.23.46", default-features = false, features = ["aws_lc_rs", "std"] }
+tokio-rustls = { version = "=0.26.6", default-features = false }
 http-body-util.workspace = true
 bytes.workspace = true
 deadpool.workspace = true

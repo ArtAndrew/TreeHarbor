@@ -11,6 +11,8 @@ mod git_reference;
 mod github;
 #[path = "transport/history.rs"]
 mod history;
+#[path = "transport/https.rs"]
+mod https;
 #[path = "transport/mcp.rs"]
 mod mcp;
 #[path = "transport/native.rs"]
@@ -1355,6 +1357,9 @@ impl Fixture {
             .unwrap()
     }
     async fn start(&self) -> Process {
+        self.start_with_https(None).await
+    }
+    async fn start_with_https(&self, https: Option<&std::path::Path>) -> Process {
         let log = fs::File::create(self.dir.path().join("server.log")).unwrap();
         let mut command = Command::new(&self.binary);
         command
@@ -1366,6 +1371,9 @@ impl Fixture {
             .stderr(log);
         if let Some(bytes) = self.server_stack_bytes {
             command.env("RUST_MIN_STACK", bytes.to_string());
+        }
+        if let Some(path) = https {
+            command.arg("--https-config").arg(path);
         }
         let child = command.spawn().unwrap();
         let mut process = Process(child);
