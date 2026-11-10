@@ -725,13 +725,7 @@ async fn cleanup_v13_upgrade_preserves_existing_workspace_and_run_records() {
             .get::<_, serde_json::Value>(0),
         workspace_before
     );
-    assert_eq!(
-        raw.query_one("SELECT version FROM th_schema_version", &[])
-            .await
-            .unwrap()
-            .get::<_, i32>(0),
-        32
-    );
+    crate::common::assert_latest_schema(&raw).await;
     drain(&mut f, run.workspace).await;
     let stopped = claim(&mut f, &node).await;
     f.db.finish_run(&node.auth, &stopped).await.unwrap();

@@ -483,13 +483,7 @@ async fn workflow_policy_upgrade_does_not_retroactively_approve_old_queues() {
     assert!(f.p.f.db.check_schema().await.is_err());
     f.p.f.db.migrate().await.unwrap();
     f.p.f.db.migrate().await.unwrap();
-    assert_eq!(
-        raw.query_one("SELECT version FROM th_schema_version", &[])
-            .await
-            .unwrap()
-            .get::<_, i32>(0),
-        32
-    );
+    crate::common::assert_latest_schema(&raw).await;
     assert_eq!(raw.query_one("SELECT permissions FROM th_access_tokens WHERE principal='human' ORDER BY created_at DESC LIMIT 1",&[]).await.unwrap().get::<_,Vec<String>>(0),grants);
     assert_eq!(before, f.request().await);
     assert_eq!(

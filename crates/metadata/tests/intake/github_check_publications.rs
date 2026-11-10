@@ -804,13 +804,7 @@ async fn check_publication_upgrade_does_not_expand_existing_credentials() {
     p.f.db.migrate().await.unwrap();
     let after: Value = raw.query_one("SELECT jsonb_build_object('executions',(SELECT jsonb_agg(to_jsonb(e) ORDER BY check_run) FROM th_github_managed_executions e),'grants',(SELECT jsonb_agg(to_jsonb(a) ORDER BY principal) FROM th_repository_access a),'tokens',(SELECT jsonb_agg(to_jsonb(t) ORDER BY token) FROM th_access_tokens t),'receipts',(SELECT jsonb_agg(to_jsonb(o) ORDER BY key) FROM th_operations o))", &[]).await.unwrap().get(0);
     assert_eq!(before, after);
-    assert_eq!(
-        raw.query_one("SELECT version FROM th_schema_version", &[])
-            .await
-            .unwrap()
-            .get::<_, i32>(0),
-        32
-    );
+    crate::common::assert_latest_schema(&raw).await;
     assert!(
         p.f.db
             .begin_github_check_publication(

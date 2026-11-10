@@ -517,13 +517,7 @@ async fn populated_schema23_upgrade_preserves_inbox_without_granting_recovery() 
     assert!(f.db.check_schema().await.is_err());
     f.db.migrate().await.unwrap();
     f.db.migrate().await.unwrap();
-    assert_eq!(
-        raw.query_one("SELECT version FROM th_schema_version", &[])
-            .await
-            .unwrap()
-            .get::<_, i32>(0),
-        32
-    );
+    crate::common::assert_latest_schema(&raw).await;
     assert_eq!(
         raw.query_one(
             "SELECT permissions FROM th_access_tokens WHERE principal='bridge'",

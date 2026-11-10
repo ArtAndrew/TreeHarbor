@@ -73,7 +73,7 @@ fn main() {
                 std::process::exit(23);
             }
         }
-        "once" => {
+        "once" | "once-until-release" => {
             let mut file = OpenOptions::new()
                 .create(true)
                 .append(true)
@@ -81,7 +81,11 @@ fn main() {
                 .unwrap();
             file.write_all(b"one execution\n").unwrap();
             file.sync_all().unwrap();
-            if let Some(delay) = args.get(2) {
+            if args[1] == "once-until-release" {
+                while !std::path::Path::new("release-once").exists() {
+                    thread::sleep(Duration::from_millis(10));
+                }
+            } else if let Some(delay) = args.get(2) {
                 thread::sleep(Duration::from_millis(delay.parse().unwrap()));
             }
         }
