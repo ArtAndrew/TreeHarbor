@@ -9,6 +9,16 @@ below retain evidence from individual increments. Their earlier statements about
 unfinished work describe the scope at that time; they are not a replacement for
 the current overview or the full [release gate ledger](#release-gate-ledger).
 
+## Git pack projection — development
+
+The Git bridge projects verified leaf objects from their first traversal
+read and buffers temporary pack writes under both existing byte budgets.
+Typed graph validation, original Git identity, pack verification and final
+durability still apply. The [paired ARM64 trial](benchmark-preparation.md#first-build-git-projection--10-november-2026)
+reduced the pack-building phase and verified identical resulting pack bytes.
+Its total first-batch results vary, and the baseline Git worktree remains
+faster for initial preparation in that workload.
+
 ## Bounded revision images — development
 
 Fresh dedicated ext4 source volumes can opt in to

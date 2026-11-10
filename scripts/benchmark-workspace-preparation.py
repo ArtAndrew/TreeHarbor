@@ -40,6 +40,7 @@ parser.add_argument('--volume-limit-bytes', type=int, default=128 * 1024 * 1024)
 parser.add_argument('--cow-driver', type=Path, help=argparse.SUPPRESS)
 parser.add_argument('--cow-shared-node', action='store_true', help=argparse.SUPPRESS)
 parser.add_argument('--cow-source-volume', type=Path, action='append', default=[], help=argparse.SUPPRESS)
+parser.add_argument('--cow-max-images', type=int, help=argparse.SUPPRESS)
 args = parser.parse_args()
 if not 1 <= args.iterations <= 100 or args.git_checkout_workers < 0:
     parser.error('iterations must be 1..100; checkout workers must be nonnegative')
@@ -61,6 +62,8 @@ if source_volumes and (not args.cow_shared_node
                        or set(source_volumes) & set(volumes)
                        or not all(path.is_mount() for path in source_volumes)):
     parser.error('provide a distinct dedicated source mount per format on the shared node')
+if args.cow_max_images is not None and (not source_volumes or not 2 <= args.cow_max_images <= 16):
+    parser.error('--cow-max-images requires dedicated source volumes and a limit from 2 to 16')
 if not re.fullmatch(r'(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})', args.revision):
     parser.error('revision must be a full Git commit ID')
 BIN, OUT = args.binary.resolve(), args.output.resolve()
@@ -228,11 +231,12 @@ with tempfile.TemporaryDirectory(prefix='th-import-') as tmp, ExitStack() as pla
                                   '--credential-file', node_credential,
                                   '--root', node_root, '--storage', storage, *parts, *placement))
         for system, mount in zip(node_systems, source_volumes):
-            node(system, 0, 'cow-source-register', '--mount', mount,
-                 '--limit-bytes', args.volume_limit_bytes)
+            registration = ['--mount', mount, '--limit-bytes', args.volume_limit_bytes]
+            if args.cow_max_images is not None:
+                registration += ['--max-images', args.cow_max_images]
+            node(system, 0, 'cow-source-register', *registration)
             # Registration is an immutable idempotent mapping, not a new volume.
-            node(system, 0, 'cow-source-register', '--mount', mount,
-                 '--limit-bytes', args.volume_limit_bytes)
+            node(system, 0, 'cow-source-register', *registration)
         slots, git_roots = {}, []
         for lane, mount in enumerate(volumes):
             git_roots.append(Path(placements.enter_context(tempfile.TemporaryDirectory(prefix='th-bench-git-', dir=mount))))
@@ -495,6 +499,9 @@ with tempfile.TemporaryDirectory(prefix='th-import-') as tmp, ExitStack() as pla
         if args.cow_driver:
             lower = ({mount / 'source' / 'image' for mount in source_volumes} if source_volumes else
                      {root / f'.treeharbor-cow-{storage}' / 'image' for _, storage, _ in nodes.values()})
+            if args.cow_max_images is not None:
+                lower = {image for mount in source_volumes for image in (mount / 'source/images').glob('*/image')}
+                report['treeharbor_source_max_images'] = args.cow_max_images
             report['setup']['treeharbor_lower_image_count'] = len(lower)
             report['setup']['treeharbor_lower_allocated_bytes'] = sum(allocated(path, exclude_git=False) for path in lower)
             report['treeharbor_source_placement'] = 'dedicated-ext4' if source_volumes else 'node-parent-filesystem'

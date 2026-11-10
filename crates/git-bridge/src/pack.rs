@@ -7,19 +7,47 @@ use sha2::{Digest, Sha256};
 use std::{
     collections::BTreeMap,
     fs::File,
-    io::{Read, Seek, SeekFrom, Write},
+    io::{self, BufWriter, Read, Seek, SeekFrom, Write},
     path::Path,
     time::Instant,
 };
 
 pub(crate) struct Pack {
-    file: File,
+    output: PackOutput,
     algorithm: HashAlgorithm,
     seen: BTreeMap<Vec<u8>, [u8; 32]>,
     budget: u64,
-    max_bytes: u64,
     deadline: Instant,
 }
+
+struct PackOutput {
+    writer: BufWriter<File>,
+    remaining: u64,
+}
+
+impl Write for PackOutput {
+    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        if bytes.len() as u64 > self.remaining {
+            return Err(io::ErrorKind::FileTooLarge.into());
+        }
+        let written = self.writer.write(bytes)?;
+        self.remaining -= written as u64;
+        Ok(written)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        self.writer.flush()
+    }
+}
+
+fn pack_error(error: io::Error) -> Error {
+    if error.kind() == io::ErrorKind::FileTooLarge {
+        Error::Limit
+    } else {
+        Error::Io(error)
+    }
+}
+
 impl Pack {
     pub fn new(
         path: &Path,
@@ -27,18 +55,23 @@ impl Pack {
         budget: u64,
         deadline: Instant,
     ) -> Result<Self> {
-        let mut file = File::options()
+        let file = File::options()
             .read(true)
             .write(true)
             .create_new(true)
             .open(path)?;
-        file.write_all(b"PACK\0\0\0\x02\0\0\0\0")?;
+        let mut output = PackOutput {
+            writer: BufWriter::with_capacity(64 * 1024, file),
+            remaining: budget,
+        };
+        output
+            .write_all(b"PACK\0\0\0\x02\0\0\0\0")
+            .map_err(pack_error)?;
         Ok(Self {
-            file,
+            output,
             algorithm,
             seen: BTreeMap::new(),
             budget,
-            max_bytes: budget,
             deadline,
         })
     }
@@ -71,41 +104,47 @@ impl Pack {
         let mut byte = (kind << 4) | (size as u8 & 15);
         size >>= 4;
         while size != 0 {
-            self.file.write_all(&[byte | 128])?;
+            self.output.write_all(&[byte | 128]).map_err(pack_error)?;
             byte = size as u8 & 127;
             size >>= 7;
         }
-        self.file.write_all(&[byte])?;
-        let mut zlib = ZlibEncoder::new(&mut self.file, Compression::fast());
+        self.output.write_all(&[byte]).map_err(pack_error)?;
+        let mut zlib = ZlibEncoder::new(&mut self.output, Compression::fast());
         for chunk in bytes.chunks(65536) {
             check_deadline(self.deadline)?;
-            zlib.write_all(chunk)?;
-            if zlib.get_ref().metadata()?.len() > self.max_bytes {
-                return Err(Error::Limit);
-            }
+            zlib.write_all(chunk).map_err(pack_error)?;
         }
-        zlib.finish()?;
-        if self.file.metadata()?.len() > self.max_bytes {
-            return Err(Error::Limit);
-        }
+        zlib.finish().map_err(pack_error)?;
         self.seen.insert(oid.clone(), fingerprint);
         Ok(oid)
     }
-    pub fn finish(mut self) -> Result<()> {
+    pub fn finish(self) -> Result<()> {
         use sha1_checked::{Digest as _, Sha1};
-        self.file.seek(SeekFrom::Start(8))?;
-        self.file.write_all(
+        let trailer_bytes = match self.algorithm {
+            HashAlgorithm::Sha1 => 20,
+            HashAlgorithm::Sha256 => 32,
+        };
+        if self.output.remaining < trailer_bytes {
+            return Err(Error::Limit);
+        }
+        let mut file = self
+            .output
+            .writer
+            .into_inner()
+            .map_err(|error| error.into_error())?;
+        file.seek(SeekFrom::Start(8))?;
+        file.write_all(
             &u32::try_from(self.seen.len())
                 .map_err(|_| Error::Limit)?
                 .to_be_bytes(),
         )?;
-        self.file.rewind()?;
+        file.rewind()?;
         let mut sha1 = Sha1::new();
         let mut sha256 = Sha256::new();
         let mut buffer = [0u8; 65536];
         loop {
             check_deadline(self.deadline)?;
-            let n = self.file.read(&mut buffer)?;
+            let n = file.read(&mut buffer)?;
             if n == 0 {
                 break;
             }
@@ -124,11 +163,25 @@ impl Pack {
             }
             HashAlgorithm::Sha256 => sha256.finalize().to_vec(),
         };
-        if self.file.metadata()?.len() + checksum.len() as u64 > self.max_bytes {
-            return Err(Error::Limit);
-        }
-        self.file.write_all(&checksum)?;
-        self.file.sync_all()?;
+        file.write_all(&checksum)?;
+        file.sync_all()?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+
+    #[test]
+    fn pack_budget_counts_buffered_bytes_and_trailer() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("pack");
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let mut pack = Pack::new(&path, HashAlgorithm::Sha256, 40, deadline).unwrap();
+        pack.put("blob", b"a").unwrap();
+        assert!(matches!(pack.finish(), Err(Error::Limit)));
+        assert!(std::fs::metadata(path).unwrap().len() <= 40);
     }
 }

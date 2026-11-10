@@ -558,3 +558,36 @@ revisions. Use the verified packaged driver and fresh dedicated volumes
 for each run. [Original raw report](benchmarks/connected-cow-signed-arm64-adjacent-base-20261110.json)
 · [Child raw report](benchmarks/connected-cow-signed-arm64-adjacent-update-20261110.json)
 · [Signed release evidence](evidence/cow-workspace-release-20261109.json)
+
+## First-build Git projection — 10 November 2026
+
+On the same 8,195-file child commit, compare an optimized development build
+from `bcb676c` with the candidate that projects checked leaves as it walks
+the DAG and buffers pack writes. Both use the same collision checks, strict
+Git index/graph validation and durable finalization. Phase timers measure
+Git-source collection, projection and Git commands separately.
+
+Each run imports into fresh disposable storage before timing. It uses four
+concurrent tasks, two Git checkout workers, one initially empty dedicated
+source volume per format and two batches. The second pair reverses the order
+of the builds. Each run verifies paths, bytes and modes, and independently
+checks the exact Git tip, history and private metadata. The second pair also
+checks pack SHA-256 after timing.
+
+| Comparison | Project Git pack, base / candidate | First Git-compatible batch, base / candidate | Git worktree first batch in the same runs |
+| --- | ---: | ---: | ---: |
+| Base first | 556.6 / 475.0 ms | 1,888.0 / 1,914.4 ms | 500.9 / 634.9 ms |
+| Candidate first | 608.9 / 463.3 ms | 2,102.3 / 1,826.4 ms | 518.3 / 526.1 ms |
+
+Pack projection time fell by 15% and 24%. All sixteen Git-compatible
+placements in the second pair produced the same pack bytes across the two
+builds. The first-batch results vary in direction. Git worktree remained
+faster for a first batch in all four runs. OS caches were uncontrolled.
+These are development measurements, separate from the signed release results.
+
+Reproduce the batch measurements with the adjacent-revision fixture and
+dedicated-source setup above. Use two iterations and add `--cow-max-images 2`
+with a build that supports multiple revision images. The option selects the
+volume layout. Each format still starts from an empty volume and prepares
+only the selected revision. Use the same optimized profile for both binaries.
+[Raw observations, executable hashes and phase logs](benchmarks/cold-git-projection-linux-arm64-20261110.json)
