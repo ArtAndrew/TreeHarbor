@@ -145,12 +145,12 @@ CLI defaults: 100,000 unique source objects, 2,000,000 typed edges, 4 GiB native
 frames, 8 GiB generated object payload budget (including 32 bytes per write),
 8 GiB temporary pack/bundle and 2,000,000 expanded path visits across
 all snapshots; Git stdout/stderr are bounded. `--timeout-seconds` defaults to 300
-and may be 1–3600. The deadline covers bridge traversal and subprocesses, after
-local pack opening/validation. Timeout kills the Git process group, including
+and may be 1–3600. The deadline covers local pack validation, bridge traversal
+and subprocesses. Timeout kills the Git process group, including
 its pack worker. Exceeding a bound fails without publishing a completed directory.
 
 These are application limits, **not a sandbox or hard CPU/RAM/disk quota**.
-Temporary pack, two Git repositories, bundle, manifest, source pack and cleanup
+Temporary pack, two Git repositories, bundle, manifest, source packs and cleanup
 all consume resources. Use an externally bounded runtime/filesystem for exports
 of untrusted content. A SIGKILL can leave `.treeharbor-export-work-*` or
 `.treeharbor-export-ready-*` directories and descendants; stop/reap the job before
