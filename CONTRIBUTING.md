@@ -2,12 +2,28 @@
 
 Please start with an issue describing a reproducible problem, expected behavior
 and workload. Do not include private source code, credentials or customer data.
-Use the commands in the README to run format, lint and tests.
 
 Changes to object encoding, durability, identity, authority or trust boundaries
 need documented behavior and tests that cover the failure boundary. Benchmarks must retain raw
 data, environment details, errors and the strongest applicable baseline. Never
 replace an external dependency with a mock and report the release gate as passed.
+
+## Build and test
+
+Install Git, a C compiler, CMake, OpenSSL for signature tests, and
+[Rust via rustup](https://rustup.rs/). The toolchain is pinned in
+`rust-toolchain.toml`. From a checkout, run:
+
+```sh
+cargo build -p treeharbor-service --locked
+./target/debug/treeharbor --help
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets --locked -- -D warnings
+cargo test --workspace --locked
+```
+
+See [local service setup](docs/local-service.md) and
+[PostgreSQL tests](docs/database-development.md) for the next steps.
 
 ## Contribution rights during initial development
 

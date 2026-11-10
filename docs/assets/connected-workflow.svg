@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="184" viewBox="0 0 760 184" role="img" aria-labelledby="title desc">
+  <title id="title">TreeHarbor Connected workflow</title>
+  <desc id="desc">Two coding agents start from one pinned commit. Each agent has its own workspace, saved change, and GitHub draft pull request.</desc>
+  <style>
+    text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif; text-anchor: middle; }
+    .heading { font-size: 21px; font-weight: 600; fill: #4d6271; }
+    .label { font-size: 23px; font-weight: 600; fill: #182d3b; }
+    .card { fill: #fff; stroke: #cbd8df; stroke-width: 1.5; }
+    .change { fill: #eaf3ef; stroke: #a7c4b8; stroke-width: 1.5; }
+    .edge { fill: none; stroke: #2c6f5e; stroke-width: 2.25; }
+  </style>
+  <rect width="760" height="184" rx="14" fill="#f6f8fa"/>
+  <text x="297" y="33" class="heading">Workspaces</text>
+  <text x="478" y="33" class="heading">Saved changes</text>
+  <text x="659" y="33" class="heading">GitHub PRs</text>
+
+  <rect x="22" y="75" width="144" height="72" rx="10" class="card"/>
+  <text x="94" y="104" class="label">Pinned</text>
+  <text x="94" y="130" class="label">commit</text>
+  <path d="M166 111 H189 M214 78 H189 V144 H214" class="edge"/>
+
+  <rect x="223" y="53" width="148" height="50" rx="10" class="card"/>
+  <rect x="223" y="119" width="148" height="50" rx="10" class="card"/>
+  <text x="297" y="86" class="label">Agent A</text>
+  <text x="297" y="152" class="label">Agent B</text>
+  <path d="M371 78 H395 M371 144 H395" class="edge"/>
+
+  <rect x="404" y="53" width="148" height="50" rx="10" class="change"/>
+  <rect x="404" y="119" width="148" height="50" rx="10" class="change"/>
+  <text x="478" y="86" class="label">Change A</text>
+  <text x="478" y="152" class="label">Change B</text>
+  <path d="M552 78 H576 M552 144 H576" class="edge"/>
+
+  <path d="M212 73l8 5-8 5z M212 139l8 5-8 5z
+           M393 73l8 5-8 5z M393 139l8 5-8 5z
+           M574 73l8 5-8 5z M574 139l8 5-8 5z" fill="#2c6f5e"/>
+
+  <rect x="585" y="53" width="148" height="50" rx="10" class="card"/>
+  <rect x="585" y="119" width="148" height="50" rx="10" class="card"/>
+  <text x="659" y="86" class="label">Draft PR A</text>
+  <text x="659" y="152" class="label">Draft PR B</text>
+</svg>

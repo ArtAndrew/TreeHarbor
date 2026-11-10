@@ -475,7 +475,8 @@ The final row corresponds to source `888fe37970fb671b73063dafd3d5540db12f7a58`
 and executable SHA-256
 `b35088198ecf34c7fa704c63cc25e1d9d8aed5228b937c8d934263ae1f20034b`.
 These are local optimized prototype builds, **not signed release packages**.
-The latest signed 0.1.15-alpha.1 uses the ordinary materialization path.
+The signed 0.1.15-alpha.1 package used ordinary materialization. The experimental
+Copy-on-Write profile first shipped in [0.1.16-alpha.1](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.16-alpha.1).
 
 ### Reproducing the experimental path
 

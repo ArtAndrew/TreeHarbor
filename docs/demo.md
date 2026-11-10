@@ -38,7 +38,7 @@ Start with [Try TreeHarbor](try-treeharbor.md), then the
 [reproducible fixture and operator helper](../examples/connected-pr/README.md).
 The host and credentials need manual preparation. No private keys or ready-to-use
 credentials are distributed. The source/runtime/permission boundaries are in
-[the architecture overview](../README.md#the-workflow).
+[the deployment layout](connected-pr-preview.md#system-layout).
 
 The storyboard and numbered steps contain the full walkthrough. A scripted
 acceptance trial does not establish production

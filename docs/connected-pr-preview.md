@@ -133,3 +133,7 @@ Report [where you stopped](../.github/ISSUE_TEMPLATE/pilot-feedback.md), time to
 first PR, help needed, and whether you would run another real task. Include the
 release and host/task details, not private source or credentials. Track time spent
 provisioning the environment separately from TreeHarbor setup and agent execution.
+
+## System layout
+
+![Connected deployment. PostgreSQL stores metadata and a local object store holds source and changes. The external runtime isolates agents, and a separate bridge publishes GitHub PRs.](assets/connected-architecture.svg)
