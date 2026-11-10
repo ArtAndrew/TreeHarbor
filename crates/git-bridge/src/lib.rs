@@ -99,6 +99,9 @@ impl Default for Limits {
         }
     }
 }
+/// Maximum number of branch refs in one Git bundle export.
+pub const MAX_EXPORT_REFS: usize = 128;
+
 pub struct Export<'a> {
     /// Trusted operator-selected installed executable, never supplied by an agent.
     pub git: &'a Path,
@@ -199,7 +202,7 @@ fn check_source_limits(limits: Limits) -> Result<()> {
 pub fn export(store: &impl ObjectStore, request: Export<'_>) -> Result<Manifest> {
     let limits = request.limits;
     if request.refs.is_empty()
-        || request.refs.len() > 128
+        || request.refs.len() > MAX_EXPORT_REFS
         || request.refs.keys().any(|r| !valid_ref(r))
     {
         return Err(Error::Configuration);
@@ -329,7 +332,8 @@ pub fn export(store: &impl ObjectStore, request: Export<'_>) -> Result<Manifest>
         None,
         1 << 20,
     )?;
-    git.run(
+    let mut restored = String::new();
+    git.capture(
         Some(&empty),
         "bundle unbundle",
         &[
@@ -338,8 +342,19 @@ pub fn export(store: &impl ObjectStore, request: Export<'_>) -> Result<Manifest>
             bundle.as_os_str().to_owned(),
         ],
         None,
-        128 * 400,
-    )?;
+        (MAX_EXPORT_REFS * 400) as u64,
+    )?
+    .read_to_string(&mut restored)?;
+    let mut restored_heads: Vec<_> = restored.lines().collect();
+    restored_heads.sort_unstable();
+    let mut expected_heads: Vec<_> = refs
+        .iter()
+        .map(|(name, tip)| format!("{} {name}", tip.git))
+        .collect();
+    expected_heads.sort_unstable();
+    if restored_heads != expected_heads {
+        return Err(Error::InvalidProjection);
+    }
     let mut verify = vec![
         "fsck".into(),
         "--strict".into(),

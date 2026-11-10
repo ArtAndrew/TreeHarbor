@@ -9,6 +9,20 @@ below retain evidence from individual increments. Their earlier statements about
 unfinished work describe the scope at that time; they are not a replacement for
 the current overview or the full [release gate ledger](#release-gate-ledger).
 
+## Export multiple branches to Git (development)
+
+[Git export](git-export.md#export-several-branches) can combine completed source
+packs into one bundle. It validates each pack's complete history and compares
+the restored branch names and Git tips before publishing. Branches can share a
+tip and shared objects are projected once.
+
+The PostgreSQL transport test exports four Standalone branches from a restarted
+service. Ordinary Git restores the two criss-cross histories, an independent
+root, and two names for one tip. The test checks exact original Git IDs and
+file bytes. Removing a shared object from one input prevents publication even
+when another input still has it. The archive carries source history. Repository
+backup and transfer of write authority have their own gates.
+
 ## Leased controller tasks — 0.1.19-alpha.1
 
 [Remote task assignment](remote-tasks-v1.md) queues an exact registered base

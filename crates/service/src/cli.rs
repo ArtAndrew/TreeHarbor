@@ -9,7 +9,13 @@ use crate::{
 };
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use serde_json::{Value, json};
-use std::{ffi::OsString, os::unix::ffi::OsStrExt, path::PathBuf, time::Duration};
+use std::{
+    collections::BTreeMap,
+    ffi::{OsStr, OsString},
+    os::unix::ffi::OsStrExt,
+    path::PathBuf,
+    time::Duration,
+};
 use treeharbor_metadata::{
     Authority, Scope,
     access::{Permission, PrincipalKind},
@@ -79,17 +85,21 @@ enum Command {
         #[arg(long, default_value_t = 4_294_967_296)]
         max_bytes: u64,
     },
-    /// Project a completed local native pack into a self-contained Git bundle.
+    /// Project completed local source packs into a self-contained Git bundle.
     /// This exports source history, not server reviews, checks or authority.
     GitExport {
-        #[arg(long)]
-        pack: PathBuf,
+        /// Source pack for a single branch (main by default).
+        #[arg(long, required_unless_present = "refs", conflicts_with = "refs")]
+        pack: Option<PathBuf>,
+        /// Branch name and its completed source pack. Repeat to export multiple branches.
+        #[arg(long = "ref", value_name = "BRANCH=PACK")]
+        refs: Vec<OsString>,
         #[arg(long)]
         output: PathBuf,
         #[arg(long, default_value = "/usr/bin/git")]
         git: PathBuf,
-        #[arg(long, default_value = "main")]
-        branch: String,
+        #[arg(long, requires = "pack", conflicts_with = "refs")]
+        branch: Option<String>,
         #[arg(long, default_value = "sha1", value_parser = ["sha1", "sha256"])]
         object_format: String,
         #[arg(long, default_value_t = 300, value_parser = clap::value_parser!(u64).range(1..=3600))]
@@ -1257,34 +1267,55 @@ pub async fn run(cli: Cli) -> Result<bool> {
         }
         Command::GitExport {
             pack,
+            refs,
             output,
             git,
             branch,
             object_format,
             timeout_seconds,
         } => {
-            let manifest = tokio::task::spawn_blocking(move || -> Result<_> {
-                let pack = crate::pack::Pack::open(&pack)?;
-                Ok(treeharbor_git_bridge::export(
-                    pack.store(),
-                    treeharbor_git_bridge::Export {
-                        git: &git,
-                        output: &output,
-                        refs: std::collections::BTreeMap::from([(
-                            format!("refs/heads/{branch}"),
-                            pack.commit(),
-                        )]),
-                        algorithm: if object_format == "sha256" {
-                            treeharbor_git_bridge::HashAlgorithm::Sha256
-                        } else {
-                            treeharbor_git_bridge::HashAlgorithm::Sha1
-                        },
-                        limits: treeharbor_git_bridge::Limits {
-                            timeout: Duration::from_secs(timeout_seconds),
-                            ..Default::default()
-                        },
+            let mut branches = BTreeMap::new();
+            if let Some(pack) = pack {
+                let name = branch.as_deref().unwrap_or("main");
+                branches.insert(format!("refs/heads/{name}"), pack);
+            }
+            for value in &refs {
+                let value = value.as_bytes();
+                let separator = value
+                    .iter()
+                    .position(|byte| *byte == b'=')
+                    .ok_or(Error::ExportArguments)?;
+                let name =
+                    std::str::from_utf8(&value[..separator]).map_err(|_| Error::ExportArguments)?;
+                let path = &value[separator + 1..];
+                if name.is_empty() || path.is_empty() {
+                    return Err(Error::ExportArguments);
+                }
+                if branches
+                    .insert(
+                        format!("refs/heads/{name}"),
+                        PathBuf::from(OsStr::from_bytes(path)),
+                    )
+                    .is_some()
+                {
+                    return Err(Error::ExportArguments);
+                }
+            }
+            let manifest = tokio::task::spawn_blocking(move || {
+                crate::pack::git_export::export(
+                    branches,
+                    &git,
+                    &output,
+                    if object_format == "sha256" {
+                        treeharbor_git_bridge::HashAlgorithm::Sha256
+                    } else {
+                        treeharbor_git_bridge::HashAlgorithm::Sha1
                     },
-                )?)
+                    treeharbor_git_bridge::Limits {
+                        timeout: Duration::from_secs(timeout_seconds),
+                        ..Default::default()
+                    },
+                )
             })
             .await
             .map_err(|_| Error::ExportWorker)??;

@@ -99,6 +99,16 @@ fn actual_cli_exports_pack_without_inherited_git_configuration_or_checkout() {
     assert!(contents.status.success());
     assert_eq!(contents.stdout, b"kept\0exactly\r\n");
     assert!(!sentinel.exists());
+    let mixed = temp.path().join("mixed-export");
+    let rejected = Command::new(env!("CARGO_BIN_EXE_treeharbor"))
+        .args(["git-export", "--ref"])
+        .arg(format!("other={}", pack.display()))
+        .args(["--branch", "legacy", "--output"])
+        .arg(&mixed)
+        .output()
+        .unwrap();
+    assert!(!rejected.status.success());
+    assert!(!mixed.exists());
     let second = Command::new(env!("CARGO_BIN_EXE_treeharbor"))
         .args(["git-export", "--pack"])
         .arg(&pack)

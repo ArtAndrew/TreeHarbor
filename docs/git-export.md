@@ -1,13 +1,12 @@
 # Native source export to Git
 
 Experimental local command, not a completed Connected integration or server backup.
-`git-export` projects the **entire reachable native commit DAG** in a completed
-local source pack into an ordinary, self-contained Git bundle. A source pack
-captured with `source-pack` currently contains one initial native commit; the
-bridge also supports [imported Git history packs](git-import.md) and graphs with
-all parents of native merges.
-Use [live source export](live-source-export.md) to download a registered native
-revision from the running server, including newly published merge commits.
+`git-export` projects the **entire reachable native commit DAG** of each selected
+branch from completed local source packs into one self-contained Git bundle.
+The bridge supports [imported Git history packs](git-import.md), graphs with
+all parents of native merges, and single-commit packs from `source-pack`.
+Use [live source export](live-source-export.md) to download registered native
+revisions from the running server, including newly published merge commits.
 Do not copy a running server's object directory as a substitute for a pinned export.
 
 ## Try it
@@ -38,6 +37,30 @@ The result contains exactly `history.bundle` and `manifest.json`. Git can read t
 bundle without TreeHarbor. Preserve the manifest to map native revisions to Git
 commits. Keep the source pack until export is verified; export does not delete it,
 change server refs, move authority or grant permission to merge.
+
+## Export several branches
+
+Resolve each branch with `ref_resolve` in [native integration](native-integration.md)
+and download a [source pack](live-source-export.md) for its exact `head`. For a
+final migration capture, stop branch writers before resolving the tips and keep
+the service available for reads. Authority transfer is a separate operation.
+Then pass one `--ref BRANCH=PACK` per branch. Branches at the same tip can use the
+same pack. The source packs and output parent are owner-private directories.
+
+```sh
+treeharbor git-export --ref "main=$TH_PRIVATE/exports/main" \
+  --ref "release/stable=$TH_PRIVATE/exports/stable" \
+  --output "$TH_PRIVATE/exports/repository"
+git clone --bare "$TH_PRIVATE/exports/repository/history.bundle" restored.git
+git -C restored.git for-each-ref --format='%(refname) %(objectname)' refs/heads
+```
+
+The development CLI accepts up to 128 distinct branch names. The manifest maps
+each selected `refs/heads/...` name to its native and Git tip. Each input must
+contain its own complete history. The command validates all distinct input packs
+within the timeout and an aggregate budget of 1,000,000 objects and 64 GiB of
+frames. The projection counts shared objects once and uses the existing
+projection budgets. `--pack` and `--branch` are the single-branch form.
 
 ## Projection contracts
 
@@ -86,7 +109,8 @@ this optional command is the boundary that requires it.
 
 Before publication, the exporter checks the generated repository with strict
 `git fsck`, verifies the bundle against an **empty** repository, unbundles it
-there, and checks the restored graph from its expected tips. File data and both
+there, and compares every restored branch name and tip with the manifest. It
+checks the restored graph from those tips. File data and both
 manifest/bundle are synced before one no-replace directory rename and parent
 sync. Existing results, including symlinks, are never replaced. If an IO error
 occurs after the rename, inspect the existing result; do not assume it is absent.
