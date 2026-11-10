@@ -26,7 +26,7 @@ struct Intent {
 
 pub struct Request<'a> {
     pub state: &'a Path,
-    pub socket: &'a Path,
+    pub endpoint: client::Endpoint<'a>,
     pub credential: &'a client::Credential,
     pub authority: Authority,
     pub epoch: i64,
@@ -109,8 +109,8 @@ pub async fn send(r: Request<'_>) -> Result<client::Reply> {
         "authority":i.authority,"epoch":i.epoch,"workspace":i.workspace.to_string(),
         "run":i.run.to_string(),"base":i.base,"profile_digest":i.profile_digest,
         "agent":i.agent,"task":i.task});
-    let reply = client::send(
-        r.socket,
+    let reply = client::send_to(
+        r.endpoint,
         &r.credential.token,
         r.credential.request(command).to_string().into_bytes(),
         r.timeout,
@@ -158,7 +158,7 @@ mod tests {
         let profile = treeharbor_core::SourceProfile::full().id().to_string();
         let request = || Request {
             state: &state,
-            socket: &socket,
+            endpoint: client::Endpoint::Unix(&socket),
             credential: &credential,
             authority: Authority::Connected,
             epoch: 1,

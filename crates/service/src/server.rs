@@ -1,4 +1,4 @@
-use crate::{Error, Result, config::Config, database::Database, files};
+use crate::{Error, Result, config::Config, database::Database, files, https};
 use bytes::Bytes;
 use deadpool::managed::{Pool, PoolError};
 use http_body_util::{BodyExt, Full, Limited};
@@ -16,11 +16,15 @@ use std::{
     time::Duration,
 };
 use tokio::{
+    io::{AsyncRead, AsyncWrite},
     net::{UnixListener, UnixStream},
     sync::Semaphore,
     task::JoinSet,
 };
-use treeharbor_metadata::{access::SecretToken, commands::MAX_REQUEST_BYTES};
+use treeharbor_metadata::{
+    access::SecretToken,
+    commands::{CommandIngress, MAX_REQUEST_BYTES},
+};
 
 type Body = http_body_util::combinators::BoxBody<Bytes, std::io::Error>;
 fn full(bytes: Bytes) -> Body {
@@ -28,6 +32,7 @@ fn full(bytes: Bytes) -> Body {
 }
 pub struct Server {
     listener: UnixListener,
+    https: Option<https::Listener>,
     guard: SocketGuard,
     config: Config,
     pool: Pool<Database>,
@@ -101,6 +106,10 @@ pub(crate) async fn bind(path: &Path) -> Result<(UnixListener, SocketGuard)> {
 }
 impl Server {
     pub async fn bind(config: Config) -> Result<Self> {
+        Self::bind_with_https(config, None).await
+    }
+
+    pub(crate) async fn bind_with_https(config: Config, settings: Option<&Path>) -> Result<Self> {
         let database = Database::new(config.clone())?;
         let pool = database.pool()?;
         // Fail before publishing a listening socket if schema or DB is unavailable.
@@ -113,8 +122,13 @@ impl Server {
             None => None,
         };
         let (listener, guard) = bind(&config.socket).await?;
+        let https = match settings {
+            Some(path) => Some(https::Listener::bind(path).await?),
+            None => None,
+        };
         Ok(Self {
             listener,
+            https,
             guard,
             config,
             pool,
@@ -124,15 +138,24 @@ impl Server {
     pub fn socket(&self) -> &Path {
         &self.guard.path
     }
+    pub(crate) fn https_address(&self) -> Option<std::net::SocketAddr> {
+        self.https
+            .as_ref()
+            .and_then(|https| https.socket.local_addr().ok())
+    }
     pub async fn run(self, shutdown: impl Future<Output = ()>) -> Result<()> {
         let Self {
             listener,
+            https,
             guard,
             config,
             pool,
             backend,
         } = self;
         let permits = Arc::new(Semaphore::new(config.max_connections));
+        let https_permits = https
+            .as_ref()
+            .map(|h| Arc::new(Semaphore::new(h.max_connections)));
         let mut tasks = JoinSet::new();
         tokio::pin!(shutdown);
         loop {
@@ -145,27 +168,37 @@ impl Server {
                     let pool=pool.clone(); let timeout=config.timeout(); let backend=backend.clone();
                     tasks.spawn(async move {
                         let _permit=permit;
-                        let service=service_fn(move |request| {
-                            let pool=pool.clone(); let backend=backend.clone();
-                            async move {
-                                let response=match tokio::time::timeout(timeout,handle(request,pool,backend)).await {
-                                    Ok(response)=>response,
-                                    Err(_)=>error(StatusCode::GATEWAY_TIMEOUT,"outcome_unknown"),
-                                };
-                                Ok::<_,Infallible>(response)
-                            }
-                        });
-                        let mut http=hyper::server::conn::http1::Builder::new();
-                        http.keep_alive(false).max_headers(32).max_header_size(8192).max_buf_size(16*1024)
-                            .timer(TokioTimer::new()).header_read_timeout(Duration::from_secs(5));
-                        // Also bounds clients that stop reading a response.
-                        let _=tokio::time::timeout(timeout+Duration::from_secs(6),http.serve_connection(TokioIo::new(stream),service)).await;
+                        serve_http(stream, pool, backend, timeout, Ingress::Local).await;
+                    });
+                }
+                stream=async {
+                    match &https {
+                        Some(https) => https.accept().await,
+                        None => std::future::pending().await,
+                    }
+                }=>{
+                    let (Some(https), Some(permits)) = (&https, &https_permits) else { unreachable!() };
+                    let Ok(permit)=permits.clone().try_acquire_owned() else { drop(stream); continue; };
+                    let pool=pool.clone(); let timeout=config.timeout(); let backend=backend.clone();
+                    let acceptor=https.acceptor.clone();
+                    let ingress=Ingress::AgentHttps(https.authority.clone());
+                    tasks.spawn(async move {
+                        let _permit=permit;
+                        if let Ok(Ok(stream))=tokio::time::timeout(https::HANDSHAKE_TIMEOUT, acceptor.accept(stream)).await {
+                            serve_http(stream, pool, backend, timeout, ingress).await;
+                        }
                     });
                 }
             }
         }
         drop(listener);
-        let grace = config.timeout() + Duration::from_secs(6);
+        let handshake = if https.is_some() {
+            https::HANDSHAKE_TIMEOUT
+        } else {
+            Duration::ZERO
+        };
+        drop(https);
+        let grace = config.timeout() + Duration::from_secs(6) + handshake;
         if tokio::time::timeout(grace, async { while tasks.join_next().await.is_some() {} })
             .await
             .is_err()
@@ -177,6 +210,76 @@ impl Server {
         drop(guard);
         Ok(())
     }
+}
+
+#[derive(Clone)]
+enum Ingress {
+    Local,
+    AgentHttps(Arc<str>),
+}
+
+impl Ingress {
+    fn agent_https(&self) -> bool {
+        matches!(self, Self::AgentHttps(_))
+    }
+
+    fn accepts_host(&self, request: &Request<Incoming>) -> bool {
+        let Some(host) = request
+            .headers()
+            .get(header::HOST)
+            .and_then(|v| v.to_str().ok())
+        else {
+            return false;
+        };
+        match self {
+            Self::Local => host == "treeharbor.local",
+            Self::AgentHttps(authority) => {
+                host.eq_ignore_ascii_case(authority)
+                    && request.uri().scheme().is_none()
+                    && request.uri().authority().is_none()
+            }
+        }
+    }
+}
+
+async fn serve_http<S>(
+    stream: S,
+    pool: Pool<Database>,
+    backend: Option<crate::source::Backend>,
+    timeout: Duration,
+    ingress: Ingress,
+) where
+    S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
+{
+    let service =
+        service_fn(move |request| {
+            let pool = pool.clone();
+            let backend = backend.clone();
+            let ingress = ingress.clone();
+            async move {
+                let response =
+                    match tokio::time::timeout(timeout, handle(request, pool, backend, ingress))
+                        .await
+                    {
+                        Ok(response) => response,
+                        Err(_) => error(StatusCode::GATEWAY_TIMEOUT, "outcome_unknown"),
+                    };
+                Ok::<_, Infallible>(response)
+            }
+        });
+    let mut http = hyper::server::conn::http1::Builder::new();
+    http.keep_alive(false)
+        .max_headers(32)
+        .max_header_size(8192)
+        .max_buf_size(16 * 1024)
+        .timer(TokioTimer::new())
+        .header_read_timeout(Duration::from_secs(5));
+    // Also bounds clients that stop reading a response.
+    let _ = tokio::time::timeout(
+        timeout + Duration::from_secs(6),
+        http.serve_connection(TokioIo::new(stream), service),
+    )
+    .await;
 }
 fn response(status: StatusCode, value: serde_json::Value) -> Response<Body> {
     let mut response = Response::new(full(Bytes::from(value.to_string())));
@@ -202,13 +305,11 @@ async fn handle(
     request: Request<Incoming>,
     pool: Pool<Database>,
     backend: Option<crate::source::Backend>,
+    ingress: Ingress,
 ) -> Response<Body> {
     if request.headers().contains_key(header::ORIGIN)
         || request.headers().get_all(header::HOST).iter().count() != 1
-        || request
-            .headers()
-            .get(header::HOST)
-            .is_none_or(|v| v != "treeharbor.local")
+        || !ingress.accepts_host(&request)
     {
         return error(StatusCode::BAD_REQUEST, "invalid_host_or_origin");
     }
@@ -216,6 +317,19 @@ async fn handle(
         return response(StatusCode::OK, json!({"status":"alive"}));
     }
     let upload = crate::source::route(request.uri().path());
+    if ingress.agent_https()
+        && !matches!(
+            request.uri().path(),
+            "/v1/commands"
+                | "/v1/source/read"
+                | "/v1/review/diff"
+                | "/v1/history/read"
+                | "/v1/changes/submit"
+        )
+        && !upload.as_ref().is_some_and(crate::source::Route::is_change)
+    {
+        return error(StatusCode::NOT_FOUND, "not_found");
+    }
     let restore_source = request.uri().path() == "/v1/github/restore/verify-source";
     let source_read = request.uri().path() == "/v1/source/read";
     let source_export = request.uri().path() == "/v1/source/export";
@@ -455,10 +569,16 @@ async fn handle(
     };
     // The metadata dispatcher owns large asynchronous validation states. Keep
     // them on the heap instead of embedding them in every HTTP request future.
-    match Box::pin(session.metadata.execute_command_with_backend(
+    let storage = backend.as_ref().map(|b| b.config.backend.as_str());
+    let command_ingress = match ingress {
+        Ingress::Local => CommandIngress::Local,
+        Ingress::AgentHttps(_) => CommandIngress::AgentHttps,
+    };
+    match Box::pin(session.metadata.execute_command_at_ingress(
         &credential,
         &body,
-        backend.as_ref().map(|b| b.config.backend.as_str()),
+        storage,
+        command_ingress,
     ))
     .await
     {

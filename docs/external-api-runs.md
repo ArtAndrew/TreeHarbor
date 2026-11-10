@@ -16,8 +16,8 @@ an exact [native revision](native-import.md) (including a Git-derived revision),
 then register a [source profile](source-profile-v1.md). This API path requires no
 TreeHarbor node, Docker/gVisor installation, runtime profile or runtime credential.
 The client remains responsible for its execution isolation, network and secrets.
-The current transport is the private local Unix socket; this is not a remotely
-exposed HTTP deployment.
+The signed preview uses the private local Unix socket. Development builds also
+support an explicitly configured [agent HTTPS listener](agent-https.md).
 
 Provision a repository-scoped credential for the owning controller with `read`,
 `workspace.write` and `change.write`. These are separate permissions: creation
@@ -136,6 +136,8 @@ The managed `run-stop`/`run-status` endpoints do not describe external tasks.
 `POST /v1/commands` uses the existing version-1 envelope, Bearer authentication
 and fixed `Host: treeharbor.local` on the private socket. Unknown fields are
 rejected, including caller-supplied origin, principal, runtime and success claims.
+The agent HTTPS listener uses the configured HTTPS origin in `Host` and the same
+request body and repository permissions.
 The [v1 vector](../crates/metadata/tests/fixtures/api-run-v1.json) fixes a creation
 envelope, result and independently computed idempotency digest. Its sample object
 IDs describe protocol values, not objects to import into a live repository.

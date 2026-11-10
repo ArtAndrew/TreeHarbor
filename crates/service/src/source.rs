@@ -64,6 +64,11 @@ pub(crate) struct Route {
     change: bool,
     github: bool,
 }
+impl Route {
+    pub(crate) fn is_change(&self) -> bool {
+        self.change
+    }
+}
 pub(crate) fn route(path: &str) -> Option<Route> {
     let parts: Vec<_> = path.split('/').collect();
     if parts.len() != 9
