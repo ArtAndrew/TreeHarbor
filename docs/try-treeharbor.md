@@ -14,6 +14,7 @@ infrastructure. A local Git worktree may be sufficient for a few personal tasks.
 | Understand the result before installing | [Recorded two-agent trial](demo.md) | A browser; no credentials or installation |
 | Run two tasks and get real draft PRs | Steps below | Linux x86-64/ARM64, GitHub CLI, Git, Python 3.11+, PostgreSQL, GitHub App, Docker/cgroup v2 and gVisor |
 | Keep your existing agent runtime | [External API tasks](external-api-runs.md) | Prepared TreeHarbor service and pinned source; your controller supplies execution/isolation |
+| Start an independent repository | [Standalone empty start](native-integration.md#start-a-new-project-with-empty-history) | A build with `source-pack --empty`, a local service and an approved check profile |
 | Connect an MCP host | [Experimental MCP stdio adapter](mcp.md) | Prepared local service, scoped agent credential and stdio-capable host; no managed launch or GitHub publishing tool |
 
 This walk-through uses Git-compatible workspaces with private `.git` directories

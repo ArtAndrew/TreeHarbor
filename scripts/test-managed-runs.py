@@ -159,7 +159,7 @@ class Harness:
         self.admin("token-issue", *self.scope, "--principal", name, *grants, "--output", credential)
         return credential
 
-    def setup(self):
+    def setup(self, empty_source=False):
         # Installing runsc restarts the daemon; explicitly restart this disposable
         # CI service if Docker did not restore it automatically.
         docker("start", self.pg)
@@ -210,11 +210,15 @@ class Harness:
         self.children.append(self.server)
         wait_until(lambda: self.socket.exists() or self.server.poll() is not None)
         assert self.server.poll() is None, (self.root / "server.log").read_text()
-        source = self.root / "source"
-        source.mkdir(mode=0o700)
-        (source / "same.txt").write_text("base\n")
         pack = self.root / "pack"
-        self.value("source-pack", "--directory", source, "--output", pack, "--path", "same.txt",
+        if empty_source:
+            capture = ["--empty", "--message", "Initial empty revision"]
+        else:
+            source = self.root / "source"
+            source.mkdir(mode=0o700)
+            (source / "same.txt").write_text("base\n")
+            capture = ["--directory", source, "--path", "same.txt"]
+        self.value("source-pack", *capture, "--output", pack,
                    "--author-name", "Runtime fixture", "--author-email", "fixture@example.invalid")
         imported = self.client("source-import", "--pack", pack, "--state", self.root / "import.json",
                                "--authority", "standalone", "--epoch", "1")
@@ -329,7 +333,10 @@ class Harness:
         if create is not None:
             assert self.client(*create, credential=credential) == requested
         files = Path(prepared["path"])
-        assert (files / "same.txt").read_bytes() == source
+        if source is None:
+            assert not list(files.iterdir())
+        else:
+            assert (files / "same.txt").read_bytes() == source
         request = ["run-request", "--key", f"run-{number}", "--authority", "standalone", "--epoch", "1",
                    "--run", run, "--workspace", workspace, "--generation", "1", "--profile-digest", digest,
                    "--agent", f"agent-{agent}", "--task", f"task-{number}", "--", "/probe", mode, *map(str, args)]

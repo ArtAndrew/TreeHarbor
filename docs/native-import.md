@@ -5,8 +5,7 @@ resume its upload to the local service. Completion registers a native workspace
 base. It does **not** create a branch, import Git history, accept an agent's
 ChangeSet or run a sandbox. For complete commit ancestry use the separate
 [Git bundle import](git-import.md). [Live source export](live-source-export.md)
-produces full native packs that this uploader also accepts. Both end-to-end
-product modes remain unreleased.
+produces full native packs that this uploader also accepts.
 
 ## Capture and send
 
@@ -45,6 +44,13 @@ It has an empty change-operations object. These metadata are not proof of author
 or review. The capture command prints its native commit, snapshot, unique object
 count, encoded bytes and filesystem entry count. `pack_path_hex` preserves the
 absolute output path bytes; `pack` is the UTF-8 string or null if unrepresentable.
+
+Builds with `source-pack --empty` can create a full native pack without a source
+directory. Supply the same output, author, message and budget options, and omit
+`--directory` and `--path`. The pack uses the existing version 3 native format
+with an empty tree, a snapshot, empty change operations and one parentless commit.
+It follows the same verified upload and saved-intent path. See the
+[empty repository setup](native-integration.md#start-a-new-project-with-empty-history).
 
 After capture, upload reads only the pack. Source edits or removal no longer
 change the uploaded revision. Finish returns `native:sha256:…`, usable with

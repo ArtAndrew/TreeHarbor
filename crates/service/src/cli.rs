@@ -100,13 +100,16 @@ enum Command {
         #[command(subcommand)]
         action: crate::node_cli::Action,
     },
-    /// Capture explicitly selected files from a stopped native source directory.
+    /// Create a native source pack from selected files or an empty initial tree.
     SourcePack {
-        #[arg(long)]
-        directory: PathBuf,
+        /// Create a parentless empty revision without reading a source directory.
+        #[arg(long, conflicts_with_all = ["directory", "paths"])]
+        empty: bool,
+        #[arg(long, required_unless_present = "empty")]
+        directory: Option<PathBuf>,
         #[arg(long)]
         output: PathBuf,
-        #[arg(long = "path", required = true)]
+        #[arg(long = "path", required_unless_present = "empty")]
         paths: Vec<OsString>,
         #[arg(long)]
         author_name: String,
@@ -1198,6 +1201,7 @@ pub async fn run(cli: Cli) -> Result<bool> {
         }
         Command::Node { action } => crate::node_cli::run(action).await,
         Command::SourcePack {
+            empty,
             directory,
             output,
             paths,
@@ -1213,20 +1217,31 @@ pub async fn run(cli: Cli) -> Result<bool> {
                 .map(|p| treeharbor_core::RepoPath::new(p.as_bytes().to_vec()))
                 .collect::<treeharbor_core::Result<Vec<_>>>()
                 .map_err(|_| Error::Profile)?;
-            let result = tokio::task::spawn_blocking(move || {
-                crate::pack::capture(crate::pack::Capture {
-                    directory: &directory,
+            let result = tokio::task::spawn_blocking(move || -> Result<crate::pack::Pack> {
+                let limits = crate::pack::Limits {
+                    objects: max_objects,
+                    bytes: max_bytes,
+                };
+                if empty {
+                    return Ok(crate::pack::capture_empty(
+                        &output,
+                        author_name,
+                        author_email,
+                        message,
+                        timestamp_seconds,
+                        limits,
+                    )?);
+                }
+                Ok(crate::pack::capture(crate::pack::Capture {
+                    directory: directory.as_deref().ok_or(Error::Config)?,
                     output: &output,
                     paths,
                     author_name,
                     author_email,
                     message,
                     timestamp_seconds,
-                    limits: crate::pack::Limits {
-                        objects: max_objects,
-                        bytes: max_bytes,
-                    },
-                })
+                    limits,
+                })?)
             })
             .await
             .map_err(|_| Error::ImportWorker)??;

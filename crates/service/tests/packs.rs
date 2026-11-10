@@ -7,6 +7,7 @@ use std::{
         fs::{PermissionsExt, symlink},
     },
     path::Path,
+    process::Command,
 };
 use treeharbor_core::{EntryMode, Object, ObjectId, ObjectStore, RepoPath};
 use treeharbor_service::pack::{self, Capture, Limits, Pack};
@@ -56,6 +57,51 @@ fn root(pack: &Pack) -> treeharbor_core::Directory {
 }
 fn rewrite(path: &Path, value: &serde_json::Value) {
     fs::write(path, serde_json::to_vec(value).unwrap()).unwrap();
+}
+
+#[test]
+fn empty_source_pack_is_a_complete_parentless_graph_and_never_overwrites() {
+    let fixture = Fixture::new();
+    let output = fixture.dir.path().join("empty");
+    let build = |extra: &[&str]| {
+        Command::new(env!("CARGO_BIN_EXE_treeharbor"))
+            .env("PATH", "/treeharbor-test-no-executables")
+            .args(["source-pack", "--empty", "--output"])
+            .arg(&output)
+            .args([
+                "--author-name",
+                "Test",
+                "--author-email",
+                "test@example.invalid",
+                "--message",
+                "Initial empty revision",
+            ])
+            .args(extra)
+            .output()
+            .unwrap()
+    };
+    let ambiguous = build(&["--path", "src"]);
+    assert!(!ambiguous.status.success() && !output.exists());
+    let first = build(&[]);
+    assert!(first.status.success(), "{:?}", first.stderr);
+    let reply: serde_json::Value = serde_json::from_slice(&first.stdout).unwrap();
+    assert_eq!(reply["objects"], 4);
+    assert_eq!(reply["filesystem_entries"], 0);
+    let pack = Pack::open(&output).unwrap();
+    assert_eq!(reply["commit"], pack.commit().to_string());
+    assert_eq!(reply["snapshot"], pack.snapshot().to_string());
+    assert!(root(&pack).entries().is_empty());
+    let Object::NativeCommit(commit) = object(&pack, pack.commit()) else {
+        panic!("expected initial native commit")
+    };
+    assert!(commit.parents.is_empty() && commit.git_origin.is_none());
+    let Object::ChangeOperations(changes) = object(&pack, commit.changes) else {
+        panic!("expected initial operations")
+    };
+    assert!(changes.operations().is_empty());
+    let before = fs::read(output.join("manifest.json")).unwrap();
+    assert!(!build(&[]).status.success());
+    assert_eq!(fs::read(output.join("manifest.json")).unwrap(), before);
 }
 
 #[test]

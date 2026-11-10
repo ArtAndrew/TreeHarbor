@@ -35,19 +35,20 @@ class Checks(managed.Harness):
         managed.private_json(path, request)
         return self.client("native", "--request", path, credential=credential, check=check)
 
-    def build_candidate(self, program):
+    def register_check_policy(self, program):
         identities = self.native("program_put", self.policy_admin, program=program)
         policy = {"version": 1, "checks": [dict(name="tests", validators=["ci"], **identities)],
                   "reviewers": ["reviewer"], "approvals": 1}
-        policy_id = self.native("policy_put", self.policy_admin, policy=policy)["policy"]
+        return self.native("policy_put", self.policy_admin, policy=policy)["policy"]
+
+    def build_candidate(self, program):
+        policy_id = self.register_check_policy(program)
         target = "main-" + str(uuid.uuid4())
         self.native("ref_create", self.policy_admin, name=target, head=self.revision, policy=policy_id)
         entry, check = [str(uuid.uuid4()) for _ in range(2)]
         self.native("enqueue", self.agents[0], entry=entry, target=target,
                     changeset=self.change["changeset"], version=self.change.get("version", 1))
-        journals = self.root / "native-advance"
-        journals.mkdir(mode=0o700, exist_ok=True)
-        state = journals / (entry + ".json")
+        state = self.journals / (entry + ".json")
         result = self.advance(target, state)
         candidate = result["candidate"]
         assert result["state"] == "checking" and result["entry"] == entry
@@ -397,60 +398,82 @@ class Checks(managed.Harness):
         print("PASS native overlap: both isolated agents wrote one path concurrently from one native revision", flush=True)
         return a, b
 
+    def main_ref(self):
+        return self.native("ref_resolve", self.reviewer, name="main")
+
+    def enqueue_main(self, change, owner):
+        entry = str(uuid.uuid4())
+        response = self.native("enqueue", owner, entry=entry, target="main",
+                               changeset=change["changeset"], version=change["version"])
+        assert response["entry"] == entry and response["state"] == "queued"
+        return entry
+
+    def check_and_land_main(self, entry, change, prepared, placement, content, previous_check=None):
+        expected = self.main_ref()
+        candidate = prepared["candidate"]
+        assert prepared["state"] == "checking" and prepared["entry"] == entry
+        assert prepared["expected_head"] == expected["head"] == change["base_revision"]
+        assert prepared["expected_generation"] == expected["generation"]
+        assert prepared["snapshot"] == change["result_snapshot"]
+        if previous_check:
+            reused = self.native("check_assign", self.integrator, check=False, candidate=candidate,
+                                 name="tests", run=previous_check, validator="ci")
+            assert reused.returncode != 0
+        check = str(uuid.uuid4())
+        self.native("check_assign", self.integrator, candidate=candidate, name="tests", run=check, validator="ci")
+        self.native("review", self.reviewer, candidate=candidate, review=str(uuid.uuid4()), decision="approve")
+        case = dict(candidate=candidate, check=check, candidate_snapshot=prepared["snapshot"])
+        self.prepare_check(case, *placement, content.encode())
+        evidence = self.completed_check(case, self.start(case))
+        self.native("check_release", self.ci, run=check)
+        self.cleanup_workspace(case, already_drained=True)
+        assert self.native("check_status", self.ci, run=check) == evidence
+        key = "land-" + entry
+        landed = self.native("land", self.integrator, key=key, candidate=candidate)
+        assert landed == self.native("land", self.integrator, key=key, candidate=candidate)
+        assert landed["state"] == "landed" and landed["revision"] == prepared["revision"]
+        head = self.main_ref()
+        assert head["head"] == landed["revision"] and head["generation"] == expected["generation"] + 1
+        return landed, check
+
+    def initialize_empty_main(self):
+        self.genesis = self.revision
+        history = self.client("history", "--authority", "standalone", "--epoch", "1",
+                              "log", "--revision", self.genesis, credential=self.reviewer)["history"]
+        assert len(history["commits"]) == history["total_commits"] == 1
+        assert history["commits"][0]["revision"] == self.genesis and not history["commits"][0]["parents"]
+        content = "base\n"
+        seed = self.case("isolation", content, self.secret, source=None, selected=True, timeout=15000)
+        policy = self.register_check_policy({"version": 1, "runtime_profile": seed["profile"],
+                                             "argv": ["/probe", "check", content]})
+        self.native("ref_create", self.policy_admin, name="main", head=self.genesis, policy=policy)
+        assert self.main_ref()["head"] == self.genesis
+        self.finish(seed, self.start(seed))
+        change = self.seal(seed)
+        self.cleanup_workspace(seed)
+        entry = self.enqueue_main(change, seed["credential"])
+        candidate = self.advance("main", self.journals / "initial-publication.json")
+        placement = (seed["node"], seed["slot"], seed["mount"])
+        landed, _ = self.check_and_land_main(entry, change, candidate, placement, content)
+        self.revision = landed["revision"]
+        print("PASS native bootstrap: from empty repository to first checked, reviewed and landed file", flush=True)
+
     def integrate_overlapping_agents(self, a, b, left, right, merged):
         target = "main"
         _, node, slot, mount, profile = self.placement_profile(timeout=15000)
         program = {"version": 1, "runtime_profile": profile, "argv": ["/probe", "check-one-of", left, merged]}
-        identities = self.native("program_put", self.policy_admin, program=program)
-        policy = {"version": 1, "checks": [dict(name="tests", validators=["ci"], **identities)],
-                  "reviewers": ["reviewer"], "approvals": 1}
-        policy_id = self.native("policy_put", self.policy_admin, policy=policy)["policy"]
-        self.native("ref_create", self.policy_admin, name=target, head=self.revision, policy=policy_id)
+        policy = self.register_check_policy(program)
+        current = self.main_ref()
+        assert current["head"] == self.revision
+        self.native("ref_policy", self.policy_admin, name=target, generation=current["generation"], policy=policy)
 
-        def head():
-            return self.native("ref_resolve", self.reviewer, name=target)
-
-        def enqueue(change, owner):
-            entry = str(uuid.uuid4())
-            response = self.native("enqueue", owner, entry=entry, target=target,
-                                   changeset=change["changeset"], version=change["version"])
-            assert response["entry"] == entry and response["state"] == "queued"
-            return entry
-
-        def check_and_land(entry, change, prepared, placement, content, previous_check=None):
-            expected = head()
-            candidate = prepared["candidate"]
-            assert prepared["state"] == "checking" and prepared["entry"] == entry
-            assert prepared["expected_head"] == expected["head"] == change["base_revision"]
-            assert prepared["expected_generation"] == expected["generation"]
-            assert prepared["snapshot"] == change["result_snapshot"]
-            if previous_check:
-                reused = self.native("check_assign", self.integrator, check=False, candidate=candidate,
-                                     name="tests", run=previous_check, validator="ci")
-                assert reused.returncode != 0
-            check = str(uuid.uuid4())
-            self.native("check_assign", self.integrator, candidate=candidate, name="tests", run=check, validator="ci")
-            self.native("review", self.reviewer, candidate=candidate, review=str(uuid.uuid4()), decision="approve")
-            case = dict(candidate=candidate, check=check, candidate_snapshot=prepared["snapshot"])
-            self.prepare_check(case, *placement, content.encode())
-            evidence = self.completed_check(case, self.start(case))
-            self.native("check_release", self.ci, run=check)
-            self.cleanup_workspace(case, already_drained=True)
-            assert self.native("check_status", self.ci, run=check) == evidence
-            key = "land-overlap-" + entry
-            landed = self.native("land", self.integrator, key=key, candidate=candidate)
-            assert landed == self.native("land", self.integrator, key=key, candidate=candidate)
-            assert landed["state"] == "landed" and landed["revision"] == prepared["revision"]
-            assert head()["head"] == landed["revision"] and head()["generation"] == expected["generation"] + 1
-            return landed, check
-
-        entry_a, entry_b = [enqueue(change, owner) for change, owner in zip((a, b), self.agents)]
+        entry_a, entry_b = [self.enqueue_main(change, owner) for change, owner in zip((a, b), self.agents)]
         pending = self.native("queue_pending", self.reviewer, target=target, after=0, limit=10)
         assert [entry["entry"] for entry in pending["entries"]] == [entry_a, entry_b]
-        first = self.advance(target, self.root / "overlap-first.json")
-        landed_a, check_a = check_and_land(entry_a, a, first, (node, slot, mount), left)
+        first = self.advance(target, self.journals / "overlap-first.json")
+        landed_a, check_a = self.check_and_land_main(entry_a, a, first, (node, slot, mount), left)
 
-        conflict_state = self.root / "overlap-conflict.json"
+        conflict_state = self.journals / "overlap-conflict.json"
         conflicted = self.advance(target, conflict_state)
         assert conflicted == self.advance(target, conflict_state)
         assert conflicted["entry"] == entry_b and conflicted["state"] == "conflicted"
@@ -459,7 +482,7 @@ class Checks(managed.Harness):
         assert details["conflicts"][0]["path_hex"] == b"same.txt".hex()
         assert details["conflicts"][0]["kind"] == "content"
         assert self.native("queue_status", self.reviewer, entry=entry_b)["state"] == "conflicted"
-        assert head()["head"] == landed_a["revision"]
+        assert self.main_ref()["head"] == landed_a["revision"]
         print("PASS native overlap: first change landed, second queue entry stopped on its exact file conflict", flush=True)
 
         resolution = self.case("isolation", merged, self.secret, node=1, base=landed_a["revision"],
@@ -477,28 +500,32 @@ class Checks(managed.Harness):
             assert diff["identity"]["run"] == change["run"] and diff["total_changes"] == 1
         _, node, slot, mount, reused_profile = self.placement_profile(node=1, timeout=15000)
         assert reused_profile == profile
-        entry = enqueue(updated, self.agents[1])
-        second = self.advance(target, self.root / "overlap-resolution.json")
-        landed_b, _ = check_and_land(entry, updated, second, (node, slot, mount), merged, previous_check=check_a)
+        entry = self.enqueue_main(updated, self.agents[1])
+        second = self.advance(target, self.journals / "overlap-resolution.json")
+        landed_b, _ = self.check_and_land_main(entry, updated, second, (node, slot, mount), merged, previous_check=check_a)
         pending = self.native("queue_pending", self.reviewer, target=target, after=0, limit=10)
         assert pending["entries"] == []
         history = self.client("history", "--authority", "standalone", "--epoch", "1", "log",
                               "--revision", landed_b["revision"], "--first-parent", "--limit", "10",
                               credential=self.reviewer)["history"]
         assert [commit["revision"] for commit in history["commits"]] == [
-            landed_b["revision"], landed_a["revision"], self.revision]
+            landed_b["revision"], landed_a["revision"], self.revision, self.genesis]
         print("PASS native overlap: resolved version required fresh check and review, and native history records both landings", flush=True)
         restored = self.export_and_restore(landed_b, "overlap", merged)
         assert managed.command("/usr/bin/git", "--git-dir", restored, "show", "main^1:same.txt").stdout == left
         assert managed.command("/usr/bin/git", "--git-dir", restored, "show", "main^1^1:same.txt").stdout == "base\n"
+        assert managed.command("/usr/bin/git", "--git-dir", restored, "ls-tree", "main^1^1^1").stdout == ""
         return landed_b, restored
 
     def exercise(self, overlap_only=False, shared_node=False, recover_shared_worker=False):
         self.empty_proposal = False
+        self.journals = self.root / "native-advance"
+        self.journals.mkdir(mode=0o700)
         self.policy_admin = self.principal("policy-admin", "human", ["read", "repository.write", "policy.write"])
         self.reviewer = self.principal("reviewer", "human", ["read", "review"])
         self.integrator = self.principal("integrator", "integrator", ["read", "integration.control"])
         self.ci = self.principal("ci", "validator", ["read", "validation.report"])
+        self.initialize_empty_main()
         overlap = self.overlapping_agents(shared_node=shared_node, recover_worker=recover_shared_worker)
         if overlap_only:
             return
@@ -640,7 +667,7 @@ if __name__ == "__main__":
         parser.error("--recover-shared-worker requires --shared-node")
     h = Checks()
     try:
-        h.setup()
+        h.setup(empty_source=True)
         h.exercise(overlap_only=args.overlap_only, shared_node=args.shared_node,
                    recover_shared_worker=args.recover_shared_worker)
     except Exception:
