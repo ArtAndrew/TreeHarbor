@@ -144,6 +144,23 @@ PostgreSQL, Docker/gVisor, bounded volumes and host access are separate prerequi
 Removing the CLI symlink and that version directory uninstalls the package; retain
 repository state and backups separately.
 
+### Upgrade from 0.1.17-alpha.1
+
+Install the verified 0.1.18-alpha.1 archive into a new prefix and keep the
+previous installation. The database schema and existing single-image source
+registrations are compatible with the new version. Capture and drain active
+workspaces and stop the old service and workers before switching commands.
+Keep a [cold backup](backup-restore.md) and run the new CLI's
+[`doctor`](doctor.md) with the existing private configuration before startup.
+
+To try [multiple source images](experimental-cow.md#multiple-revisions-on-one-source-volume),
+register a fresh node and dedicated volume. Keep the old registrations and
+protected host helper until their placements have been drained. To return to
+0.1.17-alpha.1, capture and drain placements on the new node using 0.1.18-alpha.1
+first, stop the new services and select the old prefix and single-image node.
+The import pack is disposable and can be removed from the private import state
+independently of the accepted source.
+
 [Release package checks](../.github/workflows/release-package.yml) build real static
 binaries on Linux x86-64 and ARM64, verify archive checksums, install into a fresh
 prefix and execute CLI help/version commands. Synthetic ELF unit tests cover archive

@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.1.18-alpha.1 — faster Git-compatible preparation and multiple revisions
+
+- Reuse the verified pack from a fresh Connected import with
+  [`--git-import-pack`](docs/local-node.md#reuse-an-imported-git-pack) when
+  the bridge and node use the same private local import directory. The node
+  checks the exact source, keeps an independent Git index and rebuilds
+  metadata from native objects if the retained pack fails verification.
+- Register a fresh dedicated source volume with
+  [`--max-images`](docs/experimental-cow.md#multiple-revisions-on-one-source-volume)
+  set to a value from 2 to 16.
+  Workspaces from different pinned revisions can run on one node and keep
+  their original lower images through recovery and cleanup.
+- Reduce cold projection work when the original Git pack is unavailable.
+  [Paired Linux ARM64 measurements](docs/benchmark-preparation.md#reusing-the-pack-from-import--10-november-2026)
+  report first and repeat preparation separately from local import.
+- Document [side-by-side installation and rollback](docs/release-packaging.md#upgrade-from-0117-alpha1).
+
 ## 0.1.17-alpha.1 — agent HTTPS and Standalone empty start
 
 - Opt in to an [agent HTTPS endpoint](docs/agent-https.md) for exact source
