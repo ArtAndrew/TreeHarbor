@@ -74,7 +74,7 @@ ChangeSet submission and closing the task. Keep the same request keys, IDs and
 state file after a lost connection. The original receipt can be returned after
 the task closes. Query `api-run-status` for its current state.
 
-Development clients can prepare the registered selection in a new directory.
+Clients from 0.1.19-alpha.1 can prepare the registered selection in a new directory.
 Keep the controller credential outside the directory given to the agent.
 
 ```sh
@@ -85,7 +85,7 @@ th source-checkout --workspace "$WORKSPACE" --generation 1 \
 Use the workspace and generation returned at task creation. See the
 [checkout limits and failure behavior](source-reads.md#prepare-a-controller-directory).
 
-Development builds also support [leased task assignment](remote-tasks-v1.md)
+0.1.19-alpha.1 also supports [leased task assignment](remote-tasks-v1.md)
 for controllers with distinct worker credentials. Operators enqueue and cancel
 through the local socket. Workers claim, renew and inspect assignments over HTTPS.
 

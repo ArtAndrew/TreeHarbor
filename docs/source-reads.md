@@ -56,8 +56,9 @@ control. There is no public arbitrary-digest read route.
 
 ## Prepare a controller directory
 
-Development builds include `source-checkout`. It uses the registered full or
-sparse profile and writes its files to a new directory on the client machine.
+The CLI includes `source-checkout` starting with 0.1.19-alpha.1. It uses the
+registered full or sparse profile and writes its files to a new directory on
+the client machine.
 Use the same workspace, generation, authority and epoch as for a single file.
 
 ```sh

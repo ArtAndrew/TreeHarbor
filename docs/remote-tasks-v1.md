@@ -1,6 +1,6 @@
 # Remote task assignment
 
-Development builds with schema 033 can dispatch a pinned task to external
+TreeHarbor 0.1.19-alpha.1 with schema 033 can dispatch a pinned task to external
 controllers. Use a separate agent principal for each worker and keep its
 credential outside the execution environment. The controllers supply runtime
 isolation, process stop and local file cleanup. TreeHarbor records source,
@@ -100,9 +100,9 @@ workspace generation. A ChangeSet receipt includes `remote_task.task` and
 `remote_task.attempt`. This records provenance without claiming runtime or
 validation evidence.
 
-Schema 033 adds the task and immutable attempt tables. Stop writers and take a
-consistent backup before migration. Upgrade the server and clients together
-when using these commands. Existing external API contexts keep their current
-behavior. During recovery, fence the old deployment and revoke restored
-credentials before reconnecting workers. Task leases alone cannot stop an old
-deployment from writing to a separate database.
+Schema 033 adds the task and immutable attempt tables. Follow the
+[upgrade steps](release-packaging.md#upgrade-from-0118-alpha1) to stop writers,
+back up the deployment and upgrade the server and clients. Existing external
+API contexts keep their current behavior. During recovery, fence the old
+deployment and revoke restored credentials before reconnecting workers. Task
+leases alone cannot stop an old deployment from writing to a separate database.
