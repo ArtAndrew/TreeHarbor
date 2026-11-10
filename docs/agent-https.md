@@ -1,8 +1,8 @@
 # Agent API over HTTPS
 
-Development profile for an agent controller on another Unix host. Build the
-current source revision or use a release that explicitly lists this profile.
-The signed 0.1.16 preview uses the private local socket.
+Use the agent HTTPS profile to connect an agent controller on another Unix host.
+It is available in the signed [0.1.17-alpha.1](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.17-alpha.1)
+Linux packages.
 
 The HTTPS listener is opt-in and runs in the same server process as the Unix
 socket. Both use the same repository authorization, source store, PostgreSQL

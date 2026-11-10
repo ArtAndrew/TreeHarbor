@@ -4,12 +4,12 @@ Updated: 2026-11-10. This file describes implemented behavior and remaining rele
 gates. A foundation milestone does not complete either mode.
 
 For a concise current overview, see [what works today](../README.md#what-works-today)
-and [release readiness](../README.md#what-remains-before-a-full-release). The entries
+and the [roadmap](../ROADMAP.md). The entries
 below retain evidence from individual increments. Their earlier statements about
 unfinished work describe the scope at that time; they are not a replacement for
 the current overview or the full [release gate ledger](#release-gate-ledger).
 
-## Standalone empty repository — 0.1.17-alpha.1 candidate
+## Standalone empty repository — 0.1.17-alpha.1
 
 [`source-pack --empty`](native-integration.md#start-a-new-project-with-empty-history)
 creates a complete version 3 native pack with zero files and one parentless
@@ -24,7 +24,11 @@ conflict, fresh review/check, recovery and Git-export drill on that history.
 Full two-mode acceptance also requires migration and Connected queue and
 publication recovery verification.
 
-## Restricted agent HTTPS — development, 2026-11-10
+The [0.1.17-alpha.1 release](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.17-alpha.1)
+ships the tested Linux x86-64 and ARM64 packages. The [signed producer](https://github.com/ArtAndrew/TreeHarbor/actions/runs/42787341454)
+installed and exercised each archive before attesting it.
+
+## Restricted agent HTTPS — 0.1.17-alpha.1
 
 The [agent HTTPS profile](agent-https.md) adds an opt-in TLS 1.3 listener next to
 the local Unix socket. An external controller can register a task, read its exact
@@ -42,18 +46,18 @@ and a single stored ChangeSet version on retry. The accepted diff remained
 readable after logical close. Existing Unix-socket proposal replay passed in
 both authority modes.
 
-This profile is available from source. The signed 0.1.16 preview uses the local
-socket. The HTTPS profile uses the controller's own execution environment.
+An independent ARM64 install accepted, replayed and read a retained proposal
+from a separate macOS controller over HTTPS. The controller supplies execution.
 Managed worker scheduling and execution on separate hosts remain open.
 
 ## Pinned first-run guide — 2026-11-10
 
-The [first-run guide](try-treeharbor.md) pins the existing signed 0.1.16-alpha.1
-archive and uses its bundled helper with the Git-compatible workspace option.
+The [first-run guide](try-treeharbor.md) pins the signed 0.1.17-alpha.1 archive
+and uses its bundled helper with the Git-compatible workspace option.
 It gives the exact download, attestation and installation commands and separates
 the install checkpoint from service, App and runtime preparation.
 
-A fresh public ARM64 download matched the release source commit
+In the earlier 0.1.16-alpha.1 trial, a fresh public ARM64 download matched source
 `c48c14b52c64a8ffb8b32cfd26ae4a565216a359` and checksum. Installation in a new
 Linux directory preserved the CLI, runtime init and pair helper digests.
 `python3 -Bu scripts/test-native-checks.py --overlap-only` then used those
@@ -787,7 +791,7 @@ unrestored control repository. Existing retained-source/export checks also passe
 all required checks, and the reviewed tree merged as
 `fd3c5ee26e746252c3069b7ed7b62c2308e2792c`. This is not live GitHub reconciliation; the
 verified resolution/reconnection procedure remains unfinished. The
-[operator guide](restore-configure.md#development-builds-after-0111) distinguishes
+[operator guide](restore-configure.md#connected-recovery-from-0112-alpha1) distinguishes
 this development behavior from released 0.1.11.
 
 ## Released 0.1.11-alpha.1 local recovery continuation

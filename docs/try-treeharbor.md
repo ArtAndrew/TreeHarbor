@@ -14,7 +14,7 @@ infrastructure. A local Git worktree may be sufficient for a few personal tasks.
 | Understand the result before installing | [Recorded two-agent trial](demo.md) | A browser; no credentials or installation |
 | Run two tasks and get real draft PRs | Steps below | Linux x86-64/ARM64, GitHub CLI, Git, Python 3.11+, PostgreSQL, GitHub App, Docker/cgroup v2 and gVisor |
 | Keep your existing agent runtime | [External API tasks](external-api-runs.md) | Prepared TreeHarbor service and pinned source; your controller supplies execution/isolation |
-| Start an independent repository | [Standalone empty start](native-integration.md#start-a-new-project-with-empty-history) | A build with `source-pack --empty`, a local service and an approved check profile |
+| Start an independent repository | [Standalone empty start](native-integration.md#start-a-new-project-with-empty-history) | The signed package below, a local service and an approved check profile |
 | Connect an MCP host | [Experimental MCP stdio adapter](mcp.md) | Prepared local service, scoped agent credential and stdio-capable host; no managed launch or GitHub publishing tool |
 
 This walk-through uses Git-compatible workspaces with private `.git` directories
@@ -24,16 +24,16 @@ binaries and ships the example in the verified archive.
 
 ## 1. Install a signed Linux package
 
-The commands below pin [0.1.16-alpha.1](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.16-alpha.1)
+The commands below pin [0.1.17-alpha.1](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.17-alpha.1)
 and its signed source commit. Run them in a fresh Linux shell with an authenticated
 `gh`. Keep the generated directory and use the same shell for the following steps.
 
 ```sh
 set -eu
 TH_REPO=ArtAndrew/TreeHarbor
-TH_VERSION=0.1.16-alpha.1
+TH_VERSION=0.1.17-alpha.1
 TH_TAG="v$TH_VERSION"
-TH_SOURCE=c48c14b52c64a8ffb8b32cfd26ae4a565216a359
+TH_SOURCE=4c4841d4f4be8eecdd8aa850ecb78b75c72fff52
 test "$(uname -s)" = Linux
 TH_ARCH=$(uname -m)
 case "$TH_ARCH" in
@@ -66,7 +66,7 @@ test "$("$TH_BIN" --version)" = "treeharbor $TH_VERSION"
 printf 'Trial directory: %s\n' "$TH_TRIAL"
 ```
 
-**Checkpoint:** the CLI prints `treeharbor 0.1.16-alpha.1`. Continue with the
+**Checkpoint:** the CLI prints `treeharbor 0.1.17-alpha.1`. Continue with the
 database and service setup. Use the `gh` login on the operator host only. The
 GitHub App and agent credentials are set up separately.
 

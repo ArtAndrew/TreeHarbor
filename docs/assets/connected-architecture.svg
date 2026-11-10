@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1080" viewBox="0 0 1200 1080" role="img" aria-labelledby="title desc">
 <title id="title">TreeHarbor: parallel AI agent workspaces to GitHub pull requests</title>
-<desc id="desc">The Connected preview starts from an exact GitHub revision. Two agents use private native workspaces supervised through external gVisor, or a controller uses external API task contexts with its own runtime. TreeHarbor retains immutable changes and a trusted bridge publishes ordinary GitHub PRs. GitHub owns CI, review and merge. The Rust API, CLI and experimental MCP adapter use PostgreSQL metadata and a separate local source object store. Version 0.1.12 adds operator-assisted backup restoration, source reconciliation and GitHub reconnection, not full disaster recovery. Standalone is experimental.</desc>
+<desc id="desc">The Connected preview starts from an exact GitHub revision. Two agents use private workspaces supervised through external gVisor. An external controller can use the local socket or restricted HTTPS with its own runtime. TreeHarbor retains immutable changes and a trusted bridge publishes ordinary GitHub PRs. GitHub owns CI, review and merge. The Rust API, CLI and experimental MCP adapter use PostgreSQL metadata and a separate local source object store. Backup restoration and GitHub reconnection are operator-assisted.</desc>
 <defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#2c6f5e"/></marker></defs>
 <style>
 text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;fill:#182d3b}
@@ -25,12 +25,12 @@ text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;fi
 <text x="313" y="205" class="label">02 / RUN AGENTS</text>
 <rect x="309" y="224" width="243" height="82" rx="10" class="card"/>
 <text x="326" y="256" class="heading">Agent A</text>
-<text x="326" y="285" class="small">Private native workspace</text>
+<text x="326" y="285" class="small">Private workspace</text>
 <rect x="309" y="319" width="243" height="82" rx="10" class="card"/>
 <text x="326" y="351" class="heading">Agent B</text>
-<text x="326" y="380" class="small">Private native workspace</text>
+<text x="326" y="380" class="small">Private workspace</text>
 <text x="313" y="431" class="small">External gVisor runtime</text>
-<text x="313" y="458" class="small">No .git or publisher keys</text>
+<text x="313" y="458" class="small">Publisher keys stay outside</text>
 
 <rect x="600" y="198" width="255" height="258" rx="14" class="card"/>
 <text x="620" y="233" class="label">03 / KEEP THE CHANGES</text>
@@ -51,7 +51,7 @@ text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;fi
 
 <rect x="36" y="508" width="1128" height="85" rx="14" class="card"/>
 <text x="56" y="541" class="heading">Already have an agent runtime? Use external API tasks.</text>
-<text x="56" y="573" class="small">Read pinned source → submit changes → close the task. Your controller supplies execution and isolation.</text>
+<text x="56" y="573" class="small">Your controller supplies isolation. Connect through the local socket or restricted HTTPS.</text>
 
 <rect x="36" y="621" width="1128" height="99" rx="14" fill="#182d3b"/>
 <text x="56" y="658" class="heading white">Rust source and change engine · authenticated API / CLI · experimental MCP stdio</text>
@@ -65,7 +65,7 @@ text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;fi
 <text x="628" y="822" class="small">Source snapshots · accepted changes · retained history</text>
 
 <rect x="36" y="878" width="1128" height="90" rx="14" fill="#eaf3ef" stroke="#a7c4b8"/>
-<text x="56" y="913" class="heading">Recovery in 0.1.12 · operator-assisted</text>
+<text x="56" y="913" class="heading">Operator-assisted recovery</text>
 <text x="56" y="945" class="small">Cold backup → quarantined restore → source reconciliation → reviewed GitHub reconnection</text>
 <text x="36" y="1008" class="small">Alpha: manual Linux setup. Full publication / queue disaster recovery and production operation remain open.</text>
 <text x="36" y="1043" class="small">Standalone shares the Rust core; its complete Git-free workflow remains experimental.</text>

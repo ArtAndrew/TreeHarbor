@@ -108,7 +108,8 @@ object/policy digests are `sha256:<64 lowercase hex>` and revisions are
 
 ### Start a new project with empty history
 
-Use a build whose `source-pack --help` lists `--empty`. Create a repository
+Use [0.1.17-alpha.1](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.17-alpha.1)
+or a newer build whose `source-pack --help` lists `--empty`. Create a repository
 with `admin repository-create --authority standalone` and set up the service
 and separate roles above. Use an owner credential with `repository.write` for
 the import and initial ref. A policy administrator registers the protected
