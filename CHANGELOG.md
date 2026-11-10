@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.1.17-alpha.1 — agent HTTPS and Standalone empty start
+
+- Opt in to an [agent HTTPS endpoint](docs/agent-https.md) for exact source
+  reads, task registration and durable proposal submission across hosts.
+  The client verifies an explicit CA and server name. The endpoint keeps the
+  existing repository authorization and limits commands to the agent API.
+- Start a [Standalone project](docs/native-integration.md#start-a-new-project-with-empty-history)
+  with one parentless empty revision. `source-pack --empty` uses the existing
+  native pack and resumable import. The owner creates a protected `main` and
+  submits the first file through the ordinary check and review workflow.
+- Extend the installed native drill to begin with that empty revision and
+  retain it through overlapping tasks, fresh admission evidence, cold recovery
+  and optional Git export.
+
 ## 0.1.16-alpha.1 — shared Copy-on-Write workspaces — 2026-11-09
 
 - Add an operator-only Copy-on-Write preparation path with one verified source

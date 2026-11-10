@@ -2,9 +2,10 @@
 
 The local service can now enqueue an accepted native ChangeSet, compute an
 immutable merge candidate, collect scoped validation/review receipts and advance a
-native ref in one PostgreSQL transaction. This is a development increment of
-Standalone. Connected/GitHub publication, automatic queue/CI scheduling,
-full backup/restore and an installable release remain unfinished.
+native ref in one PostgreSQL transaction. This guide covers the operator-assisted
+Standalone workflow. It uses a local PostgreSQL database, the local object store
+and a native repository. Automatic queue and CI scheduling and migration between
+repository authority modes remain separate work.
 
 A trusted validator reporting `passed` is an assertion by that service identity.
 The external reporting API does not execute tests or turn an agent's exit code
@@ -18,7 +19,9 @@ separate Linux runtime tests exercise actual agent execution.
 Use the [local service guide](local-service.md) to build the binary, migrate the
 disposable database and configure local object storage. Migration 010 upgrades the
 published schema checksum chain and preserves existing proposals and credentials.
-The local service uses a private Unix socket; remote TLS transport is not ready.
+Run the native queue, validation and review commands over the private Unix socket.
+The [agent HTTPS endpoint](agent-https.md) covers external task and proposal
+operations.
 
 Provision repository-scoped principals/tokens with these permissions:
 
@@ -102,6 +105,49 @@ object/policy digests are `sha256:<64 lowercase hex>` and revisions are
 | `review` | `candidate`, `review` UUID, `decision` | allowed human reviewer |
 | `review_revoke` | `review` UUID | original reviewer |
 | `land` | `candidate` UUID | `integration.control` |
+
+### Start a new project with empty history
+
+Use a build whose `source-pack --help` lists `--empty`. Create a repository
+with `admin repository-create --authority standalone` and set up the service
+and separate roles above. Use an owner credential with `repository.write` for
+the import and initial ref. A policy administrator registers the protected
+[check program](managed-checks.md) and records the policy with `policy_put`.
+
+With an absolute owner-private `TH_PRIVATE` directory, a running service at
+`TH_SOCKET` and an owner credential file at `TH_OWNER`, create and import the
+initial revision.
+
+```sh
+umask 077
+treeharbor source-pack --empty --output "$TH_PRIVATE/genesis" \
+  --author-name 'Example Maintainer' --author-email 'maintainer@example.invalid' \
+  --message 'Initial empty revision'
+treeharbor client --socket "$TH_SOCKET" --credential-file "$TH_OWNER" \
+  source-import --pack "$TH_PRIVATE/genesis" --state "$TH_PRIVATE/genesis-import.json" \
+  --authority standalone --epoch 1
+```
+
+Set `TH_INITIAL_REVISION` to the returned `result.revision` and `TH_POLICY`
+to the digest returned by `policy_put`. Create `main` at that exact revision
+with the policy in force.
+
+```sh
+(set -C; cat > "$TH_PRIVATE/create-main.json") <<EOF
+{"action":"ref_create","key":"initial-main","epoch":1,"name":"main",
+ "head":"$TH_INITIAL_REVISION","policy":"$TH_POLICY"}
+EOF
+treeharbor client --socket "$TH_SOCKET" --credential-file "$TH_OWNER" \
+  native --request "$TH_PRIVATE/create-main.json"
+```
+
+Resolve `main` with `ref_resolve`. It starts at generation 1 and has an empty
+tree and one parentless commit. Register a full source profile with
+`profile-put --full`, then give the first agent the exact revision and
+profile digest. The first file can come from a managed stopped-file capture
+or an API proposal with `expected: null`. Enqueue it and use the same protected
+check and review workflow as every subsequent change. Keep the import state
+and the ref request unchanged when retrying after a lost reply.
 
 ### Discover pending work
 
@@ -284,6 +330,11 @@ that result and submits a resolved version of the same ChangeSet. The queue
 requires a fresh review and an actual check on the new candidate. The drill
 reads native history after workspace cleanup and then checks the optional
 export by restoring the final bytes and earlier revisions in ordinary Git.
+
+The current drill first creates `main` with an empty tree and publishes its
+first file through an actual managed check and independent review. Both
+overlapping agents then start from that published revision. Match the test
+script to the source revision of your binary when reproducing an older release.
 
 The full installed drill also backs up this overlapping history and reopens it
 from a separate PostgreSQL database and object store. It compares the complete

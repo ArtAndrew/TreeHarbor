@@ -358,6 +358,22 @@ struct Builder {
     path_bytes: u64,
 }
 impl Builder {
+    fn create(parent: &Path, output: &Path, limits: Limits) -> Result<Self> {
+        fs::DirBuilder::new().mode(0o700).create(output)?;
+        File::open(parent)?.sync_all()?;
+        let store = LocalStore::open(output, &TenantId::new("native-pack")?)?;
+        Ok(Self {
+            store,
+            limits,
+            ids: Vec::new(),
+            seen: BTreeSet::new(),
+            encoded: 0,
+            source: 0,
+            entries: 0,
+            path_bytes: 0,
+        })
+    }
+
     fn put(&mut self, object: Object) -> Result<ObjectId> {
         let frame = object.encode()?;
         let id = ObjectId::hash_frame(&frame);
@@ -375,6 +391,31 @@ impl Builder {
         self.ids.push(id);
         Ok(id)
     }
+
+    fn initial_commit(
+        &mut self,
+        root: ObjectId,
+        author_name: String,
+        author_email: String,
+        message: String,
+        timestamp_seconds: i64,
+    ) -> Result<(ObjectId, ObjectId)> {
+        let snapshot = self.put(Object::Snapshot { root })?;
+        let changes = self.put(Object::ChangeOperations(Changes::new(vec![])?))?;
+        let commit = self.put(Object::NativeCommit(Commit {
+            git_origin: None,
+            parents: vec![],
+            snapshot,
+            changes,
+            author_name,
+            author_email,
+            timestamp_seconds,
+            timezone_minutes: 0,
+            message,
+        }))?;
+        Ok((commit, snapshot))
+    }
+
     fn directory(&mut self, fd: &File, path: &[u8], selection: &Selection) -> Result<ObjectId> {
         let before = unix(unixfs::fstat(fd))?;
         let names = if selection.whole {
@@ -575,37 +616,19 @@ pub fn capture(request: Capture<'_>) -> Result<Pack> {
     }
     let name = request.output.file_name().ok_or(Error::Output)?;
     let output = parent.join(name);
-    fs::DirBuilder::new().mode(0o700).create(&output)?;
-    File::open(&parent)?.sync_all()?;
-    let store = LocalStore::open(&output, &TenantId::new("native-pack")?)?;
-    let mut builder = Builder {
-        store,
-        limits,
-        ids: Vec::new(),
-        seen: BTreeSet::new(),
-        encoded: 0,
-        source: 0,
-        entries: 0,
-        path_bytes: 0,
-    };
+    let mut builder = Builder::create(&parent, &output, limits)?;
     let mut selection = Selection::default();
     for path in profile.paths().unwrap_or_default() {
         selection.add(path);
     }
     let root = builder.directory(&fd, b"", &selection)?;
-    let snapshot = builder.put(Object::Snapshot { root })?;
-    let changes = builder.put(Object::ChangeOperations(Changes::new(vec![])?))?;
-    let commit = builder.put(Object::NativeCommit(Commit {
-        git_origin: None,
-        parents: vec![],
-        snapshot,
-        changes,
-        author_name: request.author_name,
-        author_email: request.author_email,
-        timestamp_seconds: request.timestamp_seconds,
-        timezone_minutes: 0,
-        message: request.message,
-    }))?;
+    let (commit, snapshot) = builder.initial_commit(
+        root,
+        request.author_name,
+        request.author_email,
+        request.message,
+        request.timestamp_seconds,
+    )?;
     let manifest = Manifest {
         version: 1,
         commit: commit.to_string(),
@@ -626,6 +649,26 @@ pub fn capture(request: Capture<'_>) -> Result<Pack> {
     }
     confirm_root(&fd, request.directory, &source_before)?;
     files::write_private(&output.join("manifest.json"), &bytes).map_err(|_| Error::Output)?;
+    Pack::open(&output)
+}
+
+pub(crate) fn capture_empty(
+    output: &Path,
+    author_name: String,
+    author_email: String,
+    message: String,
+    timestamp_seconds: i64,
+    limits: Limits,
+) -> Result<Pack> {
+    let limits = limits.check()?;
+    let parent = files::private_directory(output.parent().ok_or(Error::Output)?)
+        .map_err(|_| Error::Output)?;
+    let output = parent.join(output.file_name().ok_or(Error::Output)?);
+    let mut builder = Builder::create(&parent, &output, limits)?;
+    let root = builder.put(Object::Directory(Directory::new(vec![])?))?;
+    let (commit, snapshot) =
+        builder.initial_commit(root, author_name, author_email, message, timestamp_seconds)?;
+    native_manifest(&output, commit, snapshot, &builder.ids, builder.encoded, 0)?;
     Pack::open(&output)
 }
 

@@ -172,7 +172,7 @@ available in signed packages.
 | Agent execution | Managed Linux tasks through external gVisor, resource limits, capture after runtime removal and process-loss recovery | Automated runtime provisioning and node replacement |
 | Developer interfaces | Local authenticated API/CLI, external task contexts, experimental MCP stdio and a restricted [agent HTTPS profile](docs/agent-https.md) in development builds | Packaged remote onboarding and managed workers on separate hosts |
 | Connected | Real GitHub import, branch/PR publication, managed required checks, versioned branch-policy fences, queue requests, candidate/final-history evidence and signed events | Complete host-policy/admission certification and unattended operation |
-| Standalone | Native refs/history, candidate checks/reviews, merge, single-ChangeSet rebase and publication without Git/GitHub on the native path | Full lifecycle, broader history rewriting and fenced migration between modes |
+| Standalone | [Empty repository start](docs/native-integration.md#start-a-new-project-with-empty-history), native refs/history, exact checks/review, merge, single-ChangeSet rebase and publication | Broader history rewriting, automated operations and fenced migration between modes |
 | Data recovery and interop | Durable transaction/retry paths, object retention, cold backup/staging, quarantined local restore, operator-assisted GitHub reconciliation from 0.1.12, and full-history Git import/export for supported inputs | Full Connected disaster certification, external fencing automation, old-node recovery cleanup, automatic GC and S3 backend |
 
 A [live synthetic test](docs/evidence/connected-live-20261024.json) ran two isolated

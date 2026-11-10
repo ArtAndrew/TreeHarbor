@@ -9,6 +9,21 @@ below retain evidence from individual increments. Their earlier statements about
 unfinished work describe the scope at that time; they are not a replacement for
 the current overview or the full [release gate ledger](#release-gate-ledger).
 
+## Standalone empty repository — 0.1.17-alpha.1 candidate
+
+[`source-pack --empty`](native-integration.md#start-a-new-project-with-empty-history)
+creates a complete version 3 native pack with zero files and one parentless
+commit. It has the same durable output and import contract as existing packs.
+Selected-directory capture continues to use version 1. The empty option
+rejects a source directory or path selection. A protected native ref and
+its policy are configured through the existing repository-scoped commands.
+
+The installed native acceptance starts from the empty revision, runs an agent
+and a separate check to publish the first file, and then runs the two-agent
+conflict, fresh review/check, recovery and Git-export drill on that history.
+Full two-mode acceptance also requires migration and Connected queue and
+publication recovery verification.
+
 ## Restricted agent HTTPS — development, 2026-11-10
 
 The [agent HTTPS profile](agent-https.md) adds an opt-in TLS 1.3 listener next to
