@@ -13,6 +13,7 @@ use std::{
         fs::{DirBuilderExt, PermissionsExt},
     },
     path::{Path, PathBuf},
+    time::Instant,
 };
 use treeharbor_core::{
     Changes, Commit, Directory, Entry, EntryMode, EntryRef, MAX_PAYLOAD, Name, Object, ObjectId,
@@ -21,7 +22,11 @@ use treeharbor_core::{
 use treeharbor_git_bridge::WorkspacePackScope;
 use treeharbor_storage::{LocalStore, TenantId};
 
+pub(crate) mod git_export;
+
 pub const MAX_MANIFEST: usize = 128 * 1024 * 1024;
+const MAX_PACK_OBJECTS: u64 = 1_000_000;
+const MAX_PACK_BYTES: u64 = 64 * 1024 * 1024 * 1024;
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("source or spool filesystem operation failed")]
@@ -59,8 +64,8 @@ impl Default for Limits {
 }
 impl Limits {
     fn check(self) -> Result<Self> {
-        if !(1..=1_000_000).contains(&self.objects)
-            || !(22..=64 * 1024 * 1024 * 1024).contains(&self.bytes)
+        if !(1..=MAX_PACK_OBJECTS).contains(&self.objects)
+            || !(22..=MAX_PACK_BYTES).contains(&self.bytes)
         {
             return Err(Error::Limit);
         }
@@ -139,6 +144,17 @@ impl Pack {
     /// source bytes. An edited list cannot smuggle unrelated local objects.
     pub fn open(directory: &Path) -> Result<Self> {
         let directory = files::private_directory(directory).map_err(|_| Error::Output)?;
+        Self::open_private(
+            directory,
+            Limits {
+                objects: MAX_PACK_OBJECTS,
+                bytes: MAX_PACK_BYTES,
+            },
+            None,
+        )
+    }
+
+    fn open_private(directory: PathBuf, limits: Limits, deadline: Option<Instant>) -> Result<Self> {
         let raw = files::read_private(&directory.join("manifest.json"), MAX_MANIFEST)
             .map_err(|_| Error::Invalid)?;
         let value: serde_json::Value = serde_json::from_slice(&raw).map_err(|_| Error::Invalid)?;
@@ -199,10 +215,13 @@ impl Pack {
             _ => return Err(Error::Invalid),
         };
         if manifest.objects.is_empty()
-            || manifest.objects.len() > 1_000_000
+            || manifest.objects.len() as u64 > MAX_PACK_OBJECTS
             || manifest.filesystem_entries > 1_000_000
         {
             return Err(Error::Invalid);
+        }
+        if manifest.objects.len() as u64 > limits.objects || manifest.encoded_bytes > limits.bytes {
+            return Err(Error::Limit);
         }
         let commit: ObjectId = manifest.commit.parse()?;
         let snapshot: ObjectId = manifest.snapshot.parse()?;
@@ -212,11 +231,18 @@ impl Pack {
         let mut bytes = 0u64;
         let mut edge_count = 0usize;
         for value in manifest.objects {
+            if deadline.is_some_and(|deadline| Instant::now() >= deadline) {
+                return Err(Error::Limit);
+            }
             let id: ObjectId = value.parse()?;
             if descriptors.contains_key(&id) {
                 return Err(Error::Invalid);
             }
-            let object = store.get(id)?;
+            let opened = store.open_object(id)?;
+            if opened.length() > limits.bytes - bytes {
+                return Err(Error::Limit);
+            }
+            let object = opened.read()?;
             let references = object.references();
             edge_count = edge_count
                 .checked_add(references.len())
@@ -232,7 +258,7 @@ impl Pack {
             bytes = bytes
                 .checked_add(object.encode()?.len() as u64)
                 .ok_or(Error::Limit)?;
-            if bytes > 64 * 1024 * 1024 * 1024 {
+            if bytes > limits.bytes {
                 return Err(Error::Limit);
             }
             descriptors.insert(id, (object.kind(), references));

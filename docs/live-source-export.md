@@ -34,8 +34,10 @@ git clone --branch main "$TH_PRIVATE/exports/git-1/history.bundle" restored
 Replace `COMMIT_DIGEST` and the paths with real values. `TH_PRIVATE` must already
 be an owner-private directory. Both output paths must be new. Only the optional
 last two commands require Git. See [Git export](git-export.md) for projection
-limits, SHA-256 Git repositories and native-to-Git identity mapping. To upload
-the downloaded pack instead, use the existing `client source-import --pack …
+limits, SHA-256 Git repositories and native-to-Git identity mapping. For several
+branches, download one pack per distinct tip and
+[combine them into one bundle](git-export.md#export-several-branches).
+To upload a downloaded pack instead, use `client source-import --pack …
 --state … --authority … --epoch …` command with a writer credential.
 
 Successful download prints JSON with `revision`, `snapshot`, `objects`,

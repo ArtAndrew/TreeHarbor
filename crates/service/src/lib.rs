@@ -81,6 +81,8 @@ pub enum Error {
         "local export worker failed; inspect the output before retrying with a new destination"
     )]
     ExportWorker,
+    #[error("Git export requires unique branch names and nonempty paths in --ref BRANCH=PACK")]
+    ExportArguments,
     #[error("Git export failed: {0}")]
     GitExport(#[from] treeharbor_git_bridge::Error),
     #[error("node operation failed: {0}")]
