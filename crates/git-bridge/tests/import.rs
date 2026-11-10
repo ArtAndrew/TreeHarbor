@@ -4,12 +4,16 @@ use std::{
     collections::BTreeMap,
     fs,
     io::Write,
-    os::unix::fs::{PermissionsExt, symlink},
+    os::unix::fs::{DirBuilderExt, PermissionsExt, symlink},
     path::{Path, PathBuf},
     process::{Command, Stdio},
 };
 use treeharbor_core::*;
-use treeharbor_git_bridge::{Export, HashAlgorithm, Import, Limits, export, import};
+use treeharbor_git_bridge::{
+    Export, HashAlgorithm, Import, Limits, WorkspacePack, WorkspacePackIdentity,
+    WorkspacePackScope, WorkspaceSeed, export, import, import_with_workspace_pack,
+    seed_workspace_from_pack,
+};
 use treeharbor_storage::{LocalStore, TenantId};
 fn git(repo: &Path, args: &[&str], input: &[u8]) -> Vec<u8> {
     let mut p = Command::new("/usr/bin/git")
@@ -151,7 +155,14 @@ fn an_unrelated_bundled_branch_does_not_enter_the_selected_history() {
         b"",
     );
     let store = f.store("native");
-    let imported = import(&store, f.request(&bundle, &selected)).unwrap();
+    let scope = WorkspacePackScope {
+        tenant: "test".into(),
+        repository: uuid::Uuid::from_u128(1),
+        epoch: 1,
+    };
+    let imported =
+        import_with_workspace_pack(&store, f.request(&bundle, &selected), &scope).unwrap();
+    assert!(!f.dir.path().join("workspace-git-v1").exists());
     assert_eq!(imported.objects.len(), 5);
     assert_eq!(imported.filesystem_entries, 0);
     let Object::NativeCommit(c) = store.get(imported.commit).unwrap() else {
@@ -167,6 +178,102 @@ fn an_unrelated_bundled_branch_does_not_enter_the_selected_history() {
             .objects
             .contains(&Object::Blob(b"other branch content".to_vec()).id().unwrap())
     );
+}
+
+#[test]
+fn retained_workspace_pack_requires_exact_scope_and_reproduces_history() {
+    for algorithm in [HashAlgorithm::Sha1, HashAlgorithm::Sha256] {
+        let f = Fixture::new(algorithm);
+        let parent = f.commit(&f.tree(&[]), &[], "parent\n");
+        let content = b"tracked file\n";
+        let blob = f.blob(content);
+        let tree = f.tree(&[(0o100644, &blob, b"file")]);
+        let head = f.commit(&tree, &[&parent], "selected\n");
+        let bundle = f.bundle(&head, "exact.bundle");
+        let request = f.request(&bundle, &head);
+        let expected = request.commit;
+        let scope = WorkspacePackScope {
+            tenant: "test".into(),
+            repository: uuid::Uuid::from_u128(1),
+            epoch: 2,
+        };
+        let imported = import_with_workspace_pack(&f.store("native"), request, &scope).unwrap();
+        let load = |scope: &WorkspacePackScope, native: ObjectId, limits: Limits| {
+            WorkspacePack::load(
+                f.dir.path(),
+                f.dir.path(),
+                WorkspacePackIdentity {
+                    scope,
+                    native,
+                    snapshot: imported.snapshot,
+                    origin: expected,
+                },
+                limits,
+            )
+        };
+        let limits = Limits::default();
+        for wrong_scope in [
+            WorkspacePackScope {
+                tenant: "another-tenant".into(),
+                ..scope.clone()
+            },
+            WorkspacePackScope {
+                repository: uuid::Uuid::from_u128(2),
+                ..scope.clone()
+            },
+            WorkspacePackScope {
+                epoch: 1,
+                ..scope.clone()
+            },
+        ] {
+            assert!(load(&wrong_scope, imported.commit, limits).is_err());
+        }
+        assert!(load(&scope, imported.snapshot, limits).is_err());
+        assert!(
+            load(
+                &scope,
+                imported.commit,
+                Limits {
+                    source_bytes: 1,
+                    ..limits
+                }
+            )
+            .is_err()
+        );
+        let files = f.dir.path().join("files");
+        fs::DirBuilder::new().mode(0o700).create(&files).unwrap();
+        fs::write(files.join("file"), content).unwrap();
+        seed_workspace_from_pack(
+            load(&scope, imported.commit, limits).unwrap(),
+            WorkspaceSeed {
+                git: Path::new("/usr/bin/git"),
+                files: &files,
+                native: imported.commit,
+                expected,
+                limits,
+            },
+        )
+        .unwrap();
+        assert_eq!(text(git(&files, &["rev-parse", "HEAD"], b"")), head);
+        assert_eq!(text(git(&files, &["rev-parse", "HEAD^"], b"")), parent);
+        assert!(git(&files, &["status", "--porcelain"], b"").is_empty());
+        assert!(git(&files, &["remote"], b"").is_empty());
+        assert!(!files.join(".git/objects/info/alternates").exists());
+        let artifact = f.dir.path().join("workspace-git-v1/objects.pack");
+        let idx = fs::read_dir(files.join(".git/objects/pack"))
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .find(|path| path.extension().is_some_and(|ext| ext == "idx"))
+            .unwrap();
+        assert_eq!(
+            fs::read(idx.with_extension("pack")).unwrap(),
+            fs::read(&artifact).unwrap()
+        );
+        let mut corrupt = fs::read(&artifact).unwrap();
+        corrupt[20] ^= 1;
+        fs::write(&artifact, corrupt).unwrap();
+        assert!(load(&scope, imported.commit, limits).is_err());
+    }
 }
 #[test]
 fn actual_git_history_import_replays_every_delta_and_exports_all_original_ids() {

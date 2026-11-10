@@ -6,6 +6,7 @@ use std::{
     sync::Arc,
 };
 use treeharbor_core::{Object, ObjectStore, RevisionRef};
+use treeharbor_git_bridge::WorkspacePackScope;
 
 pub(super) struct Request {
     pub config: PathBuf,
@@ -152,17 +153,25 @@ pub(super) async fn run(r: Request) -> Result<bool> {
     }
     let destination = root.join("pack");
     let git = r.git.clone();
+    let scope = WorkspacePackScope {
+        tenant: credential.scope.tenant().into(),
+        repository: credential.scope.repository(),
+        epoch: r.epoch,
+    };
     let pack = tokio::task::spawn_blocking(move || {
         if destination.try_exists()? {
             Pack::open(&destination)
         } else {
-            crate::pack::capture_git(GitCapture {
-                git: &git,
-                bundle: &downloaded.join("history.bundle"),
-                commit,
-                output: &destination,
-                limits,
-            })
+            crate::pack::capture_git_with_workspace_pack(
+                GitCapture {
+                    git: &git,
+                    bundle: &downloaded.join("history.bundle"),
+                    commit,
+                    output: &destination,
+                    limits,
+                },
+                &scope,
+            )
         }
     })
     .await

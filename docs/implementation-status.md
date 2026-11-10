@@ -9,6 +9,25 @@ below retain evidence from individual increments. Their earlier statements about
 unfinished work describe the scope at that time; they are not a replacement for
 the current overview or the full [release gate ledger](#release-gate-ledger).
 
+## Reuse an imported Git pack — development
+
+A co-located node can take a verified Git pack from a fresh Connected import
+via [`--git-import-pack`](local-node.md#reuse-an-imported-git-pack). It keeps the
+live source authorization and native file preparation, and installs private Git
+metadata under the same strict checks as projection. A missing or invalid cache
+entry uses native projection. The importer retains the original pack only when
+its object set matches the complete reachable history of the selected commit.
+
+Git integration tests cover SHA-1 and SHA-256, exact history, unrelated bundle
+objects, scope mismatches and pack corruption. The receipt is versioned and
+tested against a fixed vector. Two Linux ARM64 pairs verified the original pack
+in sixteen workspaces and cut the first four-workspace batch from roughly 1.7 s
+to 0.85–0.87 s after import. [Measurements and scope](benchmark-preparation.md#reusing-the-pack-from-import--10-november-2026)
+
+A separate Linux fixture changed one byte in the retained pack after import.
+The node used native projection, produced the exact Git history and a clean
+working tree, and completed workspace deletion.
+
 ## Git pack projection — development
 
 The Git bridge projects verified leaf objects from their first traversal

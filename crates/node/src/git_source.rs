@@ -9,7 +9,10 @@ use std::{
     sync::Arc,
 };
 use treeharbor_core::{GitOid, Object, ObjectId, ObjectStore, RevisionRef};
-use treeharbor_git_bridge::{Limits, WorkspaceSeed, install_workspace_seed, seed_workspace};
+use treeharbor_git_bridge::{
+    Limits, WorkspacePack, WorkspacePackIdentity, WorkspacePackScope, WorkspaceSeed,
+    install_workspace_seed, seed_workspace, seed_workspace_from_pack,
+};
 use treeharbor_metadata::{
     Metadata,
     exports::SourceExport,
@@ -17,20 +20,26 @@ use treeharbor_metadata::{
 };
 use treeharbor_storage::ManagedStore;
 
+#[derive(Clone, Copy)]
+pub struct GitPreparation<'a> {
+    pub executable: &'a Path,
+    /// Trusted local directory emitted by the Connected import bridge.
+    pub import_pack: Option<&'a Path>,
+}
+
 pub(crate) struct GitSource {
     input: SeedInput,
     git: PathBuf,
     native: ObjectId,
     origin: GitOid,
     limits: Limits,
+    cache: Option<(Arc<Operation>, git_seed_cache::Key)>,
 }
 
 enum SeedInput {
     Cached(tempfile::TempDir),
-    Cold {
-        store: SourceSpool,
-        cache: Option<(Arc<Operation>, git_seed_cache::Key)>,
-    },
+    Retained(WorkspacePack),
+    Cold(SourceSpool),
 }
 
 impl GitSource {
@@ -39,7 +48,7 @@ impl GitSource {
         request: &Prepare<'_>,
         operation: Arc<Operation>,
         parent: &Path,
-        git: &Path,
+        git: GitPreparation<'_>,
     ) -> Result<Self> {
         let Prepare {
             authorization: auth,
@@ -56,11 +65,11 @@ impl GitSource {
         else {
             return Err(Error::Identity);
         };
-        if !git.is_absolute() || !git.is_file() {
+        if !git.executable.is_absolute() || !git.executable.is_file() {
             return Err(Error::Configuration);
         }
         let read = db.open_git_preparation_source(auth, plan, 600).await?;
-        let key = git_seed_cache::key(plan, git, limits).ok();
+        let key = git_seed_cache::key(plan, git.executable, limits).ok();
         let cached = if let Some(key) = key {
             let operation = operation.clone();
             let parent = parent.to_owned();
@@ -71,55 +80,84 @@ impl GitSource {
         } else {
             None
         };
-        let result: Result<SeedInput> = if let Some(cached) = cached {
-            Ok(SeedInput::Cached(cached))
-        } else {
-            async {
-                let store = SourceSpool::open(parent)?;
-                let store = collect(db, &read, backend, store, operation.clone(), limits).await?;
-                let cache = key
-                    .filter(|key| git_seed_cache::key(plan, git, limits).ok() == Some(*key))
-                    .map(|key| (operation, key));
-                Ok(SeedInput::Cold { store, cache })
+        let result: Result<SeedInput> = async {
+            if let Some(cached) = cached {
+                return Ok(SeedInput::Cached(cached));
             }
-            .await
-        };
+            if let Some(path) = git.import_pack {
+                let scope = WorkspacePackScope {
+                    tenant: plan.scope().tenant().into(),
+                    repository: plan.scope().repository(),
+                    epoch: plan.epoch(),
+                };
+                let snapshot = plan.snapshot();
+                let path = path.to_owned();
+                let parent = parent.to_owned();
+                let guard = operation.clone();
+                let retained = tokio::task::spawn_blocking(move || {
+                    guard.verify()?;
+                    Ok::<_, Error>(
+                        WorkspacePack::load(
+                            &path,
+                            &parent,
+                            WorkspacePackIdentity {
+                                scope: &scope,
+                                native,
+                                snapshot,
+                                origin,
+                            },
+                            limits,
+                        )
+                        .ok(),
+                    )
+                })
+                .await??;
+                if let Some(pack) = retained {
+                    return Ok(SeedInput::Retained(pack));
+                }
+            }
+            let store = SourceSpool::open(parent)?;
+            let store = collect(db, &read, backend, store, operation.clone(), limits).await?;
+            Ok(SeedInput::Cold(store))
+        }
+        .await;
         let close = db.finish_source_export(read).await;
         let input = result?;
         close?;
+        let cache = key
+            .filter(|key| git_seed_cache::key(plan, git.executable, limits).ok() == Some(*key))
+            .map(|key| (operation, key));
         Ok(Self {
             input,
-            git: git.to_owned(),
+            git: git.executable.to_owned(),
             native,
             origin,
             limits,
+            cache,
         })
     }
 
     pub(crate) fn seed(self, files: &Path) -> io::Result<()> {
+        let seed = WorkspaceSeed {
+            git: &self.git,
+            files,
+            native: self.native,
+            expected: self.origin,
+            limits: self.limits,
+        };
         match self.input {
             SeedInput::Cached(staging) => {
-                install_workspace_seed(staging.path(), files, self.limits.timeout)
-                    .map_err(io::Error::other)
+                return install_workspace_seed(staging.path(), files, self.limits.timeout)
+                    .map_err(io::Error::other);
             }
-            SeedInput::Cold { store, cache } => {
-                seed_workspace(
-                    &store,
-                    WorkspaceSeed {
-                        git: &self.git,
-                        files,
-                        native: self.native,
-                        expected: self.origin,
-                        limits: self.limits,
-                    },
-                )
-                .map_err(io::Error::other)?;
-                if let Some((operation, key)) = cache {
-                    let _ = git_seed_cache::save(&operation, &files.join(".git"), key);
-                }
-                Ok(())
-            }
+            SeedInput::Retained(pack) => seed_workspace_from_pack(pack, seed),
+            SeedInput::Cold(store) => seed_workspace(&store, seed),
         }
+        .map_err(io::Error::other)?;
+        if let Some((operation, key)) = self.cache {
+            let _ = git_seed_cache::save(&operation, &files.join(".git"), key);
+        }
+        Ok(())
     }
 }
 
