@@ -26,7 +26,7 @@ TreeHarbor is an independent implementation and is not affiliated with Anthropic
 > Evaluate on disposable pilot repositories. The full Connected and Standalone
 > releases remain incomplete; production use is not supported.
 > [What works](#what-works-today) · [What remains](#what-remains-before-a-full-release) ·
-> [Install and set up](docs/connected-pr-preview.md) · [Agent integration](#integrate-an-agent-or-controller) ·
+> [Install and set up](docs/try-treeharbor.md) · [Agent integration](#integrate-an-agent-or-controller) ·
 > [Detailed evidence](docs/implementation-status.md)
 
 ## Try TreeHarbor

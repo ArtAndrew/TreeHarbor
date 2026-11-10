@@ -12,33 +12,72 @@ infrastructure. A local Git worktree may be sufficient for a few personal tasks.
 | You want to… | Start with | What you need |
 | --- | --- | --- |
 | Understand the result before installing | [Recorded two-agent trial](demo.md) | A browser; no credentials or installation |
-| Run two tasks and get real draft PRs | Steps below | Linux x86-64/ARM64, PostgreSQL, GitHub App, Docker/cgroup v2 and external gVisor |
+| Run two tasks and get real draft PRs | Steps below | Linux x86-64/ARM64, GitHub CLI, Git, Python 3.11+, PostgreSQL, GitHub App, Docker/cgroup v2 and gVisor |
 | Keep your existing agent runtime | [External API tasks](external-api-runs.md) | Prepared TreeHarbor service and pinned source; your controller supplies execution/isolation |
 | Connect an MCP host | [Experimental MCP stdio adapter](mcp.md) | Prepared local service, scoped agent credential and stdio-capable host; no managed launch or GitHub publishing tool |
 
-Native workspaces have **no `.git` directory**. Check your agent's requirements
-before provisioning a host. There is no automatic installer for PostgreSQL,
-gVisor or the GitHub App, and no verified five-minute end-to-end setup yet.
+This walk-through uses Git-compatible workspaces with private `.git` directories
+and two separately registered volumes. Provision PostgreSQL, Docker, gVisor and
+the GitHub App before running the tasks. The package installs the TreeHarbor
+binaries and ships the example in the verified archive.
 
 ## 1. Install a signed Linux package
 
-Use a new directory and the version-pinned instructions in
-[0.1.12-alpha.1](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.12-alpha.1).
-They verify the archive against the signed workflow/source, check the checksum
-and install into a new prefix. Pick `aarch64-unknown-linux-musl` on ARM64 or
-`x86_64-unknown-linux-musl` on x86-64. No local Rust build is required for the
-product binaries. Follow all verification steps before extraction.
+The commands below pin [0.1.16-alpha.1](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.16-alpha.1)
+and its signed source commit. Run them in a fresh Linux shell with an authenticated
+`gh`. Keep the generated directory and use the same shell for the following steps.
 
-**Checkpoint:** the installed `treeharbor --version` prints `0.1.12-alpha.1`.
-This confirms the CLI installation, not a running service.
+```sh
+set -eu
+TH_REPO=ArtAndrew/TreeHarbor
+TH_VERSION=0.1.16-alpha.1
+TH_TAG="v$TH_VERSION"
+TH_SOURCE=c48c14b52c64a8ffb8b32cfd26ae4a565216a359
+test "$(uname -s)" = Linux
+TH_ARCH=$(uname -m)
+case "$TH_ARCH" in
+  x86_64|aarch64) ;;
+  *) printf '%s\n' "Unsupported Linux architecture: $TH_ARCH" >&2; exit 1 ;;
+esac
+TH_ASSET="treeharbor-$TH_VERSION-$TH_ARCH-unknown-linux-musl"
+TH_TRIAL=$(mktemp -d "${TMPDIR:-/tmp}/treeharbor.XXXXXXXX")
+cd "$TH_TRIAL"
+
+gh release download "$TH_TAG" --repo "$TH_REPO" \
+  --pattern "$TH_ASSET.tar.gz" \
+  --pattern "$TH_ASSET.tar.gz.sha256" \
+  --pattern "$TH_ASSET.provenance.sigstore.json"
+gh attestation verify "$TH_ASSET.tar.gz" \
+  --bundle "$TH_ASSET.provenance.sigstore.json" --repo "$TH_REPO" \
+  --signer-workflow "$TH_REPO/.github/workflows/release-provenance.yml" \
+  --signer-digest "$TH_SOURCE" --source-digest "$TH_SOURCE" \
+  --source-ref "refs/tags/$TH_TAG" --deny-self-hosted-runners
+sha256sum --check --strict "$TH_ASSET.tar.gz.sha256"
+tar -xzf "$TH_ASSET.tar.gz"
+
+TH_INSTALL_PREFIX="$TH_TRIAL/install"
+"$TH_TRIAL/$TH_ASSET/install.sh" --prefix "$TH_INSTALL_PREFIX"
+TH_BIN=$(realpath "$TH_INSTALL_PREFIX/bin/treeharbor")
+TH_EXAMPLE="$TH_TRIAL/$TH_ASSET/examples/connected-pr"
+test -f "$TH_EXAMPLE/agent-pair.py"
+test "$("$TH_BIN" --version)" = "treeharbor $TH_VERSION"
+"$TH_BIN" --version
+printf 'Trial directory: %s\n' "$TH_TRIAL"
+```
+
+**Checkpoint:** the CLI prints `treeharbor 0.1.16-alpha.1`. Continue with the
+database and service setup. Use the `gh` login on the operator host only. The
+GitHub App and agent credentials are set up separately.
 
 ## 2. Prepare one disposable Connected repository
 
-Follow [Connected setup, steps 1–4](connected-pr-preview.md). That guide covers
-service/storage initialization, database migration, diagnostics, the Connected
-authority and separate owner/agent/node/bridge credentials. Use its minimal App
-permissions: Contents-write, Pull requests-write and Metadata-read, scoped to the
-chosen test repository. The PR Preview needs no merge queue or webhook tunnel.
+Follow the [service setup](connected-pr-preview.md#3-prepare-the-service-storage-and-authority)
+and [App setup](connected-pr-preview.md#4-use-pr-permissions-not-queue-permissions)
+with `TH_BIN` from step 1. The guides cover database migration, diagnostics, the
+Connected repository and separate owner, agent, node and bridge credentials.
+Scope the App to the chosen test repository and use Contents-write, Pull
+requests-write and Metadata-read. Then [bind the App](github-connection.md#retain-a-connection-in-a-running-treeharbor-server)
+and [import the exact commit](github-import.md).
 
 **Checkpoint:** `doctor` passes its documented local checks; the App is bound to
 the chosen repository and one exact full Git commit has been imported. Save the
@@ -47,12 +86,21 @@ runtime or GitHub connection.
 
 ## 3. Run the supplied two-task example
 
-Follow [the prepared-agent example](../examples/connected-pr/README.md), including
-its two separate bounded placements, reviewed fixture image and private task
-configuration. Its Rust scripts edit the same file from one base; they are not LLMs.
-Once that setup is complete, run the documented phases with your own config:
+Follow [the prepared-agent example](../examples/connected-pr/README.md). Register
+the two bounded placements and the approved runtime image. For each workspace,
+choose a full source profile, request `workspace-create --git-compatible`, and
+use `prepare-once --workspace WORKSPACE_UUID --slot SLOT_UUID --git /path/to/git`
+with its registered node. Set `"workspace_format": "git-compatible"` in the
+private pair configuration. Fill `capture_worker.verified_binary_sha256` with
+the same verified installed CLI digest used for `binary_sha256`. Keep the original
+run, workspace and operation IDs.
+
+The supplied fixture uses two scripted edits to the same file. Once the nodes,
+runtime and private configuration are ready, run the helper from the verified
+archive:
 
 ```sh
+cd "$TH_EXAMPLE"
 python3 agent-pair.py --config /your/private/pair.json initialize
 python3 agent-pair.py --config /your/private/pair.json request
 python3 agent-pair.py --config /your/private/pair.json execute
@@ -61,9 +109,9 @@ python3 agent-pair.py --config /your/private/pair.json publish
 python3 agent-pair.py --config /your/private/pair.json status
 ```
 
-Run these from `examples/connected-pr/` at the matching release tag. The path is
-a placeholder, not a supplied credential. `publish` writes branches and draft
-PRs through the configured trusted bridge; the agents must not hold its access.
+Replace `/your/private/pair.json` with the configuration you prepared. `publish`
+writes branches and draft PRs through the trusted bridge. Keep its access on the
+operator host.
 
 **Checkpoint:** two immutable accepted ChangeSets and two distinct GitHub draft
 PR identities. Inspect the diffs and let GitHub handle CI, conflicts, review and
@@ -72,12 +120,20 @@ follow the retry guidance; do not create a second publication intent.
 
 ## 4. Verify the exit path and clean up
 
-[Export retained proposals](github-projection.md), then follow
-[workspace drain/cleanup](workspace-cleanup.md). Confirm tasks have stopped and
-the runtime has been removed before cleanup. Verify export again after cleanup;
-the recorded trial did this for both proposals. Retain the export and private
-journals until you have checked the result. Revoke trial credentials explicitly.
-Deleting a workspace does not delete its accepted proposals or GitHub PRs.
+[Export both retained proposals](github-projection.md#request-prepare-and-export)
+before following [workspace drain and cleanup](workspace-cleanup.md). The helper
+has already prepared their projections. Use `agents.A.github.projection` and
+`agents.B.github.projection` from `pair.json` inside the private journal directory
+for `github export`, then run `git-export` to obtain each `history.bundle`. For each
+workspace, request drain as its owning agent with `--authority connected`, then
+use its assigned node credential, original node root, registered storage UUID,
+and Engine socket for cleanup. Keep the registered volumes mounted until both
+workspace statuses show `deleted`.
+
+Export both retained proposals again into new destinations after deletion.
+Clone each bundle with Git and run `git fsck --strict` on each clone. Compare
+the exported files with the matching PR diff. Retain the exports and private
+journals until you have checked both results, then revoke trial credentials.
 
 **Checkpoint:** workspaces are deleted, exported source is intact, temporary
 access is revoked. Full publication/queue disaster recovery remains unsupported.
