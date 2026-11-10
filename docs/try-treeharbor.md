@@ -24,16 +24,16 @@ binaries and ships the example in the verified archive.
 
 ## 1. Install a signed Linux package
 
-The commands below pin [0.1.17-alpha.1](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.17-alpha.1)
+The commands below pin [0.1.18-alpha.1](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.18-alpha.1)
 and its signed source commit. Run them in a fresh Linux shell with an authenticated
 `gh`. Keep the generated directory and use the same shell for the following steps.
 
 ```sh
 set -eu
 TH_REPO=ArtAndrew/TreeHarbor
-TH_VERSION=0.1.17-alpha.1
+TH_VERSION=0.1.18-alpha.1
 TH_TAG="v$TH_VERSION"
-TH_SOURCE=4c4841d4f4be8eecdd8aa850ecb78b75c72fff52
+TH_SOURCE=b2e98c03a9eb9b3eba23520467a0ae9e40660b17
 test "$(uname -s)" = Linux
 TH_ARCH=$(uname -m)
 case "$TH_ARCH" in
@@ -66,7 +66,7 @@ test "$("$TH_BIN" --version)" = "treeharbor $TH_VERSION"
 printf 'Trial directory: %s\n' "$TH_TRIAL"
 ```
 
-**Checkpoint:** the CLI prints `treeharbor 0.1.17-alpha.1`. Continue with the
+**Checkpoint:** the CLI prints `treeharbor 0.1.18-alpha.1`. Continue with the
 database and service setup. Use the `gh` login on the operator host only. The
 GitHub App and agent credentials are set up separately.
 
@@ -94,7 +94,9 @@ use `prepare-once --workspace WORKSPACE_UUID --slot SLOT_UUID --git /path/to/git
 with its registered node. Set `"workspace_format": "git-compatible"` in the
 private pair configuration. Fill `capture_worker.verified_binary_sha256` with
 the same verified installed CLI digest used for `binary_sha256`. Keep the original
-run, workspace and operation IDs.
+run, workspace and operation IDs. If the bridge and node share the same
+private import directory, you can add
+[`--git-import-pack`](local-node.md#reuse-an-imported-git-pack) to preparation.
 
 The supplied fixture uses two scripted edits to the same file. Once the nodes,
 runtime and private configuration are ready, run the helper from the verified
@@ -150,5 +152,5 @@ Would you run a second task? What do you use instead today?
 Never include credentials, private source or private repository URLs. For security
 reports, use [SECURITY](../SECURITY.md). No external code contribution is required
 to participate. TreeHarbor is source-available under [ELv2](../LICENSE), with no
-workspace-count license limit. No production readiness or measured speed advantage
-is claimed.
+workspace-count license limit. [Preparation measurements](benchmark-preparation.md)
+describe where reuse saves time and where Git worktree is faster.

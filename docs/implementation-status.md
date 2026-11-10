@@ -9,7 +9,7 @@ below retain evidence from individual increments. Their earlier statements about
 unfinished work describe the scope at that time; they are not a replacement for
 the current overview or the full [release gate ledger](#release-gate-ledger).
 
-## Reuse an imported Git pack — development
+## Reuse an imported Git pack — 0.1.18-alpha.1
 
 A co-located node can take a verified Git pack from a fresh Connected import
 via [`--git-import-pack`](local-node.md#reuse-an-imported-git-pack). It keeps the
@@ -26,9 +26,15 @@ to 0.85–0.87 s after import. [Measurements and scope](benchmark-preparation.md
 
 A separate Linux fixture changed one byte in the retained pack after import.
 The node used native projection, produced the exact Git history and a clean
-working tree, and completed workspace deletion.
+working tree, and completed workspace deletion. The signed ARM64 package
+passed reuse, corruption fallback, cleanup and Git export on an independent
+installation. That trial also switched between signed 0.1.17 and 0.1.18
+on one disposable native store. Both Linux architectures passed installed
+runtime and revision-image checks before signing.
+[Release](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.18-alpha.1) ·
+[Signed build](https://github.com/ArtAndrew/TreeHarbor/actions/runs/42829202104)
 
-## Git pack projection — development
+## Git pack projection — 0.1.18-alpha.1
 
 The Git bridge projects verified leaf objects from their first traversal
 read and buffers temporary pack writes under both existing byte budgets.
@@ -38,7 +44,7 @@ reduced the pack-building phase and verified identical resulting pack bytes.
 Its total first-batch results vary, and the baseline Git worktree remains
 faster for initial preparation in that workload.
 
-## Bounded revision images — development
+## Bounded revision images — 0.1.18-alpha.1
 
 Fresh dedicated ext4 source volumes can opt in to
 [multiple exact images](experimental-cow.md#multiple-revisions-on-one-source-volume).
