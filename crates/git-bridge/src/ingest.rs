@@ -1,7 +1,7 @@
 //! Complete history of pinned Git commits; no ref authority or network fetch.
 use crate::{
-    Error, HashAlgorithm, Limits, MAX_EXPORT_REFS, Result, WorkspacePackIdentity,
-    WorkspacePackScope, check_deadline, check_limits, origin, process, retained, stream, valid_ref,
+    Error, HashAlgorithm, Limits, Result, WorkspacePackIdentity, WorkspacePackScope,
+    check_branch_refs, check_deadline, check_limits, origin, process, retained, stream, valid_ref,
 };
 use std::{
     cell::RefCell,
@@ -638,12 +638,10 @@ fn import_inner(
         }
         Selection::Branches(expected) => expected,
     };
+    check_branch_refs(refs)?;
     let first = refs.values().next().ok_or(Error::Configuration)?;
     let algorithm = oid_parts(first).0;
-    if refs.len() > MAX_EXPORT_REFS
-        || refs.keys().any(|name| !valid_ref(name))
-        || refs.values().any(|oid| oid_parts(oid).0 != algorithm)
-    {
+    if refs.values().any(|oid| oid_parts(oid).0 != algorithm) {
         return Err(Error::Configuration);
     }
     let targets: BTreeSet<_> = refs.values().map(|oid| oid_parts(oid).1.to_vec()).collect();

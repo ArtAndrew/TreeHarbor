@@ -75,7 +75,8 @@ pub struct RestoreInventory {
     pub reconciliation_complete: bool,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct ArchivedBranches {
     pub version: u8,
     pub binding: RepositoryBinding,
