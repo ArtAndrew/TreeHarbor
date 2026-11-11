@@ -2,6 +2,8 @@ use super::*;
 use std::path::Path;
 #[path = "github/admission_policy.rs"]
 mod admission_policy;
+#[path = "github/archive_observation.rs"]
+mod archive_observation;
 #[path = "github/archive_stage.rs"]
 mod archive_stage;
 #[path = "github/events.rs"]
@@ -31,13 +33,17 @@ mod restore_reconnect;
 mod restore_source;
 
 fn provision_bridge(f: &Fixture) -> PathBuf {
-    let bridge = f.dir.path().join("bridge-import.json");
+    provision_read_bridge(f, "bridge")
+}
+
+fn provision_read_bridge(f: &Fixture, principal: &str) -> PathBuf {
+    let bridge = f.dir.path().join(format!("{principal}-import.json"));
     f.admin_ok(&[
         "principal-create",
         "--tenant",
         f.scope.tenant(),
         "--principal",
-        "bridge",
+        principal,
         "--kind",
         "bridge",
     ]);
@@ -48,7 +54,7 @@ fn provision_bridge(f: &Fixture) -> PathBuf {
         "--repository",
         &f.scope.repository().to_string(),
         "--principal",
-        "bridge",
+        principal,
         "--permission",
         "host.read",
     ]);
@@ -59,7 +65,7 @@ fn provision_bridge(f: &Fixture) -> PathBuf {
         "--repository",
         &f.scope.repository().to_string(),
         "--principal",
-        "bridge",
+        principal,
         "--permission",
         "host.read",
         "--output",

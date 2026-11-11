@@ -68,6 +68,8 @@ const MAX_JSON: usize = 1024 * 1024;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    #[error("GitHub archive observation is stale or differs from the retained source")]
+    ArchiveObservationMismatch,
     #[error("GitHub event channel is not active for this delivery")]
     HostEventState,
     #[error("GitHub event retention budget exhausted")]

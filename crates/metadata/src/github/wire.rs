@@ -11,6 +11,19 @@ pub enum WireCommand {
         upload: String,
         specification: Box<ArchiveStageSpec>,
     },
+    ArchiveObserveBegin {
+        key: String,
+        epoch: i64,
+        proof_key: String,
+    },
+    ArchiveObserveContext {
+        epoch: i64,
+        request_key: String,
+    },
+    ArchiveObserveRecord {
+        epoch: i64,
+        observation: Box<ArchiveObservation>,
+    },
     RestoreTargetRegister {
         key: String,
         epoch: i64,
@@ -666,7 +679,12 @@ pub(super) fn id(s: &str) -> Result<Uuid> {
 impl WireCommand {
     pub fn permission(&self) -> Permission {
         match self {
-            Self::ArchiveStage { .. } => Permission::RepositoryWrite,
+            Self::ArchiveStage { .. } | Self::ArchiveObserveBegin { .. } => {
+                Permission::RepositoryWrite
+            }
+            Self::ArchiveObserveContext { .. } | Self::ArchiveObserveRecord { .. } => {
+                Permission::HostRead
+            }
             Self::RestoreTargetRegister { .. } | Self::RestoreTargetStatus { .. } => {
                 Permission::RepositoryWrite
             }
@@ -819,6 +837,20 @@ impl WireCommand {
                     &specification,
                 )
                 .await
+            }
+            Self::ArchiveObserveBegin {
+                key,
+                epoch,
+                proof_key,
+            } => {
+                Box::pin(db.begin_archive_observation(auth, &Command { key, epoch }, &proof_key))
+                    .await
+            }
+            Self::ArchiveObserveContext { epoch, request_key } => {
+                Box::pin(db.archive_observation_context(auth, epoch, &request_key)).await
+            }
+            Self::ArchiveObserveRecord { epoch, observation } => {
+                Box::pin(db.record_archive_observation(auth, epoch, &observation)).await
             }
             Self::RestoreAcquisitionContext {
                 epoch,

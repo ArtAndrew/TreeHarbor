@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 use treeharbor_github::{AppCredentials, Connection, RepositoryBinding};
 use uuid::Uuid;
+mod archive_observe;
 mod archive_preflight;
 mod check_publication;
 mod dequeue;
@@ -300,6 +301,8 @@ pub enum Action {
         #[arg(long)]
         config: PathBuf,
     },
+    /// Record a fresh read-only archive observation for a verified source request.
+    ArchiveObserve(archive_observe::Options),
     /// Discover current heads and all PR states after restore; does not reconnect
     /// the service, resolve discrepancies or grant any publication permission.
     RestoreInventory {
@@ -783,6 +786,7 @@ pub async fn run(action: Action) -> Result<bool> {
         }
         Action::ArchivePreflight(options) => archive_preflight::run(options).await,
         Action::ArchiveInventory { config } => archive_preflight::inventory(&config).await,
+        Action::ArchiveObserve(options) => Box::pin(archive_observe::run(options)).await,
         Action::RestoreInventory { config } => {
             let (credentials, config) = load(&config)?;
             let observation = Connection::new(credentials)?

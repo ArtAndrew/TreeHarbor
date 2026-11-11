@@ -5,10 +5,14 @@ pub(crate) mod projections;
 pub use projections::ProjectionSpec;
 mod admission_evidence;
 mod admission_policy;
+mod archive_observation;
 mod archive_proof;
 mod archive_stage;
 mod host_policy;
 pub use admission_policy::{AdmissionPolicy, ManagedRequirement};
+pub use archive_observation::{
+    ArchiveInventoryDigest, ArchiveObservation, ArchiveObservationContext,
+};
 pub use archive_proof::ArchiveProofWork;
 pub use archive_stage::{ArchiveBranchTip, ArchiveStageSpec};
 mod check_policy;

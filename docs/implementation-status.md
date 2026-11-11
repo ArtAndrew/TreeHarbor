@@ -50,6 +50,13 @@ annotated tag identities, open fork PRs and rejection of changes between reads.
 The inventory supplies the data needed to preserve those refs and proposals
 at handoff.
 
+The [fresh archive observation](github-connection.md#record-a-fresh-host-observation-for-the-verified-history)
+links one assigned bridge report to a verified source receipt and active
+epoch. It retains complete tags and open PRs in the bridge's private journal
+and records their digests and exact Git branch tips in PostgreSQL. The
+transport test rejects stale timestamps, moved tips and another bridge, and
+replays the committed receipt after restart and binding revocation.
+
 ## Export multiple branches to Git — 0.1.20-alpha.1
 
 [Git export](git-export.md#export-several-branches) can combine completed source

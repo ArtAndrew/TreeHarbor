@@ -805,6 +805,15 @@ enum Agent {
         #[arg(long, value_parser = clap::value_parser!(i64).range(1..))]
         epoch: i64,
     },
+    /// Ask the assigned GitHub bridge to observe the archive for a verified source.
+    ArchiveObserveBegin {
+        #[arg(long)]
+        proof_key: String,
+        #[arg(long)]
+        key: String,
+        #[arg(long, value_parser = clap::value_parser!(i64).range(1..))]
+        epoch: i64,
+    },
     /// Stop a managed run and request capture of explicit file/subtree changes.
     SealRequest {
         #[command(flatten)]
@@ -1199,6 +1208,13 @@ impl Agent {
             }
             Self::SourceStatus { upload } => {
                 json!({"method":"source_status","upload":upload.to_string()})
+            }
+            Self::ArchiveObserveBegin {
+                proof_key,
+                key,
+                epoch,
+            } => {
+                json!({"method":"github","request":{"action":"archive_observe_begin","proof_key":proof_key,"key":key,"epoch":epoch}})
             }
             Self::ApiRunNew { .. }
             | Self::WorkspaceNew { .. }
