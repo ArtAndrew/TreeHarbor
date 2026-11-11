@@ -61,7 +61,8 @@ git clone --branch main "$PWD/import-demo/export/history.bundle" import-demo/res
 
 For SHA-256 input, pass `--object-format sha256` to export. Original commits keep
 their Git IDs; new native descendants have deterministic new projections.
-Exporting live server state still needs a future pinned export/download adapter.
+Use [live Git export](git-export.md#export-all-branches-from-a-live-standalone-repository)
+to export every branch from a running Standalone service.
 
 ## Fidelity and unsupported inputs
 

@@ -1,6 +1,6 @@
 # Implementation status
 
-Updated: 2026-11-10. This file describes implemented behavior and remaining release
+Updated: 2026-11-11. This file describes implemented behavior and remaining release
 gates. A foundation milestone does not complete either mode.
 
 For a concise current overview, see [what works today](../README.md#what-works-today)
@@ -9,7 +9,7 @@ below retain evidence from individual increments. Their earlier statements about
 unfinished work describe the scope at that time; they are not a replacement for
 the current overview or the full [release gate ledger](#release-gate-ledger).
 
-## Export multiple branches to Git (development)
+## Export multiple branches to Git — 0.1.20-alpha.1
 
 [Git export](git-export.md#export-several-branches) can combine completed source
 packs into one bundle. It validates each pack's complete history and compares
@@ -29,13 +29,20 @@ transport trial uses that snapshot for the export. It checks the empty result,
 repository scoping, stale epoch and credential revocation, and refusal when the
 complete set exceeds 128 refs.
 
-The development [`client git-export` command](git-export.md#export-all-branches-from-a-live-standalone-repository)
+The [`client git-export` command](git-export.md#export-all-branches-from-a-live-standalone-repository)
 captures the same snapshot and verifies one full source pack per distinct head
 before writing the bundle. The PostgreSQL fixture used a read-only credential
 after restarting the service. Ordinary Git restored four branches from the
 live export. Its native-to-Git mappings matched the manual multi-pack export,
 and a stale epoch failed before publishing any output. The fixture verified
 temporary pack cleanup.
+
+Both signed Linux packages restored 15 branch tips and the exact merge graph
+from a backup. Missing and corrupt second-parent data each caused export
+to stop before publishing a bundle. A fresh ARM64 installation also ran
+the export command's help and version checks.
+[Release](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.20-alpha.1) ·
+[Signed Linux jobs](https://github.com/ArtAndrew/TreeHarbor/actions/runs/43006261815)
 
 ## Leased controller tasks — 0.1.19-alpha.1
 
