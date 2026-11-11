@@ -335,6 +335,7 @@ async fn handle(
     }
     let restore_source = request.uri().path() == "/v1/github/restore/verify-source";
     let archive_proof = request.uri().path() == crate::archive_proof::PATH;
+    let archive_retention = request.uri().path() == crate::archive_retention::PATH;
     let source_read = request.uri().path() == "/v1/source/read";
     let source_export = request.uri().path() == "/v1/source/export";
     let projection_export = request.uri().path() == "/v1/github/projections/export";
@@ -349,6 +350,7 @@ async fn handle(
         && upload.is_none()
         && !restore_source
         && !archive_proof
+        && !archive_retention
         && !source_read
         && !source_export
         && !projection_export
@@ -498,11 +500,20 @@ async fn handle(
             ),
         };
     }
-    if restore_source || archive_proof {
+    if restore_source || archive_proof || archive_retention {
         let Some(backend) = backend else {
             return error(StatusCode::SERVICE_UNAVAILABLE, "storage_not_configured");
         };
-        let result = if archive_proof {
+        let result = if archive_retention {
+            Box::pin(crate::archive_retention::retain(
+                &body,
+                &credential,
+                backend,
+                pool,
+                deadline,
+            ))
+            .await
+        } else if archive_proof {
             crate::archive_proof::verify(&body, &credential, backend, pool, deadline).await
         } else {
             crate::restore_source::verify(&body, &credential, backend, pool).await

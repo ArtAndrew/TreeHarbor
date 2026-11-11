@@ -175,9 +175,9 @@ pub struct VerifiedArchive {
 
 // The exact permanent base pins protect the whole closure while projecting.
 // The adapter never resolves a digest outside this scoped upload's generations.
-struct ArchiveStore<'a> {
-    store: &'a ManagedStore,
-    generations: &'a BTreeMap<ObjectId, i64>,
+pub(super) struct ArchiveStore<'a> {
+    pub(super) store: &'a ManagedStore,
+    pub(super) generations: &'a BTreeMap<ObjectId, i64>,
 }
 
 impl ObjectStore for ArchiveStore<'_> {

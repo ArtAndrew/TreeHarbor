@@ -44,6 +44,7 @@ pub(super) async fn exercise(
     bridge: &Path,
     stage: &Value,
     proof_key: &str,
+    full: &archive_payload::FullArchive,
 ) -> (PathBuf, Value) {
     let start = |key: &str, proof: &str| json!({"action":"archive_observe_begin","epoch":1,"key":key,"proof_key":proof});
     let owner = f.credential();
@@ -162,9 +163,9 @@ pub(super) async fn exercise(
                 "started_at_unix":started,"finished_at_unix":started,"token_revoked":true,
                 "heads":inventory_heads},
             "tags":[{"id":"tag-one","name":"v1","prefix":"refs/tags/",
-                "target":{"__typename":"Tag","oid":"44".repeat(20)}}],
+                "target":{"__typename":"Tag","oid":full.tag}}],
             "open_pulls":[{"id":"pull-one","number":17,"state":"OPEN","isDraft":false,"merged":false,
-                "headRefName":"fix","headRefOid":"55".repeat(20),"baseRefName":"main",
+                "headRefName":"fix","headRefOid":full.head,"baseRefName":"main",
                 "baseRefOid":heads["refs/heads/main"].strip_prefix("git:sha1:").unwrap(),
                 "headRepository":{"databaseId":71},"baseRepository":{"databaseId":spec["upstream"]["repository_id"]},
                 "mergeCommit":null}],

@@ -305,6 +305,10 @@ pub enum Action {
     ArchiveObserve(archive_observe::Options),
     /// Retain a complete local Git bundle matching a saved archive observation.
     ArchivePreserve(archive_observe::preserve::Options),
+    /// Upload a preserved archive and retain its complete object graph on the server.
+    ArchiveRetain(archive_observe::retention::RetainOptions),
+    /// Recover a retained archive on the configured TreeHarbor host.
+    ArchiveRecover(archive_observe::retention::RecoverOptions),
     /// Discover current heads and all PR states after restore; does not reconnect
     /// the service, resolve discrepancies or grant any publication permission.
     RestoreInventory {
@@ -793,6 +797,12 @@ pub async fn run(action: Action) -> Result<bool> {
             tokio::task::spawn_blocking(move || archive_observe::preserve::run(options))
                 .await
                 .map_err(|_| Error::ExportWorker)?
+        }
+        Action::ArchiveRetain(options) => {
+            Box::pin(archive_observe::retention::retain(options)).await
+        }
+        Action::ArchiveRecover(options) => {
+            Box::pin(archive_observe::retention::recover(options)).await
         }
         Action::RestoreInventory { config } => {
             let (credentials, config) = load(&config)?;

@@ -3,6 +3,7 @@
 mod api_run_new;
 pub mod archive;
 mod archive_proof;
+mod archive_retention;
 mod archive_stage;
 mod backup;
 pub mod cli;
@@ -71,6 +72,8 @@ pub enum Error {
         "GitHub operation state does not match the retained request; preserve the state directory and inspect that operation's status"
     )]
     PublicationState,
+    #[error("archive retention or recovery failed: {0}")]
+    ArchiveArtifact(#[source] treeharbor_metadata::Error),
     #[error(
         "restore assessment context is invalid or changed; collect a fresh report without resuming publication"
     )]

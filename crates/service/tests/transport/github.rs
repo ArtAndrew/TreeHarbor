@@ -4,6 +4,8 @@ use std::path::Path;
 mod admission_policy;
 #[path = "github/archive_observation.rs"]
 mod archive_observation;
+#[path = "github/archive_payload.rs"]
+mod archive_payload;
 #[path = "github/archive_stage.rs"]
 mod archive_stage;
 #[path = "github/events.rs"]

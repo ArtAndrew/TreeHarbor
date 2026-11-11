@@ -45,6 +45,7 @@ impl CommandError {
             Self::Metadata(Error::AdmissionBlocked) => "admission_blocked",
             Self::Metadata(Error::HostBindingState) => "host_binding_state",
             Self::Metadata(Error::ArchiveObservationMismatch) => "archive_observation_mismatch",
+            Self::Metadata(Error::ArchiveArtifactMismatch) => "archive_artifact_mismatch",
             Self::Metadata(Error::HostRecoveryRequired) => "host_recovery_required",
             Self::Metadata(Error::RestoreContextChanged) => "restore_context_changed",
             Self::Metadata(Error::RestoreDecisionConflict) => "restore_decision_conflict",
