@@ -23,6 +23,13 @@ and unexpected branch heads and advertised tags fail before native writes. The
 GitHub transport fixtures check both complete paginated reads, archive changes,
 repository token scope and revocation.
 
+The [durable archive spool](git-import.md#durable-archive-branch-spool-v1) retains
+one verified native graph for all the observed branches. The local test removes
+the original Git repository and bundle, opens the spool through the export
+command, and restores the exact branch tips and merge graph in ordinary Git.
+Fingerprint mismatch, missing or corrupt merge-parent data, and attempts to
+replace an existing spool are refused.
+
 ## Export multiple branches to Git — 0.1.20-alpha.1
 
 [Git export](git-export.md#export-several-branches) can combine completed source

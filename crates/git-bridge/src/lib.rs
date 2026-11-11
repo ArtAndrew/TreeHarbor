@@ -172,6 +172,25 @@ fn valid_ref(name: &str) -> bool {
             .all(|p| !p.is_empty() && !p.starts_with('.') && !p.ends_with(".lock"))
 }
 
+fn check_branch_refs<T>(refs: &BTreeMap<String, T>) -> Result<()> {
+    if refs.is_empty() || refs.len() > MAX_EXPORT_REFS || refs.keys().any(|r| !valid_ref(r)) {
+        return Err(Error::Configuration);
+    }
+    Ok(())
+}
+
+/// Revalidate the complete typed native object set for a captured branch map.
+/// The list is deterministic and child-before-parent, including all merge parents.
+pub fn verified_branch_objects(
+    store: &impl ObjectStore,
+    refs: &BTreeMap<String, ObjectId>,
+    limits: Limits,
+) -> Result<(Vec<ObjectId>, u64)> {
+    check_branch_refs(refs)?;
+    check_source_limits(limits)?;
+    stream::ordered(store, refs, limits, Instant::now() + limits.timeout)
+}
+
 pub(crate) fn check_limits(limits: Limits, git: &Path) -> Result<()> {
     check_source_limits(limits)?;
     if !git.is_absolute() || !git.is_file() {
@@ -206,12 +225,7 @@ fn check_source_limits(limits: Limits) -> Result<()> {
 /// the output, never overwrite it. CPU/RAM/disk isolation is an external duty.
 pub fn export(store: &impl ObjectStore, request: Export<'_>) -> Result<Manifest> {
     let limits = request.limits;
-    if request.refs.is_empty()
-        || request.refs.len() > MAX_EXPORT_REFS
-        || request.refs.keys().any(|r| !valid_ref(r))
-    {
-        return Err(Error::Configuration);
-    }
+    check_branch_refs(&request.refs)?;
     check_limits(limits, request.git)?;
     let deadline = Instant::now() + limits.timeout;
     let parent = private_parent(request.output)?;

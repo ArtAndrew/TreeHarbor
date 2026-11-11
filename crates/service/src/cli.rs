@@ -89,11 +89,17 @@ enum Command {
     /// This exports source history, not server reviews, checks or authority.
     GitExport {
         /// Source pack for a single branch (main by default).
-        #[arg(long, required_unless_present = "refs", conflicts_with = "refs")]
+        #[arg(long, required_unless_present_any = ["refs", "archive_spool"], conflicts_with_all = ["refs", "archive_spool"])]
         pack: Option<PathBuf>,
         /// Branch name and its completed source pack. Repeat to export multiple branches.
         #[arg(long = "ref", value_name = "BRANCH=PACK")]
         refs: Vec<OsString>,
+        /// A durable branch directory from github archive-preflight --output.
+        #[arg(long, conflicts_with = "refs")]
+        archive_spool: Option<PathBuf>,
+        /// Check that the archive spool matches a previously recorded fingerprint.
+        #[arg(long, requires = "archive_spool")]
+        archive_fingerprint: Option<String>,
         #[arg(long)]
         output: PathBuf,
         #[arg(long, default_value = "/usr/bin/git")]
@@ -1282,6 +1288,8 @@ pub async fn run(cli: Cli) -> Result<bool> {
         Command::GitExport {
             pack,
             refs,
+            archive_spool,
+            archive_fingerprint,
             output,
             git,
             branch,
@@ -1315,21 +1323,32 @@ pub async fn run(cli: Cli) -> Result<bool> {
                     return Err(Error::ExportArguments);
                 }
             }
+            let fingerprint = archive_fingerprint
+                .as_deref()
+                .map(str::parse)
+                .transpose()
+                .map_err(crate::pack::Error::Object)?;
+            let algorithm = if object_format == "sha256" {
+                treeharbor_git_bridge::HashAlgorithm::Sha256
+            } else {
+                treeharbor_git_bridge::HashAlgorithm::Sha1
+            };
+            let limits = treeharbor_git_bridge::Limits {
+                timeout: Duration::from_secs(timeout_seconds),
+                ..Default::default()
+            };
             let manifest = tokio::task::spawn_blocking(move || {
-                crate::pack::git_export::export(
-                    branches,
-                    &git,
-                    &output,
-                    if object_format == "sha256" {
-                        treeharbor_git_bridge::HashAlgorithm::Sha256
-                    } else {
-                        treeharbor_git_bridge::HashAlgorithm::Sha1
-                    },
-                    treeharbor_git_bridge::Limits {
-                        timeout: Duration::from_secs(timeout_seconds),
-                        ..Default::default()
-                    },
-                )
+                if let Some(directory) = archive_spool {
+                    return Ok(crate::pack::archive_branches::export(
+                        &directory,
+                        fingerprint,
+                        &git,
+                        &output,
+                        algorithm,
+                        limits,
+                    )?);
+                }
+                crate::pack::git_export::export(branches, &git, &output, algorithm, limits)
             })
             .await
             .map_err(|_| Error::ExportWorker)??;

@@ -1,9 +1,7 @@
 use super::*;
-use std::{collections::BTreeMap, fs, os::unix::fs::PermissionsExt};
-use treeharbor_core::RevisionRef;
-use treeharbor_git_bridge::{BundleInput, Limits, import_branches};
+use crate::pack::archive_branches::{self, Destination};
+use treeharbor_git_bridge::Limits;
 use treeharbor_github::ArchivedBranches;
-use treeharbor_storage::{LocalStore, TenantId};
 
 #[derive(clap::Args)]
 pub struct Options {
@@ -14,8 +12,11 @@ pub struct Options {
     #[arg(long)]
     bundle: PathBuf,
     /// Existing owner-only directory for temporary Git and native objects.
+    #[arg(long, required_unless_present = "output", conflicts_with = "output")]
+    scratch: Option<PathBuf>,
+    /// Save the verified branch history and manifest to a new private directory.
     #[arg(long)]
-    scratch: PathBuf,
+    output: Option<PathBuf>,
     #[arg(long, default_value = "/usr/bin/git")]
     git: PathBuf,
     #[arg(long, default_value_t = 300, value_parser = clap::value_parser!(u64).range(1..=3600))]
@@ -23,64 +24,21 @@ pub struct Options {
 }
 
 fn verify_bundle(inventory: ArchivedBranches, options: Options) -> Result<Value> {
-    let mut expected = BTreeMap::new();
-    for head in &inventory.heads {
-        let RevisionRef::Git(oid) = format!("git:sha1:{}", head.target.oid)
-            .parse()
-            .map_err(|_| Error::Config)?
-        else {
-            return Err(Error::Config);
-        };
-        if expected
-            .insert(format!("{}{}", head.prefix, head.name), oid)
-            .is_some()
-        {
-            return Err(Error::Config);
-        }
-    }
-    let parent = files::private_directory(&options.scratch)?;
-    let stage = tempfile::Builder::new()
-        .prefix(".treeharbor-archive-preflight-")
-        .tempdir_in(&parent)?;
-    fs::set_permissions(stage.path(), fs::Permissions::from_mode(0o700))?;
-    let tenant = TenantId::new("archive-preflight").map_err(crate::pack::Error::Object)?;
-    let store = LocalStore::open(stage.path(), &tenant).map_err(crate::pack::Error::Object)?;
-    let imported = import_branches(
-        &store,
-        BundleInput {
-            git: &options.git,
-            bundle: &options.bundle,
-            scratch: stage.path(),
-            limits: Limits {
-                timeout: Duration::from_secs(options.timeout_seconds),
-                ..Limits::default()
-            },
+    let destination = match (&options.scratch, &options.output) {
+        (Some(scratch), None) => Destination::Temporary(scratch),
+        (None, Some(output)) => Destination::Durable(output),
+        _ => return Err(Error::Config),
+    };
+    Ok(archive_branches::capture(
+        inventory,
+        &options.git,
+        &options.bundle,
+        destination,
+        Limits {
+            timeout: Duration::from_secs(options.timeout_seconds),
+            ..Limits::default()
         },
-        &expected,
-    )
-    .map_err(crate::pack::Error::Git)?;
-    let branches: BTreeMap<_, _> = imported
-        .refs
-        .into_iter()
-        .map(|(name, tip)| {
-            (
-                name,
-                json!({
-                    "git_revision":RevisionRef::Git(tip.origin).to_string(),
-                    "native_revision":RevisionRef::Native(tip.commit).to_string(),
-                    "snapshot":tip.snapshot.to_string(),
-                }),
-            )
-        })
-        .collect();
-    stage.close()?;
-    Ok(json!({
-        "version":1,
-        "archive":inventory,
-        "branches":branches,
-        "source_objects":imported.objects.len(),
-        "encoded_bytes":imported.encoded_bytes,
-    }))
+    )?)
 }
 
 pub(super) async fn run(options: Options) -> Result<bool> {
@@ -101,17 +59,19 @@ pub(super) async fn run(options: Options) -> Result<bool> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::process::Command;
+    use clap::Parser;
+    use std::{collections::BTreeSet, fs, os::unix::fs::PermissionsExt, process::Command};
+    use treeharbor_core::RevisionRef;
     use treeharbor_github::{InventoryHead, InventoryObject};
 
-    #[test]
-    fn preflight_maps_the_archived_inventory_to_native_tips_and_removes_scratch() {
+    #[tokio::test]
+    async fn archived_spool_round_trips_after_source_loss_and_refuses_corruption() {
         let root = tempfile::tempdir().unwrap();
         let source = root.path().join("repo.git");
-        std::fs::create_dir(&source).unwrap();
-        let git = |args: &[&str]| {
+        fs::create_dir(&source).unwrap();
+        let git = |directory: &Path, args: &[&str]| {
             let output = Command::new("/usr/bin/git")
-                .current_dir(&source)
+                .current_dir(directory)
                 .env("GIT_CONFIG_NOSYSTEM", "1")
                 .env("GIT_CONFIG_GLOBAL", "/dev/null")
                 .args(args)
@@ -120,29 +80,52 @@ mod tests {
             assert!(output.status.success(), "{:?}", output.stderr);
             String::from_utf8(output.stdout).unwrap().trim().to_owned()
         };
-        git(&["init", "--bare", "--object-format=sha1"]);
-        let tree = git(&["mktree"]);
-        let commit = git(&[
-            "-c",
-            "user.name=Fixture",
-            "-c",
-            "user.email=fixture@example.invalid",
-            "commit-tree",
-            &tree,
-            "-m",
-            "Original commit",
-        ]);
-        git(&["update-ref", "refs/heads/main", &commit]);
-        git(&["update-ref", "refs/heads/topic", &commit]);
+        git(&source, &["init", "--bare", "--object-format=sha1"]);
+        let tree = git(&source, &["mktree"]);
+        let commit = |parents: &[&str], message: &str| {
+            let mut args = vec![
+                "-c",
+                "user.name=Fixture",
+                "-c",
+                "user.email=fixture@example.invalid",
+                "commit-tree",
+                &tree,
+                "-m",
+                message,
+            ];
+            for parent in parents {
+                args.extend(["-p", parent]);
+            }
+            git(&source, &args)
+        };
+        let base = commit(&[], "Base");
+        let right = commit(&[], "Independent second parent");
+        let main = commit(&[&base, &right], "Merge");
+        git(&source, &["update-ref", "refs/heads/main", &main]);
+        git(&source, &["update-ref", "refs/heads/topic", &base]);
+        let graph = git(&source, &["rev-list", "--all", "--parents"]);
+        let refs = git(
+            &source,
+            &[
+                "for-each-ref",
+                "--format=%(refname) %(objectname)",
+                "refs/heads/",
+            ],
+        );
         let bundle = root.path().join("source.bundle");
-        git(&["bundle", "create", bundle.to_str().unwrap(), "--branches"]);
+        git(
+            &source,
+            &["bundle", "create", bundle.to_str().unwrap(), "--branches"],
+        );
         let scratch = root.path().join("scratch");
-        std::fs::create_dir(&scratch).unwrap();
-        std::fs::set_permissions(&scratch, std::fs::Permissions::from_mode(0o700)).unwrap();
-        let options = || Options {
+        fs::create_dir(&scratch).unwrap();
+        fs::set_permissions(&scratch, fs::Permissions::from_mode(0o700)).unwrap();
+        let spool = scratch.join("prepared");
+        let options = |output: Option<PathBuf>| Options {
             config: PathBuf::new(),
             bundle: bundle.clone(),
-            scratch: scratch.clone(),
+            scratch: output.is_none().then(|| scratch.clone()),
+            output,
             git: PathBuf::from("/usr/bin/git"),
             timeout_seconds: 30,
         };
@@ -161,7 +144,7 @@ mod tests {
             started_at_unix: 10,
             finished_at_unix: 11,
             token_revoked: true,
-            heads: [("main", commit.as_str()), ("topic", topic)]
+            heads: [("main", main.as_str()), ("topic", topic)]
                 .into_iter()
                 .map(|(name, oid)| InventoryHead {
                     id: name.into(),
@@ -174,23 +157,112 @@ mod tests {
                 })
                 .collect(),
         };
-        let report = verify_bundle(archive(&commit), options()).unwrap();
+        let report = verify_bundle(archive(&base), options(None)).unwrap();
         assert_eq!(report["version"], 1);
         assert_eq!(report["archive"]["binding"]["repository_id"], 2);
-        let main = &report["branches"]["refs/heads/main"];
-        assert_eq!(main, &report["branches"]["refs/heads/topic"]);
-        assert_eq!(main["git_revision"], format!("git:sha1:{commit}"));
+        let main_ref = &report["branches"]["refs/heads/main"];
+        assert_eq!(main_ref["git_revision"], format!("git:sha1:{main}"));
+        assert_eq!(
+            report["branches"]["refs/heads/topic"]["git_revision"],
+            format!("git:sha1:{base}")
+        );
         assert!(matches!(
-            main["native_revision"].as_str().unwrap().parse(),
+            main_ref["native_revision"].as_str().unwrap().parse(),
             Ok(RevisionRef::Native(_))
         ));
-        assert_eq!(report["source_objects"], 5);
+        assert_eq!(fs::read_dir(&scratch).unwrap().count(), 0);
+        let rejected = scratch.join("rejected");
         assert!(matches!(
-            verify_bundle(archive(&"b".repeat(40)), options()),
+            verify_bundle(archive(&"b".repeat(40)), options(Some(rejected.clone()))),
             Err(Error::Pack(crate::pack::Error::Git(
                 treeharbor_git_bridge::Error::RefInventoryMismatch
             )))
         ));
-        assert_eq!(std::fs::read_dir(&scratch).unwrap().count(), 0);
+        assert!(!rejected.exists());
+        assert_eq!(fs::read_dir(&scratch).unwrap().count(), 0);
+        let retained = verify_bundle(archive(&base), options(Some(spool.clone()))).unwrap();
+        assert_eq!(retained["branches"], report["branches"]);
+        let fingerprint = retained["spool_fingerprint"].as_str().unwrap();
+        let manifest = fs::read(spool.join("manifest.json")).unwrap();
+        assert!(matches!(
+            verify_bundle(archive(&base), options(Some(spool.clone()))),
+            Err(Error::Pack(crate::pack::Error::Output))
+        ));
+        assert_eq!(fs::read(spool.join("manifest.json")).unwrap(), manifest);
+        fs::remove_dir_all(&source).unwrap();
+        fs::remove_file(&bundle).unwrap();
+        let export = |output: &Path, fingerprint: &str| {
+            let cli = crate::cli::Cli::try_parse_from([
+                "treeharbor",
+                "git-export",
+                "--archive-spool",
+                spool.to_str().unwrap(),
+                "--archive-fingerprint",
+                fingerprint,
+                "--output",
+                output.to_str().unwrap(),
+            ])
+            .unwrap();
+            crate::cli::run(cli)
+        };
+        let output = scratch.join("git-export");
+        assert!(
+            export(&output, &format!("sha256:{}", "9".repeat(64)))
+                .await
+                .is_err()
+        );
+        assert!(!output.exists());
+        assert!(export(&output, fingerprint).await.unwrap());
+        let restored = scratch.join("restored.git");
+        git(
+            &scratch,
+            &[
+                "clone",
+                "--bare",
+                output.join("history.bundle").to_str().unwrap(),
+                restored.to_str().unwrap(),
+            ],
+        );
+        git(&restored, &["fsck", "--strict"]);
+        assert_eq!(
+            git(
+                &restored,
+                &[
+                    "for-each-ref",
+                    "--format=%(refname) %(objectname)",
+                    "refs/heads/"
+                ]
+            ),
+            refs
+        );
+        assert_eq!(
+            git(&restored, &["rev-list", "--all", "--parents"])
+                .lines()
+                .map(str::to_owned)
+                .collect::<BTreeSet<_>>(),
+            graph.lines().map(str::to_owned).collect()
+        );
+        let exported: Value =
+            serde_json::from_slice(&fs::read(output.join("manifest.json")).unwrap()).unwrap();
+        let (right_native, _) = exported["commits"]
+            .as_object()
+            .unwrap()
+            .iter()
+            .find(|(_, git)| **git == right)
+            .unwrap();
+        let hex = right_native.strip_prefix("sha256:").unwrap();
+        let frame = spool
+            .join("objects/archive-preflight")
+            .join(&hex[..2])
+            .join(&hex[2..]);
+        let mut contents = fs::read(&frame).unwrap();
+        fs::remove_file(&frame).unwrap();
+        assert!(export(&rejected, fingerprint).await.is_err());
+        assert!(!rejected.exists());
+        contents[0] ^= 1;
+        fs::write(frame, contents).unwrap();
+        assert!(export(&rejected, fingerprint).await.is_err());
+        assert!(!rejected.exists());
+        assert_eq!(fs::read_dir(&scratch).unwrap().count(), 3);
     }
 }

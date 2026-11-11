@@ -149,7 +149,22 @@ the shared history into temporary native storage and matches every advertised
 branch and Git tip to the observed set. The v1 JSON report contains `archive`
 with the scoped observation and its timestamps, `branches` with each full ref's
 Git revision, native revision and snapshot, and the distinct source object count
-and encoded bytes. The temporary store is removed after the check.
+and encoded bytes. `--scratch` removes the temporary store after the check.
+
+To keep the verified native objects and branch manifest for a later handoff,
+replace `--scratch` with `--output` and choose a new directory under an existing
+owner-private parent. Keep the reported fingerprint with your migration records.
+
+```sh
+treeharbor github archive-preflight --config "$TH_APP_CONFIG" \
+  --bundle "$TH_SCRATCH/source.bundle" --output "$TH_SCRATCH/prepared"
+treeharbor git-export --archive-spool "$TH_SCRATCH/prepared" \
+  --archive-fingerprint "$TH_SPOOL_FINGERPRINT" --output "$TH_SCRATCH/restored"
+```
+
+The second command opens the saved native objects locally and writes a Git
+bundle. It works with the original bundle and GitHub connection unavailable.
+See the [format and recovery procedure](git-import.md#durable-archive-branch-spool-v1).
 
 The branch limit is 128. Use `--branches` for the bundle. Tags and other
 advertised refs are rejected, and the usual [Git import limits](git-import.md#isolation-limits-and-recovery)

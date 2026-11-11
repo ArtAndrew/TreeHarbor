@@ -22,6 +22,7 @@ use treeharbor_core::{
 use treeharbor_git_bridge::WorkspacePackScope;
 use treeharbor_storage::{LocalStore, TenantId};
 
+pub(crate) mod archive_branches;
 pub(crate) mod git_export;
 
 pub const MAX_MANIFEST: usize = 128 * 1024 * 1024;
@@ -761,17 +762,22 @@ fn capture_git_inner(request: GitCapture<'_>, scope: Option<&WorkspacePackScope>
     }
     files::write_private(&stage.path().join("manifest.json"), &raw).map_err(|_| Error::Output)?;
     drop(Pack::open(stage.path())?);
-    File::open(stage.path())?.sync_all()?;
-    let parent_fd = File::open(&parent)?;
+    publish_stage(stage.path(), &parent, name)?;
+    Pack::open(&output)
+}
+
+fn publish_stage(stage: &Path, parent: &Path, name: &OsStr) -> Result<()> {
+    File::open(stage)?.sync_all()?;
+    let parent_fd = File::open(parent)?;
     unix(unixfs::renameat_with(
         &parent_fd,
-        stage.path().file_name().ok_or(Error::Output)?,
+        stage.file_name().ok_or(Error::Output)?,
         &parent_fd,
         name,
         unixfs::RenameFlags::NOREPLACE,
     ))?;
     parent_fd.sync_all()?;
-    Pack::open(&output)
+    Ok(())
 }
 
 pub(crate) fn native_manifest(
