@@ -162,7 +162,7 @@ impl Transfer<'_> {
         match &self.finish {
             Finish::Command(value) => self.command(value).await,
             Finish::ArchiveUpload { path, fields } => {
-                client::finish_archive_upload(
+                client::archive_operation(
                     self.socket,
                     self.credential,
                     path,

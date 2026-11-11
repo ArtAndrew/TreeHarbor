@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
 use treeharbor_github::ArchivedRepository;
 use treeharbor_metadata::github::{ArchiveObservation, ArchiveObservationContext};
+pub(super) mod activate;
 pub(super) mod preserve;
 pub(super) mod proposals;
 pub(super) mod retention;

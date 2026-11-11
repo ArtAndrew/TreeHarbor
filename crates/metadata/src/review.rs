@@ -77,15 +77,17 @@ async fn context(tx: &Transaction<'_>, auth: &Authorization, fence: ReviewFence)
             if version <= 0 {
                 return Err(Error::Invalid("review version"));
             }
-            let row=tx.query_opt("SELECT run,base_revision,base_snapshot,result_snapshot,base_pin,result_pin FROM th_change_versions WHERE tenant=$1 AND repository=$2 AND changeset=$3 AND version=$4",&[&s.tenant(),&s.repository(),&changeset,&version]).await?.ok_or(Error::NotFound)?;
+            let row=tx.query_opt("SELECT v.run,v.base_revision,v.base_snapshot,v.result_snapshot,v.base_pin,v.result_pin,p.origin AS github_pull FROM th_change_versions v LEFT JOIN th_archive_pull_origins p USING(tenant,repository,changeset) WHERE v.tenant=$1 AND v.repository=$2 AND v.changeset=$3 AND v.version=$4",&[&s.tenant(),&s.repository(),&changeset,&version]).await?.ok_or(Error::NotFound)?;
             let revision: RevisionRef = row.get::<_, String>(1).parse()?;
             let RevisionRef::Native(base) = revision else {
                 return Err(Error::Invalid("native review base"));
             };
             let before = id(row.get(2))?;
             let after = id(row.get(3))?;
+            let mut identity = json!({"kind":"change","changeset":changeset.to_string(),"version":version,"base_revision":revision.to_string()});
+            crate::intake::change_lineage(&row, &mut identity);
             Ok(Input {
-                identity: json!({"kind":"change","changeset":changeset.to_string(),"version":version,"run":row.get::<_,Uuid>(0).to_string(),"base_revision":revision.to_string()}),
+                identity,
                 snapshots: [before, after],
                 roots: [base, after],
                 holders: [row.get(4), row.get(5)],
@@ -114,12 +116,13 @@ async fn candidate_input(tx: &Transaction<'_>, s: &crate::Scope, candidate: Uuid
         .query_opt(
             r"SELECT c.entry,c.expected_head,c.expected_snapshot,c.expected_generation,
                  c.epoch,c.policy,c.merge_profile,c.revision,c.snapshot,c.pin_holder,
-                 q.target,q.changeset,q.version,v.run,v.base_revision,
+                 q.target,q.changeset,q.version,v.run,v.base_revision,p.origin AS github_pull,
                  b.pin_holder AS base_pin,b.snapshot AS registered_snapshot
           FROM th_native_candidates c
           JOIN th_native_queue q USING(tenant,repository,entry)
           JOIN th_change_versions v ON v.tenant=q.tenant AND v.repository=q.repository
                AND v.changeset=q.changeset AND v.version=q.version
+          LEFT JOIN th_archive_pull_origins p ON (p.tenant,p.repository,p.changeset)=(v.tenant,v.repository,v.changeset)
           JOIN th_bases b ON b.tenant=c.tenant AND b.repository=c.repository
                AND b.revision='native:sha256:'||encode(c.expected_head,'hex')
           WHERE c.tenant=$1 AND c.repository=$2 AND c.candidate=$3",
@@ -144,15 +147,13 @@ async fn candidate_input(tx: &Transaction<'_>, s: &crate::Scope, candidate: Uuid
         return Err(Error::ReadScope);
     }
     let head = id(row.get("expected_head"))?;
-    Ok(Input {
-        identity: json!({
+    let mut identity = json!({
             "kind": "candidate",
             "candidate": candidate.to_string(),
             "entry": row.get::<_, Uuid>("entry").to_string(),
             "target": row.get::<_, String>("target"),
             "changeset": row.get::<_, Uuid>("changeset").to_string(),
             "version": row.get::<_, i64>("version"),
-            "run": row.get::<_, Uuid>("run").to_string(),
             "proposal_base_revision": row.get::<_, String>("base_revision"),
             "expected_head": RevisionRef::Native(head).to_string(),
             "expected_generation": row.get::<_, i64>("expected_generation"),
@@ -160,7 +161,10 @@ async fn candidate_input(tx: &Transaction<'_>, s: &crate::Scope, candidate: Uuid
             "revision": RevisionRef::Native(revision).to_string(),
             "policy": id(row.get("policy"))?.to_string(),
             "merge_profile": row.get::<_, String>("merge_profile"),
-        }),
+    });
+    crate::intake::change_lineage(&row, &mut identity);
+    Ok(Input {
+        identity,
         snapshots: [before, after],
         roots: [head, revision],
         holders: [row.get("base_pin"), pin],

@@ -2,6 +2,8 @@ use super::*;
 use std::path::Path;
 #[path = "github/admission_policy.rs"]
 mod admission_policy;
+#[path = "github/archive_activation.rs"]
+mod archive_activation;
 #[path = "github/archive_observation.rs"]
 mod archive_observation;
 #[path = "github/archive_payload.rs"]

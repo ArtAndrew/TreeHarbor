@@ -9,7 +9,7 @@ pub async fn assert_latest_schema(raw: &Client) {
         .await
         .unwrap()
         .get::<_, i32>(0);
-    assert_eq!(version, 33);
+    assert_eq!(version, 34);
 }
 
 pub async fn connection(schema: &str) -> Client {
@@ -103,8 +103,30 @@ pub async fn drop_unpopulated_v32(raw: &Client) {
 // Test-only reconstruction of the previous schema before adding remote tasks.
 #[allow(dead_code)]
 pub async fn drop_unpopulated_v33(raw: &Client) {
+    drop_unpopulated_v34(raw).await;
     assert_eq!(raw.query_one("SELECT (SELECT count(*) FROM th_remote_tasks)+(SELECT count(*) FROM th_remote_task_attempts)", &[]).await.unwrap().get::<_,i64>(0),0);
     raw.batch_execute("DROP TABLE th_remote_task_attempts,th_remote_tasks")
         .await
         .unwrap();
+}
+
+// Test-only reconstruction of v33 with its real, existing agent-run rows.
+#[allow(dead_code)]
+pub async fn drop_unpopulated_v34(raw: &Client) {
+    assert_eq!(
+        raw.query_one("SELECT count(*) FROM th_archive_pull_origins", &[])
+            .await
+            .unwrap()
+            .get::<_, i64>(0),
+        0
+    );
+    raw.batch_execute(
+        r#"
+        ALTER TABLE th_change_versions DROP COLUMN archived_pull;
+        ALTER TABLE th_change_versions ALTER COLUMN run SET NOT NULL;
+        DROP TABLE th_archive_pull_origins;
+    "#,
+    )
+    .await
+    .unwrap();
 }

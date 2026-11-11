@@ -105,6 +105,7 @@ impl Permission {
             | "github.archive.proof.v1"
             | "github.archive.retain.v1"
             | "github.archive.proposals.stage.v1"
+            | "github.archive.activate.v1"
             | "github.archive.observe.begin.v1"
             | "github.bind.v1"
             | "github.revoke.v1" => Ok(Self::RepositoryWrite),

@@ -495,6 +495,62 @@ Use `archive-recover` to verify all original Git bundle bytes again, including
 tag-only data. This staging operation reads the archive manifest and verifies
 the uploaded proposal graphs.
 
+## Activate Standalone from an archived repository
+
+This development command transfers a Connected repository with an archived
+GitHub upstream to native write authority. Use it for the initial transfer
+into a repository whose native refs are empty. Take a cold backup before
+the transfer. Finish and remove workspaces, cancel unused remote tasks, and
+settle in-flight host writes. Keep the upstream archived for the entire time
+that TreeHarbor owns its branches. GitHub makes archived repositories
+read-only and gives administrators a separate unarchive action.
+[GitHub repository archival](https://docs.github.com/en/repositories/archiving-a-github-repository/archiving-repositories)
+
+After `archive-proposals-stage`, use the same branch proof and a new request
+key with `archive-observe-begin`. Run `archive-observe` with the assigned
+Bridge and a fresh private state directory. The new observation must match
+the archived branches, tags and open PRs from staging. Activation checks
+that the observation started after staging and was completed in the last
+120 seconds. Re-observe with a new key if the time window expires. If the
+inventory changed, capture and retain the new complete archive first.
+
+Create a private JSON request with `key`, the old Connected `epoch`, and
+`specification` from the [v1 example](../crates/service/tests/fixtures/github-archive-activate-v1.json).
+Supply the stage key, the final `observation_key`, `keep_host_archived: true`,
+and a native policy with your assigned reviewers and validators. The same
+owner credential needs both `repository.write` and `policy.write`. Ensure
+that the policy's check definitions and reviewer identities fit the native
+workflow before switching.
+
+```sh
+treeharbor github archive-activate --socket "$TH_SOCKET" \
+  --credential-file "$TH_OWNER" --request "$TH_SCRATCH/activate.json"
+```
+
+The CLI supplies the scope and sends `POST /v1/github/archive/activate` over
+the private socket. The request key binds the stage, final observation, epoch
+and canonical policy digest. The service reopens the pinned archive bundle,
+branch history and proposal graphs before committing. Its request timeout
+bounds this verification. Each ready patch is replayed to its exact original
+head snapshot using temporary objects. The database transaction checks the fence again,
+initializes all native branches under the supplied policy, records the PR
+proposals, revokes the Connected binding and increments the authority epoch.
+An exact retry after a lost reply returns the same `activated` receipt.
+Keep the upstream archived while reconciling an uncertain response.
+
+The receipt maps ready PR numbers to version-1 ChangeSets and lists the
+others under `unresolved`. The staged archive retains the unresolved PR
+sources and discussion references. Native `diff` and rebase status expose
+`github_pull` provenance for accepted proposals. Their first versions have
+`run: null` and start outside the queue. Use the new epoch for native enqueue,
+check assignment and review. The authority transaction carries GitHub
+provenance and exact source identity. Native validation starts with fresh
+checks and approvals.
+
+The tested profile uses a disposable database and a real Git bundle with a
+fixture for the archived GitHub observation. A live GitHub cutover and the
+reverse handoff are separate release checks.
+
 ## Retain a connection in a running TreeHarbor server
 
 First migrate the [local service](local-service.md) to the current schema and create a

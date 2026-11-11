@@ -337,6 +337,7 @@ async fn handle(
     let archive_proof = request.uri().path() == crate::archive_proof::PATH;
     let archive_retention = request.uri().path() == crate::archive_retention::PATH;
     let archive_proposal_stage = request.uri().path() == crate::archive_proposal_stage::PATH;
+    let archive_activate = request.uri().path() == crate::archive_activate::PATH;
     let source_read = request.uri().path() == "/v1/source/read";
     let source_export = request.uri().path() == "/v1/source/export";
     let projection_export = request.uri().path() == "/v1/github/projections/export";
@@ -353,6 +354,7 @@ async fn handle(
         && !archive_proof
         && !archive_retention
         && !archive_proposal_stage
+        && !archive_activate
         && !source_read
         && !source_export
         && !projection_export
@@ -502,11 +504,25 @@ async fn handle(
             ),
         };
     }
-    if restore_source || archive_proof || archive_retention || archive_proposal_stage {
+    if restore_source
+        || archive_proof
+        || archive_retention
+        || archive_proposal_stage
+        || archive_activate
+    {
         let Some(backend) = backend else {
             return error(StatusCode::SERVICE_UNAVAILABLE, "storage_not_configured");
         };
-        let result = if archive_proposal_stage {
+        let result = if archive_activate {
+            Box::pin(crate::archive_activate::activate(
+                &body,
+                &credential,
+                backend,
+                pool,
+                deadline,
+            ))
+            .await
+        } else if archive_proposal_stage {
             Box::pin(crate::archive_proposal_stage::stage(
                 &body,
                 &credential,

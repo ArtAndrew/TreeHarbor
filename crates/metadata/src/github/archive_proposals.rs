@@ -9,7 +9,8 @@ use std::{
     time::Instant,
 };
 use treeharbor_core::{
-    Directory, GitOid, Object, ObjectId, ObjectStore, RevisionRef, TreeDiffLimits, diff_snapshots,
+    Changes, Directory, GitOid, Object, ObjectId, ObjectStore, RevisionRef, TreeDiffLimits,
+    diff_snapshots, prepare_change,
 };
 use treeharbor_git_bridge::{Limits, verify_archive_commit_mappings};
 use treeharbor_github_contract::archive_inventory::InventoryPull;
@@ -145,13 +146,13 @@ impl<S: ObjectStore> ObjectStore for Genesis<'_, S> {
     }
 }
 
-fn exact_delta(store: &impl ObjectStore, before: ObjectId, after: ObjectId) -> Result<Object> {
-    Ok(Object::ChangeOperations(diff_snapshots(
+fn exact_delta(store: &impl ObjectStore, before: ObjectId, after: ObjectId) -> Result<Changes> {
+    Ok(diff_snapshots(
         store,
         before,
         after,
         TreeDiffLimits::default(),
-    )?))
+    )?)
 }
 
 fn verify_imported_deltas(store: &TrackedSource<'_, impl ObjectStore>, max: usize) -> Result<()> {
@@ -181,7 +182,7 @@ fn verify_imported_deltas(store: &TrackedSource<'_, impl ObjectStore>, max: usiz
             Some(parent) => exact_delta(store, history.commit(*parent)?.snapshot, commit.snapshot)?,
             None => exact_delta(&empty, empty.snapshot, commit.snapshot)?,
         };
-        if delta.id()? != commit.changes {
+        if Object::ChangeOperations(delta).id()? != commit.changes {
             return Err(Error::ArchiveArtifactMismatch);
         }
     }
@@ -213,26 +214,35 @@ fn check_patch(
     base: ObjectId,
     head: ObjectId,
     patch: &ArchiveProposalPatch,
+    replay_bytes: &Cell<usize>,
 ) -> Result<Option<(ObjectId, u64)>> {
     let bases = history.merge_bases(base, head)?;
     if let [id] = bases.as_slice() {
         let expected_base = archive_proposal_tip(history, *id)?;
-        let delta = exact_delta(
-            store,
-            history.commit(*id)?.snapshot,
-            history.commit(head)?.snapshot,
-        )?;
-        let id = delta.id()?;
+        let base = history.commit(*id)?.snapshot;
+        let head = history.commit(head)?.snapshot;
+        let delta = exact_delta(store, base, head)?;
+        let frame = Object::ChangeOperations(delta.clone());
+        let id = frame.id()?;
         if *patch
             != (ArchiveProposalPatch::Ready {
                 merge_base: expected_base,
                 operations: id.to_string(),
             })
-            || store.get(id)? != delta
+            || store.get(id)? != frame
         {
             return Err(Error::ArchiveArtifactMismatch);
         }
-        return Ok(Some((id, delta.encode()?.len() as u64)));
+        let replay = Replay {
+            source: store,
+            deadline: store.deadline,
+            bytes_left: replay_bytes,
+            objects: RefCell::new(BTreeMap::new()),
+        };
+        if prepare_change(&replay, base, &delta)?.result_snapshot() != head {
+            return Err(Error::ArchiveArtifactMismatch);
+        }
+        return Ok(Some((id, frame.encode()?.len() as u64)));
     }
     let expected = ArchiveProposalPatch::NeedsResolution {
         reason: if bases.is_empty() {
@@ -251,10 +261,48 @@ fn check_patch(
     Ok(None)
 }
 
+// Intermediate directories from applying several operations are private and
+// need not be part of the retained source graph. Bound the writes across all
+// proposals, and discard the intermediates after each exact replay.
+struct Replay<'a, S> {
+    source: &'a S,
+    deadline: Instant,
+    bytes_left: &'a Cell<usize>,
+    objects: RefCell<BTreeMap<ObjectId, Object>>,
+}
+impl<S: ObjectStore> ObjectStore for Replay<'_, S> {
+    fn get(&self, id: ObjectId) -> treeharbor_core::Result<Object> {
+        if let Some(object) = self.objects.borrow().get(&id) {
+            return Ok(object.clone());
+        }
+        self.source.get(id)
+    }
+
+    fn put(&self, object: &Object) -> treeharbor_core::Result<ObjectId> {
+        if Instant::now() >= self.deadline {
+            return Err(treeharbor_core::Error::TooLarge);
+        }
+        let frame = object.encode()?;
+        self.bytes_left.set(
+            self.bytes_left
+                .get()
+                .checked_sub(frame.len())
+                .ok_or(treeharbor_core::Error::TooLarge)?,
+        );
+        let id = ObjectId::hash_frame(&frame);
+        self.objects
+            .borrow_mut()
+            .entry(id)
+            .or_insert_with(|| object.clone());
+        Ok(id)
+    }
+}
+
 pub(super) struct VerifiedProposals {
     pub(super) roots: BTreeSet<ObjectId>,
     pub(super) count: usize,
     pub(super) ready: usize,
+    pub(super) proposals: Vec<ArchiveProposal>,
 }
 
 /// Compare with the exact manifest read from retained storage. The source
@@ -346,9 +394,12 @@ pub(super) fn verify_proposals(
         verify_imported_deltas(&store, limits.objects)?;
     }
     let mut ready = 0;
+    let replay_bytes = Cell::new(128 << 20);
     for (proposal, (base, head)) in manifest.proposals.iter().zip(pairs) {
         let closure_seen = store.seen.borrow().len();
-        if let Some((patch, length)) = check_patch(&store, &history, base, head, &proposal.patch)? {
+        if let Some((patch, length)) =
+            check_patch(&store, &history, base, head, &proposal.patch, &replay_bytes)?
+        {
             roots.insert(patch);
             if store.seen.borrow().len() > closure_seen {
                 bytes += length;
@@ -363,5 +414,6 @@ pub(super) fn verify_proposals(
         roots,
         count: manifest.proposals.len(),
         ready,
+        proposals: manifest.proposals,
     })
 }

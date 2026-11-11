@@ -114,6 +114,7 @@ pub(crate) fn metadata(error: treeharbor_metadata::Error) -> Failure {
         | "host_binding_state"
         | "archive_observation_mismatch"
         | "archive_artifact_mismatch"
+        | "archive_activation_busy"
         | "host_recovery_required"
         | "restore_context_changed"
         | "restore_decision_conflict"

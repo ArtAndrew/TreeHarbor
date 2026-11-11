@@ -240,6 +240,79 @@ fn submission<'a>(
 }
 
 #[tokio::test]
+#[ignore = "requires PostgreSQL; schema33 accepted agent versions and pin/operation lineage survive v34"]
+async fn archived_pull_origin_upgrade_preserves_populated_v33() {
+    use sha2::{Digest, Sha256};
+    let mut fixture = Fixture::new().await;
+    let prepared = fixture.prepare(b"existing agent change\n").await;
+    let changeset = Uuid::new_v4();
+    let submission = submission(changeset, fixture.run, &prepared);
+    let accepted = fixture
+        .db
+        .accept_change(&context(&fixture.scope, "v33-change"), &submission)
+        .await
+        .unwrap();
+    let raw = connection(&fixture.schema).await;
+    crate::common::drop_unpopulated_v34(&raw).await;
+    let mut migrations: Vec<_> =
+        std::fs::read_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/migrations"))
+            .unwrap()
+            .map(|p| p.unwrap().path())
+            .filter(|p| p.extension().is_some_and(|ext| ext == "sql"))
+            .collect();
+    migrations.sort();
+    let mut digest = Vec::new();
+    for migration in migrations.iter().take(33) {
+        digest = Sha256::digest([digest, std::fs::read(migration).unwrap()].concat()).to_vec();
+    }
+    raw.execute(
+        "UPDATE th_schema_version SET version=33,migration_digest=$1",
+        &[&digest],
+    )
+    .await
+    .unwrap();
+    let snapshot = "SELECT jsonb_build_object('version',(SELECT to_jsonb(v)-'archived_pull' FROM th_change_versions v WHERE changeset=$1),'pins',(SELECT jsonb_agg(to_jsonb(p) ORDER BY holder) FROM th_object_pins p),'receipt',(SELECT to_jsonb(o) FROM th_operations o WHERE key='v33-change'))";
+    let before: Value = raw.query_one(snapshot, &[&changeset]).await.unwrap().get(0);
+    fixture.db.migrate().await.unwrap();
+    fixture.db.migrate().await.unwrap();
+    crate::common::assert_latest_schema(&raw).await;
+    assert_eq!(
+        raw.query_one(snapshot, &[&changeset])
+            .await
+            .unwrap()
+            .get::<_, Value>(0),
+        before
+    );
+    assert_eq!(
+        fixture
+            .db
+            .change_version(&fixture.scope, changeset, 1)
+            .await
+            .unwrap(),
+        accepted
+    );
+    assert_eq!(
+        fixture
+            .db
+            .accept_change(&context(&fixture.scope, "v33-change"), &submission)
+            .await
+            .unwrap(),
+        accepted
+    );
+    let missing = raw.execute(r#"
+        INSERT INTO th_change_versions(tenant,repository,changeset,version,base_revision,base_snapshot,
+            operations,result_snapshot,base_pin,operations_pin,result_pin,operation_key)
+        SELECT tenant,repository,changeset,2,base_revision,base_snapshot,operations,result_snapshot,
+            base_pin,operations_pin,result_pin,operation_key FROM th_change_versions WHERE changeset=$1
+        "#, &[&changeset]).await.unwrap_err();
+    assert_eq!(
+        missing.as_db_error().unwrap().constraint(),
+        Some("th_change_version_source_check")
+    );
+    cleanup(&fixture.schema).await;
+}
+
+#[tokio::test]
 #[ignore = "requires disposable PostgreSQL; runs in database CI"]
 async fn two_agents_preserve_overlapping_proposals_without_granting_merge_permission() {
     let mut f = Fixture::new().await;

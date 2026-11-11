@@ -65,22 +65,25 @@ pub(super) struct Record {
 }
 impl Record {
     fn describe(&self) -> Value {
-        json!({"version":1,"projection":self.row.get::<_,Uuid>("projection").to_string(),
+        let mut result = json!({"version":1,"projection":self.row.get::<_,Uuid>("projection").to_string(),
             "binding":self.row.get::<_,Uuid>("binding").to_string(),"epoch":self.row.get::<_,i64>("epoch"),
             "state":self.row.get::<_,String>("state"),"changeset":self.row.get::<_,Uuid>("changeset").to_string(),
-            "change_version":self.row.get::<_,i64>("version"),"run":self.row.get::<_,Uuid>("run").to_string(),
+            "change_version":self.row.get::<_,i64>("version"),
             "is_current_version":self.row.get::<_,i64>("version")==self.row.get::<_,i64>("latest_version"),
             "unexpired":self.row.get::<_,bool>("unexpired"),"expires_at_unix_ms":self.row.get::<_,i64>("deadline"),
             "revision":RevisionRef::Native(self.object.id()).to_string(),"snapshot":self.object.commit_snapshot().map(|v|v.to_string()),
-            "title":self.row.get::<_,String>("title"),"publication_ready":false})
+            "title":self.row.get::<_,String>("title"),"publication_ready":false});
+        crate::intake::change_lineage(&self.row, &mut result);
+        result
     }
 }
 pub(super) async fn load(tx: &Transaction<'_>, s: &Scope, projection: Uuid) -> Result<Record> {
-    let row=tx.query_opt(r"SELECT p.*,v.run,v.base_revision,v.operations,v.result_snapshot,
+    let row=tx.query_opt(r"SELECT p.*,v.run,v.base_revision,v.operations,v.result_snapshot,o.origin AS github_pull,
         floor(extract(epoch from v.accepted_at))::bigint AS timestamp_seconds,c.latest_version,
         p.expires_at>clock_timestamp() AS unexpired,(extract(epoch from p.expires_at)*1000)::bigint AS deadline
         FROM th_github_projections p JOIN th_change_versions v USING(tenant,repository,changeset,version)
         JOIN th_changesets c USING(tenant,repository,changeset)
+        LEFT JOIN th_archive_pull_origins o USING(tenant,repository,changeset)
         WHERE p.tenant=$1 AND p.repository=$2 AND p.projection=$3",&[&s.tenant(),&s.repository(),&projection]).await?.ok_or(Error::NotFound)?;
     let object = PreparedObject::new(&commit(
         &row,
