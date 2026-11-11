@@ -264,13 +264,48 @@ async fn history_cli_preserves_criss_cross_pagination_and_scoped_reads_after_res
         commits.len()
     );
     assert_eq!(manifest["refs"].as_object().unwrap().len(), branches.len());
+    let live_bundle = f.dir.path().join("live-branch-git");
+    let live = f.cli(&[
+        "git-export",
+        "--epoch",
+        "1",
+        "--output",
+        live_bundle.to_str().unwrap(),
+    ]);
+    assert!(
+        live.status.success(),
+        "{} {}",
+        String::from_utf8_lossy(&live.stdout),
+        String::from_utf8_lossy(&live.stderr)
+    );
+    let live: Value = serde_json::from_slice(&live.stdout).unwrap();
+    assert_eq!(live["snapshot"], captured);
+    assert_eq!(live["export"]["refs"], manifest["refs"]);
+    assert_eq!(live["export"]["commits"], manifest["commits"]);
+    let stale_bundle = f.dir.path().join("stale-branch-git");
+    let stale = f.cli(&[
+        "git-export",
+        "--epoch",
+        "2",
+        "--output",
+        stale_bundle.to_str().unwrap(),
+    ]);
+    assert!(!stale.status.success());
+    assert!(!stale_bundle.exists());
+    assert!(fs::read_dir(f.dir.path()).unwrap().all(|entry| {
+        !entry
+            .unwrap()
+            .file_name()
+            .to_string_lossy()
+            .starts_with(".treeharbor-branch-packs-")
+    }));
     let restored = f.dir.path().join("restored.git");
     git_reference::git(
         f.dir.path(),
         &[
             "clone",
             "--bare",
-            projected.join("history.bundle").to_str().unwrap(),
+            live_bundle.join("history.bundle").to_str().unwrap(),
             restored.to_str().unwrap(),
         ],
         b"",

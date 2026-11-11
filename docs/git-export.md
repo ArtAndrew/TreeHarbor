@@ -38,6 +38,38 @@ bundle without TreeHarbor. Preserve the manifest to map native revisions to Git
 commits. Keep the source pack until export is verified; export does not delete it,
 change server refs, move authority or grant permission to merge.
 
+## Export all branches from a live Standalone repository
+
+The development CLI can capture and export the complete branch set in one
+command. Use the local Unix socket, a repository credential with `read`
+permission and the epoch reported by `repository-info`.
+
+```sh
+mkdir -m 700 -p "$TH_PRIVATE/exports"
+treeharbor client --socket "$TH_PRIVATE/service.sock" \
+  --credential-file "$TH_PRIVATE/reader.json" \
+  git-export --epoch 1 --output "$TH_PRIVATE/exports/repository"
+git clone --bare "$TH_PRIVATE/exports/repository/history.bundle" restored.git
+git -C restored.git for-each-ref --format='%(refname) %(objectname)' refs/heads
+```
+
+The command captures all tips at one instant, downloads one verified pack per
+distinct tip and compares each pack's tree with the captured tree. It prints the
+captured `snapshot` and the Git `export` manifest as JSON. The same two files
+described above are published together under a new owner-private directory.
+The service supplies native source, and the operator's local Git verifies the
+bundle. The standard per-pack, aggregate input and projection limits apply.
+Shared ancestry can be transferred in more than one pack.
+
+The requested epoch must match the capture. An empty or oversized branch set,
+failed pack read, mismatched tree or failed Git verification leaves the final
+destination unpublished. The client applies `--timeout-ms` to individual
+requests and `--timeout-seconds` across capture, pack transfers and projection.
+A process killed during export can leave a private `.treeharbor-branch-packs-*`
+directory under the output parent. After confirming that the export has
+stopped, the operator can remove that temporary directory. For a migration
+capture, stop all branch writers before running the command.
+
 ## Export several branches
 
 Capture the desired tips with [`ref_snapshot`](native-integration.md#capture-the-current-branch-tips)

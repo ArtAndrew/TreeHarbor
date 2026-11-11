@@ -29,6 +29,14 @@ transport trial uses that snapshot for the export. It checks the empty result,
 repository scoping, stale epoch and credential revocation, and refusal when the
 complete set exceeds 128 refs.
 
+The development [`client git-export` command](git-export.md#export-all-branches-from-a-live-standalone-repository)
+captures the same snapshot and verifies one full source pack per distinct head
+before writing the bundle. The PostgreSQL fixture used a read-only credential
+after restarting the service. Ordinary Git restored four branches from the
+live export. Its native-to-Git mappings matched the manual multi-pack export,
+and a stale epoch failed before publishing any output. The fixture verified
+temporary pack cleanup.
+
 ## Leased controller tasks — 0.1.19-alpha.1
 
 [Remote task assignment](remote-tasks-v1.md) queues an exact registered base
