@@ -144,6 +144,17 @@ PostgreSQL, Docker/gVisor, bounded volumes and host access are separate prerequi
 Removing the CLI symlink and that version directory uninstalls the package; retain
 repository state and backups separately.
 
+### Upgrade from 0.1.19-alpha.1
+
+Verify the new archive and install it in a separate prefix. Capture and drain
+active workspaces, stop the service and its writers, and retain a verified
+[cold backup](backup-restore.md). Both versions use schema 033. Run the new
+CLI's [`doctor`](doctor.md) against the existing configuration, then start the
+new service and reconnect nodes with the matching binaries. On a test
+Standalone repository, verify a retained proposal and try the
+[live Git export](git-export.md#export-all-branches-from-a-live-standalone-repository)
+before admitting another task.
+
 ### Upgrade from 0.1.18-alpha.1
 
 Capture any work you want to retain, then drain active workspaces and stop the

@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.20-alpha.1 — export all Standalone branches
+
+- Capture the complete active Standalone branch set and its authority epoch in
+  one read. Use a repository credential with read access.
+- [Export all captured branches](docs/git-export.md#export-all-branches-from-a-live-standalone-repository)
+  to a self-contained Git bundle in one command. It verifies a complete pack
+  for each distinct tip and records the native-to-Git mapping. The offline
+  exporter can also combine selected, already downloaded packs.
+- Exercise the export in the installed Linux cold-restore drill. Ordinary Git
+  verifies every restored branch and the merge graph. A missing or damaged
+  second parent must prevent bundle publication.
+
 ## 0.1.19-alpha.1 — remote task assignment
 
 - Prepare the exact registered source selection on an external worker with
