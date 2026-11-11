@@ -37,6 +37,13 @@ Connected binding and epoch. The PostgreSQL test exercises a failure before
 commit, rejects a missing independent branch and a mismatched Git tip, and
 replays the same completed receipt after a service restart and upload expiry.
 
+The [server-side verification command](github-connection.md#verify-the-retained-git-history-on-the-server)
+reconstructs every named Git tip from the permanently pinned native source in
+one Rust projection. It records a proof only for the active binding and epoch
+after checking the complete object set. The transport test withholds a merge
+parent, verifies exact replay after restart, and revokes the binding between
+projection and proof recording.
+
 ## Export multiple branches to Git — 0.1.20-alpha.1
 
 [Git export](git-export.md#export-several-branches) can combine completed source

@@ -100,6 +100,7 @@ impl Permission {
             "github.restore.mapping.v1"
             | "github.restore.decision.v1"
             | "github.archive.stage.v1"
+            | "github.archive.proof.v1"
             | "github.bind.v1"
             | "github.revoke.v1" => Ok(Self::RepositoryWrite),
             "github.import.request.v1" | "github.import.cancel.v1" => Ok(Self::RepositoryWrite),

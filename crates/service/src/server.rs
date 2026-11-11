@@ -13,7 +13,7 @@ use std::{
     os::unix::fs::{FileTypeExt, MetadataExt, OpenOptionsExt, PermissionsExt},
     path::{Path, PathBuf},
     sync::Arc,
-    time::Duration,
+    time::{Duration, Instant},
 };
 use tokio::{
     io::{AsyncRead, AsyncWrite},
@@ -251,22 +251,24 @@ async fn serve_http<S>(
 ) where
     S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
 {
-    let service =
-        service_fn(move |request| {
-            let pool = pool.clone();
-            let backend = backend.clone();
-            let ingress = ingress.clone();
-            async move {
-                let response =
-                    match tokio::time::timeout(timeout, handle(request, pool, backend, ingress))
-                        .await
-                    {
-                        Ok(response) => response,
-                        Err(_) => error(StatusCode::GATEWAY_TIMEOUT, "outcome_unknown"),
-                    };
-                Ok::<_, Infallible>(response)
-            }
-        });
+    let service = service_fn(move |request| {
+        let pool = pool.clone();
+        let backend = backend.clone();
+        let ingress = ingress.clone();
+        async move {
+            let deadline = Instant::now() + timeout;
+            let response = match tokio::time::timeout(
+                timeout,
+                handle(request, pool, backend, ingress, deadline),
+            )
+            .await
+            {
+                Ok(response) => response,
+                Err(_) => error(StatusCode::GATEWAY_TIMEOUT, "outcome_unknown"),
+            };
+            Ok::<_, Infallible>(response)
+        }
+    });
     let mut http = hyper::server::conn::http1::Builder::new();
     http.keep_alive(false)
         .max_headers(32)
@@ -306,6 +308,7 @@ async fn handle(
     pool: Pool<Database>,
     backend: Option<crate::source::Backend>,
     ingress: Ingress,
+    deadline: Instant,
 ) -> Response<Body> {
     if request.headers().contains_key(header::ORIGIN)
         || request.headers().get_all(header::HOST).iter().count() != 1
@@ -331,6 +334,7 @@ async fn handle(
         return error(StatusCode::NOT_FOUND, "not_found");
     }
     let restore_source = request.uri().path() == "/v1/github/restore/verify-source";
+    let archive_proof = request.uri().path() == crate::archive_proof::PATH;
     let source_read = request.uri().path() == "/v1/source/read";
     let source_export = request.uri().path() == "/v1/source/export";
     let projection_export = request.uri().path() == "/v1/github/projections/export";
@@ -344,6 +348,7 @@ async fn handle(
     if (request.uri().path() != "/v1/commands"
         && upload.is_none()
         && !restore_source
+        && !archive_proof
         && !source_read
         && !source_export
         && !projection_export
@@ -493,11 +498,16 @@ async fn handle(
             ),
         };
     }
-    if restore_source {
+    if restore_source || archive_proof {
         let Some(backend) = backend else {
             return error(StatusCode::SERVICE_UNAVAILABLE, "storage_not_configured");
         };
-        return match crate::restore_source::verify(&body, &credential, backend, pool).await {
+        let result = if archive_proof {
+            crate::archive_proof::verify(&body, &credential, backend, pool, deadline).await
+        } else {
+            crate::restore_source::verify(&body, &credential, backend, pool).await
+        };
+        return match result {
             Ok(value) => response(StatusCode::OK, value),
             Err(f) => error(
                 StatusCode::from_u16(f.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),

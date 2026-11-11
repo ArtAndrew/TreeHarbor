@@ -796,6 +796,15 @@ enum Agent {
         #[arg(long, default_value_t = 3600, value_parser = clap::value_parser!(i32).range(1..=3600))]
         ttl_seconds: i32,
     },
+    /// Verify the stored history of every branch in one completed archive stage.
+    ArchiveVerify {
+        #[arg(long)]
+        stage_key: String,
+        #[arg(long)]
+        key: String,
+        #[arg(long, value_parser = clap::value_parser!(i64).range(1..))]
+        epoch: i64,
+    },
     /// Stop a managed run and request capture of explicit file/subtree changes.
     SealRequest {
         #[command(flatten)]
@@ -1196,6 +1205,7 @@ impl Agent {
             | Self::SourcePut { .. }
             | Self::SourceImport { .. }
             | Self::ArchiveStage { .. }
+            | Self::ArchiveVerify { .. }
             | Self::SourceFile { .. }
             | Self::SourceList { .. }
             | Self::SourceCheckout { .. } => return Err(Error::Config), // separate data path below
@@ -1688,6 +1698,21 @@ pub async fn run(cli: Cli) -> Result<bool> {
                         .await?;
                     println!("{receipt}");
                     return Ok(true);
+                }
+                Agent::ArchiveVerify {
+                    stage_key,
+                    key,
+                    epoch,
+                } => {
+                    let reply = client::verify_archive(
+                        endpoint.local_socket()?,
+                        &credential,
+                        json!({"stage_key":stage_key,"key":key,"epoch":epoch}),
+                        Duration::from_millis(timeout_ms),
+                    )
+                    .await?;
+                    println!("{}", reply.body);
+                    return Ok(reply.status.is_success());
                 }
                 Agent::ArchiveStage {
                     spool,

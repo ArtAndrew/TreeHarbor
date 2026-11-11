@@ -30,8 +30,8 @@ pub struct ArchiveStageSpec {
     pub encoded_bytes: i64,
 }
 
-struct Root {
-    snapshot: ObjectId,
+pub(super) struct Root {
+    pub(super) snapshot: ObjectId,
     git_revision: String,
 }
 
@@ -40,7 +40,7 @@ fn invalid() -> Error {
 }
 
 impl ArchiveStageSpec {
-    fn roots(&self) -> Result<BTreeMap<ObjectId, Root>> {
+    pub(super) fn roots(&self) -> Result<BTreeMap<ObjectId, Root>> {
         self.upstream.validate()?;
         let fingerprint: ObjectId = self.spool_fingerprint.parse().map_err(|_| invalid())?;
         ref_name(&self.default_branch)?;
@@ -103,6 +103,30 @@ impl ArchiveStageSpec {
     }
 }
 
+pub(super) async fn check_archive_binding(
+    tx: &Transaction<'_>,
+    scope: &Scope,
+    binding_id: Uuid,
+    epoch: i64,
+    spec: &ArchiveStageSpec,
+) -> Result<()> {
+    let selected = binding(tx, scope, binding_id)
+        .await
+        .map_err(|error| match error {
+            Error::NotFound => Error::HostBindingState,
+            other => other,
+        })?;
+    let selected_spec = specification(&selected)?;
+    if selected.get::<_, i64>("epoch") != epoch
+        || selected.get::<_, String>("state") != "active"
+        || selected_spec.app_id != spec.app_id
+        || selected_spec.upstream != spec.upstream
+    {
+        return Err(Error::HostBindingState);
+    }
+    Ok(())
+}
+
 impl Metadata {
     /// Commit all roots, the completion receipt and the closed upload together.
     /// The receipt identifies retained data. Host fencing is a separate operation.
@@ -131,20 +155,7 @@ impl Metadata {
         let scope = auth.scope();
         let tenant = scope.tenant();
         let repository = scope.repository();
-        let selected = binding(tx, scope, binding_id)
-            .await
-            .map_err(|error| match error {
-                Error::NotFound => Error::HostBindingState,
-                other => other,
-            })?;
-        let selected_spec = specification(&selected)?;
-        if selected.get::<_, i64>("epoch") != command.epoch
-            || selected.get::<_, String>("state") != "active"
-            || selected_spec.app_id != spec.app_id
-            || selected_spec.upstream != spec.upstream
-        {
-            return Err(Error::HostBindingState);
-        }
+        check_archive_binding(tx, scope, binding_id, command.epoch, spec).await?;
         let session = uploads::active(tx, scope, auth.principal(), upload).await?;
         let ordinary: bool = tx
             .query_one(

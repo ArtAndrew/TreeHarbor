@@ -318,6 +318,170 @@ async fn archive_stage_retains_all_roots_atomically_with_one_resumable_upload() 
     stage["specification"]["spool_fingerprint"] = json!(ObjectId::from_bytes([99; 32]).to_string());
     assert_rejected(request(&f, &stage), "idempotency_conflict");
     assert_eq!(read_counts().await, [2, 2, 1, 0]);
-    drop(server);
+    verify_retained_archive(&f, server, &bridge, upload, &receipt).await;
     f.cleanup().await;
+}
+
+async fn verify_retained_archive(
+    f: &Fixture,
+    server: Process,
+    bridge: &Path,
+    upload: Uuid,
+    stage: &Value,
+) {
+    use treeharbor_metadata::{
+        Error,
+        access::Permission,
+        github::{ArchiveProofWork, Command as GithubCommand},
+    };
+
+    let stage_key = format!("archive-{upload}-stage");
+    let verify = |key: &str, epoch: &str| {
+        f.cli(&[
+            "archive-verify",
+            "--stage-key",
+            &stage_key,
+            "--key",
+            key,
+            "--epoch",
+            epoch,
+        ])
+    };
+    assert_rejected(
+        f.cli_with_credential(
+            bridge,
+            &[
+                "archive-verify",
+                "--stage-key",
+                &stage_key,
+                "--key",
+                "bridge-proof",
+                "--epoch",
+                "1",
+            ],
+        ),
+        "forbidden",
+    );
+    assert_rejected(verify("wrong-epoch", "2"), "repository_fenced");
+    let parent = f
+        .sql
+        .query_one(
+            r#"
+        SELECT i.digest,i.generation FROM th_source_upload_items i
+        WHERE i.upload=$1 AND i.kind=5 AND NOT EXISTS(
+            SELECT 1 FROM th_object_pins p
+            WHERE p.tenant=i.tenant AND p.repository=i.repository AND p.digest=i.digest
+        ) LIMIT 1
+        "#,
+            &[&upload],
+        )
+        .await
+        .unwrap();
+    let id = ObjectId::from_bytes(parent.get::<_, Vec<u8>>(0).try_into().unwrap());
+    let hex = id.hex();
+    let storage = f.config.storage.as_ref().unwrap();
+    let frame = storage
+        .root
+        .join("managed-v1")
+        .join(parent.get::<_, i64>(1).to_string())
+        .join("objects")
+        .join(f.scope.tenant())
+        .join(&hex[..2])
+        .join(&hex[2..]);
+    let withheld = f.dir.path().join("held-parent-frame");
+    fs::rename(&frame, &withheld).unwrap();
+    assert_rejected(verify("verify-retained", "1"), "source_mapping_mismatch");
+    assert_eq!(
+        f.sql
+            .query_one(
+                "SELECT count(*) FROM th_operations WHERE kind='github.archive.proof.v1'",
+                &[]
+            )
+            .await
+            .unwrap()
+            .get::<_, i64>(0),
+        0
+    );
+    fs::rename(&withheld, &frame).unwrap();
+    let receipt = result(verify("verify-retained", "1"));
+    assert_eq!(
+        receipt,
+        json!({
+            "version":1,"tenant":f.scope.tenant(),"repository":f.scope.repository(),
+            "authority":"connected","epoch":1,"binding":stage["binding"],"upload":upload,
+            "stage_key":stage_key,"state":"verified",
+            "spool_fingerprint":stage["specification"]["spool_fingerprint"],
+            "object_count":stage["specification"]["object_count"],
+            "encoded_bytes":stage["specification"]["encoded_bytes"],
+        })
+    );
+    // Replay is historical evidence. A new verification still reads the bytes.
+    fs::rename(&frame, &withheld).unwrap();
+    drop(server);
+    let server = f.start().await;
+    assert_eq!(result(verify("verify-retained", "1")), receipt);
+    assert_rejected(verify("verify-fresh", "1"), "source_mapping_mismatch");
+    fs::rename(&withheld, &frame).unwrap();
+
+    // Revoke the binding between the trusted projection and its database write.
+    let mut db = Database::new(f.config.clone())
+        .unwrap()
+        .connect(true)
+        .await
+        .unwrap();
+    let credential = f.credential();
+    let auth = db
+        .metadata
+        .authorize(&credential.token, &f.scope, Permission::RepositoryWrite)
+        .await
+        .unwrap();
+    let command = GithubCommand {
+        key: "verify-then-revoke".into(),
+        epoch: 1,
+    };
+    let ArchiveProofWork::Verify(retained) = db
+        .metadata
+        .prepare_archive_proof(&auth, &command, &stage_key)
+        .await
+        .unwrap()
+    else {
+        panic!("expected verification work")
+    };
+    let store = ManagedStore::open(
+        &storage.root,
+        TenantId::new(f.scope.tenant()).unwrap(),
+        &storage.backend,
+    )
+    .unwrap();
+    let proof = retained
+        .verify(
+            &store,
+            &storage.root,
+            Instant::now() + Duration::from_secs(10),
+        )
+        .unwrap();
+    result(request(
+        f,
+        &json!({"action":"revoke","key":"fence-archive-verification","epoch":1,"binding":stage["binding"]}),
+    ));
+    assert!(matches!(
+        db.metadata
+            .record_archive_proof(&auth, &command, proof)
+            .await,
+        Err(Error::HostBindingState)
+    ));
+    assert_eq!(
+        f.sql
+            .query_one(
+                "SELECT count(*) FROM th_operations WHERE kind='github.archive.proof.v1'",
+                &[]
+            )
+            .await
+            .unwrap()
+            .get::<_, i64>(0),
+        1
+    );
+    assert_eq!(result(verify("verify-retained", "1")), receipt);
+    assert_rejected(verify("verify-fresh", "1"), "host_binding_state");
+    drop(server);
 }
