@@ -1,7 +1,7 @@
 //! Verify and retain the original Git bytes for an archived repository.
 use crate::{
-    BundleInput, Error, HashAlgorithm, Result, bundle, check_deadline, check_limits, ingest,
-    origin, process::Git,
+    BundleInput, Error, HashAlgorithm, ImportedBranches, Limits, Result, bundle, check_deadline,
+    check_limits, ingest, origin, process::Git, valid_ref,
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -11,7 +11,7 @@ use std::{
     path::PathBuf,
     time::Instant,
 };
-use treeharbor_core::{GitOid, RevisionRef};
+use treeharbor_core::{GitOid, ObjectStore, RevisionRef};
 
 const MAX_REFS: usize = crate::MAX_EXPORT_REFS + 10_000;
 const MAX_REF_BYTES: usize = 1034;
@@ -52,6 +52,9 @@ pub struct ArchiveBundleInfo {
 
 pub struct ArchiveBundle {
     scratch: tempfile::TempDir,
+    git: PathBuf,
+    limits: Limits,
+    deadline: Instant,
     pub info: ArchiveBundleInfo,
 }
 
@@ -59,6 +62,34 @@ impl ArchiveBundle {
     /// The synced, verified private copy. It can be moved out before drop.
     pub fn path(&self) -> PathBuf {
         self.scratch.path().join("archive.bundle")
+    }
+
+    /// Import the selected exact commits from this verified private archive.
+    /// Names are labels in the result and never installed as Git or native refs.
+    pub fn import_commits(
+        &mut self,
+        store: &impl ObjectStore,
+        commits: &BTreeMap<String, GitOid>,
+    ) -> Result<ImportedBranches> {
+        if commits.is_empty()
+            || commits.len() > MAX_REFS
+            || commits.iter().any(|(name, id)| {
+                !valid_ref(name) || !matches!(id, GitOid::Sha1(bytes) if *bytes != [0; 20])
+            })
+        {
+            return Err(Error::Configuration);
+        }
+        let scratch = self.scratch.path();
+        let git = Git::new(self.git.clone(), scratch, self.deadline);
+        ingest::import_verified_commits(
+            store,
+            &git,
+            &scratch.join("source.git"),
+            scratch,
+            commits,
+            self.limits,
+            self.deadline,
+        )
     }
 }
 
@@ -222,7 +253,8 @@ pub fn verify_archive_bundle(
     )?;
     let file = File::open(&saved)?;
     require_complete_bundle(&file)?;
-    let git = Git::new(request.git.canonicalize()?, scratch.path(), deadline);
+    let executable = request.git.canonicalize()?;
+    let git = Git::new(executable.clone(), scratch.path(), deadline);
     let max_listing = (refs.len() as u64 + 1) * (MAX_REF_BYTES as u64 + 42);
     let (repo, listing) = bundle::unpack(
         &git,
@@ -290,6 +322,9 @@ pub fn verify_archive_bundle(
     check_deadline(deadline)?;
     Ok(ArchiveBundle {
         scratch,
+        git: executable,
+        limits: request.limits,
+        deadline,
         info: ArchiveBundleInfo {
             sha256,
             bytes,

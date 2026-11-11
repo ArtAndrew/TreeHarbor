@@ -38,7 +38,7 @@ pub struct Options {
     timeout_seconds: u64,
 }
 
-type Manifest = ArchiveArtifactManifest<RepositoryBinding>;
+pub(super) type Manifest = ArchiveArtifactManifest<RepositoryBinding>;
 
 fn load_state(state: &Path) -> Result<(Capture, ArchiveObservationReceipt)> {
     let state = files::private_directory(state)?;
@@ -69,14 +69,14 @@ fn load_state(state: &Path) -> Result<(Capture, ArchiveObservationReceipt)> {
     Ok((capture, receipt))
 }
 
-fn sha1(oid: &str) -> Result<GitOid> {
+pub(super) fn sha1(oid: &str) -> Result<GitOid> {
     match oid.parse() {
         Ok(RevisionRef::Git(oid @ GitOid::Sha1(id))) if id != [0; 20] => Ok(oid),
         _ => Err(Error::PublicationState),
     }
 }
 
-fn expected_refs(
+pub(super) fn expected_refs(
     inventory: &ArchivedRepository,
     observation: &ArchiveObservation,
 ) -> Result<(BTreeMap<String, ArchiveRef>, Vec<GitOid>)> {

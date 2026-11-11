@@ -351,6 +351,33 @@ pub(super) async fn recover(f: &Fixture, bridge: &Path, retained: Retained, arch
         fs::read(from_backup.join("archive.bundle")).unwrap(),
         retained.bundle
     );
+    let prepared = dir.join("proposals-from-backup");
+    let plan = success(
+        Command::new(&f.binary)
+            .env("PATH", "/treeharbor-test-no-executables")
+            .args(["github", "archive-proposals", "--archive"])
+            .arg(&from_backup)
+            .args([
+                "--archive-fingerprint",
+                retained.receipt["specification"]["manifest_sha256"]
+                    .as_str()
+                    .unwrap(),
+                "--output",
+            ])
+            .arg(&prepared)
+            .output()
+            .unwrap(),
+    );
+    assert_eq!(plan["state"], "prepared");
+    assert_eq!(plan["ready"], 1);
+    let plan: Value =
+        serde_json::from_slice(&fs::read(prepared.join("manifest.json")).unwrap()).unwrap();
+    assert_eq!(
+        plan["proposals"][0]["head"]["git_revision"],
+        format!("git:sha1:{}", archive.head)
+    );
+    assert_eq!(plan["proposals"][0]["source"]["number"], 17);
+    assert_eq!(plan["proposals"][0]["patch"]["state"], "ready");
     f.sql
         .batch_execute(&format!("DROP DATABASE {target} WITH (FORCE)"))
         .await

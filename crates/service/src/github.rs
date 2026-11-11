@@ -309,6 +309,8 @@ pub enum Action {
     ArchiveRetain(archive_observe::retention::RetainOptions),
     /// Recover a retained archive on the configured TreeHarbor host.
     ArchiveRecover(archive_observe::retention::RecoverOptions),
+    /// Prepare native proposal objects for every pull in a preserved archive.
+    ArchiveProposals(archive_observe::proposals::Options),
     /// Discover current heads and all PR states after restore; does not reconnect
     /// the service, resolve discrepancies or grant any publication permission.
     RestoreInventory {
@@ -803,6 +805,11 @@ pub async fn run(action: Action) -> Result<bool> {
         }
         Action::ArchiveRecover(options) => {
             Box::pin(archive_observe::retention::recover(options)).await
+        }
+        Action::ArchiveProposals(options) => {
+            tokio::task::spawn_blocking(move || archive_observe::proposals::run(options))
+                .await
+                .map_err(|_| Error::ImportWorker)?
         }
         Action::RestoreInventory { config } => {
             let (credentials, config) = load(&config)?;

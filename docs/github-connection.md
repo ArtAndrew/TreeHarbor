@@ -419,6 +419,42 @@ The archive uses the existing object catalogue, which cold backup includes
 with its PostgreSQL metadata. Transfer of write authority requires its own
 verification and transaction.
 
+## Prepare native proposals from the archive
+
+Use `archive-proposals` with the exact manifest SHA-256 from
+`archive-preserve` or the retention receipt's `specification`. The input
+can be a directory recovered from the service or a restored backup.
+
+```sh
+treeharbor github archive-proposals --archive "$TH_SCRATCH/recovered-archive" \
+  --archive-fingerprint "$TH_ARCHIVE_FINGERPRINT" \
+  --output "$TH_SCRATCH/prepared-proposals"
+```
+
+The command verifies the preserved Git bundle in a temporary bare repository.
+It imports the exact recorded base and head commits for all open PRs in one
+pass. The native history supplies every best common ancestor. For a single
+merge base, TreeHarbor builds the patch from that commit to the PR head and
+replays it to verify the exact head snapshot. Changes unique to the newer
+target branch stay outside the proposal's patch.
+
+Every proposal retains the original pull number, identity, fork and draft
+state, source revisions and discussion link. With unrelated histories or
+multiple best ancestors, the manifest includes the source commits and
+`patch.state: needs_resolution`. Missing target branches are marked by
+`target_present: false`. The CLI `ready` count includes patches with one
+merge base and an observed target branch.
+
+The new private directory contains the
+[v1 proposal manifest](../crates/service/tests/fixtures/github-archive-proposals-v1.json)
+and the native object store for its ordered, distinct `objects` list.
+`encoded_bytes` counts the canonical frames in that list. Each `base_tip`,
+`head`, and `merge_base` records the Git revision, native revision and
+snapshot. The manifest fingerprint is SHA-256 over
+`treeharbor-archive-proposals\0v1\0` followed by the exact manifest bytes.
+Preparation writes a local artifact for migration. Integration requires a
+separate admission step and current Standalone checks and reviews.
+
 ## Retain a connection in a running TreeHarbor server
 
 First migrate the [local service](local-service.md) to the current schema and create a
