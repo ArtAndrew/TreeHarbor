@@ -83,6 +83,10 @@ pub enum Error {
     ExportWorker,
     #[error("Git export requires unique branch names and nonempty paths in --ref BRANCH=PACK")]
     ExportArguments,
+    #[error(
+        "live Git export requires a nonempty Standalone branch snapshot matching the requested repository and epoch"
+    )]
+    ExportSnapshot,
     #[error("Git export failed: {0}")]
     GitExport(#[from] treeharbor_git_bridge::Error),
     #[error("node operation failed: {0}")]

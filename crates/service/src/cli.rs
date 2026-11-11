@@ -550,6 +550,19 @@ enum Agent {
         #[arg(long)]
         output: PathBuf,
     },
+    /// Export every live Standalone branch as one self-contained Git bundle.
+    GitExport {
+        #[arg(long,value_parser=clap::value_parser!(i64).range(1..))]
+        epoch: i64,
+        #[arg(long)]
+        output: PathBuf,
+        #[arg(long, default_value = "/usr/bin/git")]
+        git: PathBuf,
+        #[arg(long, default_value = "sha1", value_parser = ["sha1", "sha256"])]
+        object_format: String,
+        #[arg(long, default_value_t=300, value_parser=clap::value_parser!(u64).range(1..=3600))]
+        timeout_seconds: u64,
+    },
     /// Verify a preserved recovery commit against an exact Git revision on the server.
     RestoreVerifySource {
         #[arg(long)]
@@ -1052,6 +1065,7 @@ impl Agent {
                 json!({"method":"change_abort","key":mutation.key,"authority":Authority::from(mutation.authority).as_str(),"epoch":mutation.epoch,"upload":upload.to_string()})
             }
             Self::SourceExport { .. }
+            | Self::GitExport { .. }
             | Self::History { .. }
             | Self::Diff { .. }
             | Self::RestoreVerifySource { .. }
@@ -1547,6 +1561,33 @@ pub async fn run(cli: Cli) -> Result<bool> {
                         },
                         &output,
                         Duration::from_millis(timeout_ms),
+                    )
+                    .await?;
+                    println!("{}", reply.body);
+                    return Ok(reply.status.is_success());
+                }
+                Agent::GitExport {
+                    epoch,
+                    output,
+                    git,
+                    object_format,
+                    timeout_seconds,
+                } => {
+                    let reply = crate::pack::git_export::export_standalone(
+                        crate::pack::git_export::LiveExport {
+                            socket: endpoint.local_socket()?,
+                            credential: &credential,
+                            epoch,
+                            output,
+                            git,
+                            algorithm: if object_format == "sha256" {
+                                treeharbor_git_bridge::HashAlgorithm::Sha256
+                            } else {
+                                treeharbor_git_bridge::HashAlgorithm::Sha1
+                            },
+                            request_timeout: Duration::from_millis(timeout_ms),
+                            timeout: Duration::from_secs(timeout_seconds),
+                        },
                     )
                     .await?;
                     println!("{}", reply.body);
