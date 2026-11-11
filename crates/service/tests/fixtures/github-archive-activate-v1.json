@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "tenant": "fixture",
+  "repository": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+  "epoch": 4,
+  "key": "fixture-archive-activate",
+  "specification": {
+    "version": 1,
+    "proposal_stage": "archive-proposals-54e83d0cf66c527a37c42a196365a1f73b3900ca7aa931164d1eb9fa569e271f",
+    "observation_key": "archive-observed-abababababababababababababababababababababababababababababababab",
+    "keep_host_archived": true,
+    "policy": {
+      "version": 1,
+      "checks": [
+        {
+          "name": "tests",
+          "definition": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+          "environment": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+          "toolchain": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+          "dependencies": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+          "validators": [
+            "ci"
+          ]
+        }
+      ],
+      "reviewers": [
+        "reviewer"
+      ],
+      "approvals": 1
+    }
+  }
+}

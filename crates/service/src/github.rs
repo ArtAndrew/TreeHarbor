@@ -313,6 +313,8 @@ pub enum Action {
     ArchiveProposals(archive_observe::proposals::Options),
     /// Verify and retain the prepared proposal inputs for a later transfer.
     ArchiveProposalsStage(archive_observe::stage_proposals::Options),
+    /// Activate native authority after an independently verified archive fence.
+    ArchiveActivate(archive_observe::activate::Options),
     /// Discover current heads and all PR states after restore; does not reconnect
     /// the service, resolve discrepancies or grant any publication permission.
     RestoreInventory {
@@ -816,6 +818,7 @@ pub async fn run(action: Action) -> Result<bool> {
         Action::ArchiveProposalsStage(options) => {
             Box::pin(archive_observe::stage_proposals::run(options)).await
         }
+        Action::ArchiveActivate(options) => Box::pin(archive_observe::activate::run(options)).await,
         Action::RestoreInventory { config } => {
             let (credentials, config) = load(&config)?;
             let observation = Connection::new(credentials)?

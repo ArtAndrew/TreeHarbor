@@ -16,7 +16,7 @@ pub(super) fn make_bundle(dir: &Path, repo: &Path, first: &str, tagged: &str) ->
     let tree = String::from_utf8(git_reference::git(
         repo,
         &["mktree"],
-        format!("100644 blob {blob}\tpayload.bin\n").as_bytes(),
+        format!("100644 blob {blob}\tpayload.bin\n100644 blob {blob}\tz-payload.bin\n").as_bytes(),
     ))
     .unwrap();
     let head = git_reference::hash(
@@ -69,7 +69,7 @@ pub(super) struct Retained {
     receipt: Value,
     manifest: Vec<u8>,
     bundle: Vec<u8>,
-    proposal_stage: Value,
+    pub(super) proposal_stage: Value,
 }
 
 pub(super) async fn retain(

@@ -205,6 +205,45 @@ pub(super) async fn historical(
     Ok(record)
 }
 
+pub(super) async fn current_archive_fence(
+    tx: &Transaction<'_>,
+    scope: &Scope,
+    epoch: i64,
+    key: &str,
+    baseline: &ArchiveObservationReceipt,
+    proposal_stage: &str,
+) -> Result<ArchiveObservationReceipt> {
+    let fresh = recorded(tx, scope, epoch, key).await?;
+    let now = clock(tx).await?;
+    let after_staging: bool = tx
+        .query_one(
+            r#"
+        SELECT EXISTS(SELECT 1 FROM th_operations s JOIN th_operations b USING(tenant,repository)
+          WHERE s.tenant=$1 AND s.repository=$2 AND s.key=$3 AND s.kind='github.archive.proposals.stage.v1'
+            AND b.key=$4 AND b.kind='github.archive.observe.begin.v1' AND b.committed_at>=s.committed_at)
+        "#,
+            &[&scope.tenant(), &scope.repository(), &proposal_stage, &fresh.request.key],
+        )
+        .await?
+        .get(0);
+    let mut inventory = fresh.observation.clone();
+    inventory
+        .request_key
+        .clone_from(&baseline.observation.request_key);
+    inventory.started_at_unix = baseline.observation.started_at_unix;
+    inventory.finished_at_unix = baseline.observation.finished_at_unix;
+    if fresh.request.observation_key == baseline.request.observation_key
+        || fresh.request.proof_key != baseline.request.proof_key
+        || !after_staging
+        || fresh.observation.finished_at_unix < now.saturating_sub(FRESH_SECONDS)
+        || fresh.observation.finished_at_unix > now + CLOCK_SKEW_SECONDS
+        || inventory != baseline.observation
+    {
+        return Err(Error::ArchiveObservationMismatch);
+    }
+    Ok(fresh)
+}
+
 pub(super) async fn recorded(
     tx: &Transaction<'_>,
     scope: &Scope,

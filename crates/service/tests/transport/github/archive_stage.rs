@@ -130,7 +130,7 @@ fn archive_spool(f: &Fixture, bind: &Value) -> (PathBuf, Value, archive_payload:
     (spool, spec, full)
 }
 
-fn assert_rejected(output: Output, code: &str) {
+pub(super) fn assert_rejected(output: Output, code: &str) {
     assert!(!output.status.success());
     let body: Value = serde_json::from_slice(&output.stdout).unwrap_or_else(|_| {
         panic!(
@@ -145,6 +145,16 @@ fn assert_rejected(output: Output, code: &str) {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires PostgreSQL, real Git bundle, no live GitHub App"]
 async fn archive_stage_retains_all_roots_atomically_with_one_resumable_upload() {
+    Box::pin(exercise_archive(false)).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires PostgreSQL and a real Git bundle; external archive observations are fixtures"]
+async fn archive_stage_activates_native_authority_and_admits_pulls_atomically() {
+    Box::pin(exercise_archive(true)).await;
+}
+
+async fn exercise_archive(activate: bool) {
     let mut f = Fixture::new_with_authority(Authority::Connected).await;
     f.importer();
     let bridge = provision_bridge(&f);
@@ -349,19 +359,20 @@ async fn archive_stage_retains_all_roots_atomically_with_one_resumable_upload() 
     assert_rejected(request(&f, &stage), "idempotency_conflict");
     assert_eq!(read_counts().await, [2, 2, 1, 0]);
     Box::pin(verify_retained_archive(
-        &f, server, &bridge, upload, &receipt, &full,
+        &mut f, server, &bridge, upload, &receipt, &full, activate,
     ))
     .await;
     f.cleanup().await;
 }
 
 async fn verify_retained_archive(
-    f: &Fixture,
+    f: &mut Fixture,
     server: Process,
     bridge: &Path,
     upload: Uuid,
     stage: &Value,
     full: &archive_payload::FullArchive,
+    activate: bool,
 ) {
     use treeharbor_metadata::{
         Error,
@@ -460,6 +471,19 @@ async fn verify_retained_archive(
         archive_observation::exercise(f, bridge, stage, "verify-retained", full).await;
     let retained_payload =
         Box::pin(archive_payload::retain(f, bridge, &observation_state, full)).await;
+
+    if activate {
+        Box::pin(archive_activation::exercise(
+            f,
+            server,
+            bridge,
+            stage,
+            &observed,
+            retained_payload,
+        ))
+        .await;
+        return;
+    }
 
     // Revoke the binding between the trusted projection and its database write.
     let mut db = Database::new(f.config.clone())

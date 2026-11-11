@@ -95,7 +95,24 @@ atomically retains the verified roots and the stage receipt. The real
 PostgreSQL fixture rejects a forged patch, rolls back a failed receipt write,
 completes the original upload on retry and recovers the pinned manifest from
 a cold backup. The stage creates no native refs or accepted ChangeSets.
-Native admission and the fenced authority switch remain separate work.
+The [archive-activate command](github-connection.md#activate-standalone-from-an-archived-repository)
+uses a second matching observation of the archived host to switch an idle
+Connected repository to Standalone. Schema 34 stores the original GitHub
+pull identity separately from agent runs. The transaction initializes native
+refs, imports ready proposals, revokes the old binding and increments the
+epoch. Unresolved pulls keep their source in the staged archive. Ready
+proposals enter native review with their original discussion link and fresh
+validation requirements.
+
+The PostgreSQL/CLI drill uses a real archive with three branches and a fork
+PR. It rejects a changed inventory, an active lease, a missing pin and a
+credential without both permissions. A forced receipt failure rolls back the
+whole transfer. After a service restart the same request succeeds, exact
+replay returns the receipt and old-epoch writes are fenced. The native rebase
+and candidate review show the original PR identity. A separately authorized
+validator and reviewer supply fresh evidence before landing. Ordinary Git
+recovers the landed payload and the original merge history from export.
+Schema 34 also passes a populated schema-33 agent lineage upgrade.
 
 ## Export multiple branches to Git — 0.1.20-alpha.1
 

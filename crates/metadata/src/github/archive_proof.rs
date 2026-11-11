@@ -7,7 +7,7 @@ use treeharbor_core::{Object, ObjectId, ObjectStore, RevisionRef};
 use treeharbor_git_bridge::{self as git, Limits};
 use treeharbor_storage::ManagedStore;
 
-#[derive(Debug, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub(super) struct StageReceipt {
     version: u8,
@@ -159,11 +159,12 @@ pub enum ArchiveProofWork {
     Verify(Box<RetainedArchive>),
 }
 
+#[derive(PartialEq, Eq)]
 pub struct RetainedArchive {
     stage_key: String,
-    receipt: StageReceipt,
+    pub(super) receipt: StageReceipt,
     backend: String,
-    generations: BTreeMap<ObjectId, i64>,
+    pub(super) generations: BTreeMap<ObjectId, i64>,
 }
 
 /// This value is produced only from verified objects read on the server.
@@ -198,7 +199,7 @@ impl ObjectStore for ArchiveStore<'_> {
 
 impl RetainedArchive {
     pub fn verify(
-        self,
+        &self,
         store: &ManagedStore,
         scratch: &Path,
         deadline: Instant,
@@ -248,11 +249,58 @@ impl RetainedArchive {
             return Err(git::Error::InvalidProjection);
         }
         Ok(VerifiedArchive {
-            stage_key: self.stage_key,
-            receipt: self.receipt,
-            backend: self.backend,
+            stage_key: self.stage_key.clone(),
+            receipt: self.receipt.clone(),
+            backend: self.backend.clone(),
         })
     }
+}
+
+pub(super) async fn retained_source(
+    tx: &Transaction<'_>,
+    scope: &Scope,
+    stage_key: &str,
+    receipt: StageReceipt,
+) -> Result<RetainedArchive> {
+    let backend = retained_backend(tx, scope, &receipt).await?;
+    let spec = &receipt.specification;
+    let limits = Limits::default();
+    if spec.object_count as usize > limits.objects
+        || spec.encoded_bytes as u64 > limits.source_bytes
+    {
+        return Err(Error::UploadLimit);
+    }
+    let rows = tx
+        .query(
+            r#"
+        SELECT i.digest,i.generation FROM th_source_upload_items i
+        JOIN th_objects o ON o.tenant=i.tenant AND o.digest=i.digest AND o.generation=i.generation
+        WHERE i.tenant=$1 AND i.repository=$2 AND i.upload=$3 AND i.complete
+            AND o.state='live' AND o.backend=$4 AND o.kind=i.kind AND o.length=i.length
+        LIMIT $5
+        "#,
+            &[
+                &scope.tenant(),
+                &scope.repository(),
+                &receipt.upload,
+                &backend,
+                &(spec.object_count + 1),
+            ],
+        )
+        .await?;
+    if rows.len() != spec.object_count as usize {
+        return Err(Error::UploadMembership);
+    }
+    let generations = rows
+        .into_iter()
+        .map(|row| Ok((uploads::oid(row.get(0))?, row.get(1))))
+        .collect::<Result<_>>()?;
+    Ok(RetainedArchive {
+        stage_key: stage_key.into(),
+        receipt,
+        backend,
+        generations,
+    })
 }
 
 fn proof_request(auth: &Authorization, command: &Command, stage_key: &str) -> Result<Request> {
@@ -279,38 +327,9 @@ impl Metadata {
         let tx = mutation.transaction();
         let scope = auth.scope();
         let receipt = stage(tx, scope, command.epoch, stage_key).await?;
-        let backend = retained_backend(tx, scope, &receipt).await?;
-        let spec = &receipt.specification;
-        let limits = Limits::default();
-        if spec.object_count as usize > limits.objects
-            || spec.encoded_bytes as u64 > limits.source_bytes
-        {
-            return Err(Error::UploadLimit);
-        }
-        let rows = tx.query(
-            r#"
-            SELECT i.digest,i.generation FROM th_source_upload_items i
-            JOIN th_objects o ON o.tenant=i.tenant AND o.digest=i.digest AND o.generation=i.generation
-            WHERE i.tenant=$1 AND i.repository=$2 AND i.upload=$3 AND i.complete
-                AND o.state='live' AND o.backend=$4 AND o.kind=i.kind AND o.length=i.length
-            LIMIT $5
-            "#,
-            &[&scope.tenant(), &scope.repository(), &receipt.upload, &backend, &(spec.object_count + 1)],
-        ).await?;
-        if rows.len() != spec.object_count as usize {
-            return Err(Error::UploadMembership);
-        }
-        let generations = rows
-            .into_iter()
-            .map(|row| Ok((uploads::oid(row.get(0))?, row.get(1))))
-            .collect::<Result<_>>()?;
+        let retained = retained_source(tx, scope, stage_key, receipt).await?;
         mutation.tx.commit().await?;
-        Ok(ArchiveProofWork::Verify(Box::new(RetainedArchive {
-            stage_key: stage_key.to_owned(),
-            receipt,
-            backend,
-            generations,
-        })))
+        Ok(ArchiveProofWork::Verify(Box::new(retained)))
     }
 
     pub async fn record_archive_proof(

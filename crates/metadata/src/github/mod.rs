@@ -5,6 +5,7 @@ pub(crate) mod projections;
 pub use projections::ProjectionSpec;
 mod admission_evidence;
 mod admission_policy;
+mod archive_activate;
 mod archive_artifact;
 mod archive_observation;
 mod archive_proof;
@@ -14,6 +15,7 @@ mod archive_retention;
 mod archive_stage;
 mod host_policy;
 pub use admission_policy::{AdmissionPolicy, ManagedRequirement};
+pub use archive_activate::{ArchiveActivateSpec, ArchiveActivateWork};
 pub use archive_artifact::{
     ARCHIVE_ARTIFACT_FORMAT, ArchiveArtifact, ArchiveArtifactManifest, ArchiveArtifactSpec,
     archive_manifest_fingerprint, pack_archive_artifact,

@@ -1,7 +1,7 @@
 //! Pin verified proposal inputs for a later authority handoff.
 use super::{
     archive_observation,
-    archive_proof::ArchiveStore,
+    archive_proof::{ArchiveStore, operation_receipt},
     archive_proposals::{VerifiedProposals, verify_proposals},
     archive_retention::{ArchiveStored, retained_archive_in},
     *,
@@ -84,9 +84,9 @@ fn operation(
 }
 
 #[derive(PartialEq, Eq)]
-struct Objects {
-    backend: String,
-    generations: BTreeMap<ObjectId, i64>,
+pub(super) struct Objects {
+    pub(super) backend: String,
+    pub(super) generations: BTreeMap<ObjectId, i64>,
     manifest_length: i64,
 }
 
@@ -108,18 +108,28 @@ async fn active_objects(
     {
         return Err(Error::UploadState);
     }
-    let backend: String = session.get("backend");
+    objects(tx, scope, upload, session.get("backend"), spec, true).await
+}
+
+async fn objects(
+    tx: &Transaction<'_>,
+    scope: &Scope,
+    upload: Uuid,
+    backend: &str,
+    spec: &ArchiveProposalStageSpec,
+    require_hold: bool,
+) -> Result<Objects> {
     let rows = tx
         .query(
             r#"
         SELECT i.digest,i.generation,i.length,i.kind
         FROM th_source_upload_items i
         JOIN th_objects o ON o.tenant=i.tenant AND o.digest=i.digest AND o.generation=i.generation
-        JOIN th_object_holds h ON h.tenant=i.tenant AND h.token=i.hold_token
-            AND h.digest=i.digest AND h.generation=i.generation
         WHERE i.tenant=$1 AND i.repository=$2 AND i.upload=$3 AND i.complete
             AND o.state='live' AND o.backend=$4 AND o.kind=i.kind AND o.length=i.length
-            AND h.expires_at>clock_timestamp()
+            AND (NOT $6 OR EXISTS (SELECT 1 FROM th_object_holds h
+                WHERE h.tenant=i.tenant AND h.token=i.hold_token AND h.digest=i.digest
+                  AND h.generation=i.generation AND h.expires_at>clock_timestamp()))
         LIMIT $5
         "#,
             &[
@@ -128,6 +138,7 @@ async fn active_objects(
                 &upload,
                 &backend,
                 &(spec.object_count + 1),
+                &require_hold,
             ],
         )
         .await?;
@@ -151,7 +162,7 @@ async fn active_objects(
         return Err(Error::UploadMembership);
     }
     Ok(Objects {
-        backend,
+        backend: backend.into(),
         generations,
         manifest_length: manifest_length.ok_or(Error::UploadMembership)?,
     })
@@ -188,17 +199,123 @@ pub enum ArchiveProposalStageWork {
     Verify(Box<ArchiveProposalStage>),
 }
 
+#[derive(PartialEq, Eq)]
 pub struct ArchiveProposalStage {
     upload: Uuid,
     specification: ArchiveProposalStageSpec,
-    archive: ArchiveStored,
-    objects: Objects,
+    pub(super) archive: ArchiveStored,
+    pub(super) objects: Objects,
 }
 
 pub struct VerifiedArchiveProposalStage {
-    stage: Box<ArchiveProposalStage>,
+    pub(super) stage: Box<ArchiveProposalStage>,
     manifest: ObjectId,
-    proposals: VerifiedProposals,
+    pub(super) proposals: VerifiedProposals,
+}
+
+#[derive(Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub(super) struct StageReceipt {
+    version: u8,
+    state: String,
+    authority: String,
+    key: String,
+    tenant: String,
+    repository: Uuid,
+    epoch: i64,
+    binding: Uuid,
+    upload: Uuid,
+    specification: ArchiveProposalStageSpec,
+    manifest_generation: i64,
+    open_pulls: usize,
+    ready: usize,
+    needs_resolution: usize,
+    root_count: usize,
+}
+
+pub(super) async fn open_staged(
+    tx: &Transaction<'_>,
+    scope: &Scope,
+    epoch: i64,
+    key: &str,
+) -> Result<(StageReceipt, Box<ArchiveProposalStage>)> {
+    let receipt: StageReceipt =
+        serde_json::from_value(operation_receipt(tx, scope, key, STAGE).await?)
+            .map_err(|_| Error::SchemaMismatch)?;
+    let spec = &receipt.specification;
+    if receipt.version != 1
+        || receipt.state != "staged"
+        || receipt.authority != "connected"
+        || receipt.key != key
+        || spec.key()? != key
+        || receipt.tenant != scope.tenant()
+        || receipt.repository != scope.repository()
+        || receipt.upload.is_nil()
+    {
+        return Err(Error::SchemaMismatch);
+    }
+    if receipt.epoch != epoch {
+        return Err(Error::Fenced);
+    }
+    let archive = checked_archive(tx, scope, epoch, &spec.retained_key).await?;
+    if archive.observation().request.binding != receipt.binding {
+        return Err(Error::ArchiveArtifactMismatch);
+    }
+    let row = tx
+        .query_opt(
+            r#"
+        SELECT backend FROM th_source_uploads WHERE tenant=$1 AND repository=$2 AND upload=$3
+            AND state='completed' AND authority='connected' AND epoch=$4 AND github_import IS NULL
+            AND max_objects=$5 AND reserved_objects=$5 AND max_bytes=$6 AND reserved_bytes=$6
+        "#,
+            &[
+                &scope.tenant(),
+                &scope.repository(),
+                &receipt.upload,
+                &epoch,
+                &spec.object_count,
+                &spec.encoded_bytes,
+            ],
+        )
+        .await?
+        .ok_or(Error::UploadMembership)?;
+    let objects = objects(tx, scope, receipt.upload, row.get(0), spec, false).await?;
+    if objects.generations.get(&spec.validate()?) != Some(&receipt.manifest_generation) {
+        return Err(Error::UploadMembership);
+    }
+    let stage = Box::new(ArchiveProposalStage {
+        upload: receipt.upload,
+        specification: spec.clone(),
+        archive,
+        objects,
+    });
+    Ok((receipt, stage))
+}
+
+pub(super) async fn check_retained_proposals(
+    tx: &Transaction<'_>,
+    scope: &Scope,
+    receipt: &StageReceipt,
+    proof: &VerifiedArchiveProposalStage,
+) -> Result<()> {
+    let proposals = &proof.proposals;
+    if receipt.open_pulls != proposals.count
+        || receipt.ready != proposals.ready
+        || receipt.needs_resolution != proposals.count - proposals.ready
+        || receipt.root_count != proposals.roots.len()
+    {
+        return Err(Error::ArchiveArtifactMismatch);
+    }
+    let (digests, generations, holders) = root_pins(&receipt.key, proof)?;
+    let count: i64 = tx.query_one(r#"
+        SELECT count(*) FROM unnest($3::bytea[],$4::bigint[],$5::text[]) AS r(digest,generation,holder)
+        JOIN th_object_pins p ON p.tenant=$1 AND p.repository=$2 AND p.holder=r.holder
+            AND p.digest=r.digest AND p.generation=r.generation
+        "#, &[&scope.tenant(), &scope.repository(), &digests, &generations, &holders]).await?.get(0);
+    if count != digests.len() as i64 {
+        return Err(Error::UploadMembership);
+    }
+    Ok(())
 }
 
 impl ArchiveProposalStage {
@@ -261,14 +378,9 @@ impl ArchiveProposalStage {
     }
 }
 
-// Lock the current catalogue rows before creating root pins, in digest order.
-// The already verified source-upload holds protect their reachable children.
-async fn pin_roots(
-    tx: &Transaction<'_>,
-    scope: &Scope,
-    key: &str,
-    proof: &VerifiedArchiveProposalStage,
-) -> Result<()> {
+type Pins = (Vec<Vec<u8>>, Vec<i64>, Vec<String>);
+
+fn root_pins(key: &str, proof: &VerifiedArchiveProposalStage) -> Result<Pins> {
     let mut digests = Vec::with_capacity(proof.proposals.roots.len());
     let mut generations = Vec::with_capacity(digests.capacity());
     let mut holders = Vec::with_capacity(digests.capacity());
@@ -289,6 +401,18 @@ async fn pin_roots(
                 .ok_or(Error::UploadMembership)?,
         );
     }
+    Ok((digests, generations, holders))
+}
+
+// Lock the current catalogue rows before creating root pins, in digest order.
+// The already verified source-upload holds protect their reachable children.
+async fn pin_roots(
+    tx: &Transaction<'_>,
+    scope: &Scope,
+    key: &str,
+    proof: &VerifiedArchiveProposalStage,
+) -> Result<()> {
+    let (digests, generations, holders) = root_pins(key, proof)?;
     let pinned = tx
         .execute(
             r#"

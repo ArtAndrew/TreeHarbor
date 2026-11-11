@@ -4,7 +4,11 @@ use treeharbor_metadata::github::ArchiveInventoryDigest;
 
 const REQUEST_KEY: &str = "confirm-archive-source";
 
-async fn bridge_command(f: &Fixture, credential: &Credential, fields: Value) -> client::Reply {
+pub(super) async fn bridge_command(
+    f: &Fixture,
+    credential: &Credential,
+    fields: Value,
+) -> client::Reply {
     client::send(
         &f.config.socket,
         &credential.token,

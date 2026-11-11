@@ -45,7 +45,9 @@ struct Record {
     changeset: Uuid,
     source_version: i64,
     result_version: Option<i64>,
-    run: Uuid,
+    run: Option<Uuid>,
+    archived_pull: Option<Uuid>,
+    github_pull: Option<Value>,
     principal: String,
     epoch: i64,
     state: String,
@@ -58,31 +60,44 @@ struct Record {
 }
 impl Record {
     fn json(&self) -> Value {
-        json!({"rebase":self.rebase.to_string(),"changeset":self.changeset.to_string(),
+        let mut result = json!({"rebase":self.rebase.to_string(),"changeset":self.changeset.to_string(),
             "source_version":self.source_version,"result_version":self.result_version,
-            "run":self.run.to_string(),"onto":RevisionRef::Native(self.input.current_revision).to_string(),
+            "run":self.run,"onto":RevisionRef::Native(self.input.current_revision).to_string(),
             "epoch":self.epoch,"state":self.state,"unexpired":self.unexpired,
             "profile":self.profile,"revision":self.revision.map(|r|RevisionRef::Native(r).to_string()),
-            "failure":self.failure})
+            "failure":self.failure});
+        if let Some(origin) = &self.github_pull {
+            result["github_pull"] = origin.clone();
+        }
+        result
     }
 }
 async fn record(tx: &Transaction<'_>, s: &Scope, id: Uuid) -> Result<Record> {
-    let row=tx.query_opt(r#"SELECT r.*,v.run,v.base_revision,v.base_snapshot,v.operations,v.result_snapshot,
+    let row=tx.query_opt(r#"SELECT r.*,v.run,v.archived_pull,p.origin AS github_pull,v.base_revision,v.base_snapshot,v.operations,v.result_snapshot,
         v.base_pin,v.operations_pin,v.result_pin,b.snapshot AS onto_snapshot,b.pin_holder AS onto_pin,
         (r.expires_at>clock_timestamp()) AS unexpired
         FROM th_change_rebases r JOIN th_change_versions v
         ON v.tenant=r.tenant AND v.repository=r.repository AND v.changeset=r.changeset AND v.version=r.source_version
+        LEFT JOIN th_archive_pull_origins p ON (p.tenant,p.repository,p.changeset)=(v.tenant,v.repository,v.changeset)
         JOIN th_bases b ON b.tenant=r.tenant AND b.repository=r.repository AND b.revision=r.onto
         WHERE r.tenant=$1 AND r.repository=$2 AND r.rebase=$3"#,
         &[&s.tenant,&s.repository,&id]).await?.ok_or(Error::NotFound)?;
     let changeset: Uuid = row.get("changeset");
     let source_version: i64 = row.get("source_version");
-    let run: Uuid = row.get("run");
+    let run: Option<Uuid> = row.get("run");
+    let archived_pull: Option<Uuid> = row.get("archived_pull");
+    let source = match (run, archived_pull) {
+        (Some(run), None) => run.to_string(),
+        (None, Some(origin)) => format!("github-pull/{origin}"),
+        _ => return Err(Error::SchemaMismatch),
+    };
     Ok(Record {
         rebase: id,
         changeset,
         source_version,
         run,
+        archived_pull,
+        github_pull: row.get("github_pull"),
         result_version: row.get("result_version"),
         principal: row.get("principal"),
         epoch: row.get("epoch"),
@@ -102,7 +117,7 @@ async fn record(tx: &Transaction<'_>, s: &Scope, id: Uuid) -> Result<Record> {
             current_revision: native(&row.get::<_, String>("onto"))?,
             current_snapshot: object(row.get("onto_snapshot"))?,
             timestamp_seconds: row.get("timestamp_seconds"),
-            label: format!("{id}/{changeset}/{source_version}/{run}"),
+            label: format!("{id}/{changeset}/{source_version}/{source}"),
         },
         source_pins: vec![
             row.get("base_pin"),
@@ -368,7 +383,7 @@ impl Metadata {
             return Err(Error::VersionConflict);
         }
         let onto = RevisionRef::Native(r.input.current_revision).to_string();
-        tx.tx.execute("INSERT INTO th_change_versions(tenant,repository,changeset,version,run,base_revision,base_snapshot,operations,result_snapshot,base_pin,operations_pin,result_pin,operation_key) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)",&[&s.tenant,&s.repository,&r.changeset,&version,&r.run,&onto,&bytes(applied.base_snapshot()),&bytes(applied.operations()),&bytes(applied.result_snapshot()),&base_pin,&operations_pin,&result_pin,&cmd.key]).await?;
+        tx.tx.execute("INSERT INTO th_change_versions(tenant,repository,changeset,version,run,base_revision,base_snapshot,operations,result_snapshot,base_pin,operations_pin,result_pin,operation_key,archived_pull) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)",&[&s.tenant,&s.repository,&r.changeset,&version,&r.run,&onto,&bytes(applied.base_snapshot()),&bytes(applied.operations()),&bytes(applied.result_snapshot()),&base_pin,&operations_pin,&result_pin,&cmd.key,&r.archived_pull]).await?;
         tx.tx.execute("INSERT INTO th_change_rebase_lineage(tenant,repository,changeset,result_version,source_version,rebase,revision,pin_holder) VALUES($1,$2,$3,$4,$5,$6,$7,$8)",&[&s.tenant,&s.repository,&r.changeset,&version,&r.source_version,&id,&bytes(computed.revision()),&revision_pin]).await?;
         tx.tx.execute("UPDATE th_change_rebases SET state='ready',result_version=$4,revision=$5 WHERE tenant=$1 AND repository=$2 AND rebase=$3",&[&s.tenant,&s.repository,&id,&version,&bytes(computed.revision())]).await?;
         // Only this owner's superseded proposals are invalidated. Already landed

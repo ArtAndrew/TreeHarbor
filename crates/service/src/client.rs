@@ -415,7 +415,7 @@ pub(crate) async fn verify_archive(
     .await
 }
 
-pub(crate) async fn finish_archive_upload(
+pub(crate) async fn archive_operation(
     socket: &Path,
     credential: &Credential,
     path: &'static str,

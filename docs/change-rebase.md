@@ -2,9 +2,14 @@
 
 An owner can reapply one accepted ChangeSet version onto an exact registered
 native revision. This creates version N+1, a recomputed delta against that base,
-and a single-parent native commit. It retains version N and the original AgentRun.
+and a single-parent native commit. It retains version N and its source lineage.
 The original workspace can already be draining. No ref moves and no CI or review
 evidence is created by rebasing. This development feature is Standalone only.
+
+An [archived GitHub proposal](github-connection.md#activate-standalone-from-an-archived-repository)
+retains `github_pull` through a native rebase. Versions derived from the
+archived patch have `run: null`. A later version from an agent records the
+actual run and keeps the original PR provenance.
 
 This is a one-ChangeSet operation, not rewriting a stack of historical commits.
 Integration still creates its own candidate against the then-current target.

@@ -5,6 +5,7 @@ use crate::{
     Authority, Begin, Error, Event, Job, Metadata, Mutation, Request, Result, Scope, identifier,
 };
 use serde_json::{Value, json};
+use tokio_postgres::Row;
 use treeharbor_core::{AppliedChange, Commit, Object, RevisionRef};
 use uuid::Uuid;
 
@@ -115,6 +116,15 @@ fn event(kind: &str, payload: Value) -> Event {
     Event {
         kind: kind.into(),
         payload,
+    }
+}
+
+/// `run` identifies a real execution. The separate origin survives later
+/// versions produced by a human's agent run or by a native rebase.
+pub(crate) fn change_lineage(row: &Row, result: &mut Value) {
+    result["run"] = json!(row.get::<_, Option<Uuid>>("run"));
+    if let Some(origin) = row.get::<_, Option<Value>>("github_pull") {
+        result["github_pull"] = origin;
     }
 }
 
@@ -365,9 +375,11 @@ impl Metadata {
 
     /// Caller must authenticate repository read access; a UUID is not a capability.
     pub async fn change_version(&self, scope: &Scope, id: Uuid, version: i64) -> Result<Value> {
-        let row=self.client.query_opt(r#"SELECT v.run,v.base_revision,v.base_snapshot,v.operations,v.result_snapshot,r.origin,a.task,a.generation
-            FROM th_change_versions v JOIN th_agent_runs r USING(tenant,repository,run)
-            LEFT JOIN th_remote_task_attempts a USING(tenant,repository,run)
+        let row=self.client.query_opt(r#"SELECT v.run,v.base_revision,v.base_snapshot,v.operations,v.result_snapshot,r.origin,a.task,a.generation,p.origin AS github_pull
+            FROM th_change_versions v
+            LEFT JOIN th_agent_runs r ON (r.tenant,r.repository,r.run)=(v.tenant,v.repository,v.run)
+            LEFT JOIN th_remote_task_attempts a ON (a.tenant,a.repository,a.run)=(v.tenant,v.repository,v.run)
+            LEFT JOIN th_archive_pull_origins p ON (p.tenant,p.repository,p.changeset)=(v.tenant,v.repository,v.changeset)
             WHERE v.tenant=$1 AND v.repository=$2 AND v.changeset=$3 AND v.version=$4"#,
             &[&scope.tenant,&scope.repository,&id,&version]).await?.ok_or(Error::NotFound)?;
         let object = |index| -> Result<String> {
@@ -377,9 +389,10 @@ impl Metadata {
             )
             .to_string())
         };
-        let mut result = json!({"changeset":id.to_string(),"version":version,"state":"accepted","run":row.get::<_,Uuid>(0).to_string(),
+        let mut result = json!({"changeset":id.to_string(),"version":version,"state":"accepted",
             "base_revision":row.get::<_,String>(1),"base_snapshot":object(2)?,"operations":object(3)?,"result_snapshot":object(4)?});
-        if row.get::<_, String>(5) == "external_api" {
+        change_lineage(&row, &mut result);
+        if row.get::<_, Option<&str>>(5) == Some("external_api") {
             result["run_origin"] = json!("external_api");
             result["execution_observed"] = json!(false);
         }
