@@ -15,6 +15,8 @@ mod events;
 #[cfg(target_os = "linux")]
 #[path = "github/git_workspace_runtime.rs"]
 mod git_workspace_runtime;
+#[path = "github/native_handoff.rs"]
+mod native_handoff;
 #[path = "github/projections.rs"]
 mod projections;
 #[path = "github/recovery.rs"]

@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "tenant": "fixture",
+  "repository": "00112233-4455-6677-8899-aabbccddeeff",
+  "epoch": 4,
+  "freeze_key": "fixture-native-freeze",
+  "revision": "native:sha256:1111111111111111111111111111111111111111111111111111111111111111"
+}

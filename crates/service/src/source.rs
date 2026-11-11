@@ -108,6 +108,8 @@ pub(crate) fn metadata(error: treeharbor_metadata::Error) -> Failure {
         "not_found" => 404,
         "upload_limit" => 429,
         "repository_fenced"
+        | "native_handoff_busy"
+        | "native_handoff_mismatch"
         | "execution_state_changed"
         | "rebase_state_changed"
         | "version_conflict"

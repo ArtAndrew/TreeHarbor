@@ -93,6 +93,9 @@ object/policy digests are `sha256:<64 lowercase hex>` and revisions are
 | `ref_policy` | `name`, `generation` (expected current), `policy` | `policy.write` |
 | `ref_resolve` | `name` | `read` |
 | `ref_snapshot` | None | `read` |
+| `handoff_freeze` | None | `repository.write` |
+| `handoff_snapshot` | `epoch`, `freeze_key` | `read` |
+| `handoff_resume` | `freeze_key`, `target_stays_fenced` | `repository.write` |
 | `enqueue` | `entry` UUID, `target`, `changeset` UUID, `version` | `queue.request`, proposal owner |
 | `queue_pending` | `target`, `after` (nonnegative position), `limit` (1–100) | `read` |
 | `queue_status` | `entry` UUID | `read` |
@@ -121,6 +124,10 @@ Use the returned exact heads and epoch for [source export](live-source-export.md
 and [one Git bundle](git-export.md#export-several-branches). The snapshot
 describes one instant. The caller must stop branch writers and verify the final
 tips separately for an authority transfer.
+
+Use the [frozen handoff export](git-export.md#freeze-standalone-writes-and-export-a-handoff-bundle)
+to keep the captured refs stable while preparing a reverse transfer. The
+`handoff_snapshot` read takes the frozen epoch and the freeze key.
 
 ### Start a new project with empty history
 

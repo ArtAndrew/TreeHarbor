@@ -664,6 +664,24 @@ pub(crate) async fn github_projection_export(
     .await
 }
 
+pub(crate) async fn handoff_source_export(
+    socket: &Path,
+    credential: &Credential,
+    fields: Value,
+    output: std::fs::File,
+    timeout: Duration,
+) -> Result<RawReply> {
+    export_request(
+        socket,
+        credential,
+        fields,
+        output,
+        timeout,
+        crate::source_export::HANDOFF_PATH,
+    )
+    .await
+}
+
 fn scoped_fields(credential: &Credential, mut fields: Value) -> Result<Vec<u8>> {
     if !fields.is_object() {
         return Err(Error::Config);

@@ -216,6 +216,34 @@ enum Download {
         epoch: i64,
         revision: ObjectId,
     },
+    FrozenHandoff {
+        key: String,
+        epoch: i64,
+        revision: ObjectId,
+    },
+}
+
+pub(crate) async fn download_frozen_handoff(
+    socket: &Path,
+    credential: &crate::client::Credential,
+    key: &str,
+    epoch: i64,
+    revision: ObjectId,
+    output: &Path,
+    timeout: std::time::Duration,
+) -> crate::Result<crate::client::Reply> {
+    download_inner(
+        socket,
+        credential,
+        Download::FrozenHandoff {
+            key: key.into(),
+            epoch,
+            revision,
+        },
+        output,
+        timeout,
+    )
+    .await
 }
 
 pub async fn download_projection(
@@ -254,6 +282,22 @@ async fn download_inner(
     }
     let archive = tempfile::tempfile_in(parent)?;
     let (revision, raw) = match purpose {
+        Download::FrozenHandoff {
+            key,
+            epoch,
+            revision,
+        } => (
+            revision,
+            crate::client::handoff_source_export(
+                socket,
+                credential,
+                serde_json::json!({"freeze_key":key,"epoch":epoch,
+                    "revision":treeharbor_core::RevisionRef::Native(revision).to_string()}),
+                archive,
+                timeout,
+            )
+            .await?,
+        ),
         Download::Source(fence) => (
             fence.revision,
             crate::client::source_export(

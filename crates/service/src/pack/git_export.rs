@@ -1,6 +1,8 @@
 use super::{Error, Limits, MAX_PACK_BYTES, MAX_PACK_OBJECTS, Pack};
 use crate::{Error as ServiceError, archive, client, files};
+use serde::Serialize;
 use serde_json::json;
+use sha2::{Digest, Sha256};
 use std::{
     collections::{BTreeMap, btree_map::Entry},
     fs,
@@ -11,7 +13,7 @@ use std::{
 };
 use treeharbor_core::{Object, ObjectId, ObjectStore, RevisionRef};
 use treeharbor_git_bridge as git_bridge;
-use treeharbor_metadata::{Authority, exports::ExportFence};
+use treeharbor_metadata::{Authority, exports::ExportFence, integration::HandoffFreeze};
 use treeharbor_storage::LocalStore;
 
 /// Read only the verified members of the input packs. Shared objects use one
@@ -97,11 +99,20 @@ pub(crate) struct LiveExport<'a> {
     pub socket: &'a Path,
     pub credential: &'a client::Credential,
     pub epoch: i64,
+    pub freeze_key: Option<String>,
     pub output: PathBuf,
     pub git: PathBuf,
     pub algorithm: git_bridge::HashAlgorithm,
     pub request_timeout: Duration,
     pub timeout: Duration,
+}
+
+#[derive(Serialize)]
+struct FrozenExport<'a> {
+    version: u8,
+    freeze: &'a HandoffFreeze,
+    projection_sha256: String,
+    bundle_sha256: &'a str,
 }
 
 fn remaining(deadline: Instant) -> crate::Result<Duration> {
@@ -110,6 +121,23 @@ fn remaining(deadline: Instant) -> crate::Result<Duration> {
         return Err(git_bridge::Error::Limit.into());
     }
     Ok(duration)
+}
+
+async fn capture(request: &LiveExport<'_>, deadline: Instant) -> crate::Result<client::Reply> {
+    let fields = match &request.freeze_key {
+        Some(key) => json!({"action":"handoff_snapshot","freeze_key":key,"epoch":request.epoch}),
+        None => json!({"action":"ref_snapshot"}),
+    };
+    let body = request
+        .credential
+        .request(json!({"method":"native","request":fields}));
+    client::send(
+        request.socket,
+        &request.credential.token,
+        serde_json::to_vec(&body).map_err(|_| ServiceError::Config)?,
+        request.request_timeout.min(remaining(deadline)?),
+    )
+    .await
 }
 
 pub(crate) async fn export_standalone(request: LiveExport<'_>) -> crate::Result<client::Reply> {
@@ -122,22 +150,24 @@ pub(crate) async fn export_standalone(request: LiveExport<'_>) -> crate::Result<
         Err(error) => return Err(error.into()),
     }
 
-    let body = request
-        .credential
-        .request(json!({"method":"native","request":{"action":"ref_snapshot"}}));
-    let mut reply = client::send(
-        request.socket,
-        &request.credential.token,
-        serde_json::to_vec(&body).map_err(|_| ServiceError::Config)?,
-        request.request_timeout.min(remaining(deadline)?),
-    )
-    .await?;
+    let mut reply = capture(&request, deadline).await?;
     if !reply.status.is_success() {
         return Ok(reply);
     }
 
-    let snapshot = reply.body["result"].take();
     let scope = &request.credential.scope;
+    let captured = reply.body["result"].take();
+    let (snapshot, freeze) = match &request.freeze_key {
+        Some(key) => {
+            let freeze: HandoffFreeze =
+                serde_json::from_value(captured).map_err(|_| ServiceError::ExportSnapshot)?;
+            freeze
+                .validate(scope, request.epoch, key)
+                .map_err(|_| ServiceError::ExportSnapshot)?;
+            (json!(freeze.snapshot), Some(freeze))
+        }
+        None => (captured, None),
+    };
     if snapshot["version"] != 1
         || snapshot["tenant"] != scope.tenant()
         || snapshot["repository"] != scope.repository().to_string()
@@ -183,18 +213,32 @@ pub(crate) async fn export_standalone(request: LiveExport<'_>) -> crate::Result<
     let mut objects = MAX_PACK_OBJECTS;
     for (revision, tree) in heads {
         let path = stage.path().join(super::hex(revision.as_bytes()));
-        let downloaded = archive::download(
-            request.socket,
-            request.credential,
-            ExportFence {
-                authority: Authority::Standalone,
-                epoch: request.epoch,
+        let timeout = request.request_timeout.min(remaining(deadline)?);
+        let downloaded = if let Some(key) = &request.freeze_key {
+            archive::download_frozen_handoff(
+                request.socket,
+                request.credential,
+                key,
+                request.epoch,
                 revision,
-            },
-            &path,
-            request.request_timeout.min(remaining(deadline)?),
-        )
-        .await?;
+                &path,
+                timeout,
+            )
+            .await?
+        } else {
+            archive::download(
+                request.socket,
+                request.credential,
+                ExportFence {
+                    authority: Authority::Standalone,
+                    epoch: request.epoch,
+                    revision,
+                },
+                &path,
+                timeout,
+            )
+            .await?
+        };
         if !downloaded.status.is_success() {
             return Ok(downloaded);
         }
@@ -216,27 +260,60 @@ pub(crate) async fn export_standalone(request: LiveExport<'_>) -> crate::Result<
         .into_iter()
         .map(|(name, revision)| (name, stage.path().join(super::hex(revision.as_bytes()))))
         .collect();
-    let git = request.git;
+    let git = request.git.clone();
     let algorithm = request.algorithm;
-    let manifest = tokio::task::spawn_blocking(move || {
-        let result = export(
+    let result_path = if freeze.is_some() {
+        stage.path().join("verified")
+    } else {
+        output.clone()
+    };
+    let (stage, result_path, manifest) = tokio::task::spawn_blocking(move || {
+        let manifest = export(
             paths,
             &git,
-            &output,
+            &result_path,
             algorithm,
             git_bridge::Limits {
                 timeout: remaining(deadline)?,
                 ..Default::default()
             },
-        );
-        // The projection reads pack files throughout the blocking operation.
-        drop(stage);
-        result
+        )?;
+        Ok::<_, ServiceError>((stage, result_path, manifest))
     })
     .await
     .map_err(|_| ServiceError::ExportWorker)??;
+    let mut body = json!({"snapshot":snapshot,"export":manifest});
+    if let Some(freeze) = freeze {
+        let projection =
+            files::read_private(&result_path.join("manifest.json"), super::MAX_MANIFEST)?;
+        let proof = FrozenExport {
+            version: 1,
+            freeze: &freeze,
+            projection_sha256: ObjectId::from_bytes(Sha256::digest(&projection).into()).to_string(),
+            bundle_sha256: &manifest.bundle_sha256,
+        };
+        let proof = serde_json::to_vec(&proof).map_err(|_| ServiceError::ExportSnapshot)?;
+        files::write_private(&result_path.join("handoff.json"), &proof)?;
+        let final_state = capture(&request, deadline).await?;
+        if !final_state.status.is_success() {
+            return Ok(final_state);
+        }
+        let current: HandoffFreeze = serde_json::from_value(final_state.body["result"].clone())
+            .map_err(|_| ServiceError::ExportSnapshot)?;
+        if current != freeze {
+            return Err(ServiceError::ExportSnapshot);
+        }
+        super::publish_stage(
+            &result_path,
+            &parent,
+            output.file_name().ok_or(Error::Output)?,
+        )?;
+        body["handoff"] =
+            serde_json::from_slice(&proof).map_err(|_| ServiceError::ExportSnapshot)?;
+    }
+    drop(stage);
     Ok(client::Reply {
         status: reply.status,
-        body: json!({"snapshot":snapshot,"export":manifest}),
+        body,
     })
 }

@@ -114,6 +114,21 @@ validator and reviewer supply fresh evidence before landing. Ordinary Git
 recovers the landed payload and the original merge history from export.
 Schema 34 also passes a populated schema-33 agent lineage upgrade.
 
+The [frozen Standalone export](git-export.md#freeze-standalone-writes-and-export-a-handoff-bundle)
+captures every branch in the same transaction that fences native writes.
+The freeze is durable across restarts. The service leases only its captured
+branch roots, and the client publishes a Git bundle, projection and freeze
+proof together. An owner can resume at a new epoch while the destination
+remains fenced. Target publication and verified authority transfer are
+separate work.
+
+The PostgreSQL and CLI drill uses three native branches after archive
+activation and a native landing. It verifies busy and rollback paths, exact
+replay after restart, root and credential fences, and Git recovery of all
+branches. Resuming during the Git projection fences final export publication.
+The prior live Git export drill still verifies criss-cross history and scoped
+reads across a restart.
+
 ## Export multiple branches to Git — 0.1.20-alpha.1
 
 [Git export](git-export.md#export-several-branches) can combine completed source

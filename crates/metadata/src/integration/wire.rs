@@ -72,6 +72,20 @@ pub enum WireCommand {
         name: String,
     },
     RefSnapshot {},
+    HandoffFreeze {
+        key: String,
+        epoch: i64,
+    },
+    HandoffSnapshot {
+        freeze_key: String,
+        epoch: i64,
+    },
+    HandoffResume {
+        key: String,
+        epoch: i64,
+        freeze_key: String,
+        target_stays_fenced: bool,
+    },
     Enqueue {
         key: String,
         epoch: i64,
@@ -170,7 +184,9 @@ impl WireCommand {
             Self::ProgramPut { .. } | Self::PolicyPut { .. } | Self::RefPolicy { .. } => {
                 Permission::PolicyWrite
             }
-            Self::RefCreate { .. } => Permission::RepositoryWrite,
+            Self::RefCreate { .. } | Self::HandoffFreeze { .. } | Self::HandoffResume { .. } => {
+                Permission::RepositoryWrite
+            }
             Self::Enqueue { .. } | Self::Cancel { .. } => Permission::QueueRequest,
             Self::CandidateStart { .. }
             | Self::CandidateFail { .. }
@@ -278,6 +294,27 @@ impl WireCommand {
             }
             Self::RefResolve { name } => db.resolve_native_ref(auth, &name).await,
             Self::RefSnapshot {} => db.snapshot_native_refs(auth).await,
+            Self::HandoffFreeze { key, epoch } => {
+                db.freeze_native_handoff(auth, &Command { key, epoch })
+                    .await
+            }
+            Self::HandoffSnapshot { freeze_key, epoch } => {
+                db.frozen_native_snapshot(auth, epoch, &freeze_key).await
+            }
+            Self::HandoffResume {
+                key,
+                epoch,
+                freeze_key,
+                target_stays_fenced,
+            } => {
+                db.resume_native_handoff(
+                    auth,
+                    &Command { key, epoch },
+                    &freeze_key,
+                    target_stays_fenced,
+                )
+                .await
+            }
             Self::Enqueue {
                 key,
                 epoch,

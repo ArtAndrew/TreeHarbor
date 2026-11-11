@@ -3,6 +3,8 @@
 mod candidates;
 mod evidence;
 mod execution;
+pub(crate) mod handoff;
+pub use handoff::{FrozenSnapshot, HandoffFreeze};
 mod policy;
 mod program;
 pub(crate) use evidence::trusted;
@@ -300,40 +302,11 @@ impl Metadata {
             return Err(Error::Fenced);
         }
         let epoch: i64 = repo.get(2);
-        let rows = tx
-            .query(
-                r#"SELECT r.name,r.head,r.generation,r.epoch,r.policy,b.snapshot
-            FROM th_native_refs r LEFT JOIN th_bases b
-              ON b.tenant=r.tenant AND b.repository=r.repository
-             AND b.revision='native:sha256:' || encode(r.head,'hex')
-            WHERE r.tenant=$1 AND r.repository=$2 ORDER BY r.name COLLATE "C" LIMIT $3"#,
-                &[
-                    &s.tenant(),
-                    &s.repository(),
-                    &((MAX_REF_SNAPSHOT + 1) as i64),
-                ],
-            )
-            .await?;
-        if rows.len() > MAX_REF_SNAPSHOT {
-            return Err(Error::NativeRefSnapshotLimit);
-        }
-        let mut refs = Vec::with_capacity(rows.len());
-        for row in rows {
-            let state = RefState {
-                name: row.get(0),
-                head: id(row.get(1))?,
-                generation: row.get(2),
-                epoch: row.get(3),
-                policy: id(row.get(4))?,
-                snapshot: id(row
-                    .get::<_, Option<Vec<u8>>>(5)
-                    .ok_or(Error::SchemaMismatch)?)?,
-            };
-            if state.epoch != epoch {
-                return Err(Error::Fenced);
-            }
-            refs.push(state.json());
-        }
+        let refs: Vec<_> = capture_refs(&tx, s, epoch)
+            .await?
+            .iter()
+            .map(RefState::json)
+            .collect();
         read_authorized(&tx, auth).await?;
         tx.commit().await?;
         Ok(
@@ -341,6 +314,44 @@ impl Metadata {
             "authority":"standalone","epoch":epoch,"refs":refs}),
         )
     }
+}
+
+async fn capture_refs(tx: &Transaction<'_>, s: &Scope, epoch: i64) -> Result<Vec<RefState>> {
+    let rows = tx
+        .query(
+            r#"SELECT r.name,r.head,r.generation,r.epoch,r.policy,b.snapshot
+        FROM th_native_refs r LEFT JOIN th_bases b
+          ON b.tenant=r.tenant AND b.repository=r.repository
+         AND b.revision='native:sha256:' || encode(r.head,'hex')
+        WHERE r.tenant=$1 AND r.repository=$2 ORDER BY r.name COLLATE "C" LIMIT $3"#,
+            &[
+                &s.tenant(),
+                &s.repository(),
+                &((MAX_REF_SNAPSHOT + 1) as i64),
+            ],
+        )
+        .await?;
+    if rows.len() > MAX_REF_SNAPSHOT {
+        return Err(Error::NativeRefSnapshotLimit);
+    }
+    let mut refs = Vec::with_capacity(rows.len());
+    for row in rows {
+        let state = RefState {
+            name: row.get(0),
+            head: id(row.get(1))?,
+            generation: row.get(2),
+            epoch: row.get(3),
+            policy: id(row.get(4))?,
+            snapshot: id(row
+                .get::<_, Option<Vec<u8>>>(5)
+                .ok_or(Error::SchemaMismatch)?)?,
+        };
+        if state.epoch != epoch {
+            return Err(Error::Fenced);
+        }
+        refs.push(state);
+    }
+    Ok(refs)
 }
 
 impl Mutation<'_> {
