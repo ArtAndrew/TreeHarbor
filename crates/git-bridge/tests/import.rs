@@ -1,7 +1,7 @@
 #![cfg(unix)]
 use std::{
     cell::Cell,
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     fs,
     io::Write,
     os::unix::fs::{DirBuilderExt, PermissionsExt, symlink},
@@ -10,8 +10,8 @@ use std::{
 };
 use treeharbor_core::*;
 use treeharbor_git_bridge::{
-    Export, HashAlgorithm, Import, Limits, WorkspacePack, WorkspacePackIdentity,
-    WorkspacePackScope, WorkspaceSeed, export, import, import_with_workspace_pack,
+    BundleInput, Export, HashAlgorithm, Import, Limits, WorkspacePack, WorkspacePackIdentity,
+    WorkspacePackScope, WorkspaceSeed, export, import, import_branches, import_with_workspace_pack,
     seed_workspace_from_pack,
 };
 use treeharbor_storage::{LocalStore, TenantId};
@@ -138,6 +138,192 @@ impl Fixture {
         }
     }
 }
+#[test]
+fn complete_branch_import_round_trips_shared_and_independent_history() {
+    for algorithm in [HashAlgorithm::Sha1, HashAlgorithm::Sha256] {
+        let f = Fixture::new(algorithm);
+        let empty = f.tree(&[]);
+        let file = f.blob(b"shared bytes\0\xff\n");
+        let files = f.tree(&[(0o100644, &file, b"source")]);
+        let root = f.commit(&empty, &[], "root");
+        let left = f.commit(&files, &[&root], "left");
+        let right = f.commit(&empty, &[&root], "right");
+        let merge = f.commit(&files, &[&left, &right], "merge");
+        let independent = f.commit(&empty, &[], "independent");
+        let heads = BTreeMap::from([
+            ("refs/heads/main", merge.as_str()),
+            ("refs/heads/shared/right", right.as_str()),
+            ("refs/heads/independent", independent.as_str()),
+            ("refs/heads/independent-copy", independent.as_str()),
+        ]);
+        for (name, commit) in &heads {
+            git(&f.repo, &["update-ref", name, commit], b"");
+        }
+        git(&f.repo, &["symbolic-ref", "HEAD", "refs/heads/main"], b"");
+        let bundle = f.dir.path().join("branches.bundle");
+        git(
+            &f.repo,
+            &["bundle", "create", bundle.to_str().unwrap(), "--all"],
+            b"",
+        );
+        let expected: BTreeMap<_, _> = heads
+            .iter()
+            .map(|(name, commit)| (name.to_string(), oid(commit, algorithm)))
+            .collect();
+        let graph: BTreeSet<_> = text(git(&f.repo, &["rev-list", "--all", "--parents"], b""))
+            .lines()
+            .map(str::to_owned)
+            .collect();
+        let store = f.store("native");
+        let imported = import_branches(
+            &store,
+            BundleInput {
+                git: Path::new("/usr/bin/git"),
+                bundle: &bundle,
+                scratch: f.dir.path(),
+                limits: Limits::default(),
+            },
+            &expected,
+        )
+        .unwrap();
+        assert_eq!(imported.refs.len(), expected.len());
+        assert_eq!(imported.refs["refs/heads/main"].filesystem_entries, 1);
+        assert_eq!(
+            imported.refs["refs/heads/shared/right"].filesystem_entries,
+            0
+        );
+        assert_eq!(
+            imported.refs["refs/heads/independent"],
+            imported.refs["refs/heads/independent-copy"]
+        );
+        for (name, origin) in &expected {
+            assert_eq!(imported.refs[name].origin, *origin);
+        }
+        let mut seen = BTreeSet::new();
+        let mut frames = 0;
+        let mut commits = 0;
+        for id in &imported.objects {
+            let object = store.get(*id).unwrap();
+            assert!(
+                object
+                    .references()
+                    .iter()
+                    .all(|(child, _)| seen.contains(child))
+            );
+            assert!(seen.insert(*id));
+            frames += object.encode().unwrap().len() as u64;
+            commits += usize::from(matches!(object, Object::NativeCommit(_)));
+        }
+        assert_eq!(frames, imported.encoded_bytes);
+        assert_eq!(commits, graph.len());
+        fs::remove_dir_all(&f.repo).unwrap();
+        fs::remove_file(&bundle).unwrap();
+        let output = f.dir.path().join("export");
+        let exported = export(
+            &store,
+            Export {
+                git: Path::new("/usr/bin/git"),
+                output: &output,
+                refs: imported
+                    .refs
+                    .into_iter()
+                    .map(|(name, tip)| (name, tip.commit))
+                    .collect(),
+                algorithm,
+                limits: Limits::default(),
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            exported
+                .refs
+                .iter()
+                .map(|(name, tip)| (name.as_str(), tip.git.as_str()))
+                .collect::<BTreeMap<_, _>>(),
+            heads
+        );
+        let restored = f.dir.path().join("restored.git");
+        git(
+            f.dir.path(),
+            &[
+                "clone",
+                "--bare",
+                output.join("history.bundle").to_str().unwrap(),
+                restored.to_str().unwrap(),
+            ],
+            b"",
+        );
+        git(&restored, &["fsck", "--strict"], b"");
+        let restored_graph = text(git(&restored, &["rev-list", "--all", "--parents"], b""));
+        assert_eq!(
+            restored_graph.lines().collect::<BTreeSet<_>>(),
+            graph.iter().map(String::as_str).collect()
+        );
+    }
+}
+
+#[test]
+fn complete_branch_import_refuses_partial_or_changed_inventory_before_native_writes() {
+    use treeharbor_git_bridge::Error as ImportError;
+
+    let f = Fixture::new(HashAlgorithm::Sha1);
+    let empty = f.tree(&[]);
+    let old = f.commit(&empty, &[], "previous main");
+    let main = f.commit(&empty, &[&old], "current main");
+    git(&f.repo, &["update-ref", "refs/heads/main", &main], b"");
+    git(&f.repo, &["update-ref", "refs/heads/older", &old], b"");
+    let bundle = f.dir.path().join("branches.bundle");
+    git(
+        &f.repo,
+        &["bundle", "create", bundle.to_str().unwrap(), "--branches"],
+        b"",
+    );
+    let old = oid(&old, f.algorithm);
+    let main = oid(&main, f.algorithm);
+    let expected = BTreeMap::from([
+        ("refs/heads/main".into(), main),
+        ("refs/heads/older".into(), old),
+    ]);
+    let store = f.store("unused");
+    let request = |bundle| BundleInput {
+        git: Path::new("/usr/bin/git"),
+        bundle,
+        scratch: f.dir.path(),
+        limits: Limits::default(),
+    };
+    let mut moved = expected.clone();
+    moved.insert("refs/heads/main".into(), old);
+    let mut missing = expected.clone();
+    missing.remove("refs/heads/older");
+    let mut extra = expected.clone();
+    extra.insert("refs/heads/absent".into(), old);
+    for inventory in [moved, missing, extra] {
+        assert!(matches!(
+            import_branches(&store, request(&bundle), &inventory),
+            Err(ImportError::RefInventoryMismatch)
+        ));
+    }
+    let tagged = f.dir.path().join("tagged.bundle");
+    git(
+        &f.repo,
+        &["update-ref", "refs/tags/kept-in-git", "refs/heads/main"],
+        b"",
+    );
+    git(
+        &f.repo,
+        &["bundle", "create", tagged.to_str().unwrap(), "--all"],
+        b"",
+    );
+    assert!(matches!(
+        import_branches(&store, request(&tagged), &expected),
+        Err(ImportError::Unsupported(_))
+    ));
+    let empty_native = Object::Directory(Directory::new(vec![]).unwrap())
+        .id()
+        .unwrap();
+    assert!(store.get(empty_native).is_err());
+}
+
 #[test]
 fn an_unrelated_bundled_branch_does_not_enter_the_selected_history() {
     let f = Fixture::new(HashAlgorithm::Sha1);

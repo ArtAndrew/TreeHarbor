@@ -5,7 +5,10 @@
 #![cfg(unix)]
 mod ingest;
 mod origin;
-pub use ingest::{Import, Imported, import, import_with_workspace_pack};
+pub use ingest::{
+    BundleInput, Import, Imported, ImportedBranches, ImportedTip, import, import_branches,
+    import_with_workspace_pack,
+};
 pub mod download;
 mod pack;
 mod process;
@@ -52,6 +55,8 @@ pub enum Error {
     Git(&'static str),
     #[error("Git returned an invalid projection")]
     InvalidProjection,
+    #[error("Git bundle branch inventory does not match the expected refs and tips")]
+    RefInventoryMismatch,
     #[error("invalid export manifest: {0}")]
     Json(#[from] serde_json::Error),
 }
@@ -99,7 +104,7 @@ impl Default for Limits {
         }
     }
 }
-/// Maximum number of branch refs in one Git bundle export.
+/// Maximum number of branch refs in one Git bundle export or complete branch import.
 pub const MAX_EXPORT_REFS: usize = 128;
 
 pub struct Export<'a> {
