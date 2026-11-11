@@ -332,6 +332,50 @@ followed by the hex SHA-256 of `treeharbor-archive-observation\0v1\0` and the
 request key. The observed inventory and verified contents are inputs to
 the subsequent preservation and write-authority transaction.
 
+## Preserve the observed Git refs
+
+Use the same private observation directory and a full local SHA-1 Git bundle
+with every observed branch, tag and `refs/pull/<number>/head`. Include the head
+from the base repository's pull ref for a fork PR. See
+[GitHub's pull ref instructions](https://docs.github.com/en/pull-requests/how-tos/review-pull-requests/checking-out-pull-requests-locally).
+Prepare the bundle from a private bare mirror containing these exact refs.
+Keep the branch-only bundle for `archive-preflight`.
+
+```sh
+git -C "$TH_ARCHIVED_MIRROR" bundle create "$TH_FULL_BUNDLE" \
+  --branches --tags --glob='refs/pull/*/head'
+treeharbor github archive-preserve --state "$TH_SCRATCH/observe-archive-001" \
+  --bundle "$TH_FULL_BUNDLE" --output "$TH_SCRATCH/preserved-archive"
+```
+
+The command matches the saved inventory to the observation receipt, checks
+the exact ref names, object IDs and types, and requires each PR's recorded base
+commit. It verifies a copy in an empty temporary bare repository with
+`git fsck --strict`. Missing, additional or moved refs, filtered or incremental
+bundles, unreachable objects, and damaged history stop publication. An optional
+`HEAD` in the bundle must match the observed default branch. The default bounds
+are 100,000 Git objects, 4 GiB of object contents, 8 GiB of bundle bytes and
+300 seconds for the Git verification. Use a private volume with enough space
+for the copy and the temporary Git object database.
+
+The output is a new private directory containing `archive.bundle` and
+`manifest.json`. The directory is synced and published without replacement.
+If an error leaves an output directory, inspect its digests before retrying.
+The [v1 manifest fixture](../crates/service/tests/fixtures/github-archive-preservation-v1.json)
+defines `format: treeharbor-github-archive`, `version: 1`, the complete
+`receipt` and `inventory`, and `bundle` with hex SHA-256, byte count,
+object count and total uncompressed object bytes. The CLI returns the
+manifest fingerprint, SHA-256 of `treeharbor-github-archive\0v1\0` followed
+by the exact manifest bytes, formatted as `sha256:<hex>`.
+
+Retain both files. An empty SHA-1 Git repository can verify the bundle and
+fetch the branch, tag and pull refs directly. Annotated tag bytes and the
+original fork PR head are preserved. The original PR can be identified by the
+archived repository and PR number in the manifest. Discussion and reviews
+remain at GitHub. This command runs offline against the saved observation.
+Recording the preserved objects on the service and transferring authority
+require separate steps.
+
 ## Retain a connection in a running TreeHarbor server
 
 First migrate the [local service](local-service.md) to the current schema and create a

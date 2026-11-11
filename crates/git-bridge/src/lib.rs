@@ -3,8 +3,13 @@
 //! Callers must retain every source object for the entire export (a live server
 //! needs a read lease/pin; a local immutable pack has a separate lifetime).
 #![cfg(unix)]
+mod archive;
+mod bundle;
 mod ingest;
 mod origin;
+pub use archive::{
+    ArchiveBundle, ArchiveBundleInfo, ArchiveRef, GitObjectKind, verify_archive_bundle,
+};
 pub use ingest::{
     BundleInput, Import, Imported, ImportedBranches, ImportedTip, import, import_branches,
     import_with_workspace_pack,
@@ -57,6 +62,8 @@ pub enum Error {
     InvalidProjection,
     #[error("Git bundle branch inventory does not match the expected refs and tips")]
     RefInventoryMismatch,
+    #[error("Git bundle does not contain exactly the expected archived refs and their objects")]
+    ArchiveInventoryMismatch,
     #[error("invalid export manifest: {0}")]
     Json(#[from] serde_json::Error),
 }

@@ -769,7 +769,7 @@ fn capture_git_inner(request: GitCapture<'_>, scope: Option<&WorkspacePackScope>
     Pack::open(&output)
 }
 
-fn publish_stage(stage: &Path, parent: &Path, name: &OsStr) -> Result<()> {
+pub(crate) fn publish_stage(stage: &Path, parent: &Path, name: &OsStr) -> Result<()> {
     File::open(stage)?.sync_all()?;
     let parent_fd = File::open(parent)?;
     unix(unixfs::renameat_with(

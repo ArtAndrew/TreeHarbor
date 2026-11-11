@@ -57,6 +57,16 @@ and records their digests and exact Git branch tips in PostgreSQL. The
 transport test rejects stale timestamps, moved tips and another bridge, and
 replays the committed receipt after restart and binding revocation.
 
+The offline [archive-preserve command](github-connection.md#preserve-the-observed-git-refs)
+matches a complete Git bundle to the saved observation. The CLI fixture
+removes the original repository, input bundle and observation directory.
+Ordinary Git restores the exact ref set, annotated tag bytes, tag-only commit,
+lightweight tree and blob tags, and a fork PR's head, payload and merge base.
+The command refuses missing pull refs, a wrong tag type, a missing PR base,
+unreachable objects, filtered bundles and truncation without publishing an
+output. The retained archive is a local artifact. Durable service retention,
+native proposals and authority transfer remain separate work.
+
 ## Export multiple branches to Git — 0.1.20-alpha.1
 
 [Git export](git-export.md#export-several-branches) can combine completed source

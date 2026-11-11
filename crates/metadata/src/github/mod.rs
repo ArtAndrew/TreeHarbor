@@ -12,6 +12,7 @@ mod host_policy;
 pub use admission_policy::{AdmissionPolicy, ManagedRequirement};
 pub use archive_observation::{
     ArchiveInventoryDigest, ArchiveObservation, ArchiveObservationContext,
+    ArchiveObservationRequest,
 };
 pub use archive_proof::ArchiveProofWork;
 pub use archive_stage::{ArchiveBranchTip, ArchiveStageSpec};
