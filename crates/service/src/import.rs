@@ -10,7 +10,6 @@ use serde_json::{Value, json};
 use std::{fs::File, path::Path, sync::Arc, time::Duration};
 use treeharbor_core::{ObjectId, ObjectStore, RevisionRef};
 use treeharbor_metadata::Authority;
-use treeharbor_storage::LocalStore;
 use uuid::Uuid;
 
 #[derive(Serialize, Deserialize)]
@@ -146,7 +145,7 @@ pub async fn send(request: Request<'_>) -> Result<Reply> {
 
 pub(crate) enum Finish {
     Command(Value),
-    ArchiveArtifact(Value),
+    ArchiveUpload { path: &'static str, fields: Value },
 }
 
 pub(crate) struct Transfer<'a> {
@@ -162,9 +161,15 @@ impl Transfer<'_> {
     async fn finish(&self) -> Result<Reply> {
         match &self.finish {
             Finish::Command(value) => self.command(value).await,
-            Finish::ArchiveArtifact(value) => {
-                client::archive_retention(self.socket, self.credential, value.clone(), self.timeout)
-                    .await
+            Finish::ArchiveUpload { path, fields } => {
+                client::finish_archive_upload(
+                    self.socket,
+                    self.credential,
+                    path,
+                    fields.clone(),
+                    self.timeout,
+                )
+                .await
             }
         }
     }
@@ -182,7 +187,11 @@ impl Transfer<'_> {
         .await
     }
 
-    pub(crate) async fn send(self, ids: Vec<ObjectId>, store: LocalStore) -> Result<Reply> {
+    pub(crate) async fn send(
+        self,
+        ids: Vec<ObjectId>,
+        store: impl ObjectStore + Send + Sync + 'static,
+    ) -> Result<Reply> {
         // An exact completed receipt is authoritative even after upload expiry.
         let first = self.finish().await?;
         let retry = (first.status.as_u16(), first.body["error"]["code"].as_str());

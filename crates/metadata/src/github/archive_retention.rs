@@ -1,6 +1,9 @@
 //! Retain the full archive with the recorded inventory and exact object generations.
 use super::{
-    archive_artifact::check_archive_artifact, archive_observation, archive_proof::ArchiveStore, *,
+    archive_artifact::{check_archive_artifact, check_archive_manifest},
+    archive_observation,
+    archive_proof::ArchiveStore,
+    *,
 };
 use crate::{
     catalog::{ObjectKey, ObjectLease},
@@ -44,7 +47,7 @@ fn operation(
     ))
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 struct Receipt {
     version: u8,
@@ -197,6 +200,7 @@ fn read_artifact(
     )
 }
 
+#[derive(PartialEq, Eq)]
 pub struct ArchiveStored {
     receipt: Receipt,
     record: ArchiveObservationReceipt,
@@ -204,6 +208,34 @@ pub struct ArchiveStored {
 }
 
 impl ArchiveStored {
+    pub(super) fn observation(&self) -> &ArchiveObservationReceipt {
+        &self.record
+    }
+
+    pub(super) fn fingerprint(&self) -> &str {
+        &self.receipt.specification.manifest_sha256
+    }
+
+    pub(super) fn manifest(
+        &self,
+        store: &ManagedStore,
+        deadline: Instant,
+    ) -> Result<ArchiveArtifactManifest<Upstream>> {
+        if store.backend() != self.objects.backend || store.tenant() != self.record.request.tenant {
+            return Err(Error::ArchiveArtifactMismatch);
+        }
+        let (_, _, manifest) = check_archive_manifest(
+            &ArchiveStore {
+                store,
+                generations: &self.objects.generations,
+            },
+            &self.receipt.specification,
+            &self.record,
+            deadline,
+        )?;
+        Ok(manifest)
+    }
+
     /// Only use a private temporary output. Publish it after successful verification.
     pub fn write(
         &self,
@@ -326,44 +358,67 @@ impl Metadata {
         repository_lock(&tx, scope, false).await?;
         auth.check_transaction(&tx, scope, auth.principal(), Permission::RepositoryWrite)
             .await?;
-        let value = archive_proof::operation_receipt(&tx, scope, key, RETAIN).await?;
-        let receipt: Receipt = serde_json::from_value(value).map_err(|_| Error::SchemaMismatch)?;
-        let spec = &receipt.specification;
-        if receipt.version != 1
-            || receipt.state != "retained"
-            || receipt.key != key
-            || receipt.tenant != scope.tenant()
-            || receipt.repository != scope.repository()
-            || retain_key(spec)? != key
-        {
-            return Err(Error::SchemaMismatch);
-        }
-        let record = archive_observation::historical(&tx, scope, &spec.observation_key).await?;
-        if record.request.binding != receipt.binding || record.request.epoch != receipt.epoch {
-            return Err(Error::SchemaMismatch);
-        }
-        let root = spec.validate()?;
-        let row = tx.query_opt(r#"
-            SELECT u.backend FROM th_source_uploads u
-            JOIN th_object_pins p ON p.tenant=u.tenant AND p.repository=u.repository
-            JOIN th_objects o ON o.tenant=p.tenant AND o.digest=p.digest AND o.generation=p.generation
-            WHERE u.tenant=$1 AND u.repository=$2 AND u.upload=$3 AND u.state='completed'
-                AND u.authority='connected' AND u.epoch=$4 AND u.github_import IS NULL
-                AND u.max_objects=$5 AND u.max_bytes=$6
-                AND p.holder=$7 AND p.digest=$8 AND p.generation=$9 AND o.state='live'
-                AND o.kind=2 AND o.backend=u.backend
-            "#, &[&scope.tenant(), &scope.repository(), &receipt.upload, &receipt.epoch,
-                  &spec.object_count, &spec.encoded_bytes, &key, &root.as_bytes().as_slice(), &receipt.generation])
-            .await?.ok_or(Error::UploadMembership)?;
-        let objects = objects(&tx, scope, receipt.upload, row.get(0), spec).await?;
-        if objects.generations.get(&root) != Some(&receipt.generation) {
-            return Err(Error::UploadMembership);
-        }
+        let archive = retained_archive_in(&tx, scope, key).await?;
         tx.commit().await?;
-        Ok(ArchiveStored {
-            receipt,
-            record,
-            objects,
-        })
+        Ok(archive)
     }
+}
+
+pub(super) async fn retained_archive_in(
+    tx: &Transaction<'_>,
+    scope: &Scope,
+    key: &str,
+) -> Result<ArchiveStored> {
+    let value = archive_proof::operation_receipt(tx, scope, key, RETAIN).await?;
+    let receipt: Receipt = serde_json::from_value(value).map_err(|_| Error::SchemaMismatch)?;
+    let spec = &receipt.specification;
+    if receipt.version != 1
+        || receipt.state != "retained"
+        || receipt.key != key
+        || receipt.tenant != scope.tenant()
+        || receipt.repository != scope.repository()
+        || retain_key(spec)? != key
+    {
+        return Err(Error::SchemaMismatch);
+    }
+    let record = archive_observation::historical(tx, scope, &spec.observation_key).await?;
+    if record.request.binding != receipt.binding || record.request.epoch != receipt.epoch {
+        return Err(Error::SchemaMismatch);
+    }
+    let root = spec.validate()?;
+    let row = tx
+        .query_opt(
+            r#"
+        SELECT u.backend FROM th_source_uploads u
+        JOIN th_object_pins p ON p.tenant=u.tenant AND p.repository=u.repository
+        JOIN th_objects o ON o.tenant=p.tenant AND o.digest=p.digest AND o.generation=p.generation
+        WHERE u.tenant=$1 AND u.repository=$2 AND u.upload=$3 AND u.state='completed'
+            AND u.authority='connected' AND u.epoch=$4 AND u.github_import IS NULL
+            AND u.max_objects=$5 AND u.max_bytes=$6
+            AND p.holder=$7 AND p.digest=$8 AND p.generation=$9 AND o.state='live'
+            AND o.kind=2 AND o.backend=u.backend
+        "#,
+            &[
+                &scope.tenant(),
+                &scope.repository(),
+                &receipt.upload,
+                &receipt.epoch,
+                &spec.object_count,
+                &spec.encoded_bytes,
+                &key,
+                &root.as_bytes().as_slice(),
+                &receipt.generation,
+            ],
+        )
+        .await?
+        .ok_or(Error::UploadMembership)?;
+    let objects = objects(tx, scope, receipt.upload, row.get(0), spec).await?;
+    if objects.generations.get(&root) != Some(&receipt.generation) {
+        return Err(Error::UploadMembership);
+    }
+    Ok(ArchiveStored {
+        receipt,
+        record,
+        objects,
+    })
 }

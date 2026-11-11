@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "tenant": "fixture",
+  "repository": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+  "epoch": 4,
+  "upload": "22222222-2222-4222-8222-222222222222",
+  "specification": {
+    "version": 1,
+    "retained_key": "archive-retained-54e83d0cf66c527a37c42a196365a1f73b3900ca7aa931164d1eb9fa569e271f",
+    "manifest_object": "sha256:da63b94ad09df318ae7bb82b8724d2f5f1e6e3bc6525e7738857ab0bcb284abd",
+    "manifest_sha256": "sha256:4fddec2efec515e9cb75fe16ef4c4243370e87c83cdd7ca4c91be52e39c88055",
+    "object_count": 8,
+    "encoded_bytes": 4825
+  }
+}

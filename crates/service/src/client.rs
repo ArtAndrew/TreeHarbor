@@ -415,9 +415,10 @@ pub(crate) async fn verify_archive(
     .await
 }
 
-pub(crate) async fn archive_retention(
+pub(crate) async fn finish_archive_upload(
     socket: &Path,
     credential: &Credential,
+    path: &'static str,
     fields: Value,
     timeout: Duration,
 ) -> Result<Reply> {
@@ -425,7 +426,7 @@ pub(crate) async fn archive_retention(
         socket,
         &credential.token,
         "POST",
-        crate::archive_retention::PATH.into(),
+        path.into(),
         "application/json",
         scoped_fields(credential, fields)?,
         timeout,

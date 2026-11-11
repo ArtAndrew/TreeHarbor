@@ -93,10 +93,6 @@ pub fn verify_branch_mappings(
     if tips.values().any(|(_, git)| algorithm(*git) != format) {
         return Err(Error::Configuration);
     }
-    let refs = tips
-        .iter()
-        .map(|(name, (native, _))| (name.clone(), *native))
-        .collect();
     let parent = crate::private_parent(&scratch.join("mapping"))?;
     let temp = tempfile::Builder::new()
         .prefix(".treeharbor-mapping-")
@@ -104,12 +100,59 @@ pub fn verify_branch_mappings(
         .tempdir_in(parent)?;
     let graph = stream::write(
         store,
-        &refs,
+        &native_refs(&tips),
         &temp.path().join("projection.pack"),
         format,
         limits,
         Instant::now() + limits.timeout,
     )?;
+    verified(tips, format, graph)
+}
+
+/// Reconstruct the archived pull commit IDs without a Git process or a pack
+/// file. Labels are internal branch-shaped names, never published refs.
+pub fn verify_archive_commit_mappings(
+    store: &impl ObjectStore,
+    tips: BTreeMap<String, (ObjectId, GitOid)>,
+    limits: Limits,
+) -> Result<VerifiedBranchMappings> {
+    check_source_limits(limits)?;
+    if tips.is_empty()
+        || tips.len() > crate::archive::MAX_REFS
+        || tips.iter().any(|(name, (_, oid))| {
+            !crate::valid_ref(name) || !matches!(oid, GitOid::Sha1(bytes) if *bytes != [0; 20])
+        })
+    {
+        return Err(Error::Configuration);
+    }
+    let format = HashAlgorithm::Sha1;
+    let graph = stream::project(
+        store,
+        &native_refs(&tips),
+        format,
+        limits,
+        Instant::now() + limits.timeout,
+        |kind, raw| {
+            if kind == "blob" {
+                crate::ingest::check_import_blob(raw)?;
+            }
+            crate::origin::hash(kind, raw, format)
+        },
+    )?;
+    verified(tips, format, graph)
+}
+
+fn native_refs(tips: &BTreeMap<String, (ObjectId, GitOid)>) -> BTreeMap<String, ObjectId> {
+    tips.iter()
+        .map(|(name, (native, _))| (name.clone(), *native))
+        .collect()
+}
+
+fn verified(
+    tips: BTreeMap<String, (ObjectId, GitOid)>,
+    format: HashAlgorithm,
+    graph: stream::Graph,
+) -> Result<VerifiedBranchMappings> {
     for (native, expected) in tips.values() {
         let oid = graph.commits.get(native).ok_or(Error::InvalidProjection)?;
         if format!("git:{}:{oid}", format.name()) != RevisionRef::Git(*expected).to_string() {

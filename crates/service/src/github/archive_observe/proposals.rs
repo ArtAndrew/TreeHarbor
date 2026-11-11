@@ -1,9 +1,7 @@
 //! Prepare exact native proposals at the optional Git import boundary.
 use super::{Error, Result, files, json, preserve};
 use crate::pack;
-use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use sha2::{Digest, Sha256};
 use std::{
     cell::Cell,
     collections::{BTreeMap, BTreeSet},
@@ -14,18 +12,19 @@ use std::{
     time::{Duration, Instant},
 };
 use treeharbor_core::{
-    Object, ObjectId, ObjectStore, RevisionRef, TreeDiffLimits, diff_snapshots, prepare_change,
+    Object, ObjectId, ObjectStore, TreeDiffLimits, diff_snapshots, prepare_change,
 };
 use treeharbor_git_bridge::{BundleInput, ImportedBranches, Limits, verify_archive_bundle};
-use treeharbor_github::{InventoryPull, RepositoryBinding};
 use treeharbor_history::History;
 use treeharbor_metadata::github::{
-    ArchiveBranchTip, ArchiveObservationRequest, archive_manifest_fingerprint,
+    ARCHIVE_PROPOSALS_FORMAT, ArchiveProposal as Proposal, ArchiveProposalManifest as Manifest,
+    ArchiveProposalPatch as Patch, ArchiveProposalResolution as Resolution,
+    archive_manifest_fingerprint, archive_proposal_labels as labels,
+    archive_proposal_tip as source_tip, archive_proposals_fingerprint as fingerprint,
 };
 use treeharbor_storage::{LocalStore, TenantId};
 
-const FORMAT: &str = "treeharbor-archive-proposals";
-const STORE_TENANT: &str = "archive-proposals";
+pub(super) const STORE_TENANT: &str = "archive-proposals";
 
 #[derive(clap::Args)]
 pub struct Options {
@@ -42,51 +41,6 @@ pub struct Options {
     git: PathBuf,
     #[arg(long, default_value_t = 300, value_parser = clap::value_parser!(u64).range(1..=3600))]
     timeout_seconds: u64,
-}
-
-#[derive(Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-struct Manifest {
-    format: String,
-    version: u8,
-    archive_manifest_sha256: String,
-    archive_bundle_sha256: String,
-    observation: ArchiveObservationRequest,
-    upstream: RepositoryBinding,
-    proposals: Vec<Proposal>,
-    objects: Vec<String>,
-    encoded_bytes: u64,
-}
-
-#[derive(Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-struct Proposal {
-    source: InventoryPull,
-    discussion: String,
-    target_present: bool,
-    base_tip: ArchiveBranchTip,
-    head: ArchiveBranchTip,
-    patch: Patch,
-}
-
-#[derive(Deserialize, Serialize)]
-#[serde(tag = "state", rename_all = "snake_case", deny_unknown_fields)]
-enum Patch {
-    Ready {
-        merge_base: ArchiveBranchTip,
-        operations: String,
-    },
-    NeedsResolution {
-        reason: Resolution,
-        merge_bases: Vec<ArchiveBranchTip>,
-    },
-}
-
-#[derive(Deserialize, Serialize)]
-#[serde(rename_all = "snake_case")]
-enum Resolution {
-    UnrelatedHistory,
-    MultipleMergeBases,
 }
 
 // History and tree diff already bound an individual traversal. This shared
@@ -121,26 +75,6 @@ impl ObjectStore for PlanningStore<'_> {
     }
 }
 
-fn labels(number: u64) -> (String, String) {
-    (
-        format!("refs/heads/archive-pr-{number}-base"),
-        format!("refs/heads/archive-pr-{number}-head"),
-    )
-}
-
-fn source_tip(
-    history: &History<'_, PlanningStore<'_>>,
-    id: ObjectId,
-) -> pack::Result<ArchiveBranchTip> {
-    let commit = history.commit(id)?;
-    let origin = commit.git_origin.ok_or(pack::Error::Invalid)?;
-    Ok(ArchiveBranchTip {
-        git_revision: RevisionRef::Git(origin.oid).to_string(),
-        native_revision: RevisionRef::Native(id).to_string(),
-        snapshot: commit.snapshot.to_string(),
-    })
-}
-
 fn prepare_proposals(
     store: &PlanningStore<'_>,
     limits: Limits,
@@ -149,7 +83,7 @@ fn prepare_proposals(
     mut imported: ImportedBranches,
 ) -> pack::Result<Manifest> {
     let history = History::new(store, limits.objects);
-    let upstream = source.inventory.archive.binding;
+    let upstream = source.receipt.observation.upstream.clone();
     let mut seen: BTreeSet<_> = imported.objects.iter().copied().collect();
     let mut proposals = Vec::with_capacity(source.inventory.open_pulls.len());
     source.inventory.open_pulls.sort_by_key(|pull| pull.number);
@@ -209,7 +143,7 @@ fn prepare_proposals(
                 merge_bases: other
                     .iter()
                     .map(|id| source_tip(&history, *id))
-                    .collect::<pack::Result<_>>()?,
+                    .collect::<treeharbor_core::Result<_>>()?,
             },
         };
         let target_present = source
@@ -230,7 +164,7 @@ fn prepare_proposals(
         });
     }
     Ok(Manifest {
-        format: FORMAT.into(),
+        format: ARCHIVE_PROPOSALS_FORMAT.into(),
         version: 1,
         archive_manifest_sha256: source_fingerprint,
         archive_bundle_sha256: source.bundle.sha256,
@@ -240,13 +174,6 @@ fn prepare_proposals(
         objects: imported.objects.iter().map(ToString::to_string).collect(),
         encoded_bytes: imported.encoded_bytes,
     })
-}
-
-fn fingerprint(bytes: &[u8]) -> ObjectId {
-    let mut digest = Sha256::new();
-    digest.update(b"treeharbor-archive-proposals\0v1\0");
-    digest.update(bytes);
-    ObjectId::from_bytes(digest.finalize().into())
 }
 
 fn prepare(options: Options) -> Result<Value> {
@@ -366,7 +293,7 @@ mod tests {
             .strip_suffix(b"\n")
             .unwrap();
         let manifest: Manifest = serde_json::from_slice(raw).unwrap();
-        assert_eq!(manifest.format, FORMAT);
+        assert_eq!(manifest.format, ARCHIVE_PROPOSALS_FORMAT);
         assert_eq!(manifest.version, 1);
         assert!(matches!(manifest.proposals[0].patch, Patch::Ready { .. }));
         assert!(matches!(

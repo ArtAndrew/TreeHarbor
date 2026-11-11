@@ -3,6 +3,7 @@
 mod api_run_new;
 pub mod archive;
 mod archive_proof;
+mod archive_proposal_stage;
 mod archive_retention;
 mod archive_stage;
 mod backup;

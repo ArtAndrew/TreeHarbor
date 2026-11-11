@@ -7,6 +7,7 @@ use treeharbor_metadata::github::{ArchiveObservation, ArchiveObservationContext}
 pub(super) mod preserve;
 pub(super) mod proposals;
 pub(super) mod retention;
+pub(super) mod stage_proposals;
 
 #[derive(clap::Args)]
 pub struct Options {

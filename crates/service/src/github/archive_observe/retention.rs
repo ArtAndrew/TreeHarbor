@@ -115,9 +115,10 @@ pub(in crate::github) async fn retain(options: RetainOptions) -> Result<bool> {
         begin: json!({"method":"source_begin","key":format!("archive-payload-{upload}-begin"),
             "authority":"connected","epoch":intent.epoch,"upload":upload,"ttl_seconds":intent.ttl_seconds,
             "max_objects":spec.object_count,"max_bytes":spec.encoded_bytes}),
-        finish: Finish::ArchiveArtifact(
-            json!({"epoch":intent.epoch,"upload":upload,"specification":spec}),
-        ),
+        finish: Finish::ArchiveUpload {
+            path: crate::archive_retention::PATH,
+            fields: json!({"epoch":intent.epoch,"upload":upload,"specification":spec}),
+        },
     };
     let reply = transfer.send(artifact.objects, store).await?;
     if reply.status.is_success() {

@@ -455,6 +455,46 @@ snapshot. The manifest fingerprint is SHA-256 over
 Preparation writes a local artifact for migration. Integration requires a
 separate admission step and current Standalone checks and reviews.
 
+### Retain the prepared proposals on the server
+
+Use `archive-proposals-stage` with the `key` from `archive-retain` and the
+`manifest_sha256` from `archive-proposals`. Keep the private journal for
+retries, including a retry after an uncertain response.
+
+```sh
+treeharbor github archive-proposals-stage --socket "$TH_SOCKET" \
+  --credential-file "$TH_OWNER" --epoch "$TH_CONNECTED_EPOCH" \
+  --retained-key "$TH_RETAINED_KEY" --prepared "$TH_SCRATCH/prepared-proposals" \
+  --fingerprint "$TH_PROPOSAL_FINGERPRINT" --state "$TH_SCRATCH/proposal-stage.json"
+```
+
+The service reads the exact retained archive manifest and matches it to the
+recorded observation for the current Connected binding. It recomputes the Git
+IDs of the complete native source graph in Rust, verifies imported first-parent
+deltas, and independently derives each proposal patch or reason for resolution.
+It pins the manifest, source commits and patch objects in the transaction that
+completes the upload and writes its receipt. The `staged` receipt preserves
+these inputs for handoff. `ready` counts patches with an available target and
+one best base. Review, validation, source-authority transfer and publication
+are separate operations.
+
+The [v1 request](../crates/service/tests/fixtures/github-archive-proposal-stage-v1.json)
+uses `POST /v1/github/archive/proposals/stage` over the private service socket
+with `repository.write`. The specification binds the uploaded object set to
+one retained archive. The upload limit is 100,000 source objects and 4 GiB of
+source frames plus one manifest blob up to 64 MiB. `object_count` and
+`encoded_bytes` include the manifest frame. `manifest_object` identifies that
+canonical blob frame, and `manifest_sha256` identifies the exact JSON using
+the domain above. The receipt includes the same specification, the upload and
+manifest generation, the root count and counts of ready and unresolved PRs.
+Its key uses `archive-proposals-` and the observation suffix. Each root pin
+uses `archive-proposal-` and SHA-256 of `treeharbor-archive-proposal-pin\0v1\0`,
+the receipt key and the root's 32 raw digest bytes. Completed replay returns the
+same receipt. Current authorization is checked again at the end of fresh work.
+Use `archive-recover` to verify all original Git bundle bytes again, including
+tag-only data. This staging operation reads the archive manifest and verifies
+the uploaded proposal graphs.
+
 ## Retain a connection in a running TreeHarbor server
 
 First migrate the [local service](local-service.md) to the current schema and create a

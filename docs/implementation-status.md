@@ -88,8 +88,14 @@ shows that a file added only on the current target is outside the patch.
 The same fixture records criss-cross and unrelated histories for resolution,
 and compares the original pull identities after source loss. The PostgreSQL
 fixture also prepares a fork proposal from the cold-restored archive.
-The output is a private migration artifact. Server admission and the fenced
-authority switch are pending.
+The [archive-proposals-stage command](github-connection.md#retain-the-prepared-proposals-on-the-server)
+verifies the exact archive manifest, Git commit projections and canonical native
+deltas from the uploaded frames. It uses the ordinary object catalogue and
+atomically retains the verified roots and the stage receipt. The real
+PostgreSQL fixture rejects a forged patch, rolls back a failed receipt write,
+completes the original upload on retry and recovers the pinned manifest from
+a cold backup. The stage creates no native refs or accepted ChangeSets.
+Native admission and the fenced authority switch remain separate work.
 
 ## Export multiple branches to Git — 0.1.20-alpha.1
 
