@@ -71,6 +71,10 @@ def exercise(h, landed, managed, pending, overlap):
                                "--parents", *options, "main").stdout
         return {row[0]: row[1:] for row in map(str.split, text.splitlines())}
 
+    def export_branches(output, credential, check=True):
+        return h.cli("client", "--socket", h.socket, "--credential-file", credential,
+                     "git-export", "--epoch", "1", "--output", output, check=check)
+
     try:
         assert h.native("ref_resolve", h.reviewer, name="main")["head"] == overlap_revision
         complete_history = history()
@@ -109,6 +113,13 @@ def exercise(h, landed, managed, pending, overlap):
         for case in h.cases:
             managed.docker("rm", "--force", "treeharbor-" + case["attempt"], check=False)
         before = snapshot("treeharbor_test")
+        expected_refs = {
+            "refs/heads/" + ref["name"]: "sha256:" + ref["head"].removeprefix("\\x")
+            for ref in before[0]["th_native_refs"]
+            if ref["repository"] == h.repository
+        }
+        assert expected_refs["refs/heads/main"] == overlap_revision.removeprefix("native:")
+        assert len(set(expected_refs.values())) > 1
         # Use the installed Rust command and real matching container pg_dump;
         # do not synthesize dump bytes, snapshots or success.
         docker = shutil.which("docker")
@@ -279,6 +290,29 @@ def exercise(h, landed, managed, pending, overlap):
         assert history(first_parent=True) == first_parent_history
         recovered_git = h.export_and_restore(overlap_landing, "cold-restored-overlap", "alpha + beta\n")
         assert git_history(recovered_git) == before_git
+        reader = h.principal("restored-export-reader", "human", ["read"])
+        all_branches = h.root / "cold-restored-branches"
+        exported = json.loads(export_branches(all_branches, reader).stdout)
+        captured = exported["snapshot"]
+        assert captured["repository"] == h.repository and captured["epoch"] == 1
+        assert len(captured["refs"]) == len(expected_refs)
+        assert {"refs/heads/" + ref["name"]: ref["head"].removeprefix("native:")
+                for ref in captured["refs"]} == expected_refs
+        bundle = json.loads((all_branches / "manifest.json").read_bytes())
+        assert bundle == exported["export"]
+        assert {name: ref["native"] for name, ref in bundle["refs"].items()} == expected_refs
+        complete_git = h.root / "cold-restored-branches.git"
+        managed.command("/usr/bin/git", "-c", "core.hooksPath=/dev/null", "clone", "--bare",
+                        all_branches / "history.bundle", complete_git)
+        managed.command("/usr/bin/git", "--git-dir", complete_git, "fsck", "--strict")
+        refs = managed.command("/usr/bin/git", "--git-dir", complete_git, "for-each-ref",
+                               "--format=%(refname) %(objectname)", "refs/heads").stdout
+        assert dict(line.split() for line in refs.splitlines()) == {
+            name: ref["git"] for name, ref in bundle["refs"].items()
+        }
+        assert bundle["refs"]["refs/heads/main"]["git"] == git_head
+        assert git_history(complete_git) == before_git
+        print(f"PASS installed live Git export: restored all {len(expected_refs)} branch tips and the exact merge graph", flush=True)
         changed = h.client("diff", "--authority", "standalone", "--epoch", "1", "change",
                            "--changeset", h.change["changeset"], "--version", "1", credential=h.agents[0])
         assert changed["after_snapshot"] == h.change["result_snapshot"]
@@ -305,6 +339,10 @@ def exercise(h, landed, managed, pending, overlap):
             assert result.returncode != 0, label
             assert history(check=False).returncode != 0
             assert not output.exists(), "failed export exposed a successful output"
+            partial = h.root / ("rejected-branches-" + label)
+            assert export_branches(partial, reader, check=False).returncode != 0, label
+            assert not partial.exists(), "failed live export published an incomplete bundle"
+            assert not list(h.root.glob(".treeharbor-branch-packs-*")), label
             frame.write_bytes(saved)
         h.server.kill()
         h.server.wait(timeout=10)
