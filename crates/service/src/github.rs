@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 use treeharbor_github::{AppCredentials, Connection, RepositoryBinding};
 use uuid::Uuid;
+mod archive_preflight;
 mod check_publication;
 mod dequeue;
 mod import;
@@ -292,6 +293,8 @@ pub enum Action {
         #[arg(long)]
         config: PathBuf,
     },
+    /// Match a full local Git bundle to a GitHub repository archived by its owner.
+    ArchivePreflight(archive_preflight::Options),
     /// Discover current heads and all PR states after restore; does not reconnect
     /// the service, resolve discrepancies or grant any publication permission.
     RestoreInventory {
@@ -773,6 +776,7 @@ pub async fn run(action: Action) -> Result<bool> {
             );
             Ok(true)
         }
+        Action::ArchivePreflight(options) => archive_preflight::run(options).await,
         Action::RestoreInventory { config } => {
             let (credentials, config) = load(&config)?;
             let observation = Connection::new(credentials)?

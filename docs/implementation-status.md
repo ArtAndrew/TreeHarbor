@@ -9,6 +9,20 @@ below retain evidence from individual increments. Their earlier statements about
 unfinished work describe the scope at that time; they are not a replacement for
 the current overview or the full [release gate ledger](#release-gate-ledger).
 
+## Archived GitHub branch import preflight (development)
+
+[`github archive-preflight`](github-connection.md#verify-a-bundle-from-an-archived-repository)
+matches a complete Git bundle against the observed branch inventory of an
+archived GitHub repository. The shared importer converts each reachable Git
+object once and verifies the native history and tree of each branch tip. The
+result describes the observed source. Write-authority transfer is separate.
+
+The Git bridge fixture restores shared and independent histories, a merge and
+two branch names at one tip for both local Git object formats. Moved, omitted
+and unexpected branch heads and advertised tags fail before native writes. The
+GitHub transport fixtures check both complete paginated reads, archive changes,
+repository token scope and revocation.
+
 ## Export multiple branches to Git — 0.1.20-alpha.1
 
 [Git export](git-export.md#export-several-branches) can combine completed source

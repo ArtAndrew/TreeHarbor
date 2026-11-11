@@ -1,7 +1,7 @@
-//! Complete history of one pinned Git commit; no ref authority or network fetch.
+//! Complete history of pinned Git commits; no ref authority or network fetch.
 use crate::{
-    Error, HashAlgorithm, Limits, Result, WorkspacePackIdentity, WorkspacePackScope,
-    check_deadline, check_limits, origin, process, retained, stream,
+    Error, HashAlgorithm, Limits, MAX_EXPORT_REFS, Result, WorkspacePackIdentity,
+    WorkspacePackScope, check_deadline, check_limits, origin, process, retained, stream, valid_ref,
 };
 use std::{
     cell::RefCell,
@@ -33,6 +33,36 @@ pub struct Imported {
     pub objects: Vec<ObjectId>,
     pub encoded_bytes: u64,
     pub filesystem_entries: usize,
+}
+
+pub struct BundleInput<'a> {
+    pub git: &'a Path,
+    pub bundle: &'a Path,
+    /// Existing private directory owned by the operator, outside any agent tree.
+    pub scratch: &'a Path,
+    pub limits: Limits,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct ImportedTip {
+    pub origin: GitOid,
+    pub commit: ObjectId,
+    pub snapshot: ObjectId,
+    pub filesystem_entries: usize,
+}
+
+pub struct ImportedBranches {
+    pub refs: BTreeMap<String, ImportedTip>,
+    /// Union of the complete native closures, child before parent.
+    pub objects: Vec<ObjectId>,
+    pub encoded_bytes: u64,
+}
+
+const IMPORT_REF: &str = "refs/heads/import";
+
+enum Selection<'a> {
+    Commit(GitOid, Option<&'a WorkspacePackScope>),
+    Branches(&'a BTreeMap<String, GitOid>),
 }
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Kind {
@@ -304,13 +334,22 @@ fn git_oid(bytes: &[u8], algorithm: HashAlgorithm) -> Result<GitOid> {
         )),
     }
 }
+
+fn oid_parts(oid: &GitOid) -> (HashAlgorithm, &[u8]) {
+    match oid {
+        GitOid::Sha1(bytes) => (HashAlgorithm::Sha1, bytes),
+        GitOid::Sha256(bytes) => (HashAlgorithm::Sha256, bytes),
+    }
+}
+
 fn convert(
     store: &impl ObjectStore,
     source: &mut Source,
-    target: Vec<u8>,
+    targets: &BTreeSet<Vec<u8>>,
+    refs: &BTreeMap<String, GitOid>,
     limits: Limits,
     deadline: Instant,
-) -> Result<Imported> {
+) -> Result<ImportedBranches> {
     let budget = Budget {
         store,
         limits,
@@ -322,11 +361,14 @@ fn convert(
     };
     let empty = budget.put(&Object::Directory(Directory::new(vec![])?))?;
     let empty_snapshot = budget.put(&Object::Snapshot { root: empty })?;
-    let mut pending = vec![(target.clone(), Kind::Commit, false)];
+    let mut pending: Vec<_> = targets
+        .iter()
+        .map(|target| (target.clone(), Kind::Commit, false))
+        .collect();
     let mut state = BTreeMap::<Vec<u8>, (Kind, Option<ObjectId>)>::new();
     let mut edges = 0usize;
     let mut visits = 0usize;
-    let mut last_entries = 0;
+    let mut tip_entries = BTreeMap::new();
     while let Some((oid, kind, finish)) = pending.pop() {
         check_deadline(deadline)?;
         if !finish && let Some((seen, done)) = state.get(&oid) {
@@ -417,7 +459,10 @@ fn convert(
                     .map(|p| mapped(p))
                     .collect::<Result<Vec<_>>>()?;
                 let root = mapped(&parsed.tree)?;
-                last_entries = stream::check_paths(&budget, root, &mut visits, limits, deadline)?;
+                let entries = stream::check_paths(&budget, root, &mut visits, limits, deadline)?;
+                if targets.contains(&oid) {
+                    tip_entries.insert(oid.clone(), entries);
+                }
                 let snapshot = budget.put(&Object::Snapshot { root })?;
                 let base = if let Some(parent) = parents.first() {
                     let Object::NativeCommit(c) = budget.get(*parent)? else {
@@ -453,25 +498,34 @@ fn convert(
         };
         state.get_mut(&oid).ok_or(Error::InvalidProjection)?.1 = Some(native);
     }
-    let root = state
-        .get(&target)
-        .and_then(|(_, id)| *id)
-        .ok_or(Error::InvalidProjection)?;
-    let Object::NativeCommit(c) = budget.get(root)? else {
-        return Err(Error::InvalidProjection);
-    };
-    let (objects, encoded_bytes) = stream::ordered(
-        &budget,
-        &BTreeMap::from([("refs/heads/import".into(), root)]),
-        limits,
-        deadline,
-    )?;
-    Ok(Imported {
-        commit: root,
-        snapshot: c.snapshot,
+    let mut tips = BTreeMap::new();
+    let mut roots = BTreeMap::new();
+    for (name, origin) in refs {
+        let (_, target) = oid_parts(origin);
+        let root = state
+            .get(target)
+            .and_then(|(_, id)| *id)
+            .ok_or(Error::InvalidProjection)?;
+        let Object::NativeCommit(commit) = budget.get(root)? else {
+            return Err(Error::InvalidProjection);
+        };
+        let filesystem_entries = *tip_entries.get(target).ok_or(Error::InvalidProjection)?;
+        roots.insert(name.clone(), root);
+        tips.insert(
+            name.clone(),
+            ImportedTip {
+                origin: *origin,
+                commit: root,
+                snapshot: commit.snapshot,
+                filesystem_entries,
+            },
+        );
+    }
+    let (objects, encoded_bytes) = stream::ordered(&budget, &roots, limits, deadline)?;
+    Ok(ImportedBranches {
+        refs: tips,
         objects,
         encoded_bytes,
-        filesystem_entries: last_entries,
     })
 }
 
@@ -479,7 +533,7 @@ fn convert(
 /// Partial writes on error belong to caller-owned staging storage, not a live repo.
 /// Input is a complete local bundle; no source config, checkout or network access.
 pub fn import(store: &impl ObjectStore, request: Import<'_>) -> Result<Imported> {
-    import_inner(store, request, None)
+    import_one(store, request, None)
 }
 
 /// Also retain the complete original Git pack when its verified object set
@@ -490,15 +544,109 @@ pub fn import_with_workspace_pack(
     request: Import<'_>,
     scope: &WorkspacePackScope,
 ) -> Result<Imported> {
-    import_inner(store, request, Some(scope))
+    import_one(store, request, Some(scope))
 }
 
-fn import_inner(
+/// Verify the complete advertised branch inventory against an independently
+/// captured map, then import the union of all branch histories in one pass.
+/// An optional advertised HEAD must point to one of those branches. Other refs
+/// are rejected. No refs or authority are changed; use caller-owned staging.
+pub fn import_branches(
+    store: &impl ObjectStore,
+    request: BundleInput<'_>,
+    expected: &BTreeMap<String, GitOid>,
+) -> Result<ImportedBranches> {
+    import_inner(store, request, Selection::Branches(expected))
+}
+
+fn import_one(
     store: &impl ObjectStore,
     request: Import<'_>,
     scope: Option<&WorkspacePackScope>,
 ) -> Result<Imported> {
+    let ImportedBranches {
+        mut refs,
+        objects,
+        encoded_bytes,
+    } = import_inner(
+        store,
+        BundleInput {
+            git: request.git,
+            bundle: request.bundle,
+            scratch: request.scratch,
+            limits: request.limits,
+        },
+        Selection::Commit(request.commit, scope),
+    )?;
+    let tip = refs.remove(IMPORT_REF).ok_or(Error::InvalidProjection)?;
+    Ok(Imported {
+        commit: tip.commit,
+        snapshot: tip.snapshot,
+        objects,
+        encoded_bytes,
+        filesystem_entries: tip.filesystem_entries,
+    })
+}
+
+fn verify_bundle_refs(
+    mut unbundled: File,
+    algorithm: HashAlgorithm,
+    expected: &BTreeMap<String, GitOid>,
+) -> Result<()> {
+    // The Git command already bounded this file before any native writes.
+    let mut listing = String::new();
+    unbundled.read_to_string(&mut listing)?;
+    let mut head = None;
+    let mut found = BTreeSet::new();
+    for line in listing.split_terminator('\n') {
+        let (oid, name) = line.split_once(' ').ok_or(Error::InvalidProjection)?;
+        let oid = git_oid(&origin::parse_oid(oid.as_bytes(), algorithm)?, algorithm)?;
+        if name == "HEAD" {
+            if head.replace(oid).is_some() {
+                return Err(Error::InvalidProjection);
+            }
+            continue;
+        }
+        if !valid_ref(name) {
+            return Err(Error::Unsupported(
+                "bundle advertises a non-branch or unsupported ref",
+            ));
+        }
+        if expected.get(name) != Some(&oid) || !found.insert(name) {
+            return Err(Error::RefInventoryMismatch);
+        }
+    }
+    if found.len() != expected.len()
+        || head.is_some_and(|oid| !expected.values().any(|v| *v == oid))
+    {
+        return Err(Error::RefInventoryMismatch);
+    }
+    Ok(())
+}
+
+fn import_inner(
+    store: &impl ObjectStore,
+    request: BundleInput<'_>,
+    selection: Selection<'_>,
+) -> Result<ImportedBranches> {
     check_limits(request.limits, request.git)?;
+    let single;
+    let refs = match selection {
+        Selection::Commit(oid, _) => {
+            single = BTreeMap::from([(IMPORT_REF.into(), oid)]);
+            &single
+        }
+        Selection::Branches(expected) => expected,
+    };
+    let first = refs.values().next().ok_or(Error::Configuration)?;
+    let algorithm = oid_parts(first).0;
+    if refs.len() > MAX_EXPORT_REFS
+        || refs.keys().any(|name| !valid_ref(name))
+        || refs.values().any(|oid| oid_parts(oid).0 != algorithm)
+    {
+        return Err(Error::Configuration);
+    }
+    let targets: BTreeSet<_> = refs.values().map(|oid| oid_parts(oid).1.to_vec()).collect();
     let meta = fs::symlink_metadata(request.scratch)?;
     if !meta.is_dir()
         || meta.uid() != rustix::process::geteuid().as_raw()
@@ -536,10 +684,6 @@ fn import_inner(
         copied.write_all(&buffer[..n])?;
     }
     drop(copied);
-    let (algorithm, target) = match request.commit {
-        GitOid::Sha1(oid) => (HashAlgorithm::Sha1, oid.to_vec()),
-        GitOid::Sha256(oid) => (HashAlgorithm::Sha256, oid.to_vec()),
-    };
     let repo = scratch.path().join("source.git");
     let template = scratch.path().join("empty-template");
     fs::create_dir(&repo)?;
@@ -573,7 +717,7 @@ fn import_inner(
         None,
         1 << 20,
     )?;
-    git.run(
+    let unbundled = git.capture(
         Some(&repo),
         "unbundle source",
         &[
@@ -584,29 +728,30 @@ fn import_inner(
         None,
         1 << 20,
     )?;
-    let target_hex = origin::hex(&target);
-    git.run(
-        Some(&repo),
-        "fsck source",
-        &[
-            "fsck".into(),
-            "--strict".into(),
-            "--no-reflogs".into(),
-            "--no-dangling".into(),
-            target_hex.clone().into(),
-        ],
-        None,
-        1 << 20,
-    )?;
+    if let Selection::Branches(expected) = selection {
+        verify_bundle_refs(unbundled, algorithm, expected)?;
+    }
+    let target_hex = targets
+        .iter()
+        .map(|oid| std::ffi::OsString::from(origin::hex(oid)));
+    let mut fsck = vec![
+        "fsck".into(),
+        "--strict".into(),
+        "--no-reflogs".into(),
+        "--no-dangling".into(),
+    ];
+    fsck.extend(target_hex.clone());
+    git.run(Some(&repo), "fsck source", &fsck, None, 1 << 20)?;
+    let mut rev_list = vec![
+        "rev-list".into(),
+        "--objects".into(),
+        "--no-object-names".into(),
+    ];
+    rev_list.extend(target_hex);
     let listing = git.capture(
         Some(&repo),
         "list source objects",
-        &[
-            "rev-list".into(),
-            "--objects".into(),
-            "--no-object-names".into(),
-            target_hex.into(),
-        ],
+        &rev_list,
         None,
         request.limits.objects as u64 * 66,
     )?;
@@ -638,18 +783,19 @@ fn import_inner(
         request.limits.source_bytes + request.limits.objects as u64 * 100,
     )?;
     let mut source = Source::open(output, &oids, algorithm, request.limits, deadline)?;
-    let imported = convert(store, &mut source, target, request.limits, deadline)?;
-    if let Some(scope) = scope
+    let imported = convert(store, &mut source, &targets, refs, request.limits, deadline)?;
+    if let Selection::Commit(origin, Some(scope)) = selection
         && let Ok(pack) = retained::exact_pack(&git, &repo, algorithm, &seen, deadline)
     {
+        let tip = &imported.refs[IMPORT_REF];
         let _ = retained::save(
             request.scratch,
             pack,
             WorkspacePackIdentity {
                 scope,
-                native: imported.commit,
-                snapshot: imported.snapshot,
-                origin: request.commit,
+                native: tip.commit,
+                snapshot: tip.snapshot,
+                origin,
             },
             retained::Bounds {
                 objects: imported.objects.len().max(seen.len()),

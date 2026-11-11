@@ -125,6 +125,38 @@ cryptographic/TLS libraries and the OS may retain transient copies. This is not 
 claim of protection against a compromised operator process, memory dump or host.
 Agents never receive the App key or upstream token.
 
+## Verify a bundle from an archived repository
+
+`github archive-preflight` checks that a complete local bundle contains the exact
+branch tips and history of a GitHub repository archived by its owner. GitHub
+makes an archived repository read-only. Keep it archived throughout a handoff.
+[GitHub archive behavior](https://docs.github.com/en/repositories/archiving-a-github-repository/archiving-repositories)
+
+Use a complete bare clone of that repository and an existing private scratch
+directory. This command uses the App configuration above with Contents and
+Metadata read access to the selected repository.
+
+```sh
+umask 077
+git -C "$TH_BARE_CLONE" bundle create "$TH_SCRATCH/source.bundle" --branches
+treeharbor github archive-preflight --config "$TH_APP_CONFIG" \
+  --bundle "$TH_SCRATCH/source.bundle" --scratch "$TH_SCRATCH"
+```
+
+TreeHarbor checks the pinned repository identity and archive state, reads the
+branch set twice, verifies every page and revokes the App token. It then imports
+the shared history into temporary native storage and matches every advertised
+branch and Git tip to the observed set. The v1 JSON report contains `archive`
+with the scoped observation and its timestamps, `branches` with each full ref's
+Git revision, native revision and snapshot, and the distinct source object count
+and encoded bytes. The temporary store is removed after the check.
+
+The branch limit is 128. Use `--branches` for the bundle. Tags and other
+advertised refs are rejected, and the usual [Git import limits](git-import.md#isolation-limits-and-recovery)
+apply. Use the report as a preflight for source fidelity. Switching write
+authority still requires a separate transaction and verification against the
+current host state.
+
 ## Retain a connection in a running TreeHarbor server
 
 First migrate the [local service](local-service.md) to the current schema and create a

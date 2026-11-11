@@ -21,8 +21,8 @@ pub use transport::publisher::{BranchObservation, BranchOutcome, BranchResult};
 pub use transport::pulls::{ExpectedPull, PullIdentity, PullObservation, PullSnapshot, PullTarget};
 pub use transport::pulls::{ObservedRestorePull, RestorePullReport};
 pub use transport::restore_inventory::{
-    InventoryCommit, InventoryHead, InventoryObject, InventoryPull, InventoryRepositoryId,
-    RestoreInventory,
+    ArchivedBranches, InventoryCommit, InventoryHead, InventoryObject, InventoryPull,
+    InventoryRepositoryId, RestoreInventory,
 };
 
 pub const API_VERSION: &str = "2026-03-10";
@@ -118,10 +118,13 @@ pub enum Stage {
     WebhookDeliveryDetail,
     WebhookRedelivery,
     RestoreInventory,
+    ArchivedBranches,
 }
 /// Never retains response bodies, URLs, private keys, tokens or upstream errors.
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum Error {
+    #[error("GitHub archive or complete branch inventory could not be confirmed")]
+    ArchivedBranches,
     #[error("GitHub restore inventory is incomplete, inconsistent or exceeds its bound")]
     RestoreInventory,
     #[error("GitHub webhook recovery identity, configuration or delivery does not match")]

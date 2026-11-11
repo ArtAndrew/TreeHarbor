@@ -27,6 +27,148 @@ fn pull(number: u64, state: &str) -> Value {
 fn body(request: &[u8]) -> Value {
     serde_json::from_str(request_text(request).split("\r\n\r\n").nth(1).unwrap()).unwrap()
 }
+
+fn archived_repository() -> Value {
+    let mut repo = repository();
+    repo["archived"] = json!(true);
+    repo
+}
+
+fn archive_access(repo: Value) -> Vec<Vec<u8>> {
+    vec![
+        response(200, installation()),
+        response(201, token()),
+        response(200, json!({"total_count":1,"repositories":[{"id":11}]})),
+        response(200, repo),
+    ]
+}
+
+fn archived_page(nodes: Value, total: usize, cursor: Option<&str>, more: bool) -> Value {
+    let mut value = page(nodes, total, cursor, more);
+    value["data"]["repository"]["isArchived"] = json!(true);
+    value
+}
+
+#[tokio::test]
+async fn archived_branch_observation_reads_every_page_twice_and_revokes_the_read_token() {
+    let mut main = head(1);
+    main["name"] = json!("main");
+    let topic = head(2);
+    let first = archived_page(json!([main]), 2, Some("next"), true);
+    let second = archived_page(json!([topic]), 2, None, false);
+    let mut responses = archive_access(archived_repository());
+    responses.extend([
+        response(200, first.clone()),
+        response(200, second.clone()),
+        response(200, first),
+        response(200, second),
+        response(200, json!({"total_count":1,"repositories":[{"id":11}]})),
+        response(200, archived_repository()),
+        revoked(),
+    ]);
+    let (c, host) = host(responses).await;
+    let inventory = c.observe_archived_branches(&binding()).await.unwrap();
+    let mut actual = serde_json::to_value(&inventory).unwrap();
+    assert!(inventory.finished_at_unix >= inventory.started_at_unix);
+    actual["started_at_unix"] = json!(10);
+    actual["finished_at_unix"] = json!(11);
+    assert_eq!(
+        actual,
+        json!({
+            "version":1,"binding":binding(),"app_id":7,"repository_node_id":"R_test",
+            "default_branch":"main","started_at_unix":10,"finished_at_unix":11,
+            "heads":[main,topic],"token_revoked":true
+        })
+    );
+    let requests = host.await.unwrap();
+    assert_eq!(
+        body(&requests[1]),
+        json!({"repository_ids":[11],"permissions":{"contents":"read","metadata":"read"}})
+    );
+    for (request, cursor) in
+        requests[4..8]
+            .iter()
+            .zip([Value::Null, json!("next"), Value::Null, json!("next")])
+    {
+        assert!(request_text(request).starts_with("POST /graphql "));
+        let query = body(request);
+        assert!(query["query"].as_str().unwrap().starts_with("query "));
+        assert!(query["query"].as_str().unwrap().contains("isArchived"));
+        assert_eq!(query["variables"]["after"], cursor);
+    }
+    assert!(request_text(&requests[9]).starts_with("GET /repos/example-org/demo "));
+    assert!(request_text(&requests[10]).starts_with("DELETE /installation/token "));
+}
+
+#[tokio::test]
+async fn archived_branch_observation_refuses_an_inconsistent_archive_or_inventory() {
+    for failure in [
+        "active",
+        "reopened page",
+        "partial",
+        "limit",
+        "no default",
+        "moved",
+        "reopened final",
+    ] {
+        let mut main = head(1);
+        main["name"] = json!("main");
+        let stable = archived_page(json!([main]), 1, None, false);
+        let mut responses = archive_access(if failure == "active" {
+            repository()
+        } else {
+            archived_repository()
+        });
+        match failure {
+            "active" => {}
+            "reopened page" => responses.push(response(200, page(json!([main]), 1, None, false))),
+            "partial" => {
+                responses.push(response(200, archived_page(json!([main]), 2, None, false)))
+            }
+            "limit" => responses.push(response(
+                200,
+                archived_page(json!([main]), 129, Some("next"), true),
+            )),
+            "no default" => responses.push(response(
+                200,
+                archived_page(json!([head(2)]), 1, None, false),
+            )),
+            "moved" | "reopened final" => {
+                let mut after = stable.clone();
+                if failure == "moved" {
+                    after["data"]["repository"]["inventory"]["nodes"][0]["target"]["oid"] =
+                        json!("22".repeat(20));
+                }
+                responses.extend([
+                    response(200, stable),
+                    response(200, after),
+                    response(200, json!({"total_count":1,"repositories":[{"id":11}]})),
+                    response(
+                        200,
+                        if failure == "reopened final" {
+                            repository()
+                        } else {
+                            archived_repository()
+                        },
+                    ),
+                ]);
+            }
+            _ => unreachable!(),
+        }
+        responses.push(revoked());
+        let (c, host) = host(responses).await;
+        assert_eq!(
+            c.observe_archived_branches(&binding()).await.unwrap_err(),
+            Error::ArchivedBranches,
+            "{failure}"
+        );
+        assert!(
+            request_text(host.await.unwrap().last().unwrap())
+                .starts_with("DELETE /installation/token ")
+        );
+    }
+}
+
 #[tokio::test]
 async fn restore_inventory_discovers_closed_missing_branch_and_unknown_operations_read_only() {
     // No restored operation IDs are supplied. PR 99 has no surviving branch;
