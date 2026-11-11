@@ -141,6 +141,9 @@ impl Pack {
     pub fn frame(&self, id: ObjectId) -> Result<Vec<u8>> {
         Ok(self.store.get(id)?.encode()?)
     }
+    pub(crate) fn into_frames(self) -> (Vec<ObjectId>, LocalStore) {
+        (self.ids, self.store)
+    }
     /// Validate every frame and exact reachable membership before transmitting
     /// source bytes. An edited list cannot smuggle unrelated local objects.
     pub fn open(directory: &Path) -> Result<Self> {

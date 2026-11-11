@@ -50,13 +50,18 @@ impl UploadTicket {
         self.lease.key().generation()
     }
 }
-fn oid(raw: Vec<u8>) -> Result<ObjectId> {
+pub(crate) fn oid(raw: Vec<u8>) -> Result<ObjectId> {
     Ok(ObjectId::from_bytes(
         raw.try_into().map_err(|_| Error::SchemaMismatch)?,
     ))
 }
-async fn active(tx: &Transaction<'_>, scope: &Scope, principal: &str, upload: Uuid) -> Result<Row> {
-    let row = tx.query_opt("SELECT backend,authority,epoch,max_objects,max_bytes,reserved_objects,reserved_bytes,expires_at>clock_timestamp() AND state='active' FROM th_source_uploads WHERE tenant=$1 AND repository=$2 AND upload=$3 AND principal=$4 FOR UPDATE", &[&scope.tenant,&scope.repository,&upload,&principal]).await?.ok_or(Error::NotFound)?;
+pub(crate) async fn active(
+    tx: &Transaction<'_>,
+    scope: &Scope,
+    principal: &str,
+    upload: Uuid,
+) -> Result<Row> {
+    let row = tx.query_opt("SELECT backend,authority,epoch,max_objects,max_bytes,reserved_objects,reserved_bytes,expires_at>clock_timestamp() AND state='active',github_import FROM th_source_uploads WHERE tenant=$1 AND repository=$2 AND upload=$3 AND principal=$4 FOR UPDATE", &[&scope.tenant,&scope.repository,&upload,&principal]).await?.ok_or(Error::NotFound)?;
     if !row.get::<_, bool>(7) {
         return Err(Error::UploadState);
     }
@@ -269,13 +274,10 @@ impl Metadata {
             }
         } else {
             let snapshot = object.commit_snapshot().map(|id| id.as_bytes().to_vec());
-            tx.execute("INSERT INTO th_source_upload_items(tenant,repository,upload,digest,generation,hold_token,kind,length,snapshot) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)", &[&s.tenant,&s.repository,&upload,&digest,&lease.key().generation(),&token,&(object.kind() as i16),&(object.length() as i64),&snapshot]).await?;
-            if purpose == Purpose::Github {
-                let git_origin = object
-                    .commit_git_origin()
-                    .map(|id| RevisionRef::Git(id).to_string());
-                tx.execute("UPDATE th_source_upload_items SET git_origin=$5 WHERE tenant=$1 AND repository=$2 AND upload=$3 AND digest=$4", &[&s.tenant,&s.repository,&upload,&digest,&git_origin]).await?;
-            }
+            let git_origin = object
+                .commit_git_origin()
+                .map(|id| RevisionRef::Git(id).to_string());
+            tx.execute("INSERT INTO th_source_upload_items(tenant,repository,upload,digest,generation,hold_token,kind,length,snapshot,git_origin) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)", &[&s.tenant,&s.repository,&upload,&digest,&lease.key().generation(),&token,&(object.kind() as i16),&(object.length() as i64),&snapshot,&git_origin]).await?;
             tx.execute("UPDATE th_source_uploads SET reserved_objects=reserved_objects+1,reserved_bytes=reserved_bytes+$4 WHERE tenant=$1 AND repository=$2 AND upload=$3", &[&s.tenant,&s.repository,&upload,&(object.length() as i64)]).await?;
         }
         // Retrying an object may never extend its session's fixed deadline.

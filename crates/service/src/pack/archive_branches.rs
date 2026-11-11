@@ -14,6 +14,7 @@ use std::{
 use treeharbor_core::{GitOid, Object, ObjectId, ObjectStore, RevisionRef};
 use treeharbor_git_bridge::{self as git_bridge, BundleInput, ImportedBranches, Limits};
 use treeharbor_github::ArchivedBranches;
+use treeharbor_metadata::github::{ArchiveBranchTip, ArchiveStageSpec, Upstream};
 use treeharbor_storage::{LocalStore, TenantId};
 
 const FORMAT: &str = "treeharbor-archive-branch-spool";
@@ -24,17 +25,9 @@ struct Manifest {
     format: String,
     version: u8,
     archive: ArchivedBranches,
-    branches: BTreeMap<String, Branch>,
+    branches: BTreeMap<String, ArchiveBranchTip>,
     objects: Vec<String>,
     encoded_bytes: u64,
-}
-
-#[derive(Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-struct Branch {
-    git_revision: String,
-    native_revision: String,
-    snapshot: String,
 }
 
 fn expected_refs(archive: &ArchivedBranches) -> Result<BTreeMap<String, GitOid>> {
@@ -90,7 +83,7 @@ fn manifest(archive: ArchivedBranches, imported: ImportedBranches) -> Manifest {
             .map(|(name, tip)| {
                 (
                     name,
-                    Branch {
+                    ArchiveBranchTip {
                         git_revision: RevisionRef::Git(tip.origin).to_string(),
                         native_revision: RevisionRef::Native(tip.commit).to_string(),
                         snapshot: tip.snapshot.to_string(),
@@ -187,16 +180,25 @@ pub(crate) fn capture(
     Ok(report)
 }
 
+struct OpenedSpool {
+    manifest: Manifest,
+    store: LocalStore,
+    refs: BTreeMap<String, ObjectId>,
+    ids: Vec<ObjectId>,
+    fingerprint: ObjectId,
+}
+
 fn reopen(
     directory: &Path,
     expected_fingerprint: Option<ObjectId>,
     mut limits: Limits,
     deadline: Instant,
-) -> Result<(LocalStore, BTreeMap<String, ObjectId>)> {
+) -> Result<OpenedSpool> {
     let directory = files::private_directory(directory).map_err(|_| Error::Output)?;
     let bytes = files::read_private(&directory.join("manifest.json"), MAX_MANIFEST)
         .map_err(|_| Error::Invalid)?;
-    if expected_fingerprint.is_some_and(|expected| expected != fingerprint(&bytes)) {
+    let fingerprint = fingerprint(&bytes);
+    if expected_fingerprint.is_some_and(|expected| expected != fingerprint) {
         return Err(Error::Invalid);
     }
     let manifest: Manifest = serde_json::from_slice(&bytes).map_err(|_| Error::Invalid)?;
@@ -246,7 +248,52 @@ fn reopen(
     {
         return Err(Error::Invalid);
     }
-    Ok((store, refs))
+    Ok(OpenedSpool {
+        manifest,
+        store,
+        refs,
+        ids,
+        fingerprint,
+    })
+}
+
+pub(crate) struct StageSource {
+    pub specification: ArchiveStageSpec,
+    pub store: LocalStore,
+    pub ids: Vec<ObjectId>,
+}
+
+pub(crate) fn for_stage(directory: &Path, fingerprint: ObjectId) -> Result<StageSource> {
+    let limits = Limits::default();
+    let source = reopen(
+        directory,
+        Some(fingerprint),
+        limits,
+        Instant::now() + limits.timeout,
+    )?;
+    let archive = source.manifest.archive;
+    let spec = ArchiveStageSpec {
+        version: 1,
+        spool_fingerprint: source.fingerprint.to_string(),
+        app_id: archive.app_id,
+        upstream: Upstream {
+            installation_id: archive.binding.installation_id,
+            repository_id: archive.binding.repository_id,
+            owner_id: archive.binding.owner_id,
+            owner: archive.binding.owner,
+            name: archive.binding.name,
+        },
+        default_branch: archive.default_branch,
+        branches: source.manifest.branches,
+        object_count: source.ids.len() as i64,
+        encoded_bytes: source.manifest.encoded_bytes as i64,
+    };
+    spec.validate().map_err(|_| Error::Invalid)?;
+    Ok(StageSource {
+        specification: spec,
+        store: source.store,
+        ids: source.ids,
+    })
 }
 
 pub(crate) fn export(
@@ -258,17 +305,17 @@ pub(crate) fn export(
     mut limits: Limits,
 ) -> Result<git_bridge::Manifest> {
     let deadline = Instant::now() + limits.timeout;
-    let (store, refs) = reopen(directory, expected_fingerprint, limits, deadline)?;
+    let spool = reopen(directory, expected_fingerprint, limits, deadline)?;
     limits.timeout = deadline.saturating_duration_since(Instant::now());
     if limits.timeout.is_zero() {
         return Err(Error::Limit);
     }
     Ok(git_bridge::export(
-        &store,
+        &spool.store,
         git_bridge::Export {
             git,
             output,
-            refs,
+            refs: spool.refs,
             algorithm,
             limits,
         },

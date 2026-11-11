@@ -781,6 +781,21 @@ enum Agent {
         #[arg(long,default_value_t=3600,value_parser=clap::value_parser!(i32).range(1..=3600))]
         ttl_seconds: i32,
     },
+    /// Upload and atomically retain all roots from a verified archive spool.
+    ArchiveStage {
+        #[arg(long)]
+        spool: PathBuf,
+        #[arg(long)]
+        archive_fingerprint: String,
+        #[arg(long)]
+        binding: Uuid,
+        #[arg(long)]
+        state: PathBuf,
+        #[arg(long, value_parser = clap::value_parser!(i64).range(1..))]
+        epoch: i64,
+        #[arg(long, default_value_t = 3600, value_parser = clap::value_parser!(i32).range(1..=3600))]
+        ttl_seconds: i32,
+    },
     /// Stop a managed run and request capture of explicit file/subtree changes.
     SealRequest {
         #[command(flatten)]
@@ -1180,6 +1195,7 @@ impl Agent {
             | Self::WorkspaceNew { .. }
             | Self::SourcePut { .. }
             | Self::SourceImport { .. }
+            | Self::ArchiveStage { .. }
             | Self::SourceFile { .. }
             | Self::SourceList { .. }
             | Self::SourceCheckout { .. } => return Err(Error::Config), // separate data path below
@@ -1672,6 +1688,37 @@ pub async fn run(cli: Cli) -> Result<bool> {
                         .await?;
                     println!("{receipt}");
                     return Ok(true);
+                }
+                Agent::ArchiveStage {
+                    spool,
+                    archive_fingerprint,
+                    binding,
+                    state,
+                    epoch,
+                    ttl_seconds,
+                } => {
+                    let socket = endpoint.local_socket()?;
+                    let fingerprint = archive_fingerprint
+                        .parse()
+                        .map_err(|_| Error::ImportState)?;
+                    let source = tokio::task::spawn_blocking(move || {
+                        crate::pack::archive_branches::for_stage(&spool, fingerprint)
+                    })
+                    .await
+                    .map_err(|_| Error::ImportWorker)??;
+                    let reply = crate::archive_stage::send(crate::archive_stage::Request {
+                        socket,
+                        credential: &credential,
+                        timeout: Duration::from_millis(timeout_ms),
+                        state: &state,
+                        source,
+                        binding,
+                        epoch,
+                        ttl_seconds,
+                    })
+                    .await?;
+                    println!("{}", reply.body);
+                    return Ok(reply.status.is_success());
                 }
                 other => other,
             };

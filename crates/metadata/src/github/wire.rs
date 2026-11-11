@@ -4,6 +4,13 @@ use serde::Deserialize;
 #[derive(Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
 pub enum WireCommand {
+    ArchiveStage {
+        key: String,
+        epoch: i64,
+        binding: String,
+        upload: String,
+        specification: Box<ArchiveStageSpec>,
+    },
     RestoreTargetRegister {
         key: String,
         epoch: i64,
@@ -659,6 +666,7 @@ pub(super) fn id(s: &str) -> Result<Uuid> {
 impl WireCommand {
     pub fn permission(&self) -> Permission {
         match self {
+            Self::ArchiveStage { .. } => Permission::RepositoryWrite,
             Self::RestoreTargetRegister { .. } | Self::RestoreTargetStatus { .. } => {
                 Permission::RepositoryWrite
             }
@@ -796,6 +804,22 @@ impl WireCommand {
         backend: Option<&str>,
     ) -> Result<Value> {
         match self {
+            Self::ArchiveStage {
+                key,
+                epoch,
+                binding,
+                upload,
+                specification,
+            } => {
+                db.stage_archived_source(
+                    auth,
+                    &Command { key, epoch },
+                    id(&binding)?,
+                    id(&upload)?,
+                    &specification,
+                )
+                .await
+            }
             Self::RestoreAcquisitionContext {
                 epoch,
                 decision_key,
@@ -1904,6 +1928,61 @@ impl WireCommand {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn archive_stage_wire_matches_v1_and_checks_exact_branch_identity() {
+        let fixture = include_str!("../../tests/fixtures/github-archive-stage-v1.json");
+        let command: WireCommand = serde_json::from_str(fixture).unwrap();
+        assert_eq!(command.permission(), Permission::RepositoryWrite);
+        let WireCommand::ArchiveStage {
+            key,
+            epoch,
+            binding,
+            upload,
+            specification,
+        } = command
+        else {
+            panic!("expected archive stage");
+        };
+        id(&binding).unwrap();
+        id(&upload).unwrap();
+        assert_eq!(key, format!("archive-{upload}-stage"));
+        assert_eq!(epoch, 4);
+        specification.validate().unwrap();
+        let value: Value = serde_json::from_str(fixture).unwrap();
+        assert_eq!(
+            serde_json::to_value(&specification).unwrap(),
+            value["specification"]
+        );
+        let mut invalid = specification.as_ref().clone();
+        invalid.default_branch = "absent".into();
+        assert!(invalid.validate().is_err());
+        let mut invalid = specification.as_ref().clone();
+        invalid
+            .branches
+            .get_mut("refs/heads/stable")
+            .unwrap()
+            .snapshot = invalid.branches["refs/heads/topic/fix"].snapshot.clone();
+        assert!(invalid.validate().is_err());
+        for git in [
+            "main",
+            "git:sha1:123",
+            "git:sha1:0000000000000000000000000000000000000000",
+        ] {
+            let mut invalid = specification.as_ref().clone();
+            invalid
+                .branches
+                .get_mut("refs/heads/main")
+                .unwrap()
+                .git_revision = git.into();
+            assert!(invalid.validate().is_err());
+        }
+        for field in ["authority", "observed", "token"] {
+            let mut invalid = value.clone();
+            invalid[field] = json!(true);
+            assert!(serde_json::from_value::<WireCommand>(invalid).is_err());
+        }
+    }
 
     #[test]
     fn event_channel_wire_is_owner_scoped_and_cannot_forge_authenticated_delivery() {
