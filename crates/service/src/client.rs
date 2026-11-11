@@ -397,6 +397,24 @@ pub async fn restore_verify_source(
     .await
 }
 
+pub(crate) async fn verify_archive(
+    socket: &Path,
+    credential: &Credential,
+    fields: Value,
+    timeout: Duration,
+) -> Result<Reply> {
+    send_request(
+        socket,
+        &credential.token,
+        "POST",
+        crate::archive_proof::PATH.into(),
+        "application/json",
+        scoped_fields(credential, fields)?,
+        timeout,
+    )
+    .await
+}
+
 pub async fn review(
     socket: &Path,
     credential: &Credential,

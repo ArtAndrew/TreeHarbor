@@ -234,6 +234,42 @@ The intent binds the tenant, repository, epoch, binding, upload TTL and exact
 specification. Reusing the file with different inputs fails before sending
 an upload. The default TTL is 3600 seconds.
 
+## Verify the retained Git history on the server
+
+Run `archive-verify` with the same local operator credential. For a stage
+created by the CLI, its key is `archive-` followed by the `upload` UUID
+in the stage receipt and `-stage`.
+
+```sh
+treeharbor client --socket "$TH_SOCKET" --credential-file "$TH_OWNER" \
+  --timeout-ms 60000 archive-verify --stage-key "archive-${TH_UPLOAD}-stage" \
+  --key verify-archive-001 --epoch "$TH_EPOCH"
+```
+
+The server selects the exact object generations retained by the completed
+upload and its permanent branch pins. It reconstructs every Git tip in one
+Rust projection and checks the complete object count and byte total.
+The retained objects are sufficient even after removing the original bundle.
+An absent object, incomplete graph or differing Git tip prevents a new proof.
+
+The server rechecks the active Connected binding, epoch and repository
+permission before recording the proof. Retry the same command and key after
+an uncertain response. A completed retry returns the historical receipt.
+Use a new key to verify the current storage again. Verification is bounded
+by the server request timeout and the default Git projection limits
+of 100,000 objects and 4 GiB of encoded source. Actual cutover still
+requires fresh host evidence and a separate write-authority transaction.
+
+The local v1 endpoint is `POST /v1/github/archive/verify`. It accepts the
+[scoped request](../crates/service/tests/fixtures/archive-proof-request-v1.json)
+with `key`, `stage_key`, and expected `epoch`. Its standard response envelope
+has `version` and `result`. The result contains `version`, `tenant`,
+`repository`, `authority` (`connected`), `epoch`, `binding`, `upload`,
+`stage_key`, `state` (`verified`), `spool_fingerprint`, `object_count` and
+`encoded_bytes`. A missing or inconsistent object returns
+`source_mapping_mismatch`. The endpoint uses the local Unix socket and
+requires a human `repository.write` credential.
+
 ## Retain a connection in a running TreeHarbor server
 
 First migrate the [local service](local-service.md) to the current schema and create a
