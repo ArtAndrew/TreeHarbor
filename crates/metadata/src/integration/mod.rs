@@ -76,7 +76,7 @@ fn id(bytes: Vec<u8>) -> Result<ObjectId> {
         bytes.try_into().map_err(|_| Error::SchemaMismatch)?,
     ))
 }
-fn ref_name(name: &str) -> Result<()> {
+pub(crate) fn ref_name(name: &str) -> Result<()> {
     if name.is_empty()
         || name.len() > 128
         || name.split('/').any(|part| {

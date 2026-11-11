@@ -30,6 +30,13 @@ command, and restores the exact branch tips and merge graph in ordinary Git.
 Fingerprint mismatch, missing or corrupt merge-parent data, and attempts to
 replace an existing spool are refused.
 
+The [archive stage command](github-connection.md#stage-all-archived-branches-in-treeharbor)
+uploads the union once, retains every distinct branch tip and closes the
+upload in the same transaction as its receipt. It preserves the original
+Connected binding and epoch. The PostgreSQL test exercises a failure before
+commit, rejects a missing independent branch and a mismatched Git tip, and
+replays the same completed receipt after a service restart and upload expiry.
+
 ## Export multiple branches to Git — 0.1.20-alpha.1
 
 [Git export](git-export.md#export-several-branches) can combine completed source

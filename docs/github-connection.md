@@ -172,6 +172,68 @@ apply. Use the report as a preflight for source fidelity. Switching write
 authority still requires a separate transaction and verification against the
 current host state.
 
+## Stage all archived branches in TreeHarbor
+
+In a development build, use `archive-stage` to upload the saved graph once.
+The service needs object storage and an active Connected binding whose App and
+upstream identity match the preflight. Use a human credential with
+`repository.write` for the repository on the local Unix socket. The command
+uses the retained spool and runs without a Git executable or GitHub access.
+
+```sh
+treeharbor client --socket "$TH_SOCKET" --credential-file "$TH_OWNER" \
+  archive-stage --spool "$TH_SCRATCH/prepared" \
+  --archive-fingerprint "$TH_SPOOL_FINGERPRINT" --binding "$TH_BINDING" \
+  --epoch "$TH_EPOCH" --state "$TH_SCRATCH/archive-stage.json"
+```
+
+Keep the spool and the private state file until staging is confirmed. The
+client writes the upload identity to that file before sending data. Retry with
+the same arguments after an interrupted upload or response. A completed retry
+returns the saved receipt even after the upload expires. An expired unfinished
+upload returns `upload_state_changed`. After the server confirms that result,
+use a new private state filename to start another upload. If the binding or
+epoch changes, verify the current connection before staging again.
+
+The service checks that the complete uploaded graph is exactly the union of the
+declared tips. It registers each distinct native tip as a durable base, closes
+the upload, and saves the receipt in one PostgreSQL transaction. Branch names
+that share a tip share its base. The receipt retains every branch name and
+reports `state: staged`. It records retained source at the given epoch.
+The GitHub binding and the current write authority stay active. Actual cutover
+requires fresh host evidence and a separate fenced authority transaction.
+
+### Archive stage protocol v1
+
+Send the standard scoped command envelope with `method` set to `github`. The
+[request fixture](../crates/metadata/tests/fixtures/github-archive-stage-v1.json)
+shows its nested `request` with action `archive_stage`. The operation uses a
+stable key, expected Connected epoch, active binding UUID, and the UUID of
+one source upload owned by the caller. Its v1 specification includes the
+spool fingerprint, App and upstream identity, default branch, and exact object
+count and encoded byte total. The `branches` map accepts up to 128 full
+`refs/heads/` names. After that prefix, the branch name is at most 128 ASCII
+bytes. Each slash-separated segment starts with a letter or digit and can
+contain letters, digits, periods, underscores and hyphens up to 64 bytes.
+Segments cannot contain `..` or end in a period or `.lock`. Each tip contains
+a canonical Git SHA-1 revision, native revision, and snapshot.
+
+A successful v1 command returns the usual `version` and `result` envelope.
+The result has `version`, `tenant`, `repository`, `authority` (`connected`),
+`epoch`, `binding`, `upload`, `state` (`staged`) and the exact
+`specification`. Changing the request under a saved key returns
+`idempotency_conflict`. The caller must still be authorized to replay a
+historical result. A mismatched or incomplete object set returns
+`upload_membership` and leaves the upload available until its fixed deadline.
+The service verifies uploaded native objects and their claimed Git origins.
+Keep the independently observed preflight report with the staging receipt for
+the eventual authority handoff.
+
+The CLI's private state format v1 stores `version`, `upload`, and `intent`.
+The intent binds the tenant, repository, epoch, binding, upload TTL and exact
+specification. Reusing the file with different inputs fails before sending
+an upload. The default TTL is 3600 seconds.
+
 ## Retain a connection in a running TreeHarbor server
 
 First migrate the [local service](local-service.md) to the current schema and create a

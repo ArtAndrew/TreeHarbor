@@ -2,6 +2,7 @@
 #![cfg(unix)]
 mod api_run_new;
 pub mod archive;
+mod archive_stage;
 mod backup;
 pub mod cli;
 pub mod client;

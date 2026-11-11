@@ -5,11 +5,12 @@ use crate::{
     files,
     pack::Pack,
 };
-use serde::{Deserialize, Serialize};
-use serde_json::json;
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use serde_json::{Value, json};
 use std::{fs::File, path::Path, sync::Arc, time::Duration};
-use treeharbor_core::RevisionRef;
+use treeharbor_core::{ObjectId, ObjectStore, RevisionRef};
 use treeharbor_metadata::Authority;
+use treeharbor_storage::LocalStore;
 use uuid::Uuid;
 
 #[derive(Serialize, Deserialize)]
@@ -61,14 +62,7 @@ fn load_or_create(
         max_objects: pack.ids.len() as i64,
         max_bytes: pack.bytes as i64,
     };
-    let bytes = serde_json::to_vec(&proposed).map_err(|_| Error::ImportState)?;
-    match files::write_private(path, &bytes) {
-        Ok(()) => {}
-        Err(Error::Io(error)) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
-        Err(error) => return Err(error),
-    }
-    let raw = files::read_private(path, 4096)?;
-    let journal: Journal = serde_json::from_slice(&raw).map_err(|_| Error::ImportState)?;
+    let journal: Journal = retain_journal(path, &proposed, 4096)?;
     let id: Uuid = journal.upload.parse().map_err(|_| Error::ImportState)?;
     if journal.version != 1
         || journal.tenant != proposed.tenant
@@ -84,6 +78,25 @@ fn load_or_create(
     {
         return Err(Error::ImportState);
     }
+    Ok(journal)
+}
+
+pub(crate) fn retain_journal<T: Serialize + DeserializeOwned>(
+    path: &Path,
+    proposed: &T,
+    max_bytes: usize,
+) -> Result<T> {
+    let bytes = serde_json::to_vec(proposed).map_err(|_| Error::ImportState)?;
+    if bytes.len() > max_bytes {
+        return Err(Error::ImportState);
+    }
+    match files::write_private(path, &bytes) {
+        Ok(()) => {}
+        Err(Error::Io(error)) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+        Err(error) => return Err(error),
+    }
+    let raw = files::read_private(path, max_bytes)?;
+    let journal = serde_json::from_slice(&raw).map_err(|_| Error::ImportState)?;
     // A concurrent creator may not have synced the new name yet. Every reader
     // makes the journal directory durable before starting network effects.
     File::open(files::private_directory(
@@ -94,15 +107,6 @@ fn load_or_create(
 }
 fn finish(j: &Journal) -> serde_json::Value {
     json!({"method":"source_finish","key":format!("import-{}-finish",j.upload),"authority":j.authority,"epoch":j.epoch,"upload":j.upload,"commit":j.commit})
-}
-async fn command(r: &Request<'_>, value: serde_json::Value) -> Result<Reply> {
-    client::send(
-        r.socket,
-        &r.credential.token,
-        r.credential.request(value).to_string().into_bytes(),
-        r.timeout,
-    )
-    .await
 }
 fn checked_finish(reply: Reply, j: &Journal) -> Result<Reply> {
     if reply.status.is_success() {
@@ -127,67 +131,87 @@ pub async fn send(request: Request<'_>) -> Result<Reply> {
         request.epoch,
         request.ttl_seconds,
     )?;
-    // Retry the exact final command first: a historical receipt is stronger
-    // evidence than a mutable session status, and survives session expiry.
-    let first = command(&request, finish(&journal)).await?;
-    if first.status.is_success() {
-        return checked_finish(first, &journal);
-    }
-    if !((first.status.as_u16() == 404 && first.body["error"]["code"] == "not_found")
-        || (first.status.as_u16() == 409 && first.body["error"]["code"] == "upload_membership"))
-    {
-        return Ok(first);
-    }
-    let begin=command(&request,json!({"method":"source_begin","key":format!("import-{}-begin",journal.upload),"authority":journal.authority,"epoch":journal.epoch,"upload":journal.upload,"ttl_seconds":journal.ttl_seconds,"max_objects":journal.max_objects,"max_bytes":journal.max_bytes})).await?;
-    if !begin.status.is_success() {
-        return Ok(begin);
-    }
-    let upload: Uuid = journal.upload.parse().map_err(|_| Error::ImportState)?;
-    let socket = request.socket;
-    let credential = request.credential;
-    let timeout = request.timeout;
-    let pack = Arc::new(request.pack);
-    for id in &pack.ids {
-        let object = *id;
-        let reader = pack.clone();
-        let frame = tokio::task::spawn_blocking(move || reader.frame(object))
-            .await
-            .map_err(|_| Error::ImportWorker)??;
-        let reply = client::send_object(socket, credential, upload, object, frame, timeout).await?;
-        if !reply.status.is_success() {
-            // An identical concurrent client may have finished this session.
-            if reply.status.as_u16() == 409 && reply.body["error"]["code"] == "upload_state_changed"
-            {
-                let retry = client::send(
-                    socket,
-                    &credential.token,
-                    credential
-                        .request(finish(&journal))
-                        .to_string()
-                        .into_bytes(),
-                    timeout,
-                )
-                .await?;
-                return checked_finish(retry, &journal);
-            }
-            return Ok(reply);
-        }
-        if reply.body["version"] != 1
-            || reply.body["result"]["object"] != object.to_string()
-            || reply.body["result"]["state"] != "stored"
-        {
-            return Err(Error::Http);
-        }
-    }
-    let reply = client::send(
-        socket,
-        &credential.token,
-        credential
-            .request(finish(&journal))
-            .to_string()
-            .into_bytes(),
-        timeout,
-    )
-    .await?;
+    let transfer = Transfer {
+        socket: request.socket,
+        credential: request.credential,
+        timeout: request.timeout,
+        upload: journal.upload.parse().map_err(|_| Error::ImportState)?,
+        begin: json!({"method":"source_begin","key":format!("import-{}-begin",journal.upload),"authority":journal.authority,"epoch":journal.epoch,"upload":journal.upload,"ttl_seconds":journal.ttl_seconds,"max_objects":journal.max_objects,"max_bytes":journal.max_bytes}),
+        finish: finish(&journal),
+    };
+    let (ids, store) = request.pack.into_frames();
+    let reply = transfer.send(ids, store).await?;
     checked_finish(reply, &journal)
+}
+
+pub(crate) struct Transfer<'a> {
+    pub socket: &'a Path,
+    pub credential: &'a Credential,
+    pub timeout: Duration,
+    pub upload: Uuid,
+    pub begin: Value,
+    pub finish: Value,
+}
+
+impl Transfer<'_> {
+    async fn command(&self, value: &Value) -> Result<Reply> {
+        client::send(
+            self.socket,
+            &self.credential.token,
+            self.credential
+                .request(value.clone())
+                .to_string()
+                .into_bytes(),
+            self.timeout,
+        )
+        .await
+    }
+
+    pub(crate) async fn send(self, ids: Vec<ObjectId>, store: LocalStore) -> Result<Reply> {
+        // An exact completed receipt is authoritative even after upload expiry.
+        let first = self.command(&self.finish).await?;
+        let retry = (first.status.as_u16(), first.body["error"]["code"].as_str());
+        if !matches!(
+            retry,
+            (404, Some("not_found")) | (409, Some("upload_membership"))
+        ) {
+            return Ok(first);
+        }
+        let started = self.command(&self.begin).await?;
+        if !started.status.is_success() {
+            return Ok(started);
+        }
+        let store = Arc::new(store);
+        for object in ids {
+            let reader = Arc::clone(&store);
+            let frame = tokio::task::spawn_blocking(move || reader.get(object)?.encode())
+                .await
+                .map_err(|_| Error::ImportWorker)?
+                .map_err(crate::pack::Error::Object)?;
+            let reply = client::send_object(
+                self.socket,
+                self.credential,
+                self.upload,
+                object,
+                frame,
+                self.timeout,
+            )
+            .await?;
+            if !reply.status.is_success() {
+                if reply.status.as_u16() == 409
+                    && reply.body["error"]["code"] == "upload_state_changed"
+                {
+                    return self.command(&self.finish).await;
+                }
+                return Ok(reply);
+            }
+            if reply.body["version"] != 1
+                || reply.body["result"]["object"] != object.to_string()
+                || reply.body["result"]["state"] != "stored"
+            {
+                return Err(Error::Http);
+            }
+        }
+        self.command(&self.finish).await
+    }
 }
