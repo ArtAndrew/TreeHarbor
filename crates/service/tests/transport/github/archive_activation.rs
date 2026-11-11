@@ -38,7 +38,7 @@ fn mutation(action: &str) -> Value {
     json!({"action":action,"key":Uuid::new_v4(),"epoch":2})
 }
 
-fn native(f: &Fixture, credential: &Path, fields: Value) -> Output {
+pub(super) fn native(f: &Fixture, credential: &Path, fields: Value) -> Output {
     let path = f
         .dir
         .path()
@@ -248,11 +248,14 @@ pub(super) async fn exercise(
     }
     let main = &branch_stage["specification"]["branches"]["refs/heads/main"];
     let changeset = activated["proposals"][0]["changeset"].as_str().unwrap();
-    Box::pin(check_and_land(
+    let landed = Box::pin(check_and_land(
         f, &owner, &worker, &ci, &reviewer, changeset, main,
     ))
     .await;
-    drop(server);
+    Box::pin(native_handoff::exercise(
+        f, server, &owner, &worker, changeset, &landed,
+    ))
+    .await;
 }
 
 async fn check_and_land(
@@ -263,7 +266,7 @@ async fn check_and_land(
     reviewer: &Path,
     changeset: &str,
     main: &Value,
-) {
+) -> Value {
     let diff = ok(f.cli_with_credential(
         owner,
         &[
@@ -441,4 +444,5 @@ async fn check_and_land(
         &["merge-base", "--is-ancestor", base, "refs/heads/main"],
         b"",
     );
+    landed
 }

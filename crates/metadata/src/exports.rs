@@ -25,9 +25,20 @@ pub struct SourceExport {
 }
 #[derive(Clone)]
 enum Fence {
-    RestoreDecision { epoch: i64, key: String },
+    RestoreDecision {
+        epoch: i64,
+        key: String,
+    },
     Source(ExportFence),
-    GithubProjection { epoch: i64, projection: Uuid },
+    GithubProjection {
+        epoch: i64,
+        projection: Uuid,
+    },
+    FrozenHandoff {
+        epoch: i64,
+        key: String,
+        revision: ObjectId,
+    },
     Preparation(Box<Preparation>),
 }
 async fn input(
@@ -48,6 +59,11 @@ async fn input(
         Fence::GithubProjection { epoch, projection } => {
             crate::github::projections::export_context(tx, auth, *epoch, *projection).await
         }
+        Fence::FrozenHandoff {
+            epoch,
+            key,
+            revision,
+        } => crate::integration::handoff::export_context(tx, auth, *epoch, key, *revision).await,
         Fence::Preparation(plan) => crate::preparations::git_source_context(tx, auth, plan).await,
     }
 }
@@ -147,6 +163,25 @@ impl Metadata {
     ) -> Result<SourceExport> {
         self.open_export(auth, Fence::GithubProjection { epoch, projection }, ttl)
             .await
+    }
+    pub async fn open_frozen_handoff_export(
+        &mut self,
+        auth: &Authorization,
+        epoch: i64,
+        key: &str,
+        revision: ObjectId,
+        ttl: i32,
+    ) -> Result<SourceExport> {
+        self.open_export(
+            auth,
+            Fence::FrozenHandoff {
+                epoch,
+                key: key.into(),
+                revision,
+            },
+            ttl,
+        )
+        .await
     }
     /// Read only the complete source of this exact live Git preparation.
     pub async fn open_git_preparation_source(

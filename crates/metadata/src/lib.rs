@@ -75,6 +75,10 @@ pub enum Error {
     ArchiveArtifactMismatch,
     #[error("archive activation requires drained tasks and settled host effects")]
     ArchiveActivationBusy,
+    #[error("native handoff requires drained tasks and integration attempts")]
+    NativeHandoffBusy,
+    #[error("native handoff snapshot differs from the current freeze")]
+    NativeHandoffMismatch,
     #[error("GitHub event channel is not active for this delivery")]
     HostEventState,
     #[error("GitHub event retention budget exhausted")]
@@ -415,6 +419,14 @@ impl Metadata {
         Ok(())
     }
     pub async fn begin(&mut self, request: Request) -> Result<Begin<'_>> {
+        self.begin_in_state(request, "active").await
+    }
+
+    pub(crate) async fn begin_frozen(&mut self, request: Request) -> Result<Begin<'_>> {
+        self.begin_in_state(request, "frozen").await
+    }
+
+    async fn begin_in_state(&mut self, request: Request, state: &str) -> Result<Begin<'_>> {
         let tx = self.client.transaction().await?;
         tx.batch_execute("SET LOCAL synchronous_commit = on; SET LOCAL lock_timeout = '5s'; SET LOCAL statement_timeout = '15s'").await?;
         let scope = &request.scope;
@@ -442,7 +454,7 @@ impl Metadata {
             return Ok(Begin::Replay(result));
         }
         if repo.get::<_, String>(0) != request.authority.as_str()
-            || repo.get::<_, String>(1) != "active"
+            || repo.get::<_, String>(1) != state
             || repo.get::<_, i64>(2) != request.epoch
         {
             return Err(Error::Fenced);

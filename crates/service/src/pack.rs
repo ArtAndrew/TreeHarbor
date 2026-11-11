@@ -771,15 +771,20 @@ fn capture_git_inner(request: GitCapture<'_>, scope: Option<&WorkspacePackScope>
 
 pub(crate) fn publish_stage(stage: &Path, parent: &Path, name: &OsStr) -> Result<()> {
     File::open(stage)?.sync_all()?;
+    let source_parent = stage.parent().ok_or(Error::Output)?;
+    let source_fd = File::open(source_parent)?;
     let parent_fd = File::open(parent)?;
     unix(unixfs::renameat_with(
-        &parent_fd,
+        &source_fd,
         stage.file_name().ok_or(Error::Output)?,
         &parent_fd,
         name,
         unixfs::RenameFlags::NOREPLACE,
     ))?;
     parent_fd.sync_all()?;
+    if source_parent != parent {
+        source_fd.sync_all()?;
+    }
     Ok(())
 }
 

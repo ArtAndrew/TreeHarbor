@@ -31,6 +31,8 @@ impl CommandError {
             Self::Metadata(Error::NotFound) => "not_found",
             Self::Metadata(Error::Fenced) => "repository_fenced",
             Self::Metadata(Error::NativeRefSnapshotLimit) => "native_ref_snapshot_limit",
+            Self::Metadata(Error::NativeHandoffBusy) => "native_handoff_busy",
+            Self::Metadata(Error::NativeHandoffMismatch) => "native_handoff_mismatch",
             Self::Metadata(Error::ExecutionState) => "execution_state_changed",
             Self::Metadata(Error::IdempotencyConflict) => "idempotency_conflict",
             Self::Metadata(Error::VersionConflict) => "version_conflict",

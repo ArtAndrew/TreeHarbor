@@ -136,6 +136,8 @@ impl Permission {
             | "source.begin.v1"
             | "source.finish.v1"
             | "source.abort.v1"
+            | "native.handoff.freeze.v1"
+            | "native.handoff.resume.v1"
             | "remote.task.enqueue.v1"
             | "remote.task.cancel.v1" => Ok(Self::RepositoryWrite),
             "api.run.create.v1"

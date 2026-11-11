@@ -341,6 +341,7 @@ async fn handle(
     let source_read = request.uri().path() == "/v1/source/read";
     let source_export = request.uri().path() == "/v1/source/export";
     let projection_export = request.uri().path() == "/v1/github/projections/export";
+    let handoff_export = request.uri().path() == crate::source_export::HANDOFF_PATH;
     let projection_prepare = request.uri().path() == "/v1/github/projections/prepare";
     let review_read = request.uri().path() == "/v1/review/diff";
     let history_read = request.uri().path() == "/v1/history/read";
@@ -358,6 +359,7 @@ async fn handle(
         && !source_read
         && !source_export
         && !projection_export
+        && !handoff_export
         && !projection_prepare
         && !history_read
         && !review_read
@@ -553,19 +555,19 @@ async fn handle(
             ),
         };
     }
-    if source_export || projection_export {
+    if source_export || projection_export || handoff_export {
         let Some(backend) = backend else {
             return error(StatusCode::SERVICE_UNAVAILABLE, "storage_not_configured");
         };
-        return match crate::source_export::export(
-            &body,
-            &credential,
-            backend,
-            pool,
-            projection_export,
-        )
-        .await
-        {
+        use crate::source_export::Route;
+        let route = if handoff_export {
+            Route::FrozenHandoff
+        } else if projection_export {
+            Route::Projection
+        } else {
+            Route::Source
+        };
+        return match crate::source_export::export(&body, &credential, backend, pool, route).await {
             Ok(delivery) => {
                 let mut result = Response::new(delivery.boxed());
                 result.headers_mut().insert(
@@ -639,6 +641,8 @@ async fn handle(
                 "forbidden" => StatusCode::FORBIDDEN,
                 "not_found" => StatusCode::NOT_FOUND,
                 "repository_fenced"
+                | "native_handoff_busy"
+                | "native_handoff_mismatch"
                 | "execution_state_changed"
                 | "idempotency_conflict"
                 | "integration_state_changed"

@@ -556,10 +556,13 @@ enum Agent {
         #[arg(long)]
         output: PathBuf,
     },
-    /// Export every live Standalone branch as one self-contained Git bundle.
+    /// Export every Standalone branch as one self-contained Git bundle.
     GitExport {
         #[arg(long,value_parser=clap::value_parser!(i64).range(1..))]
         epoch: i64,
+        /// Use the exact branches and epoch of an active handoff freeze.
+        #[arg(long)]
+        freeze_key: Option<String>,
         #[arg(long)]
         output: PathBuf,
         #[arg(long, default_value = "/usr/bin/git")]
@@ -1629,6 +1632,7 @@ pub async fn run(cli: Cli) -> Result<bool> {
                 }
                 Agent::GitExport {
                     epoch,
+                    freeze_key,
                     output,
                     git,
                     object_format,
@@ -1639,6 +1643,7 @@ pub async fn run(cli: Cli) -> Result<bool> {
                             socket: endpoint.local_socket()?,
                             credential: &credential,
                             epoch,
+                            freeze_key,
                             output,
                             git,
                             algorithm: if object_format == "sha256" {

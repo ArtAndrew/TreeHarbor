@@ -21,7 +21,7 @@ use tokio::{
     io::{AsyncRead, ReadBuf},
     sync::OwnedSemaphorePermit,
 };
-use treeharbor_core::{Object, RevisionRef};
+use treeharbor_core::{Object, ObjectId, RevisionRef};
 use treeharbor_metadata::{
     Authority, Metadata, Scope,
     access::{Permission, SecretToken},
@@ -31,6 +31,7 @@ use treeharbor_metadata::{
 use treeharbor_storage::{ManagedStore, TenantId};
 use uuid::Uuid;
 type Result<T> = std::result::Result<T, Failure>;
+pub(crate) const HANDOFF_PATH: &str = "/v1/native/handoff/export-source";
 fn fail(status: u16, code: &'static str) -> Failure {
     Failure { status, code }
 }
@@ -56,9 +57,60 @@ struct ProjectionWire {
     epoch: i64,
     projection: String,
 }
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct HandoffWire {
+    version: u8,
+    tenant: String,
+    repository: String,
+    epoch: i64,
+    freeze_key: String,
+    revision: String,
+}
+
+pub(crate) enum Route {
+    Source,
+    Projection,
+    FrozenHandoff,
+}
 enum Purpose {
     Source(ExportFence),
-    Projection { epoch: i64, projection: Uuid },
+    Projection {
+        epoch: i64,
+        projection: Uuid,
+    },
+    FrozenHandoff {
+        epoch: i64,
+        key: String,
+        revision: ObjectId,
+    },
+}
+
+fn handoff_request(body: &[u8]) -> Result<(Scope, Purpose)> {
+    let invalid = || fail(400, "invalid_request");
+    let w: HandoffWire = serde_json::from_slice(body).map_err(|_| invalid())?;
+    let repo: Uuid = w.repository.parse().map_err(|_| invalid())?;
+    let rev: RevisionRef = w.revision.parse().map_err(|_| invalid())?;
+    if w.version != 1
+        || w.epoch <= 0
+        || repo.is_nil()
+        || repo.to_string() != w.repository
+        || rev.to_string() != w.revision
+    {
+        return Err(invalid());
+    }
+    let RevisionRef::Native(revision) = rev else {
+        return Err(fail(400, "native_revision_required"));
+    };
+    Ok((
+        Scope::new(w.tenant, repo).map_err(|_| invalid())?,
+        Purpose::FrozenHandoff {
+            epoch: w.epoch,
+            key: w.freeze_key,
+            revision,
+        },
+    ))
 }
 fn projection_request(body: &[u8]) -> Result<(Scope, Purpose)> {
     let w: ProjectionWire =
@@ -237,13 +289,15 @@ pub(crate) async fn export(
     credential: &SecretToken,
     backend: Backend,
     pool: Pool<Database>,
-    projection: bool,
+    route: Route,
 ) -> Result<Delivery> {
-    let (scope, purpose) = if projection {
-        projection_request(body)?
-    } else {
-        let (s, f) = parse(body)?;
-        (s, Purpose::Source(f))
+    let (scope, purpose) = match route {
+        Route::Projection => projection_request(body)?,
+        Route::FrozenHandoff => handoff_request(body)?,
+        Route::Source => {
+            let (scope, fence) = parse(body)?;
+            (scope, Purpose::Source(fence))
+        }
     };
     let mut db = pool
         .get()
@@ -254,7 +308,7 @@ pub(crate) async fn export(
         .authorize(
             credential,
             &scope,
-            if projection {
+            if matches!(purpose, Purpose::Projection { .. }) {
                 Permission::HostPublish
             } else {
                 Permission::Read
@@ -287,6 +341,15 @@ pub(crate) async fn export(
                 .open_github_projection_export(&auth, epoch, projection, 120)
                 .await
         }
+        Purpose::FrozenHandoff {
+            epoch,
+            key,
+            revision,
+        } => {
+            db.metadata
+                .open_frozen_handoff_export(&auth, epoch, &key, revision, 120)
+                .await
+        }
     }
     .map_err(metadata)?;
     let result = spool(&mut db.metadata, &store, &read, file, permit.clone()).await;
@@ -311,6 +374,32 @@ pub(crate) async fn export(
 mod projection_tests {
     use super::*;
     use serde_json::json;
+    #[test]
+    fn frozen_export_matches_v1_source_request() {
+        let raw = include_bytes!("../tests/fixtures/native-handoff-source-v1.json");
+        let (
+            scope,
+            Purpose::FrozenHandoff {
+                epoch,
+                key,
+                revision,
+            },
+        ) = handoff_request(raw).unwrap_or_else(|_| panic!("invalid frozen export request"))
+        else {
+            panic!("expected frozen export");
+        };
+        assert_eq!(scope.tenant(), "fixture");
+        assert_eq!(
+            scope.repository().to_string(),
+            "00112233-4455-6677-8899-aabbccddeeff"
+        );
+        assert_eq!(epoch, 4);
+        assert_eq!(key, "fixture-native-freeze");
+        assert_eq!(revision, ObjectId::from_bytes([0x11; 32]));
+        let mut invalid: serde_json::Value = serde_json::from_slice(raw).unwrap();
+        invalid["authority"] = json!("connected");
+        assert!(handoff_request(&serde_json::to_vec(&invalid).unwrap()).is_err());
+    }
     #[test]
     fn projection_export_accepts_only_an_exact_operation_not_an_arbitrary_root() {
         let valid = json!({"version":1,"tenant":"test","repository":"00112233-4455-6677-8899-aabbccddeeff","epoch":1,"projection":"ffeeddcc-bbaa-9988-7766-554433221100"});

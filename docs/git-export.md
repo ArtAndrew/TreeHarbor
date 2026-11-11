@@ -67,8 +67,59 @@ destination unpublished. The client applies `--timeout-ms` to individual
 requests and `--timeout-seconds` across capture, pack transfers and projection.
 A process killed during export can leave a private `.treeharbor-branch-packs-*`
 directory under the output parent. After confirming that the export has
-stopped, the operator can remove that temporary directory. For a migration
-capture, stop all branch writers before running the command.
+stopped, the operator can remove that temporary directory. For an authority
+transfer, use the frozen handoff below.
+
+## Freeze Standalone writes and export a handoff bundle
+
+Use this development workflow to prepare a reverse transfer to GitHub. Finish
+or cancel active integration attempts, drain remote tasks, and remove the
+workspaces. Keep the destination fenced against writers while preparing and
+verifying the handoff. A credential with `repository.write` can freeze the
+native repository. Store an owner-private request file with these fields and
+substitute the current epoch from `repository-info`.
+
+```json
+{"action":"handoff_freeze","key":"freeze-for-github-1","epoch":2}
+```
+
+```sh
+treeharbor client --socket "$TH_SOCKET" --credential-file "$TH_OWNER" \
+  native --request "$TH_PRIVATE/freeze.json"
+treeharbor client --socket "$TH_SOCKET" --credential-file "$TH_READER" \
+  git-export --epoch 2 --freeze-key freeze-for-github-1 \
+  --output "$TH_PRIVATE/github-handoff"
+```
+
+The freeze and its receipt commit together. The receipt captures the exact
+branch heads, snapshots, generations and policies. The repository stays frozen
+after service restart. An exact command retry returns the same receipt. Read
+the current freeze using `handoff_snapshot` with `epoch` and `freeze_key`.
+
+The frozen export uses a scoped `read` credential. It downloads only revisions
+in the active freeze and verifies the projected Git history. It checks the
+freeze again before publishing `history.bundle`, `manifest.json` and
+`handoff.json` in one private directory. `handoff.json` version 1 includes the
+freeze receipt, the SHA-256 of the exact Git projection manifest and the bundle
+SHA-256. These files provide the branch history for a later GitHub handoff.
+Proposal and queue records remain in the service. Publishing to a target and
+transferring its write authority require subsequent steps.
+
+To abandon the handoff while the target remains fenced, send a new owner
+request with `handoff_resume`, a new `key`, the frozen `epoch`, `freeze_key`
+and `target_stays_fenced: true`. Resume advances the native epoch and preserves
+branch heads, history and accepted proposals. Queued entries from the old
+epoch become stale and can be submitted again. Keep GitHub fenced when using
+this command. The acknowledgment records the operator's assertion about the
+target, so use it only while the target is still read-only.
+
+The [freeze receipt v1](../crates/metadata/tests/fixtures/native-handoff-freeze-v1.json)
+uses SHA-256 of `treeharbor-native-handoff\0v1\0` followed by the compact JSON
+encoding of its `snapshot` in field order. Refs are sorted by branch-name bytes.
+The [source request v1](../crates/service/tests/fixtures/native-handoff-source-v1.json)
+is `POST /v1/native/handoff/export-source` on the private socket. It uses the
+ordinary complete-source export stream and binds reads to the freeze key,
+scope, epoch and one exact native revision.
 
 ## Export several branches
 
