@@ -1016,3 +1016,78 @@ fn recovery_mapping_verifies_git_oracle_identity_and_rejects_false_origins() {
         }));
     }
 }
+
+#[test]
+fn verifies_every_named_git_tip_in_one_shared_projection() {
+    use treeharbor_git_bridge::{Error, verify_branch_mappings, verify_mapping};
+
+    for algorithm in [HashAlgorithm::Sha1, HashAlgorithm::Sha256] {
+        let temp = tempfile::tempdir().unwrap();
+        fs::set_permissions(temp.path(), fs::Permissions::from_mode(0o700)).unwrap();
+        let s = store(&temp.path().join("store"));
+        let git = temp.path().join("oracle.git");
+        run(
+            temp.path(),
+            &[
+                "init",
+                "--bare",
+                &format!("--object-format={}", algorithm.name()),
+                git.to_str().unwrap(),
+            ],
+            b"",
+        );
+        let git_tree = text(run(&git, &["mktree"], b""));
+        let snapshot = tree(&s, &[]);
+        let tip = |message: &str| {
+            let raw = original_bytes(&git_tree, &[], message);
+            let native = original(&s, &git, algorithm, snapshot, vec![], &raw, message);
+            let Object::NativeCommit(commit) = s.get(native).unwrap() else {
+                panic!("expected an imported commit");
+            };
+            (native, commit.git_origin.unwrap().oid)
+        };
+        let main = tip("main branch\n");
+        let topic = tip("independent topic\n");
+        fs::remove_dir_all(&git).unwrap();
+        let refs = BTreeMap::from([
+            ("refs/heads/main".into(), main),
+            ("refs/heads/stable".into(), main),
+            ("refs/heads/topic".into(), topic),
+        ]);
+        let verified =
+            verify_branch_mappings(&s, refs.clone(), temp.path(), Limits::default()).unwrap();
+        assert_eq!(verified.tips(), &refs);
+        let independent = [main, topic].map(|(native, git)| {
+            verify_mapping(&s, native, git, temp.path(), Limits::default()).unwrap()
+        });
+        assert!(verified.source_objects() < independent.iter().map(|p| p.source_objects()).sum());
+        assert!(verified.source_bytes() < independent.iter().map(|p| p.source_bytes()).sum());
+        let mut wrong = refs.clone();
+        wrong.get_mut("refs/heads/topic").unwrap().1 = main.1;
+        assert!(matches!(
+            verify_branch_mappings(&s, wrong, temp.path(), Limits::default()),
+            Err(Error::InvalidProjection)
+        ));
+        let mut mixed = refs.clone();
+        mixed.get_mut("refs/heads/topic").unwrap().1 = match algorithm {
+            HashAlgorithm::Sha1 => GitOid::Sha256([17; 32]),
+            HashAlgorithm::Sha256 => GitOid::Sha1([17; 20]),
+        };
+        assert!(matches!(
+            verify_branch_mappings(&s, mixed, temp.path(), Limits::default()),
+            Err(Error::Configuration)
+        ));
+        assert!(matches!(
+            verify_branch_mappings(
+                &s,
+                refs,
+                temp.path(),
+                Limits {
+                    objects: verified.source_objects() - 1,
+                    ..Limits::default()
+                }
+            ),
+            Err(Error::Limit)
+        ));
+    }
+}
