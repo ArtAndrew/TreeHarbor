@@ -451,6 +451,8 @@ async fn verify_retained_archive(
     assert_eq!(result(verify("verify-retained", "1")), receipt);
     assert_rejected(verify("verify-fresh", "1"), "source_mapping_mismatch");
     fs::rename(&withheld, &frame).unwrap();
+    let (observation_state, observed) =
+        archive_observation::exercise(f, bridge, stage, "verify-retained").await;
 
     // Revoke the binding between the trusted projection and its database write.
     let mut db = Database::new(f.config.clone())
@@ -512,5 +514,11 @@ async fn verify_retained_archive(
     );
     assert_eq!(result(verify("verify-retained", "1")), receipt);
     assert_rejected(verify("verify-fresh", "1"), "host_binding_state");
+    drop(server);
+    let server = f.start().await;
+    assert_eq!(
+        archive_observation::replay(f, bridge, &observation_state),
+        observed
+    );
     drop(server);
 }

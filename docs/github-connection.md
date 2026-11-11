@@ -292,6 +292,46 @@ has `version` and `result`. The result contains `version`, `tenant`,
 `source_mapping_mismatch`. The endpoint uses the local Unix socket and
 requires a human `repository.write` credential.
 
+## Record a fresh host observation for the verified history
+
+Use a human `repository.write` credential and the key used for
+`archive-verify` with the expected Connected epoch.
+
+```sh
+treeharbor client --socket "$TH_SOCKET" --credential-file "$TH_OWNER" \
+  archive-observe-begin --epoch "$TH_EPOCH" --key observe-archive-001 \
+  --proof-key verify-archive-001
+mkdir -m 700 "$TH_SCRATCH/observe-archive-001"
+treeharbor github archive-observe --socket "$TH_SOCKET" \
+  --credential-file "$TH_BRIDGE" --config "$TH_APP_CONFIG" --epoch "$TH_EPOCH" \
+  --request-key observe-archive-001 --state "$TH_SCRATCH/observe-archive-001"
+```
+
+The server creates a request valid for 180 seconds against the active binding
+and verified archive. The assigned bridge uses its existing `host.read`
+credential and the read-only App inventory operation. It saves the complete
+capture as `inventory.json` before submitting the observation, then saves
+`receipt.json`. Retain this directory for retries and for preserving tags and
+open proposals. A completed retry with the same directory returns the
+historical receipt. Use a new request key and directory for a fresh capture.
+
+The v1 local actions are `archive_observe_begin` (owner),
+`archive_observe_context` (assigned bridge, with `epoch` and `request_key`),
+and [`archive_observe_record`](../crates/metadata/tests/fixtures/github-archive-observation-v1.json)
+(assigned bridge). The server checks the App, upstream, epoch, observation
+time, token revocation and exact branch set against the verified source.
+It returns one `observed` receipt for the request. An outdated report or moved
+tip returns `archive_observation_mismatch`.
+
+The observation contains exact Git branch tips and the count and SHA-256
+digest of each complete tag and open pull request set. The digest input is
+`treeharbor-archive-inventory\0v1\0`, the set name (`tags` or `open-pulls`),
+a NUL byte and the compact JSON of the v1 typed items. Tags are sorted by
+name and pull requests by number. The receipt key is `archive-observed-`
+followed by the hex SHA-256 of `treeharbor-archive-observation\0v1\0` and the
+request key. The observed inventory and verified contents are inputs to
+the subsequent preservation and write-authority transaction.
+
 ## Retain a connection in a running TreeHarbor server
 
 First migrate the [local service](local-service.md) to the current schema and create a

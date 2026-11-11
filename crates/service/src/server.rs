@@ -608,6 +608,7 @@ async fn handle(
                 | "admission_blocked"
                 | "rebase_state_changed"
                 | "host_binding_state"
+                | "archive_observation_mismatch"
                 | "host_recovery_required"
                 | "restore_context_changed"
                 | "restore_decision_conflict"

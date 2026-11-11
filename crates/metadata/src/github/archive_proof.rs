@@ -9,16 +9,34 @@ use treeharbor_storage::ManagedStore;
 
 #[derive(Debug, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
-struct StageReceipt {
+pub(super) struct StageReceipt {
     version: u8,
     tenant: String,
     repository: Uuid,
     authority: String,
     epoch: i64,
-    binding: Uuid,
-    upload: Uuid,
+    pub(super) binding: Uuid,
+    pub(super) upload: Uuid,
     state: String,
-    specification: ArchiveStageSpec,
+    pub(super) specification: ArchiveStageSpec,
+}
+
+pub(super) async fn operation_receipt(
+    tx: &Transaction<'_>,
+    scope: &Scope,
+    key: &str,
+    kind: &str,
+) -> Result<Value> {
+    identifier(key, 128)?;
+    Ok(tx
+        .query_opt(
+            "SELECT result FROM th_operations
+             WHERE tenant=$1 AND repository=$2 AND key=$3 AND kind=$4",
+            &[&scope.tenant(), &scope.repository(), &key, &kind],
+        )
+        .await?
+        .ok_or(Error::NotFound)?
+        .get(0))
 }
 
 async fn stage(
@@ -27,16 +45,8 @@ async fn stage(
     epoch: i64,
     stage_key: &str,
 ) -> Result<StageReceipt> {
-    let row = tx
-        .query_opt(
-            "SELECT result FROM th_operations
-             WHERE tenant=$1 AND repository=$2 AND key=$3 AND kind='github.archive.stage.v1'",
-            &[&scope.tenant(), &scope.repository(), &stage_key],
-        )
-        .await?
-        .ok_or(Error::NotFound)?;
-    let receipt: StageReceipt =
-        serde_json::from_value(row.get(0)).map_err(|_| Error::SchemaMismatch)?;
+    let value = operation_receipt(tx, scope, stage_key, "github.archive.stage.v1").await?;
+    let receipt: StageReceipt = serde_json::from_value(value).map_err(|_| Error::SchemaMismatch)?;
     if receipt.version != 1
         || receipt.tenant != scope.tenant()
         || receipt.repository != scope.repository()
@@ -110,6 +120,38 @@ async fn retained_backend(
         }
     }
     Ok(backend)
+}
+
+impl StageReceipt {
+    fn proof_result(&self, stage_key: &str) -> Value {
+        json!({
+            "version":1,"tenant":self.tenant,"repository":self.repository,
+            "authority":"connected","epoch":self.epoch,"binding":self.binding,
+            "upload":self.upload,"stage_key":stage_key,"state":"verified",
+            "spool_fingerprint":self.specification.spool_fingerprint,
+            "object_count":self.specification.object_count,
+            "encoded_bytes":self.specification.encoded_bytes,
+        })
+    }
+}
+
+pub(super) async fn verified_stage(
+    tx: &Transaction<'_>,
+    scope: &Scope,
+    epoch: i64,
+    proof_key: &str,
+) -> Result<(String, StageReceipt)> {
+    let proof = operation_receipt(tx, scope, proof_key, "github.archive.proof.v1").await?;
+    if proof["epoch"].as_i64() != Some(epoch) {
+        return Err(Error::Fenced);
+    }
+    let stage_key = proof["stage_key"].as_str().ok_or(Error::SchemaMismatch)?;
+    let source = stage(tx, scope, epoch, stage_key).await?;
+    if proof != source.proof_result(stage_key) {
+        return Err(Error::SchemaMismatch);
+    }
+    retained_backend(tx, scope, &source).await?;
+    Ok((stage_key.to_owned(), source))
 }
 
 pub enum ArchiveProofWork {
@@ -292,17 +334,7 @@ impl Metadata {
             return Err(Error::ReceiptMismatch);
         }
         mutation
-            .complete(
-                json!({
-                    "version":1,"tenant":current.tenant,"repository":current.repository,
-                    "authority":"connected","epoch":current.epoch,"binding":current.binding,
-                    "upload":current.upload,"stage_key":proof.stage_key,"state":"verified",
-                    "spool_fingerprint":current.specification.spool_fingerprint,
-                    "object_count":current.specification.object_count,
-                    "encoded_bytes":current.specification.encoded_bytes,
-                }),
-                vec![],
-            )
+            .complete(current.proof_result(&proof.stage_key), vec![])
             .await
     }
 }

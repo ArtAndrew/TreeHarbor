@@ -1,0 +1,33 @@
+{
+  "action": "archive_observe_record",
+  "epoch": 4,
+  "observation": {
+    "version": 1,
+    "request_key": "confirm-archive-001",
+    "binding": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    "app_id": 7,
+    "upstream": {
+      "installation_id": 9,
+      "repository_id": 11,
+      "owner_id": 13,
+      "owner": "example-org",
+      "name": "demo"
+    },
+    "repository_node_id": "R_example",
+    "default_branch": "main",
+    "started_at_unix": 1700000001,
+    "finished_at_unix": 1700000002,
+    "token_revoked": true,
+    "heads": {
+      "refs/heads/main": "git:sha1:1010101010101010101010101010101010101010"
+    },
+    "tags": {
+      "count": 0,
+      "sha256": "sha256:8c3a0ad5699b48b9c03a3c6b5298247deb99c3e0fba621cb009d654a9b7ac33f"
+    },
+    "open_pulls": {
+      "count": 0,
+      "sha256": "sha256:787a21579370d56deeec1864bcc0ef3dca7910947f1ebc1a850a9f289b5eac72"
+    }
+  }
+}
