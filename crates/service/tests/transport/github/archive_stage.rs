@@ -153,6 +153,35 @@ async fn archive_stage_retains_all_roots_atomically_with_one_resumable_upload() 
     .unwrap();
     let binding = bind["binding"].as_str().unwrap();
     let (spool, spec) = archive_spool(&f, &bind);
+    let exported = Command::new(&f.binary)
+        .env("PATH", "/treeharbor-test-no-executables")
+        .args(["git-export", "--archive-spool"])
+        .arg(&spool)
+        .args([
+            "--archive-fingerprint",
+            spec["spool_fingerprint"].as_str().unwrap(),
+            "--output",
+        ])
+        .arg(f.dir.path().join("restored"))
+        .output()
+        .unwrap();
+    assert!(
+        exported.status.success(),
+        "{}",
+        String::from_utf8_lossy(&exported.stderr)
+    );
+    let exported: Value = serde_json::from_slice(&exported.stdout).unwrap();
+    let refs = exported["refs"].as_object().unwrap();
+    let tips = spec["branches"].as_object().unwrap();
+    assert_eq!(refs.len(), tips.len());
+    for (name, tip) in tips {
+        let git_revision = tip["git_revision"]
+            .as_str()
+            .unwrap()
+            .strip_prefix("git:sha1:")
+            .unwrap();
+        assert_eq!(refs[name]["git"], git_revision);
+    }
     let journal = f.dir.path().join("archive-stage.json");
     let invoke = |binding: &str, state: &Path| {
         f.cli(&[

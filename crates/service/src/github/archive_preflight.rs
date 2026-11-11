@@ -59,13 +59,13 @@ pub(super) async fn run(options: Options) -> Result<bool> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use clap::Parser;
     use std::{collections::BTreeSet, fs, os::unix::fs::PermissionsExt, process::Command};
     use treeharbor_core::RevisionRef;
+    use treeharbor_git_bridge::HashAlgorithm;
     use treeharbor_github::{InventoryHead, InventoryObject};
 
-    #[tokio::test]
-    async fn archived_spool_round_trips_after_source_loss_and_refuses_corruption() {
+    #[test]
+    fn archived_spool_round_trips_after_source_loss_and_refuses_corruption() {
         let root = tempfile::tempdir().unwrap();
         let source = root.path().join("repo.git");
         fs::create_dir(&source).unwrap();
@@ -192,27 +192,19 @@ mod tests {
         fs::remove_dir_all(&source).unwrap();
         fs::remove_file(&bundle).unwrap();
         let export = |output: &Path, fingerprint: &str| {
-            let cli = crate::cli::Cli::try_parse_from([
-                "treeharbor",
-                "git-export",
-                "--archive-spool",
-                spool.to_str().unwrap(),
-                "--archive-fingerprint",
-                fingerprint,
-                "--output",
-                output.to_str().unwrap(),
-            ])
-            .unwrap();
-            crate::cli::run(cli)
+            archive_branches::export(
+                &spool,
+                Some(fingerprint.parse().unwrap()),
+                Path::new("/usr/bin/git"),
+                output,
+                HashAlgorithm::Sha1,
+                Limits::default(),
+            )
         };
         let output = scratch.join("git-export");
-        assert!(
-            export(&output, &format!("sha256:{}", "9".repeat(64)))
-                .await
-                .is_err()
-        );
+        assert!(export(&output, &format!("sha256:{}", "9".repeat(64))).is_err());
         assert!(!output.exists());
-        assert!(export(&output, fingerprint).await.unwrap());
+        export(&output, fingerprint).unwrap();
         let restored = scratch.join("restored.git");
         git(
             &scratch,
@@ -257,11 +249,11 @@ mod tests {
             .join(&hex[2..]);
         let mut contents = fs::read(&frame).unwrap();
         fs::remove_file(&frame).unwrap();
-        assert!(export(&rejected, fingerprint).await.is_err());
+        assert!(export(&rejected, fingerprint).is_err());
         assert!(!rejected.exists());
         contents[0] ^= 1;
         fs::write(frame, contents).unwrap();
-        assert!(export(&rejected, fingerprint).await.is_err());
+        assert!(export(&rejected, fingerprint).is_err());
         assert!(!rejected.exists());
         assert_eq!(fs::read_dir(&scratch).unwrap().count(), 3);
     }
