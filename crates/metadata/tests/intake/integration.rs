@@ -872,7 +872,7 @@ async fn native_migration_preserves_existing_changes_and_can_enqueue_them() {
     let prepared = f.prepare(b"old accepted change").await;
     let change = Uuid::new_v4();
     legacy_change(&mut f, "before", change, &prepared).await;
-    let snapshot = "SELECT jsonb_build_object('changes',(SELECT jsonb_agg(to_jsonb(v) ORDER BY version) FROM th_change_versions v),'pins',(SELECT jsonb_agg(to_jsonb(p) ORDER BY holder) FROM th_object_pins p),'runs',(SELECT jsonb_agg(to_jsonb(r)-'origin' ORDER BY run) FROM th_agent_runs r),'receipts',(SELECT jsonb_agg(to_jsonb(o) ORDER BY key) FROM th_operations o))";
+    let snapshot = "SELECT jsonb_build_object('changes',(SELECT jsonb_agg(to_jsonb(v)-'archived_pull' ORDER BY version) FROM th_change_versions v),'pins',(SELECT jsonb_agg(to_jsonb(p) ORDER BY holder) FROM th_object_pins p),'runs',(SELECT jsonb_agg(to_jsonb(r)-'origin' ORDER BY run) FROM th_agent_runs r),'receipts',(SELECT jsonb_agg(to_jsonb(o) ORDER BY key) FROM th_operations o))";
     let before: Value = raw.query_one(snapshot, &[]).await.unwrap().get(0);
     assert!(matches!(
         f.db.check_schema().await,
@@ -881,6 +881,11 @@ async fn native_migration_preserves_existing_changes_and_can_enqueue_them() {
     f.db.migrate().await.unwrap();
     f.db.migrate().await.unwrap();
     f.db.check_schema().await.unwrap();
+    let archived: bool = raw.query_one(
+        "SELECT EXISTS(SELECT 1 FROM th_change_versions WHERE archived_pull IS NOT NULL) OR EXISTS(SELECT 1 FROM th_archive_pull_origins)",
+        &[],
+    ).await.unwrap().get(0);
+    assert!(!archived);
     assert_eq!(
         before,
         raw.query_one(snapshot, &[])

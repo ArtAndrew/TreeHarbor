@@ -508,7 +508,7 @@ async fn rebase_migration_preserves_accepted_versions_and_pending_checks() {
     let (cid, worker) = start(&mut f, &a, entry).await;
     prepare(&mut f, &worker, cid).await;
     evidence(&mut f, &a, &worker, cid).await;
-    let query = "SELECT jsonb_build_object('versions',(SELECT jsonb_agg(to_jsonb(v) ORDER BY changeset,version) FROM th_change_versions v),'candidates',(SELECT jsonb_agg(to_jsonb(c) ORDER BY candidate) FROM th_native_candidates c),'refs',(SELECT jsonb_agg(to_jsonb(r) ORDER BY name) FROM th_native_refs r),'checks',(SELECT jsonb_agg(to_jsonb(c) ORDER BY run) FROM th_native_check_runs c),'pins',(SELECT jsonb_agg(to_jsonb(p) ORDER BY holder) FROM th_object_pins p),'operations',(SELECT jsonb_agg(to_jsonb(o) ORDER BY key) FROM th_operations o))";
+    let query = "SELECT jsonb_build_object('versions',(SELECT jsonb_agg(to_jsonb(v)-'archived_pull' ORDER BY changeset,version) FROM th_change_versions v),'candidates',(SELECT jsonb_agg(to_jsonb(c) ORDER BY candidate) FROM th_native_candidates c),'refs',(SELECT jsonb_agg(to_jsonb(r) ORDER BY name) FROM th_native_refs r),'checks',(SELECT jsonb_agg(to_jsonb(c) ORDER BY run) FROM th_native_check_runs c),'pins',(SELECT jsonb_agg(to_jsonb(p) ORDER BY holder) FROM th_object_pins p),'operations',(SELECT jsonb_agg(to_jsonb(o) ORDER BY key) FROM th_operations o))";
     let before: Value = raw.query_one(query, &[]).await.unwrap().get(0);
     assert!(matches!(
         f.db.check_schema().await,
@@ -517,6 +517,11 @@ async fn rebase_migration_preserves_accepted_versions_and_pending_checks() {
     f.db.migrate().await.unwrap();
     f.db.migrate().await.unwrap();
     f.db.check_schema().await.unwrap();
+    let archived: bool = raw.query_one(
+        "SELECT EXISTS(SELECT 1 FROM th_change_versions WHERE archived_pull IS NOT NULL) OR EXISTS(SELECT 1 FROM th_archive_pull_origins)",
+        &[],
+    ).await.unwrap().get(0);
+    assert!(!archived);
     assert_eq!(
         before,
         raw.query_one(query, &[]).await.unwrap().get::<_, Value>(0)
