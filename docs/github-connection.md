@@ -172,6 +172,28 @@ apply. Use the report as a preflight for source fidelity. Switching write
 authority still requires a separate transaction and verification against the
 current host state.
 
+## Inspect tags and open pull requests before a handoff
+
+With a development build, use the pinned App configuration for an archived
+repository. The App needs Contents, Metadata and Pull requests read access.
+
+```sh
+treeharbor github archive-inventory --config "$TH_APP_CONFIG"
+```
+
+The client reads the complete branch, tag and open pull request inventories
+twice. It checks repository identity and the archived state on each page and
+around both reads. It returns a report after revoking its scoped read token.
+The report covers up to 128 branches and up to 5,000 tags and open pull
+requests each. [GitHub GraphQL repository reference](https://docs.github.com/en/graphql/reference/repos#repository)
+
+The v1 JSON report contains `version`, the branch observation in `archive`,
+`tags` and `open_pulls`. Tag entries retain the full ref identity, object kind
+and OID, including annotated tag objects. Open pull requests retain the
+observed fork identity, head and base revisions, number and draft state.
+Use this inventory to prepare what must be preserved before the write
+handoff. [GitHub ref and pull request fields](https://docs.github.com/en/graphql/reference/git#ref) · [Pull request reference](https://docs.github.com/en/graphql/reference/pulls#pullrequest)
+
 ## Stage all archived branches in TreeHarbor
 
 In a development build, use `archive-stage` to upload the saved graph once.

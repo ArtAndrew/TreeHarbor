@@ -56,6 +56,18 @@ pub(super) async fn run(options: Options) -> Result<bool> {
     Ok(true)
 }
 
+pub(super) async fn inventory(path: &Path) -> Result<bool> {
+    let (credentials, config) = load(path)?;
+    let inventory = Connection::new(credentials)?
+        .observe_archived_repository(&config.repository)
+        .await?;
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&inventory).map_err(|_| Error::Http)?
+    );
+    Ok(true)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

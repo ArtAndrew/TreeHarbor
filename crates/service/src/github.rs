@@ -295,6 +295,11 @@ pub enum Action {
     },
     /// Match a full local Git bundle to a GitHub repository archived by its owner.
     ArchivePreflight(archive_preflight::Options),
+    /// Observe the branches, tags and open pull requests of an archived repository.
+    ArchiveInventory {
+        #[arg(long)]
+        config: PathBuf,
+    },
     /// Discover current heads and all PR states after restore; does not reconnect
     /// the service, resolve discrepancies or grant any publication permission.
     RestoreInventory {
@@ -777,6 +782,7 @@ pub async fn run(action: Action) -> Result<bool> {
             Ok(true)
         }
         Action::ArchivePreflight(options) => archive_preflight::run(options).await,
+        Action::ArchiveInventory { config } => archive_preflight::inventory(&config).await,
         Action::RestoreInventory { config } => {
             let (credentials, config) = load(&config)?;
             let observation = Connection::new(credentials)?
