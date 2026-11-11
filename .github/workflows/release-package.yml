@@ -48,8 +48,7 @@ jobs:
       - name: Install build prerequisites
         run: |
           rustup toolchain install 1.99.1 --profile minimal --target ${{ matrix.arch }}-unknown-linux-musl
-          sudo apt-get update -qq
-          sudo apt-get install -y musl-tools cmake
+          sh scripts/install-noble-build-packages.sh musl-tools cmake
       - name: Install pinned binary-dependency tools
         run: |
           sh scripts/install-sbom-tools.sh '${{ matrix.arch }}' "$RUNNER_TEMP/sbom-tools"

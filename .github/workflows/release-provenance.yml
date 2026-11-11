@@ -121,8 +121,7 @@ jobs:
       - name: Install static Rust target
         run: |
           rustup toolchain install 1.99.1 --profile minimal --target ${{ matrix.arch }}-unknown-linux-musl
-          sudo apt-get update -qq
-          sudo apt-get install -y musl-tools
+          sh scripts/install-noble-build-packages.sh musl-tools
       - name: Install pinned gVisor including sidecar binaries
         working-directory: ${{ runner.temp }}
         run: |
