@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use treeharbor_core::ObjectId;
+use treeharbor_github_contract::archive_inventory::ArchivedRepository;
 
 const BEGIN: &str = "github.archive.observe.begin.v1";
 const RECORD: &str = "github.archive.observe.record.v1";
@@ -81,6 +82,49 @@ pub struct ArchiveObservation {
     pub open_pulls: ArchiveInventoryDigest,
 }
 
+impl ArchiveObservation {
+    pub fn from_inventory<B: Serialize>(
+        binding: Uuid,
+        request_key: &str,
+        inventory: &ArchivedRepository<B>,
+    ) -> Result<Self> {
+        let archive = &inventory.archive;
+        if inventory.version != 1 || archive.version != 1 || !archive.token_revoked {
+            return Err(Error::ArchiveObservationMismatch);
+        }
+        let mut heads = BTreeMap::new();
+        for head in &archive.heads {
+            if head.prefix != "refs/heads/"
+                || head.target.kind != "Commit"
+                || heads
+                    .insert(
+                        format!("{}{}", head.prefix, head.name),
+                        format!("git:sha1:{}", head.target.oid),
+                    )
+                    .is_some()
+            {
+                return Err(Error::ArchiveObservationMismatch);
+            }
+        }
+        Ok(Self {
+            version: 1,
+            request_key: request_key.to_owned(),
+            binding,
+            app_id: archive.app_id,
+            upstream: serde_json::from_value(json!(archive.binding))
+                .map_err(|_| Error::ArchiveObservationMismatch)?,
+            repository_node_id: archive.repository_node_id.clone(),
+            default_branch: archive.default_branch.clone(),
+            started_at_unix: archive.started_at_unix,
+            finished_at_unix: archive.finished_at_unix,
+            token_revoked: archive.token_revoked,
+            heads,
+            tags: ArchiveInventoryDigest::tags(&inventory.tags)?,
+            open_pulls: ArchiveInventoryDigest::open_pulls(&inventory.open_pulls)?,
+        })
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct ArchiveObservationRequest {
@@ -97,6 +141,15 @@ pub struct ArchiveObservationRequest {
     pub observe_after_unix: u64,
     pub expires_at_unix: u64,
     pub observation_key: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ArchiveObservationReceipt {
+    pub version: u8,
+    pub state: String,
+    pub request: ArchiveObservationRequest,
+    pub observation: ArchiveObservation,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -123,6 +176,55 @@ fn observation_key(request_key: &str) -> String {
     hash.update(request_key.as_bytes());
     let digest = ObjectId::from_bytes(hash.finalize().into());
     format!("archive-observed-{}", digest.hex())
+}
+
+pub(super) async fn historical(
+    tx: &Transaction<'_>,
+    scope: &Scope,
+    key: &str,
+) -> Result<ArchiveObservationReceipt> {
+    let value = operation_receipt(tx, scope, key, RECORD)
+        .await
+        .map_err(|error| match error {
+            Error::NotFound => Error::ArchiveObservationMismatch,
+            other => other,
+        })?;
+    let record: ArchiveObservationReceipt =
+        serde_json::from_value(value).map_err(|_| Error::SchemaMismatch)?;
+    let request = &record.request;
+    if record.version != 1
+        || record.state != "observed"
+        || request.version != 1
+        || request.tenant != scope.tenant()
+        || request.repository != scope.repository()
+        || request.observation_key != key
+        || observation_key(&request.key) != key
+    {
+        return Err(Error::SchemaMismatch);
+    }
+    Ok(record)
+}
+
+pub(super) async fn recorded(
+    tx: &Transaction<'_>,
+    scope: &Scope,
+    epoch: i64,
+    key: &str,
+) -> Result<ArchiveObservationReceipt> {
+    let record = historical(tx, scope, key).await?;
+    let request = &record.request;
+    if request.epoch != epoch {
+        return Err(Error::Fenced);
+    }
+    let (stage_key, source) = verified_stage(tx, scope, epoch, &request.proof_key).await?;
+    if request.stage_key != stage_key
+        || request.binding != source.binding
+        || request.upload != source.upload
+        || request.spool_fingerprint != source.specification.spool_fingerprint
+    {
+        return Err(Error::ArchiveObservationMismatch);
+    }
+    Ok(record)
 }
 
 async fn live_request(

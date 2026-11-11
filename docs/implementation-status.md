@@ -64,8 +64,22 @@ Ordinary Git restores the exact ref set, annotated tag bytes, tag-only commit,
 lightweight tree and blob tags, and a fork PR's head, payload and merge base.
 The command refuses missing pull refs, a wrong tag type, a missing PR base,
 unreachable objects, filtered bundles and truncation without publishing an
-output. The retained archive is a local artifact. Durable service retention,
-native proposals and authority transfer remain separate work.
+output.
+
+[Archive retention and recovery](github-connection.md#retain-and-recover-the-archive)
+store the exact bundle and manifest as one pinned object graph. The server
+checks the stored bytes and its own observation receipt before recording
+retention. The PostgreSQL CLI fixture injects a failure before the receipt
+commit and retries the same upload. It removes the local input and
+recovers the identical archive after revoking the GitHub binding. With one
+object file missing, recovery refuses to publish a directory.
+
+The same fixture runs cold backup and restores the archive from a separate
+PostgreSQL database and object store after removing access to the old storage.
+It verifies refusal of the old credential and exact recovery with a newly
+issued owner credential. Ordinary Git restores the fork payload and annotated
+tag from the recovered bytes. Native proposal import and the write-authority
+switch remain separate work.
 
 ## Export multiple branches to Git — 0.1.20-alpha.1
 

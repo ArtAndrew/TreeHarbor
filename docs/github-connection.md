@@ -373,8 +373,51 @@ fetch the branch, tag and pull refs directly. Annotated tag bytes and the
 original fork PR head are preserved. The original PR can be identified by the
 archived repository and PR number in the manifest. Discussion and reviews
 remain at GitHub. This command runs offline against the saved observation.
-Recording the preserved objects on the service and transferring authority
-require separate steps.
+
+## Retain and recover the archive
+
+Use a human `repository.write` credential to retain the directory created
+by `archive-preserve`. Keep the upload journal for an exact retry.
+
+```sh
+treeharbor github archive-retain --socket "$TH_SOCKET" \
+  --credential-file "$TH_OWNER" --epoch "$TH_EPOCH" \
+  --archive "$TH_SCRATCH/preserved-archive" \
+  --state "$TH_SCRATCH/retained-archive.json"
+```
+
+The server compares the manifest to its own observation receipt and checks
+the inventory digests and the complete bundle checksum. It verifies the
+uploaded bytes in their exact storage generations. It pins the artifact,
+closes the upload and records the receipt in one transaction. Successful
+replay returns the original receipt. The `retained` receipt identifies
+preserved bytes. Git graph validation is performed by `archive-preserve`.
+
+Recover both files on the TreeHarbor host using the retained receipt key and
+the service configuration. A stopped service or a revoked GitHub connection
+still permits historical recovery with current owner authorization.
+
+```sh
+treeharbor github archive-recover --config "$TH_CONFIG" \
+  --credential-file "$TH_OWNER" --key "$TH_RETAINED_KEY" \
+  --output "$TH_SCRATCH/recovered-archive"
+```
+
+Recovery verifies the pinned contents before publishing a new private
+directory. It uses PostgreSQL and the configured object store directly.
+The recovered bundle can be verified and opened with ordinary Git.
+
+The local v1 POST endpoint is `/v1/github/archive/retain`. Its
+[request fixture](../crates/service/tests/fixtures/github-archive-retain-v1.json)
+specifies the scope, epoch, upload and exact artifact root. The root is an
+ordinary v1 directory with regular-file entries `manifest.json` and
+`bundle-0000`, `bundle-0001`, and successive chunk names. Chunks are 4 MiB
+except for the final remainder. The object count and encoded byte count
+include each distinct frame once. The operation key and pin holder are
+`archive-retained-` followed by the same hex suffix as the observation key.
+The archive uses the existing object catalogue, which cold backup includes
+with its PostgreSQL metadata. Transfer of write authority requires its own
+verification and transaction.
 
 ## Retain a connection in a running TreeHarbor server
 

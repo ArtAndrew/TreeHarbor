@@ -415,6 +415,24 @@ pub(crate) async fn verify_archive(
     .await
 }
 
+pub(crate) async fn archive_retention(
+    socket: &Path,
+    credential: &Credential,
+    fields: Value,
+    timeout: Duration,
+) -> Result<Reply> {
+    send_request(
+        socket,
+        &credential.token,
+        "POST",
+        crate::archive_retention::PATH.into(),
+        "application/json",
+        scoped_fields(credential, fields)?,
+        timeout,
+    )
+    .await
+}
+
 pub async fn review(
     socket: &Path,
     credential: &Credential,

@@ -137,11 +137,16 @@ pub async fn send(request: Request<'_>) -> Result<Reply> {
         timeout: request.timeout,
         upload: journal.upload.parse().map_err(|_| Error::ImportState)?,
         begin: json!({"method":"source_begin","key":format!("import-{}-begin",journal.upload),"authority":journal.authority,"epoch":journal.epoch,"upload":journal.upload,"ttl_seconds":journal.ttl_seconds,"max_objects":journal.max_objects,"max_bytes":journal.max_bytes}),
-        finish: finish(&journal),
+        finish: Finish::Command(finish(&journal)),
     };
     let (ids, store) = request.pack.into_frames();
     let reply = transfer.send(ids, store).await?;
     checked_finish(reply, &journal)
+}
+
+pub(crate) enum Finish {
+    Command(Value),
+    ArchiveArtifact(Value),
 }
 
 pub(crate) struct Transfer<'a> {
@@ -150,10 +155,20 @@ pub(crate) struct Transfer<'a> {
     pub timeout: Duration,
     pub upload: Uuid,
     pub begin: Value,
-    pub finish: Value,
+    pub finish: Finish,
 }
 
 impl Transfer<'_> {
+    async fn finish(&self) -> Result<Reply> {
+        match &self.finish {
+            Finish::Command(value) => self.command(value).await,
+            Finish::ArchiveArtifact(value) => {
+                client::archive_retention(self.socket, self.credential, value.clone(), self.timeout)
+                    .await
+            }
+        }
+    }
+
     async fn command(&self, value: &Value) -> Result<Reply> {
         client::send(
             self.socket,
@@ -169,7 +184,7 @@ impl Transfer<'_> {
 
     pub(crate) async fn send(self, ids: Vec<ObjectId>, store: LocalStore) -> Result<Reply> {
         // An exact completed receipt is authoritative even after upload expiry.
-        let first = self.command(&self.finish).await?;
+        let first = self.finish().await?;
         let retry = (first.status.as_u16(), first.body["error"]["code"].as_str());
         if !matches!(
             retry,
@@ -201,7 +216,7 @@ impl Transfer<'_> {
                 if reply.status.as_u16() == 409
                     && reply.body["error"]["code"] == "upload_state_changed"
                 {
-                    return self.command(&self.finish).await;
+                    return self.finish().await;
                 }
                 return Ok(reply);
             }
@@ -212,6 +227,6 @@ impl Transfer<'_> {
                 return Err(Error::Http);
             }
         }
-        self.command(&self.finish).await
+        self.finish().await
     }
 }

@@ -7,7 +7,7 @@ use treeharbor_github::{ArchivedBranches, InventoryHead, InventoryObject};
 use treeharbor_metadata::github::ArchiveBranchTip;
 use treeharbor_storage::LocalStore;
 
-fn archive_spool(f: &Fixture, bind: &Value) -> (PathBuf, Value) {
+fn archive_spool(f: &Fixture, bind: &Value) -> (PathBuf, Value, archive_payload::FullArchive) {
     let dir = f.dir.path();
     let git = dir.join("archive.git");
     git_reference::git(
@@ -114,6 +114,7 @@ fn archive_spool(f: &Fixture, bind: &Value) -> (PathBuf, Value) {
     hash.update(b"treeharbor-archive-branch-spool\0v1\0");
     hash.update(bytes.as_bytes());
     let fingerprint = ObjectId::from_bytes(hash.finalize().into()).to_string();
+    let full = archive_payload::make_bundle(dir, &git, &first, &commit("tag only", &[]));
     fs::remove_dir_all(&git).unwrap();
     fs::remove_file(&bundle).unwrap();
     let spec = json!({
@@ -126,7 +127,7 @@ fn archive_spool(f: &Fixture, bind: &Value) -> (PathBuf, Value) {
         "object_count": objects.len(),
         "encoded_bytes": imported.encoded_bytes,
     });
-    (spool, spec)
+    (spool, spec, full)
 }
 
 fn assert_rejected(output: Output, code: &str) {
@@ -152,7 +153,7 @@ async fn archive_stage_retains_all_roots_atomically_with_one_resumable_upload() 
     ))
     .unwrap();
     let binding = bind["binding"].as_str().unwrap();
-    let (spool, spec) = archive_spool(&f, &bind);
+    let (spool, spec, full) = archive_spool(&f, &bind);
     let exported = Command::new(&f.binary)
         .env("PATH", "/treeharbor-test-no-executables")
         .args(["git-export", "--archive-spool"])
@@ -347,7 +348,10 @@ async fn archive_stage_retains_all_roots_atomically_with_one_resumable_upload() 
     stage["specification"]["spool_fingerprint"] = json!(ObjectId::from_bytes([99; 32]).to_string());
     assert_rejected(request(&f, &stage), "idempotency_conflict");
     assert_eq!(read_counts().await, [2, 2, 1, 0]);
-    verify_retained_archive(&f, server, &bridge, upload, &receipt).await;
+    Box::pin(verify_retained_archive(
+        &f, server, &bridge, upload, &receipt, &full,
+    ))
+    .await;
     f.cleanup().await;
 }
 
@@ -357,6 +361,7 @@ async fn verify_retained_archive(
     bridge: &Path,
     upload: Uuid,
     stage: &Value,
+    full: &archive_payload::FullArchive,
 ) {
     use treeharbor_metadata::{
         Error,
@@ -452,7 +457,9 @@ async fn verify_retained_archive(
     assert_rejected(verify("verify-fresh", "1"), "source_mapping_mismatch");
     fs::rename(&withheld, &frame).unwrap();
     let (observation_state, observed) =
-        archive_observation::exercise(f, bridge, stage, "verify-retained").await;
+        archive_observation::exercise(f, bridge, stage, "verify-retained", full).await;
+    let retained_payload =
+        Box::pin(archive_payload::retain(f, bridge, &observation_state, full)).await;
 
     // Revoke the binding between the trusted projection and its database write.
     let mut db = Database::new(f.config.clone())
@@ -521,4 +528,5 @@ async fn verify_retained_archive(
         observed
     );
     drop(server);
+    Box::pin(archive_payload::recover(f, bridge, retained_payload, full)).await;
 }

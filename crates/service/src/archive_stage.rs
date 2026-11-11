@@ -2,7 +2,7 @@
 use crate::{
     Error, Result,
     client::{Credential, Reply},
-    import::{Transfer, retain_journal},
+    import::{Finish, Transfer, retain_journal},
     pack::archive_branches::StageSource,
 };
 use serde::{Deserialize, Serialize};
@@ -72,8 +72,10 @@ pub(crate) async fn send(request: Request<'_>) -> Result<Reply> {
         begin: json!({"method":"source_begin","key":format!("archive-{upload}-begin"),
             "authority":"connected","epoch":intent.epoch,"upload":upload,"ttl_seconds":intent.ttl_seconds,
             "max_objects":intent.specification.object_count,"max_bytes":intent.specification.encoded_bytes}),
-        finish: json!({"method":"github","request":{"action":"archive_stage","key":format!("archive-{upload}-stage"),
+        finish: Finish::Command(
+            json!({"method":"github","request":{"action":"archive_stage","key":format!("archive-{upload}-stage"),
             "epoch":intent.epoch,"binding":intent.binding,"upload":upload,"specification":intent.specification}}),
+        ),
     };
     let reply = transfer
         .send(request.source.ids, request.source.store)

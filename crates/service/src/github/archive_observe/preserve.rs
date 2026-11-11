@@ -1,8 +1,6 @@
 //! Retain the exact Git data and inventory behind a recorded observation.
 use super::{ArchiveObservation, Capture, Error, Result, files, json};
-use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use sha2::{Digest, Sha256};
 use std::{
     collections::BTreeMap,
     fs,
@@ -11,15 +9,17 @@ use std::{
     path::{Path, PathBuf},
     time::Duration,
 };
-use treeharbor_core::{GitOid, ObjectId, RevisionRef};
+use treeharbor_core::{GitOid, RevisionRef};
 use treeharbor_git_bridge::{
-    ArchiveBundleInfo, ArchiveRef, BundleInput, GitObjectKind, Limits, verify_archive_bundle,
+    ArchiveRef, BundleInput, GitObjectKind, Limits, verify_archive_bundle,
 };
-use treeharbor_github::ArchivedRepository;
-use treeharbor_metadata::github::ArchiveObservationRequest;
+use treeharbor_github::{ArchivedRepository, RepositoryBinding};
+use treeharbor_metadata::github::{
+    ARCHIVE_ARTIFACT_FORMAT, ArchiveArtifactManifest, ArchiveObservationReceipt,
+    archive_manifest_fingerprint,
+};
 
 const MAX_INVENTORY_BYTES: usize = 32 * 1024 * 1024;
-const FORMAT: &str = "treeharbor-github-archive";
 
 #[derive(clap::Args)]
 pub struct Options {
@@ -38,29 +38,12 @@ pub struct Options {
     timeout_seconds: u64,
 }
 
-#[derive(Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-struct ObservationReceipt {
-    version: u8,
-    state: String,
-    request: ArchiveObservationRequest,
-    observation: ArchiveObservation,
-}
+type Manifest = ArchiveArtifactManifest<RepositoryBinding>;
 
-#[derive(Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-struct Manifest {
-    format: String,
-    version: u8,
-    receipt: ObservationReceipt,
-    inventory: ArchivedRepository,
-    bundle: ArchiveBundleInfo,
-}
-
-fn load_state(state: &Path) -> Result<(Capture, ObservationReceipt)> {
+fn load_state(state: &Path) -> Result<(Capture, ArchiveObservationReceipt)> {
     let state = files::private_directory(state)?;
     let read = |name| files::read_private(&state.join(name), MAX_INVENTORY_BYTES);
-    let receipt: ObservationReceipt =
+    let receipt: ArchiveObservationReceipt =
         serde_json::from_slice(&read("receipt.json")?).map_err(|_| Error::PublicationState)?;
     let capture: Capture =
         serde_json::from_slice(&read("inventory.json")?).map_err(|_| Error::PublicationState)?;
@@ -152,13 +135,6 @@ fn expected_refs(
     Ok((refs, bases))
 }
 
-fn fingerprint(bytes: &[u8]) -> ObjectId {
-    let mut digest = Sha256::new();
-    digest.update(b"treeharbor-github-archive\0v1\0");
-    digest.update(bytes);
-    ObjectId::from_bytes(digest.finalize().into())
-}
-
 fn preserve(options: Options) -> Result<Value> {
     let (capture, receipt) = load_state(&options.state)?;
     let (refs, bases) = expected_refs(&capture.inventory, &receipt.observation)?;
@@ -189,7 +165,7 @@ fn preserve(options: Options) -> Result<Value> {
     )?;
     fs::rename(archive.path(), stage.path().join("archive.bundle"))?;
     let manifest = Manifest {
-        format: FORMAT.into(),
+        format: ARCHIVE_ARTIFACT_FORMAT.into(),
         version: 1,
         receipt,
         inventory: capture.inventory,
@@ -205,7 +181,7 @@ fn preserve(options: Options) -> Result<Value> {
     Ok(json!({
         "version":1,"state":"preserved",
         "observation_key":manifest.receipt.request.observation_key,
-        "manifest_sha256":fingerprint(&bytes).to_string(),
+        "manifest_sha256":archive_manifest_fingerprint(&bytes).to_string(),
         "bundle":manifest.bundle,
         "branches":manifest.inventory.archive.heads.len(),
         "tags":manifest.inventory.tags.len(),
@@ -230,7 +206,7 @@ mod tests {
         let manifest: Manifest = serde_json::from_slice(bytes).unwrap();
         assert_eq!(serde_json::to_vec(&manifest).unwrap(), bytes);
         assert_eq!(
-            fingerprint(bytes).to_string(),
+            archive_manifest_fingerprint(bytes).to_string(),
             "sha256:469e9cb7276ed7664bcb2fd7a25a5493c00a0957c910d3f264896894bdead68e"
         );
         assert_eq!(

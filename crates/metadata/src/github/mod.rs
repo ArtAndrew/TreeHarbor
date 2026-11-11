@@ -5,16 +5,23 @@ pub(crate) mod projections;
 pub use projections::ProjectionSpec;
 mod admission_evidence;
 mod admission_policy;
+mod archive_artifact;
 mod archive_observation;
 mod archive_proof;
+mod archive_retention;
 mod archive_stage;
 mod host_policy;
 pub use admission_policy::{AdmissionPolicy, ManagedRequirement};
+pub use archive_artifact::{
+    ARCHIVE_ARTIFACT_FORMAT, ArchiveArtifact, ArchiveArtifactManifest, ArchiveArtifactSpec,
+    archive_manifest_fingerprint, pack_archive_artifact,
+};
 pub use archive_observation::{
     ArchiveInventoryDigest, ArchiveObservation, ArchiveObservationContext,
-    ArchiveObservationRequest,
+    ArchiveObservationReceipt, ArchiveObservationRequest,
 };
 pub use archive_proof::ArchiveProofWork;
+pub use archive_retention::{ArchiveRetentionWork, ArchiveStored};
 pub use archive_stage::{ArchiveBranchTip, ArchiveStageSpec};
 mod check_policy;
 mod check_publications;

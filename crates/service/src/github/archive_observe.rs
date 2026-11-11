@@ -1,15 +1,11 @@
 //! Capture a complete archive inventory for a scoped server request.
 use super::{publish::journal::Journal, *};
 use serde::{Deserialize, Serialize};
-use std::{
-    collections::BTreeMap,
-    time::{SystemTime, UNIX_EPOCH},
-};
+use std::time::{SystemTime, UNIX_EPOCH};
 use treeharbor_github::ArchivedRepository;
-use treeharbor_metadata::github::{
-    ArchiveInventoryDigest, ArchiveObservation, ArchiveObservationContext,
-};
+use treeharbor_metadata::github::{ArchiveObservation, ArchiveObservationContext};
 pub(super) mod preserve;
+pub(super) mod retention;
 
 #[derive(clap::Args)]
 pub struct Options {
@@ -37,42 +33,8 @@ struct Capture {
 
 impl Capture {
     fn observation(&self, request_key: &str) -> Result<ArchiveObservation> {
-        let archive = &self.inventory.archive;
-        if self.inventory.version != 1 || archive.version != 1 || !archive.token_revoked {
-            return Err(Error::PublicationState);
-        }
-        let mut heads = BTreeMap::new();
-        for head in &archive.heads {
-            if head.prefix != "refs/heads/"
-                || head.target.kind != "Commit"
-                || heads
-                    .insert(
-                        format!("{}{}", head.prefix, head.name),
-                        format!("git:sha1:{}", head.target.oid),
-                    )
-                    .is_some()
-            {
-                return Err(Error::PublicationState);
-            }
-        }
-        Ok(ArchiveObservation {
-            version: 1,
-            request_key: request_key.to_owned(),
-            binding: self.binding,
-            app_id: archive.app_id,
-            upstream: serde_json::from_value(json!(archive.binding))
-                .map_err(|_| Error::PublicationState)?,
-            repository_node_id: archive.repository_node_id.clone(),
-            default_branch: archive.default_branch.clone(),
-            started_at_unix: archive.started_at_unix,
-            finished_at_unix: archive.finished_at_unix,
-            token_revoked: archive.token_revoked,
-            heads,
-            tags: ArchiveInventoryDigest::tags(&self.inventory.tags)
-                .map_err(|_| Error::PublicationState)?,
-            open_pulls: ArchiveInventoryDigest::open_pulls(&self.inventory.open_pulls)
-                .map_err(|_| Error::PublicationState)?,
-        })
+        ArchiveObservation::from_inventory(self.binding, request_key, &self.inventory)
+            .map_err(|_| Error::PublicationState)
     }
 }
 

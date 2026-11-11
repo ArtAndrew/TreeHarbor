@@ -70,6 +70,8 @@ const MAX_JSON: usize = 1024 * 1024;
 pub enum Error {
     #[error("GitHub archive observation is stale or differs from the retained source")]
     ArchiveObservationMismatch,
+    #[error("GitHub archive files differ from the recorded observation or payload")]
+    ArchiveArtifactMismatch,
     #[error("GitHub event channel is not active for this delivery")]
     HostEventState,
     #[error("GitHub event retention budget exhausted")]
