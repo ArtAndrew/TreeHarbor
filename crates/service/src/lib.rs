@@ -16,6 +16,7 @@ mod doctor;
 pub mod download;
 pub mod files;
 mod github;
+mod handoff_projection;
 mod history;
 mod https;
 pub mod import;

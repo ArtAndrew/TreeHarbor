@@ -572,6 +572,15 @@ enum Agent {
         #[arg(long, default_value_t=300, value_parser=clap::value_parser!(u64).range(1..=3600))]
         timeout_seconds: u64,
     },
+    /// Verify the GitHub SHA-1 projection of a frozen Standalone export.
+    HandoffVerify {
+        #[arg(long)]
+        key: String,
+        #[arg(long,value_parser=clap::value_parser!(i64).range(1..))]
+        epoch: i64,
+        #[arg(long)]
+        handoff: PathBuf,
+    },
     /// Verify a preserved recovery commit against an exact Git revision on the server.
     RestoreVerifySource {
         #[arg(long)]
@@ -1108,6 +1117,7 @@ impl Agent {
             }
             Self::SourceExport { .. }
             | Self::GitExport { .. }
+            | Self::HandoffVerify { .. }
             | Self::History { .. }
             | Self::Diff { .. }
             | Self::RestoreVerifySource { .. }
@@ -1654,6 +1664,23 @@ pub async fn run(cli: Cli) -> Result<bool> {
                             request_timeout: Duration::from_millis(timeout_ms),
                             timeout: Duration::from_secs(timeout_seconds),
                         },
+                    )
+                    .await?;
+                    println!("{}", reply.body);
+                    return Ok(reply.status.is_success());
+                }
+                Agent::HandoffVerify {
+                    key,
+                    epoch,
+                    handoff,
+                } => {
+                    let reply = crate::pack::git_export::verify_handoff_projection(
+                        endpoint.local_socket()?,
+                        &credential,
+                        &key,
+                        epoch,
+                        &handoff,
+                        Duration::from_millis(timeout_ms),
                     )
                     .await?;
                     println!("{}", reply.body);

@@ -4,7 +4,7 @@ mod candidates;
 mod evidence;
 mod execution;
 pub(crate) mod handoff;
-pub use handoff::{FrozenSnapshot, HandoffFreeze};
+pub use handoff::{FrozenSnapshot, HandoffFreeze, HandoffProjectionSpec, HandoffProjectionWork};
 mod policy;
 mod program;
 pub(crate) use evidence::trusted;
