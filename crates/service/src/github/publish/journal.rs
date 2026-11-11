@@ -6,7 +6,14 @@ const MAX_RECORD_BYTES: usize = 256 * 1024;
 pub(in crate::github) struct Journal {
     pub root: PathBuf,
     max_record_bytes: usize,
-    _lock: File,
+    lock: File,
+}
+impl Drop for Journal {
+    fn drop(&mut self) {
+        // A child can inherit the open file description until exec. Release
+        // the lock explicitly when the journal owner finishes.
+        let _ = rustix::fs::flock(&self.lock, rustix::fs::FlockOperation::Unlock);
+    }
 }
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -78,12 +85,12 @@ impl Journal {
         files::private_file(&lock)?;
         rustix::fs::flock(&lock, rustix::fs::FlockOperation::NonBlockingLockExclusive)
             .map_err(|_| Error::AlreadyRunning)?;
-        File::open(&root)?.sync_all()?;
         let j = Self {
             root,
             max_record_bytes,
-            _lock: lock,
+            lock,
         };
+        File::open(&j.root)?.sync_all()?;
         j.bind("intent.json", intent)?;
         Ok(j)
     }
@@ -226,8 +233,11 @@ mod tests {
             json!(record)
         );
         assert!(j.append(&report()).is_err());
+        // A spawned process can temporarily keep a copy before exec closes it.
+        let inherited = j.lock.try_clone().unwrap();
         drop(j);
         let j = Journal::open(dir.path(), &identity).unwrap();
+        drop(inherited);
         assert_eq!(j.attempt().unwrap(), attempt);
         let (index, pending) = j.pending::<PublicationReport>().unwrap().unwrap();
         assert_eq!(json!(pending), json!(record));
