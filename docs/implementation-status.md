@@ -81,6 +81,16 @@ issued owner credential. Ordinary Git restores the fork payload and annotated
 tag from the recovered bytes. Native proposal import and the write-authority
 switch remain separate work.
 
+The [archive-proposals command](github-connection.md#prepare-native-proposals-from-the-archive)
+produces durable native source and patch objects from the exact archived PRs.
+The CLI fixture verifies the patch against ordinary Git's merge base and
+shows that a file added only on the current target is outside the patch.
+The same fixture records criss-cross and unrelated histories for resolution,
+and compares the original pull identities after source loss. The PostgreSQL
+fixture also prepares a fork proposal from the cold-restored archive.
+The output is a private migration artifact. Server admission and the fenced
+authority switch are pending.
+
 ## Export multiple branches to Git — 0.1.20-alpha.1
 
 [Git export](git-export.md#export-several-branches) can combine completed source

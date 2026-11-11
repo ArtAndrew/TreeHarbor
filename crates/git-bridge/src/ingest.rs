@@ -658,58 +658,27 @@ fn import_inner(
     if let Selection::Branches(expected) = selection {
         verify_bundle_refs(unbundled, algorithm, expected)?;
     }
-    let target_hex = targets
-        .iter()
-        .map(|oid| std::ffi::OsString::from(origin::hex(oid)));
     let mut fsck = vec![
         "fsck".into(),
         "--strict".into(),
         "--no-reflogs".into(),
         "--no-dangling".into(),
     ];
-    fsck.extend(target_hex.clone());
+    fsck.extend(
+        targets
+            .iter()
+            .map(|oid| std::ffi::OsString::from(origin::hex(oid))),
+    );
     git.run(Some(&repo), "fsck source", &fsck, None, 1 << 20)?;
-    let mut rev_list = vec![
-        "rev-list".into(),
-        "--objects".into(),
-        "--no-object-names".into(),
-    ];
-    rev_list.extend(target_hex);
-    let listing = git.capture(
-        Some(&repo),
-        "list source objects",
-        &rev_list,
-        None,
-        request.limits.objects as u64 * 66,
+    let (mut source, seen) = read_source(
+        &git,
+        &repo,
+        scratch.path(),
+        &targets,
+        algorithm,
+        request.limits,
+        deadline,
     )?;
-    let mut reader = BufReader::new(listing);
-    let mut oids = Vec::new();
-    let mut seen = BTreeSet::new();
-    let input_path = scratch.path().join("objects.input");
-    let mut commands = File::create(&input_path)?;
-    loop {
-        let line = line(&mut reader)?;
-        if line.is_empty() {
-            break;
-        }
-        check_deadline(deadline)?;
-        let oid = origin::parse_oid(&line, algorithm)?;
-        if oids.len() >= request.limits.objects || !seen.insert(oid.clone()) {
-            return Err(Error::Limit);
-        }
-        commands.write_all(&line)?;
-        commands.write_all(b"\n")?;
-        oids.push(oid);
-    }
-    drop(commands);
-    let output = git.capture(
-        Some(&repo),
-        "read source objects",
-        &["cat-file".into(), "--batch".into()],
-        Some(&input_path),
-        request.limits.source_bytes + request.limits.objects as u64 * 100,
-    )?;
-    let mut source = Source::open(output, &oids, algorithm, request.limits, deadline)?;
     let imported = convert(store, &mut source, &targets, refs, request.limits, deadline)?;
     if let Selection::Commit(origin, Some(scope)) = selection
         && let Ok(pack) = retained::exact_pack(&git, &repo, algorithm, &seen, deadline)
@@ -734,4 +703,82 @@ fn import_inner(
         );
     }
     Ok(imported)
+}
+
+/// The caller owns an empty temporary repository and has verified its complete
+/// archive. Read all selected commit closures together, with no ref lookups.
+pub(super) fn import_verified_commits(
+    store: &impl ObjectStore,
+    git: &process::Git<'_>,
+    repo: &Path,
+    scratch: &Path,
+    refs: &BTreeMap<String, GitOid>,
+    limits: Limits,
+    deadline: Instant,
+) -> Result<ImportedBranches> {
+    let algorithm = HashAlgorithm::Sha1;
+    let targets = refs.values().map(|oid| oid_parts(oid).1.to_vec()).collect();
+    let (mut source, _) = read_source(git, repo, scratch, &targets, algorithm, limits, deadline)?;
+    convert(store, &mut source, &targets, refs, limits, deadline)
+}
+
+fn read_source(
+    git: &process::Git<'_>,
+    repo: &Path,
+    scratch: &Path,
+    targets: &BTreeSet<Vec<u8>>,
+    algorithm: HashAlgorithm,
+    limits: Limits,
+    deadline: Instant,
+) -> Result<(Source, BTreeSet<Vec<u8>>)> {
+    let revisions = scratch.join("revisions.input");
+    let mut file = File::create(&revisions)?;
+    for target in targets {
+        check_deadline(deadline)?;
+        writeln!(file, "{}", origin::hex(target))?;
+    }
+    drop(file);
+    let listing = git.capture(
+        Some(repo),
+        "list source objects",
+        &[
+            "rev-list".into(),
+            "--objects".into(),
+            "--no-object-names".into(),
+            "--stdin".into(),
+        ],
+        Some(&revisions),
+        limits.objects as u64 * 66,
+    )?;
+    let mut reader = BufReader::new(listing);
+    let mut oids = Vec::new();
+    let mut seen = BTreeSet::new();
+    let input_path = scratch.join("objects.input");
+    let mut commands = File::create(&input_path)?;
+    loop {
+        let line = line(&mut reader)?;
+        if line.is_empty() {
+            break;
+        }
+        check_deadline(deadline)?;
+        let oid = origin::parse_oid(&line, algorithm)?;
+        if oids.len() >= limits.objects || !seen.insert(oid.clone()) {
+            return Err(Error::Limit);
+        }
+        commands.write_all(&line)?;
+        commands.write_all(b"\n")?;
+        oids.push(oid);
+    }
+    drop(commands);
+    let output = git.capture(
+        Some(repo),
+        "read source objects",
+        &["cat-file".into(), "--batch".into()],
+        Some(&input_path),
+        limits.source_bytes + limits.objects as u64 * 100,
+    )?;
+    Ok((
+        Source::open(output, &oids, algorithm, limits, deadline)?,
+        seen,
+    ))
 }
