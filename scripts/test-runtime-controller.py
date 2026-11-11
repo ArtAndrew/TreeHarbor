@@ -32,10 +32,21 @@ def docker(*args, **kwargs):
 def wait_until(predicate, timeout=20):
     until = time.monotonic() + timeout
     while time.monotonic() < until:
-        if predicate():
-            return
+        result = predicate()
+        if result:
+            return result
         time.sleep(0.02)
     raise AssertionError("fault boundary or runtime state did not arrive")
+
+
+def release_decision(path):
+    try:
+        decision = path.read_text()
+    except FileNotFoundError:
+        return None
+    # Writers can create the marker before its content is visible. An empty
+    # or incomplete marker must not cause the proxy to forward the request.
+    return decision if decision in ("drop", "forward") else None
 
 
 def proxy(root, gid):
@@ -57,8 +68,8 @@ def proxy(root, gid):
         except FileExistsError:
             return "forward", False
         (root / "reached").write_text("reached")
-        wait_until(lambda: (root / "release").exists(), 25)
-        return (root / "release").read_text(), True
+        decision = wait_until(lambda: release_decision(root / "release"), 25)
+        return decision, True
 
     def handle(client):
         paused = False
