@@ -1,10 +1,10 @@
 //! Fixed GitHub download, separate from offline interop. The trusted executable
 //! dispatches `internal-git-worker` to `worker()` before running any agent code.
+use crate::bundle::digest;
 use crate::{Error, Limits, Result, check_deadline, check_limits, private_parent, process};
 #[cfg(target_os = "linux")]
 use base64::Engine;
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use std::{
     fs::{self, File},
     io::{Read, Write},
@@ -13,7 +13,7 @@ use std::{
     process::{Child, Command, Stdio},
     time::{Duration, Instant},
 };
-use treeharbor_core::{GitOid, ObjectId, RevisionRef};
+use treeharbor_core::{GitOid, RevisionRef};
 use zeroize::Zeroizing;
 
 pub struct Request<'a> {
@@ -205,24 +205,6 @@ pub(super) fn run(worker: &Path, request: &Worker, deadline: Instant, max_disk: 
         }
         std::thread::sleep(Duration::from_millis(25));
     }
-}
-fn digest(mut f: File, limit: u64, deadline: Instant) -> Result<(String, u64)> {
-    let mut hash = Sha256::new();
-    let mut bytes = 0;
-    let mut buffer = [0; 65536];
-    loop {
-        check_deadline(deadline)?;
-        let n = f.read(&mut buffer)?;
-        if n == 0 {
-            break;
-        }
-        bytes += n as u64;
-        if bytes > limit {
-            return Err(Error::Limit);
-        }
-        hash.update(&buffer[..n]);
-    }
-    Ok((ObjectId::from_bytes(hash.finalize().into()).hex(), bytes))
 }
 /// The caller must retain its concurrency permit until this blocking function
 /// exits. Resource limits apply per Git process on Linux. Disk usage is monitored

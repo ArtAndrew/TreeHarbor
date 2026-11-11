@@ -1,14 +1,13 @@
 //! Complete history of pinned Git commits; no ref authority or network fetch.
 use crate::{
-    Error, HashAlgorithm, Limits, Result, WorkspacePackIdentity, WorkspacePackScope,
+    Error, HashAlgorithm, Limits, Result, WorkspacePackIdentity, WorkspacePackScope, bundle,
     check_branch_refs, check_deadline, check_limits, origin, process, retained, stream, valid_ref,
 };
 use std::{
     cell::RefCell,
     collections::{BTreeMap, BTreeSet},
-    fs::{self, File, OpenOptions},
+    fs::File,
     io::{BufRead, BufReader, Read, Seek, SeekFrom, Write},
-    os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt},
     path::Path,
     time::Instant,
 };
@@ -645,87 +644,17 @@ fn import_inner(
         return Err(Error::Configuration);
     }
     let targets: BTreeSet<_> = refs.values().map(|oid| oid_parts(oid).1.to_vec()).collect();
-    let meta = fs::symlink_metadata(request.scratch)?;
-    if !meta.is_dir()
-        || meta.uid() != rustix::process::geteuid().as_raw()
-        || meta.mode() & 0o077 != 0
-    {
-        return Err(Error::Configuration);
-    }
     let deadline = Instant::now() + request.limits.timeout;
-    let scratch = tempfile::Builder::new()
-        .prefix(".treeharbor-import-")
-        .tempdir_in(request.scratch)?;
-    fs::set_permissions(scratch.path(), fs::Permissions::from_mode(0o700))?;
-    let input = OpenOptions::new()
-        .read(true)
-        .custom_flags((rustix::fs::OFlags::NOFOLLOW | rustix::fs::OFlags::NONBLOCK).bits() as i32)
-        .open(request.bundle)?;
-    if !input.metadata()?.is_file() || input.metadata()?.len() > request.limits.stream_bytes {
-        return Err(Error::Configuration);
-    }
+    let scratch = bundle::scratch(request.scratch, ".treeharbor-import-")?;
     let bundle = scratch.path().join("source.bundle");
-    let mut copied = File::create(&bundle)?;
-    let mut input = input.take(request.limits.stream_bytes + 1);
-    let mut buffer = [0u8; 65536];
-    let mut bytes = 0u64;
-    loop {
-        check_deadline(deadline)?;
-        let n = input.read(&mut buffer)?;
-        if n == 0 {
-            break;
-        }
-        bytes += n as u64;
-        if bytes > request.limits.stream_bytes {
-            return Err(Error::Limit);
-        }
-        copied.write_all(&buffer[..n])?;
-    }
-    drop(copied);
-    let repo = scratch.path().join("source.git");
-    let template = scratch.path().join("empty-template");
-    fs::create_dir(&repo)?;
-    fs::create_dir(&template)?;
+    bundle::copy(
+        request.bundle,
+        &bundle,
+        request.limits.stream_bytes,
+        deadline,
+    )?;
     let git = process::Git::new(request.git.canonicalize()?, scratch.path(), deadline);
-    let mut template_arg = std::ffi::OsString::from("--template=");
-    template_arg.push(&template);
-    git.run(
-        Some(&repo),
-        "init importer",
-        &[
-            "init".into(),
-            "--bare".into(),
-            "--quiet".into(),
-            format!("--object-format={}", algorithm.name()).into(),
-            template_arg,
-            repo.as_os_str().to_owned(),
-        ],
-        None,
-        4096,
-    )?;
-    git.run(
-        Some(&repo),
-        "verify source bundle",
-        &[
-            "bundle".into(),
-            "verify".into(),
-            "--quiet".into(),
-            bundle.as_os_str().to_owned(),
-        ],
-        None,
-        1 << 20,
-    )?;
-    let unbundled = git.capture(
-        Some(&repo),
-        "unbundle source",
-        &[
-            "bundle".into(),
-            "unbundle".into(),
-            bundle.as_os_str().to_owned(),
-        ],
-        None,
-        1 << 20,
-    )?;
+    let (repo, unbundled) = bundle::unpack(&git, scratch.path(), &bundle, algorithm, 1 << 20)?;
     if let Selection::Branches(expected) = selection {
         verify_bundle_refs(unbundled, algorithm, expected)?;
     }

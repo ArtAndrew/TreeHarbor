@@ -9,6 +9,7 @@ use treeharbor_github::ArchivedRepository;
 use treeharbor_metadata::github::{
     ArchiveInventoryDigest, ArchiveObservation, ArchiveObservationContext,
 };
+pub(super) mod preserve;
 
 #[derive(clap::Args)]
 pub struct Options {

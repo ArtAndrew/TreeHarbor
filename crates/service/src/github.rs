@@ -303,6 +303,8 @@ pub enum Action {
     },
     /// Record a fresh read-only archive observation for a verified source request.
     ArchiveObserve(archive_observe::Options),
+    /// Retain a complete local Git bundle matching a saved archive observation.
+    ArchivePreserve(archive_observe::preserve::Options),
     /// Discover current heads and all PR states after restore; does not reconnect
     /// the service, resolve discrepancies or grant any publication permission.
     RestoreInventory {
@@ -787,6 +789,11 @@ pub async fn run(action: Action) -> Result<bool> {
         Action::ArchivePreflight(options) => archive_preflight::run(options).await,
         Action::ArchiveInventory { config } => archive_preflight::inventory(&config).await,
         Action::ArchiveObserve(options) => Box::pin(archive_observe::run(options)).await,
+        Action::ArchivePreserve(options) => {
+            tokio::task::spawn_blocking(move || archive_observe::preserve::run(options))
+                .await
+                .map_err(|_| Error::ExportWorker)?
+        }
         Action::RestoreInventory { config } => {
             let (credentials, config) = load(&config)?;
             let observation = Connection::new(credentials)?
