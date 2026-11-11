@@ -17,7 +17,7 @@ mod retained;
 pub use retained::{WorkspacePack, WorkspacePackIdentity, WorkspacePackScope};
 mod stream;
 mod verify;
-pub use verify::{VerifiedMapping, verify_mapping};
+pub use verify::{VerifiedBranchMappings, VerifiedMapping, verify_branch_mappings, verify_mapping};
 mod workspace;
 pub use workspace::{
     WorkspaceSeed, install_workspace_seed, seed_workspace, seed_workspace_from_pack,
