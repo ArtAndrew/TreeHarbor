@@ -146,7 +146,14 @@ impl Metadata {
             return Err(Error::HostBindingState);
         }
         let session = uploads::active(tx, scope, auth.principal(), upload).await?;
-        if session.get::<_, Option<Uuid>>("github_import").is_some()
+        let ordinary: bool = tx
+            .query_one(
+                "SELECT github_import IS NULL FROM th_source_uploads WHERE tenant=$1 AND repository=$2 AND upload=$3",
+                &[&tenant, &repository, &upload],
+            )
+            .await?
+            .get(0);
+        if !ordinary
             || session.get::<_, i64>("max_objects") != spec.object_count
             || session.get::<_, i64>("max_bytes") != spec.encoded_bytes
         {

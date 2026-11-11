@@ -61,7 +61,7 @@ pub(crate) async fn active(
     principal: &str,
     upload: Uuid,
 ) -> Result<Row> {
-    let row = tx.query_opt("SELECT backend,authority,epoch,max_objects,max_bytes,reserved_objects,reserved_bytes,expires_at>clock_timestamp() AND state='active',github_import FROM th_source_uploads WHERE tenant=$1 AND repository=$2 AND upload=$3 AND principal=$4 FOR UPDATE", &[&scope.tenant,&scope.repository,&upload,&principal]).await?.ok_or(Error::NotFound)?;
+    let row = tx.query_opt("SELECT backend,authority,epoch,max_objects,max_bytes,reserved_objects,reserved_bytes,expires_at>clock_timestamp() AND state='active' FROM th_source_uploads WHERE tenant=$1 AND repository=$2 AND upload=$3 AND principal=$4 FOR UPDATE", &[&scope.tenant,&scope.repository,&upload,&principal]).await?.ok_or(Error::NotFound)?;
     if !row.get::<_, bool>(7) {
         return Err(Error::UploadState);
     }
@@ -274,10 +274,24 @@ impl Metadata {
             }
         } else {
             let snapshot = object.commit_snapshot().map(|id| id.as_bytes().to_vec());
-            let git_origin = object
-                .commit_git_origin()
-                .map(|id| RevisionRef::Git(id).to_string());
-            tx.execute("INSERT INTO th_source_upload_items(tenant,repository,upload,digest,generation,hold_token,kind,length,snapshot,git_origin) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)", &[&s.tenant,&s.repository,&upload,&digest,&lease.key().generation(),&token,&(object.kind() as i16),&(object.length() as i64),&snapshot,&git_origin]).await?;
+            tx.execute("INSERT INTO th_source_upload_items(tenant,repository,upload,digest,generation,hold_token,kind,length,snapshot) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)", &[&s.tenant,&s.repository,&upload,&digest,&lease.key().generation(),&token,&(object.kind() as i16),&(object.length() as i64),&snapshot]).await?;
+            if let Some(origin) = object.commit_git_origin() {
+                // Migration 016 introduced this column. Preserve the ordinary
+                // upload path when constructing or upgrading a legacy database.
+                let stores_origin = purpose == Purpose::Github
+                    || tx
+                        .query_one(
+                            "SELECT EXISTS(SELECT 1 FROM th_schema_version WHERE singleton AND version>=16)",
+                            &[],
+                        )
+                        .await?
+                        .get::<_, bool>(0);
+                if stores_origin {
+                    let git_origin = RevisionRef::Git(origin).to_string();
+                    tx.execute("UPDATE th_source_upload_items SET git_origin=$5 WHERE tenant=$1 AND repository=$2 AND upload=$3 AND digest=$4",
+                        &[&s.tenant,&s.repository,&upload,&digest,&git_origin]).await?;
+                }
+            }
             tx.execute("UPDATE th_source_uploads SET reserved_objects=reserved_objects+1,reserved_bytes=reserved_bytes+$4 WHERE tenant=$1 AND repository=$2 AND upload=$3", &[&s.tenant,&s.repository,&upload,&(object.length() as i64)]).await?;
         }
         // Retrying an object may never extend its session's fixed deadline.
