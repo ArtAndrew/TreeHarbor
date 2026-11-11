@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "tenant": "fixture",
+  "repository": "00112233-4455-6677-8899-aabbccddeeff",
+  "epoch": 4,
+  "key": "fixture-frozen-projection",
+  "specification": {
+    "version": 1,
+    "freeze_key": "fixture-native-freeze",
+    "snapshot_sha256": "sha256:5726d4c852496b1824745e79bca134d3b145532c07e833e85240d7147d72a380",
+    "refs": {
+      "refs/heads/main": "git:sha1:4444444444444444444444444444444444444444",
+      "refs/heads/stable": "git:sha1:4444444444444444444444444444444444444444"
+    }
+  }
+}

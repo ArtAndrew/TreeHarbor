@@ -342,6 +342,7 @@ async fn handle(
     let source_export = request.uri().path() == "/v1/source/export";
     let projection_export = request.uri().path() == "/v1/github/projections/export";
     let handoff_export = request.uri().path() == crate::source_export::HANDOFF_PATH;
+    let handoff_verify = request.uri().path() == crate::handoff_projection::PATH;
     let projection_prepare = request.uri().path() == "/v1/github/projections/prepare";
     let review_read = request.uri().path() == "/v1/review/diff";
     let history_read = request.uri().path() == "/v1/history/read";
@@ -360,6 +361,7 @@ async fn handle(
         && !source_export
         && !projection_export
         && !handoff_export
+        && !handoff_verify
         && !projection_prepare
         && !history_read
         && !review_read
@@ -511,11 +513,21 @@ async fn handle(
         || archive_retention
         || archive_proposal_stage
         || archive_activate
+        || handoff_verify
     {
         let Some(backend) = backend else {
             return error(StatusCode::SERVICE_UNAVAILABLE, "storage_not_configured");
         };
-        let result = if archive_activate {
+        let result = if handoff_verify {
+            Box::pin(crate::handoff_projection::verify(
+                &body,
+                &credential,
+                backend,
+                pool,
+                deadline,
+            ))
+            .await
+        } else if archive_activate {
             Box::pin(crate::archive_activate::activate(
                 &body,
                 &credential,

@@ -1,6 +1,8 @@
 //! Freeze native writes and retain the exact input for a reverse authority transfer.
+mod projection;
 use super::{capture_refs, ref_name, request, *};
 use crate::identifier;
+pub use projection::{HandoffProjectionSpec, HandoffProjectionWork};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 

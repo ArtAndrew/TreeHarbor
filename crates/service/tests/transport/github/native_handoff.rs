@@ -32,6 +32,21 @@ fn exported(output: Output) -> Value {
     serde_json::from_slice(&output.stdout).unwrap()
 }
 
+fn verify_projection(f: &Fixture, owner: &Path, key: &str, directory: &Path) -> Output {
+    f.cli_with_credential(
+        owner,
+        &[
+            "handoff-verify",
+            "--key",
+            key,
+            "--epoch",
+            "2",
+            "--handoff",
+            directory.to_str().unwrap(),
+        ],
+    )
+}
+
 pub(super) async fn exercise(
     f: &Fixture,
     server: Process,
@@ -194,6 +209,75 @@ pub(super) async fn exercise(
         proof["bundle_sha256"],
         ObjectId::from_bytes(Sha256::digest(bundle).into()).hex()
     );
+    assert_rejected(
+        verify_projection(f, worker, "worker-projection", &destination),
+        "forbidden",
+    );
+    let forged = dir.join("forged-handoff-projection");
+    fs::create_dir(&forged).unwrap();
+    fs::set_permissions(&forged, fs::Permissions::from_mode(0o700)).unwrap();
+    let mut altered = receipt["export"].clone();
+    altered["refs"]["refs/heads/main"]["git"] = altered["refs"]["refs/heads/stable"]["git"].clone();
+    let bytes = serde_json::to_vec(&altered).unwrap();
+    let mut forged_proof = proof.clone();
+    forged_proof["projection_sha256"] =
+        json!(ObjectId::from_bytes(Sha256::digest(&bytes).into()).to_string());
+    files::write_private(&forged.join("manifest.json"), &bytes).unwrap();
+    files::write_private(
+        &forged.join("handoff.json"),
+        &serde_json::to_vec(&forged_proof).unwrap(),
+    )
+    .unwrap();
+    assert_rejected(
+        verify_projection(f, owner, "verify-exact-projection", &forged),
+        "native_handoff_mismatch",
+    );
+    let parent = f
+        .sql
+        .query_one(
+            r#"
+        SELECT e.child,e.child_generation FROM th_native_refs r
+        JOIN th_object_edges e ON e.tenant=r.tenant AND e.parent=r.head
+        JOIN th_objects o ON (o.tenant,o.digest,o.generation)=(e.tenant,e.child,e.child_generation)
+        WHERE r.name='stable' AND o.kind=5 ORDER BY e.child LIMIT 1
+        "#,
+            &[],
+        )
+        .await
+        .unwrap();
+    let hex = ObjectId::from_bytes(parent.get::<_, Vec<u8>>(0).try_into().unwrap()).hex();
+    let store = f.config.storage.as_ref().unwrap();
+    let frame = store
+        .root
+        .join("managed-v1")
+        .join(parent.get::<_, i64>(1).to_string())
+        .join("objects")
+        .join(f.scope.tenant())
+        .join(&hex[..2])
+        .join(&hex[2..]);
+    let unavailable = dir.join("withheld-frozen-parent");
+    fs::rename(&frame, &unavailable).unwrap();
+    assert_rejected(
+        verify_projection(f, owner, "verify-exact-projection", &destination),
+        "internal_error",
+    );
+    fs::rename(&unavailable, frame).unwrap();
+    let verified = ok(verify_projection(
+        f,
+        owner,
+        "verify-exact-projection",
+        &destination,
+    ));
+    assert_eq!(verified["state"], "verified");
+    assert_eq!(
+        verified["object_count"],
+        receipt["export"]["source_objects"]
+    );
+    assert_eq!(verified["encoded_bytes"], receipt["export"]["source_bytes"]);
+    assert_eq!(
+        verified["specification"]["snapshot_sha256"],
+        frozen["snapshot_sha256"]
+    );
     let restored = dir.join("frozen-export.git");
     git_reference::git(
         dir,
@@ -287,6 +371,19 @@ exec /usr/bin/git "$@"
     assert_rejected(child.wait_with_output().unwrap(), "repository_fenced");
     assert!(!race_output.exists());
     assert_eq!(ok(native(f, owner, resume)), resumed);
+    assert_eq!(
+        ok(verify_projection(
+            f,
+            owner,
+            "verify-exact-projection",
+            &destination
+        )),
+        verified
+    );
+    assert_rejected(
+        verify_projection(f, owner, "verify-after-resume", &destination),
+        "repository_fenced",
+    );
     assert_rejected(native(f, owner, snapshot), "repository_fenced");
     assert_eq!(
         ok(native(

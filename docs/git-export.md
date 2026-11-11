@@ -121,6 +121,29 @@ is `POST /v1/native/handoff/export-source` on the private socket. It uses the
 ordinary complete-source export stream and binds reads to the freeze key,
 scope, epoch and one exact native revision.
 
+### Verify the frozen GitHub projection on the server
+
+Use the owner credential to record the SHA-1 mapping from the frozen export.
+The CLI reads the digest-bound `handoff.json` and `manifest.json`.
+
+```sh
+treeharbor client --socket "$TH_SOCKET" --credential-file "$TH_OWNER" \
+  handoff-verify --key verify-for-github-1 --epoch 2 \
+  --handoff "$TH_PRIVATE/github-handoff"
+```
+
+The server reads the complete pinned native graph and reconstructs all Git
+commit IDs in Rust. Every branch in the current freeze must have the exact
+projected tip. The verified receipt records the freeze digest, Git refs,
+object count and frame bytes. Use the same operation key for an uncertain
+response. The receipt is historical after the native epoch advances. A fresh
+verification must use the current freeze.
+
+The [v1 projection request](../crates/service/tests/fixtures/native-handoff-projection-v1.json)
+uses `POST /v1/native/handoff/verify-projection` over the private socket and
+`repository.write`. The receipt proves the source mapping. Target publication
+uses separate verification of the bundle bytes and remote branch state.
+
 ## Export several branches
 
 Capture the desired tips with [`ref_snapshot`](native-integration.md#capture-the-current-branch-tips)

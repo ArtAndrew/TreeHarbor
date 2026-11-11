@@ -1,6 +1,6 @@
 use super::{Error, Limits, MAX_PACK_BYTES, MAX_PACK_OBJECTS, Pack};
 use crate::{Error as ServiceError, archive, client, files};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use std::{
@@ -13,7 +13,11 @@ use std::{
 };
 use treeharbor_core::{Object, ObjectId, ObjectStore, RevisionRef};
 use treeharbor_git_bridge as git_bridge;
-use treeharbor_metadata::{Authority, exports::ExportFence, integration::HandoffFreeze};
+use treeharbor_metadata::{
+    Authority,
+    exports::ExportFence,
+    integration::{HandoffFreeze, HandoffProjectionSpec},
+};
 use treeharbor_storage::LocalStore;
 
 /// Read only the verified members of the input packs. Shared objects use one
@@ -107,12 +111,13 @@ pub(crate) struct LiveExport<'a> {
     pub timeout: Duration,
 }
 
-#[derive(Serialize)]
-struct FrozenExport<'a> {
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct FrozenExport<T> {
     version: u8,
-    freeze: &'a HandoffFreeze,
+    freeze: T,
     projection_sha256: String,
-    bundle_sha256: &'a str,
+    bundle_sha256: String,
 }
 
 fn remaining(deadline: Instant) -> crate::Result<Duration> {
@@ -290,7 +295,7 @@ pub(crate) async fn export_standalone(request: LiveExport<'_>) -> crate::Result<
             version: 1,
             freeze: &freeze,
             projection_sha256: ObjectId::from_bytes(Sha256::digest(&projection).into()).to_string(),
-            bundle_sha256: &manifest.bundle_sha256,
+            bundle_sha256: manifest.bundle_sha256.clone(),
         };
         let proof = serde_json::to_vec(&proof).map_err(|_| ServiceError::ExportSnapshot)?;
         files::write_private(&result_path.join("handoff.json"), &proof)?;
@@ -316,4 +321,89 @@ pub(crate) async fn export_standalone(request: LiveExport<'_>) -> crate::Result<
         status: reply.status,
         body,
     })
+}
+
+fn handoff_spec(
+    path: &Path,
+    scope: &treeharbor_metadata::Scope,
+    epoch: i64,
+) -> crate::Result<HandoffProjectionSpec> {
+    let directory = files::private_directory(path)?;
+    let read = |name| files::read_private(&directory.join(name), super::MAX_MANIFEST);
+    let receipt: FrozenExport<HandoffFreeze> =
+        serde_json::from_slice(&read("handoff.json")?).map_err(|_| ServiceError::ExportSnapshot)?;
+    let bytes = read("manifest.json")?;
+    if receipt.version != 1
+        || receipt.projection_sha256
+            != ObjectId::from_bytes(Sha256::digest(&bytes).into()).to_string()
+    {
+        return Err(ServiceError::ExportSnapshot);
+    }
+    let snapshot = &receipt.freeze.snapshot;
+    receipt
+        .freeze
+        .validate(scope, epoch, &snapshot.freeze_key)
+        .map_err(|_| ServiceError::ExportSnapshot)?;
+    let projection: git_bridge::Manifest =
+        serde_json::from_slice(&bytes).map_err(|_| ServiceError::ExportSnapshot)?;
+    if projection.version != 1
+        || projection.git_object_format != git_bridge::HashAlgorithm::Sha1
+        || projection.bundle_sha256 != receipt.bundle_sha256
+        || projection.refs.len() != snapshot.refs.len()
+    {
+        return Err(ServiceError::ExportSnapshot);
+    }
+    let mut refs = BTreeMap::new();
+    for tip in &snapshot.refs {
+        let name = format!("refs/heads/{}", tip.name);
+        let reference = projection
+            .refs
+            .get(&name)
+            .ok_or(ServiceError::ExportSnapshot)?;
+        if tip.head.strip_prefix("native:") != Some(reference.native.as_str()) {
+            return Err(ServiceError::ExportSnapshot);
+        }
+        refs.insert(name, format!("git:sha1:{}", reference.git));
+    }
+    Ok(HandoffProjectionSpec {
+        version: 1,
+        freeze_key: snapshot.freeze_key.clone(),
+        snapshot_sha256: receipt.freeze.snapshot_sha256,
+        refs,
+    })
+}
+
+pub(crate) async fn verify_handoff_projection(
+    socket: &Path,
+    credential: &client::Credential,
+    key: &str,
+    epoch: i64,
+    directory: &Path,
+    timeout: Duration,
+) -> crate::Result<client::Reply> {
+    let spec = handoff_spec(directory, &credential.scope, epoch)?;
+    let reply = client::archive_operation(
+        socket,
+        credential,
+        crate::handoff_projection::PATH,
+        json!({"key":key,"epoch":epoch,"specification":spec}),
+        timeout,
+    )
+    .await?;
+    if reply.status.is_success() {
+        let result = &reply.body["result"];
+        if reply.body["version"] != 1
+            || result["version"] != 1
+            || result["state"] != "verified"
+            || result["authority"] != "standalone"
+            || result["epoch"] != epoch
+            || result["key"] != key
+            || result["tenant"] != credential.scope.tenant()
+            || result["repository"] != json!(credential.scope.repository())
+            || result["specification"] != json!(spec)
+        {
+            return Err(ServiceError::Http);
+        }
+    }
+    Ok(reply)
 }
