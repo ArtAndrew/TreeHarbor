@@ -44,6 +44,12 @@ after checking the complete object set. The transport test withholds a merge
 parent, verifies exact replay after restart, and revokes the binding between
 projection and proof recording.
 
+`github archive-inventory` adds two complete read-only snapshots of branch and
+tag tips and open pull requests. The transport fixtures cover pagination,
+annotated tag identities, open fork PRs and rejection of changes between reads.
+The inventory supplies the data needed to preserve those refs and proposals
+at handoff.
+
 ## Export multiple branches to Git — 0.1.20-alpha.1
 
 [Git export](git-export.md#export-several-branches) can combine completed source

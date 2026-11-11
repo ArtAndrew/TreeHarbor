@@ -17,6 +17,16 @@ const PULLS: &str = r#"query TreeHarborRestorePulls($owner:String!,$name:String!
  totalCount pageInfo{endCursor hasNextPage} nodes{id number state isDraft merged
  headRefName headRefOid baseRefName baseRefOid headRepository{databaseId}
  baseRepository{databaseId} mergeCommit{oid}}}}}"#;
+const TAGS: &str = r#"query TreeHarborArchiveTags($owner:String!,$name:String!,$after:String){
+ repository(owner:$owner,name:$name,followRenames:false){id databaseId nameWithOwner isArchived
+ inventory:refs(refPrefix:"refs/tags/",first:50,after:$after,orderBy:{field:ALPHABETICAL,direction:ASC}){
+ totalCount pageInfo{endCursor hasNextPage} nodes{id name prefix target{__typename oid}}}}}"#;
+const OPEN_PULLS: &str = r#"query TreeHarborArchiveOpenPulls($owner:String!,$name:String!,$after:String){
+ repository(owner:$owner,name:$name,followRenames:false){id databaseId nameWithOwner isArchived
+ inventory:pullRequests(first:50,after:$after,states:[OPEN],orderBy:{field:CREATED_AT,direction:ASC}){
+ totalCount pageInfo{endCursor hasNextPage} nodes{id number state isDraft merged
+ headRefName headRefOid baseRefName baseRefOid headRepository{databaseId}
+ baseRepository{databaseId} mergeCommit{oid}}}}}"#;
 
 #[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct InventoryObject {
@@ -31,16 +41,23 @@ pub struct InventoryHead {
     pub prefix: String,
     pub target: InventoryObject,
 }
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct InventoryTag {
+    pub id: String,
+    pub name: String,
+    pub prefix: String,
+    pub target: InventoryObject,
+}
+#[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct InventoryRepositoryId {
     pub database_id: u64,
 }
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct InventoryCommit {
     pub oid: String,
 }
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct InventoryPull {
     pub id: String,
@@ -87,6 +104,22 @@ pub struct ArchivedBranches {
     pub finished_at_unix: u64,
     pub heads: Vec<InventoryHead>,
     pub token_revoked: bool,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ArchivedRepository {
+    pub version: u8,
+    pub archive: ArchivedBranches,
+    pub tags: Vec<InventoryTag>,
+    pub open_pulls: Vec<InventoryPull>,
+}
+
+#[derive(PartialEq, Eq)]
+struct ArchivedSnapshot {
+    heads: Vec<InventoryHead>,
+    tags: Vec<InventoryTag>,
+    open_pulls: Vec<InventoryPull>,
 }
 
 #[derive(Deserialize)]
@@ -158,6 +191,24 @@ impl Item for InventoryHead {
         self.name.clone()
     }
 }
+impl Item for InventoryTag {
+    fn validate(&self, _: &RepositoryBinding) -> bool {
+        text_field(&self.id, 256)
+            && text_field(&self.name, 1024)
+            && self.prefix == "refs/tags/"
+            && matches!(
+                self.target.kind.as_str(),
+                "Tag" | "Commit" | "Tree" | "Blob"
+            )
+            && oid(&self.target.oid)
+    }
+    fn id(&self) -> &str {
+        &self.id
+    }
+    fn key(&self) -> String {
+        self.name.clone()
+    }
+}
 impl Item for InventoryPull {
     fn validate(&self, b: &RepositoryBinding) -> bool {
         text_field(&self.id, 256)
@@ -193,13 +244,15 @@ impl Connection {
         query: &str,
         require_archive: bool,
     ) -> Result<Vec<T>> {
-        let (stage, max_items) = if require_archive {
-            (
-                Stage::ArchivedBranches,
-                treeharbor_git_bridge::MAX_EXPORT_REFS,
-            )
+        let stage = if require_archive {
+            Stage::ArchivedBranches
         } else {
-            (Stage::RestoreInventory, PAGE_SIZE * MAX_PAGES)
+            Stage::RestoreInventory
+        };
+        let max_items = if require_archive && query == HEADS {
+            treeharbor_git_bridge::MAX_EXPORT_REFS
+        } else {
+            PAGE_SIZE * MAX_PAGES
         };
         let incomplete = || {
             if require_archive {
@@ -344,54 +397,120 @@ impl Connection {
         &self,
         b: &RepositoryBinding,
     ) -> Result<ArchivedBranches> {
+        Ok(self.observe_archive(b, false).await?.archive)
+    }
+
+    /// Observe exact branch and tag tips plus every open PR, under a read-only
+    /// installation token and two complete observations of the archived host.
+    pub async fn observe_archived_repository(
+        &self,
+        b: &RepositoryBinding,
+    ) -> Result<ArchivedRepository> {
+        self.observe_archive(b, true).await
+    }
+
+    async fn archive_snapshot(
+        &self,
+        b: &RepositoryBinding,
+        node: &str,
+        token: &wire::Token,
+        full: bool,
+    ) -> Result<ArchivedSnapshot> {
+        let mut heads: Vec<InventoryHead> =
+            self.inventory_pages(b, node, token, HEADS, true).await?;
+        heads.sort_unstable_by(|a, b| a.name.cmp(&b.name));
+        let (mut tags, mut open_pulls) = if full {
+            (
+                self.inventory_pages::<InventoryTag>(b, node, token, TAGS, true)
+                    .await?,
+                self.inventory_pages::<InventoryPull>(b, node, token, OPEN_PULLS, true)
+                    .await?,
+            )
+        } else {
+            (Vec::new(), Vec::new())
+        };
+        if open_pulls.iter().any(|pull| pull.state != "OPEN") {
+            return Err(Error::ArchivedBranches);
+        }
+        tags.sort_unstable_by(|a, b| a.name.cmp(&b.name));
+        open_pulls.sort_unstable_by_key(|pull| pull.number);
+        Ok(ArchivedSnapshot {
+            heads,
+            tags,
+            open_pulls,
+        })
+    }
+
+    async fn observe_archive(
+        &self,
+        b: &RepositoryBinding,
+        full: bool,
+    ) -> Result<ArchivedRepository> {
         b.validate()?;
         let _slot = tokio::time::timeout(PROBE_TIMEOUT, self.slots.acquire())
             .await
             .map_err(|_| Error::Deadline)?
             .map_err(|_| Error::Configuration)?;
-        let (installation, token) = tokio::time::timeout(PROBE_TIMEOUT, self.mint(b))
-            .await
-            .map_err(|_| Error::Deadline)??;
+        let capability = if full {
+            wire::Capability::PullRead
+        } else {
+            wire::Capability::Source
+        };
+        let (installation, token) =
+            tokio::time::timeout(PROBE_TIMEOUT, self.mint_for(b, capability))
+                .await
+                .map_err(|_| Error::Deadline)??;
         let observed = tokio::time::timeout(INVENTORY_TIMEOUT, async {
             let started = now()?;
-            let first = self.observe_with_token(b, &installation, &token).await?;
+            let first = self
+                .observe_for(b, &installation, &token, capability)
+                .await?;
             if !first.archived || first.disabled {
                 return Err(Error::ArchivedBranches);
             }
-            let expiry = token.check(b.repository_id, now()?)?;
+            let expiry = token.check_for(b.repository_id, now()?, capability)?;
             if now()?.saturating_add(INVENTORY_TIMEOUT.as_secs() + 30) >= expiry {
                 return Err(Error::TokenLifetime);
             }
-            let mut heads: Vec<InventoryHead> = self
-                .inventory_pages(b, &first.repository_node_id, &token, HEADS, true)
+            let captured = self
+                .archive_snapshot(b, &first.repository_node_id, &token, full)
                 .await?;
-            if !heads.iter().any(|head| head.name == first.default_branch) {
+            if !captured
+                .heads
+                .iter()
+                .any(|head| head.name == first.default_branch)
+            {
                 return Err(Error::ArchivedBranches);
             }
-            let mut repeated: Vec<InventoryHead> = self
-                .inventory_pages(b, &first.repository_node_id, &token, HEADS, true)
+            let repeated = self
+                .archive_snapshot(b, &first.repository_node_id, &token, full)
                 .await?;
-            heads.sort_unstable_by(|a, b| a.name.cmp(&b.name));
-            repeated.sort_unstable_by(|a, b| a.name.cmp(&b.name));
-            let last = self.observe_with_token(b, &installation, &token).await?;
+            let last = self
+                .observe_for(b, &installation, &token, capability)
+                .await?;
             if !last.archived
                 || last.disabled
                 || first.repository_node_id != last.repository_node_id
                 || first.default_branch != last.default_branch
-                || heads != repeated
+                || captured != repeated
             {
                 return Err(Error::ArchivedBranches);
             }
-            Ok(ArchivedBranches {
+            Ok(ArchivedRepository {
                 version: 1,
-                binding: b.clone(),
-                app_id: first.app_id,
-                repository_node_id: first.repository_node_id,
-                default_branch: first.default_branch,
-                started_at_unix: started,
-                finished_at_unix: now()?,
-                heads,
-                token_revoked: true,
+                archive: ArchivedBranches {
+                    version: 1,
+                    binding: b.clone(),
+                    app_id: first.app_id,
+                    repository_node_id: first.repository_node_id,
+                    default_branch: first.default_branch,
+                    started_at_unix: started,
+                    finished_at_unix: now()?,
+                    heads: captured.heads,
+                    token_revoked: true,
+                },
+                tags: captured.tags,
+                open_pulls: captured.open_pulls,
             })
         })
         .await
