@@ -1,5 +1,6 @@
 use super::*;
-use treeharbor_core::ObjectId;
+use treeharbor_core::{Object, ObjectId};
+use treeharbor_metadata::github::archive_proposals_fingerprint;
 
 const FORK_PAYLOAD: &[u8] = b"proposal from a fork\x00\xff\n";
 
@@ -68,6 +69,7 @@ pub(super) struct Retained {
     receipt: Value,
     manifest: Vec<u8>,
     bundle: Vec<u8>,
+    proposal_stage: Value,
 }
 
 pub(super) async fn retain(
@@ -156,15 +158,160 @@ pub(super) async fn retain(
         .await
         .unwrap();
     assert_eq!(success(run(&f.credential_path, &journal)), result);
+    let proposal_stage = Box::pin(stage_proposals(f, bridge, &prepared, receipt)).await;
     let retained = Retained {
         receipt: receipt.clone(),
         manifest: fs::read(prepared.join("manifest.json")).unwrap(),
         bundle: fs::read(prepared.join("archive.bundle")).unwrap(),
+        proposal_stage,
     };
     fs::remove_dir_all(prepared).unwrap();
     fs::remove_file(&archive.bundle).unwrap();
     fs::remove_file(journal).unwrap();
     retained
+}
+
+async fn stage_proposals(f: &Fixture, bridge: &Path, archive: &Path, receipt: &Value) -> Value {
+    let dir = f.dir.path();
+    let prepared = dir.join("proposal-staging-input");
+    let plan = success(
+        Command::new(&f.binary)
+            .args(["github", "archive-proposals", "--archive"])
+            .arg(archive)
+            .args([
+                "--archive-fingerprint",
+                receipt["specification"]["manifest_sha256"]
+                    .as_str()
+                    .unwrap(),
+                "--output",
+            ])
+            .arg(&prepared)
+            .output()
+            .unwrap(),
+    );
+    let fingerprint = plan["manifest_sha256"].as_str().unwrap();
+    let run = |credential: &Path, state: &Path, fingerprint: &str| {
+        Command::new(&f.binary)
+            .env("PATH", "/treeharbor-test-no-executables")
+            .args(["github", "archive-proposals-stage", "--socket"])
+            .arg(&f.config.socket)
+            .arg("--credential-file")
+            .arg(credential)
+            .args([
+                "--retained-key",
+                receipt["key"].as_str().unwrap(),
+                "--prepared",
+            ])
+            .arg(&prepared)
+            .args(["--fingerprint", fingerprint, "--state"])
+            .arg(state)
+            .args(["--epoch", "1"])
+            .output()
+            .unwrap()
+    };
+    let denied = run(bridge, &dir.join("proposal-stage-bridge.json"), fingerprint);
+    assert!(!denied.status.success());
+    assert_eq!(
+        serde_json::from_slice::<Value>(&denied.stdout).unwrap()["error"]["code"],
+        "forbidden"
+    );
+
+    let manifest = prepared.join("manifest.json");
+    let original = fs::read(&manifest).unwrap();
+    let mut forged: Value = serde_json::from_slice(&original).unwrap();
+    forged["proposals"][0]["patch"]["operations"] = forged["objects"][0].clone();
+    let forged = serde_json::to_vec(&forged).unwrap();
+    fs::write(&manifest, &forged).unwrap();
+    let refused = run(
+        &f.credential_path,
+        &dir.join("proposal-stage-forged.json"),
+        &archive_proposals_fingerprint(&forged).to_string(),
+    );
+    assert!(!refused.status.success());
+    assert_eq!(
+        serde_json::from_slice::<Value>(&refused.stdout).unwrap()["error"]["code"],
+        "archive_artifact_mismatch"
+    );
+    fs::write(&manifest, &original).unwrap();
+
+    f.sql
+        .batch_execute(
+            r#"
+        CREATE FUNCTION reject_archive_proposal_stage() RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN
+            IF NEW.kind='github.archive.proposals.stage.v1' THEN
+                RAISE EXCEPTION 'injected proposal stage failure';
+            END IF;
+            RETURN NEW;
+        END
+        $$;
+        CREATE TRIGGER reject_archive_proposal_stage BEFORE INSERT ON th_operations
+        FOR EACH ROW EXECUTE FUNCTION reject_archive_proposal_stage();
+        "#,
+        )
+        .await
+        .unwrap();
+    let journal = dir.join("proposal-stage.json");
+    let failed = run(&f.credential_path, &journal, fingerprint);
+    assert!(!failed.status.success());
+    let journal_data: Value = serde_json::from_slice(&fs::read(&journal).unwrap()).unwrap();
+    let upload: Uuid = serde_json::from_value(journal_data["upload"].clone()).unwrap();
+    let state = f
+        .sql
+        .query_one(
+            r#"
+        SELECT state, (SELECT count(*) FROM th_object_pins WHERE holder LIKE 'archive-proposal-%')
+        FROM th_source_uploads WHERE upload=$1
+        "#,
+            &[&upload],
+        )
+        .await
+        .unwrap();
+    assert_eq!(state.get::<_, &str>(0), "active");
+    assert_eq!(state.get::<_, i64>(1), 0);
+    f.sql.batch_execute("DROP TRIGGER reject_archive_proposal_stage ON th_operations; DROP FUNCTION reject_archive_proposal_stage();").await.unwrap();
+
+    let staged = success(run(&f.credential_path, &journal, fingerprint));
+    let result = &staged["result"];
+    assert_eq!(result["state"], "staged");
+    assert_eq!(result["open_pulls"], 1);
+    assert_eq!(result["ready"], 1);
+    assert_eq!(result["needs_resolution"], 0);
+    assert_eq!(result["root_count"], 4);
+    assert_eq!(result["upload"], json!(upload));
+    assert_eq!(
+        result["specification"]["manifest_object"],
+        Object::Blob(original).id().unwrap().to_string()
+    );
+    let state = f
+        .sql
+        .query_one(
+            r#"
+        SELECT state, (SELECT count(*) FROM th_object_pins WHERE holder LIKE 'archive-proposal-%'),
+            (SELECT count(*) FROM th_change_versions), (SELECT count(*) FROM th_native_refs)
+        FROM th_source_uploads WHERE upload=$1
+        "#,
+            &[&upload],
+        )
+        .await
+        .unwrap();
+    assert_eq!(state.get::<_, &str>(0), "completed");
+    assert_eq!(state.get::<_, i64>(1), 4);
+    assert_eq!(state.get::<_, i64>(2), 0);
+    assert_eq!(state.get::<_, i64>(3), 0);
+    f.sql
+        .execute(
+            "UPDATE th_source_uploads SET expires_at=clock_timestamp() WHERE upload=$1",
+            &[&upload],
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        success(run(&f.credential_path, &journal, fingerprint)),
+        staged
+    );
+    fs::remove_dir_all(prepared).unwrap();
+    result.clone()
 }
 
 pub(super) async fn recover(f: &Fixture, bridge: &Path, retained: Retained, archive: &FullArchive) {
@@ -378,6 +525,27 @@ pub(super) async fn recover(f: &Fixture, bridge: &Path, retained: Retained, arch
     );
     assert_eq!(plan["proposals"][0]["source"]["number"], 17);
     assert_eq!(plan["proposals"][0]["patch"]["state"], "ready");
+    let restored_config = treeharbor_service::config::Config::load(config).unwrap();
+    let restored_store = restored_config.storage.unwrap();
+    let store = ManagedStore::open(
+        &restored_store.root,
+        TenantId::new(f.scope.tenant()).unwrap(),
+        &restored_store.backend,
+    )
+    .unwrap();
+    let staged = retained.proposal_stage;
+    let manifest_id = staged["specification"]["manifest_object"]
+        .as_str()
+        .unwrap()
+        .parse()
+        .unwrap();
+    let manifest = store
+        .get(staged["manifest_generation"].as_i64().unwrap(), manifest_id)
+        .unwrap();
+    assert_eq!(
+        manifest,
+        Object::Blob(fs::read(prepared.join("manifest.json")).unwrap())
+    );
     f.sql
         .batch_execute(&format!("DROP DATABASE {target} WITH (FORCE)"))
         .await

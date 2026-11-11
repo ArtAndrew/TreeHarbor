@@ -219,37 +219,20 @@ pub fn pack_archive_artifact(
 
 /// `store` resolves only the exact generations for this scoped upload. A
 /// caller must publish any output files only after this function succeeds.
-pub(super) fn check_archive_artifact(
+pub(super) fn check_archive_manifest(
     store: &impl ObjectStore,
     spec: &ArchiveArtifactSpec,
     expected: &ArchiveObservationReceipt,
     deadline: Instant,
-    mut bundle_output: impl Write,
-) -> Result<Vec<u8>> {
+) -> Result<(Directory, Vec<u8>, ArchiveArtifactManifest<Upstream>)> {
     check_deadline(deadline)?;
-    let root = store.get(spec.validate()?)?;
-    let mut encoded_bytes = root.encode()?.len() as i64;
-    let Object::Directory(directory) = root else {
+    let Object::Directory(directory) = store.get(spec.validate()?)? else {
         return Err(Error::ArchiveArtifactMismatch);
     };
     let Some((manifest_entry, chunks)) = directory.entries().split_last() else {
         return Err(Error::ArchiveArtifactMismatch);
     };
-    let mut seen = BTreeSet::new();
-    let mut read_blob = |entry: &Entry, name: &str| -> Result<Vec<u8>> {
-        check_deadline(deadline)?;
-        if entry.name.as_bytes() != name.as_bytes() || entry.value.mode != EntryMode::File {
-            return Err(Error::ArchiveArtifactMismatch);
-        }
-        let Object::Blob(bytes) = store.get(entry.value.target)? else {
-            return Err(Error::ArchiveArtifactMismatch);
-        };
-        if seen.insert(entry.value.target) {
-            encoded_bytes += (FRAME_HEADER + bytes.len()) as i64;
-        }
-        Ok(bytes)
-    };
-    let manifest_bytes = read_blob(manifest_entry, MANIFEST_NAME)?;
+    let manifest_bytes = read_blob(store, manifest_entry, MANIFEST_NAME)?;
     let manifest = manifest(&manifest_bytes)?;
     if &manifest.receipt != expected
         || spec.observation_key != expected.request.observation_key
@@ -258,19 +241,52 @@ pub(super) fn check_archive_artifact(
     {
         return Err(Error::ArchiveArtifactMismatch);
     }
+    Ok((directory, manifest_bytes, manifest))
+}
+
+fn read_blob(store: &impl ObjectStore, entry: &Entry, name: &str) -> Result<Vec<u8>> {
+    if entry.name.as_bytes() != name.as_bytes() || entry.value.mode != EntryMode::File {
+        return Err(Error::ArchiveArtifactMismatch);
+    }
+    match store.get(entry.value.target)? {
+        Object::Blob(bytes) => Ok(bytes),
+        _ => Err(Error::ArchiveArtifactMismatch),
+    }
+}
+
+pub(super) fn check_archive_artifact(
+    store: &impl ObjectStore,
+    spec: &ArchiveArtifactSpec,
+    expected: &ArchiveObservationReceipt,
+    deadline: Instant,
+    mut bundle_output: impl Write,
+) -> Result<Vec<u8>> {
+    let (directory, manifest_bytes, manifest) =
+        check_archive_manifest(store, spec, expected, deadline)?;
+    let mut encoded_bytes = (FRAME_HEADER + manifest_bytes.len()) as i64;
+    let (manifest_entry, chunks) = directory
+        .entries()
+        .split_last()
+        .ok_or(Error::ArchiveArtifactMismatch)?;
+    let mut seen = BTreeSet::from([manifest_entry.value.target]);
     let mut hash = Sha256::new();
     for (index, (entry, length)) in chunks
         .iter()
         .zip(chunk_sizes(manifest.bundle.bytes))
         .enumerate()
     {
-        let bytes = read_blob(entry, &chunk_name(index))?;
+        check_deadline(deadline)?;
+        let bytes = read_blob(store, entry, &chunk_name(index))?;
         if bytes.len() != length {
             return Err(Error::ArchiveArtifactMismatch);
+        }
+        if seen.insert(entry.value.target) {
+            encoded_bytes += (FRAME_HEADER + bytes.len()) as i64;
         }
         hash.update(&bytes);
         bundle_output.write_all(&bytes).map_err(archive_io)?;
     }
+    encoded_bytes += Object::Directory(directory).encode()?.len() as i64;
     if ObjectId::from_bytes(hash.finalize().into()).hex() != manifest.bundle.sha256
         || (seen.len() + 1) as i64 != spec.object_count
         || encoded_bytes != spec.encoded_bytes

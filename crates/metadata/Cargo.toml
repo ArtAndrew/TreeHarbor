@@ -23,6 +23,7 @@ treeharbor-core.workspace = true
 treeharbor-storage.workspace = true
 treeharbor-runtime.workspace = true
 treeharbor-merge.workspace = true
+treeharbor-history.workspace = true
 treeharbor-validation.workspace = true
 
 [dev-dependencies]

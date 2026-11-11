@@ -311,6 +311,8 @@ pub enum Action {
     ArchiveRecover(archive_observe::retention::RecoverOptions),
     /// Prepare native proposal objects for every pull in a preserved archive.
     ArchiveProposals(archive_observe::proposals::Options),
+    /// Verify and retain the prepared proposal inputs for a later transfer.
+    ArchiveProposalsStage(archive_observe::stage_proposals::Options),
     /// Discover current heads and all PR states after restore; does not reconnect
     /// the service, resolve discrepancies or grant any publication permission.
     RestoreInventory {
@@ -810,6 +812,9 @@ pub async fn run(action: Action) -> Result<bool> {
             tokio::task::spawn_blocking(move || archive_observe::proposals::run(options))
                 .await
                 .map_err(|_| Error::ImportWorker)?
+        }
+        Action::ArchiveProposalsStage(options) => {
+            Box::pin(archive_observe::stage_proposals::run(options)).await
         }
         Action::RestoreInventory { config } => {
             let (credentials, config) = load(&config)?;

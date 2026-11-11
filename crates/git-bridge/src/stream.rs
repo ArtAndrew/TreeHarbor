@@ -143,6 +143,24 @@ pub(crate) fn write(
     deadline: Instant,
 ) -> Result<Graph> {
     let mut pack = pack::Pack::new(path, algorithm, limits.stream_bytes, deadline)?;
+    let graph = project(store, refs, algorithm, limits, deadline, |kind, raw| {
+        pack.put(kind, raw)
+    })?;
+    pack.finish()?;
+    if std::fs::metadata(path)?.len() > limits.stream_bytes {
+        return Err(Error::Limit);
+    }
+    Ok(graph)
+}
+
+pub(crate) fn project(
+    store: &impl ObjectStore,
+    refs: &BTreeMap<String, ObjectId>,
+    algorithm: HashAlgorithm,
+    limits: Limits,
+    deadline: Instant,
+    mut object_id: impl FnMut(&'static str, &[u8]) -> Result<Vec<u8>>,
+) -> Result<Graph> {
     let mut ids = BTreeMap::<ObjectId, Vec<u8>>::new();
     let mut commits = BTreeMap::new();
     let mut visits = 0usize;
@@ -155,7 +173,7 @@ pub(crate) fn write(
             None => get(store, id)?,
         };
         let oid = match object {
-            Object::Blob(bytes) => pack.put("blob", &bytes)?,
+            Object::Blob(bytes) => object_id("blob", &bytes)?,
             Object::Directory(dir) => {
                 // Git orders a directory name as if it had a trailing slash.
                 let mut sorted: Vec<_> = dir
@@ -180,7 +198,7 @@ pub(crate) fn write(
                             .ok_or(Error::InvalidProjection)?,
                     );
                 }
-                pack.put("tree", &raw)?
+                object_id("tree", &raw)?
             }
             Object::Snapshot { root } => ids.get(&root).ok_or(Error::InvalidProjection)?.clone(),
             Object::NativeCommit(c) => {
@@ -204,7 +222,7 @@ pub(crate) fn write(
                 } else {
                     origin::native_payload(&c, tree, &parents)?
                 };
-                let oid = pack.put("commit", &raw)?;
+                let oid = object_id("commit", &raw)?;
                 commits.insert(id, origin::hex(&oid));
                 oid
             }
@@ -213,10 +231,6 @@ pub(crate) fn write(
         ids.insert(id, oid);
         Ok(())
     })?;
-    pack.finish()?;
-    if std::fs::metadata(path)?.len() > limits.stream_bytes {
-        return Err(Error::Limit);
-    }
     Ok(Graph {
         commits,
         objects,

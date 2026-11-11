@@ -13,7 +13,7 @@ use std::{
 };
 use treeharbor_core::{GitOid, ObjectStore, RevisionRef};
 
-const MAX_REFS: usize = crate::MAX_EXPORT_REFS + 10_000;
+pub(super) const MAX_REFS: usize = crate::MAX_EXPORT_REFS + 10_000;
 const MAX_REF_BYTES: usize = 1034;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

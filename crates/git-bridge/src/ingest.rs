@@ -341,6 +341,17 @@ fn oid_parts(oid: &GitOid) -> (HashAlgorithm, &[u8]) {
     }
 }
 
+pub(super) fn check_import_blob(raw: &[u8]) -> Result<()> {
+    if raw.starts_with(b"version https://git-lfs.github.com/spec/v1\n")
+        || raw.starts_with(b"version https://git-lfs.github.com/spec/v1\r\n")
+    {
+        return Err(Error::Unsupported(
+            "Git LFS pointer; hydration is not implemented",
+        ));
+    }
+    Ok(())
+}
+
 fn convert(
     store: &impl ObjectStore,
     source: &mut Source,
@@ -426,13 +437,7 @@ fn convert(
         };
         let native = match kind {
             Kind::Blob => {
-                if raw.starts_with(b"version https://git-lfs.github.com/spec/v1\n")
-                    || raw.starts_with(b"version https://git-lfs.github.com/spec/v1\r\n")
-                {
-                    return Err(Error::Unsupported(
-                        "Git LFS pointer; hydration is not implemented",
-                    ));
-                }
+                check_import_blob(&raw)?;
                 budget.put(&Object::Blob(raw))?
             }
             Kind::Tree => {

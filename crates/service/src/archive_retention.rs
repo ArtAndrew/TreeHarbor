@@ -4,7 +4,7 @@ use crate::{
     source::{Backend, Failure, metadata},
 };
 use deadpool::managed::Pool;
-use serde::Deserialize;
+use serde::{Deserialize, de::DeserializeOwned};
 use serde_json::{Value, json};
 use std::time::Instant;
 use treeharbor_metadata::{
@@ -19,22 +19,22 @@ pub(crate) const PATH: &str = "/v1/github/archive/retain";
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct Wire {
+struct Wire<T> {
     version: u8,
     tenant: String,
     repository: String,
     epoch: i64,
     upload: String,
-    specification: ArchiveArtifactSpec,
+    specification: T,
 }
 
-fn fail(status: u16, code: &'static str) -> Failure {
+pub(crate) fn fail(status: u16, code: &'static str) -> Failure {
     Failure { status, code }
 }
 
-fn parse(body: &[u8]) -> Result<(Scope, i64, Uuid, ArchiveArtifactSpec), Failure> {
+pub(crate) fn parse<T: DeserializeOwned>(body: &[u8]) -> Result<(Scope, i64, Uuid, T), Failure> {
     let invalid = || fail(400, "invalid_request");
-    let wire: Wire = serde_json::from_slice(body).map_err(|_| invalid())?;
+    let wire: Wire<T> = serde_json::from_slice(body).map_err(|_| invalid())?;
     let uuid = |raw: &str| -> Result<Uuid, Failure> {
         let id: Uuid = raw.parse().map_err(|_| invalid())?;
         if id.is_nil() || id.to_string() != raw {
@@ -60,7 +60,7 @@ pub(crate) async fn retain(
     pool: Pool<Database>,
     deadline: Instant,
 ) -> Result<Value, Failure> {
-    let (scope, epoch, upload, spec) = parse(body)?;
+    let (scope, epoch, upload, spec) = parse::<ArchiveArtifactSpec>(body)?;
     let mut db = pool
         .get()
         .await
@@ -119,7 +119,7 @@ mod tests {
     fn archive_retention_matches_v1_chunk_and_request_vector() {
         let raw = include_bytes!("../tests/fixtures/github-archive-retain-v1.json");
         let (scope, epoch, upload, expected) =
-            parse(raw).unwrap_or_else(|_| panic!("invalid vector"));
+            parse::<ArchiveArtifactSpec>(raw).unwrap_or_else(|_| panic!("invalid vector"));
         assert_eq!(scope.tenant(), "fixture");
         assert_eq!(epoch, 4);
         assert_eq!(upload.to_string(), "11111111-1111-4111-8111-111111111111");
@@ -146,6 +146,6 @@ mod tests {
         ));
         let mut invalid: Value = serde_json::from_slice(raw).unwrap();
         invalid["verified"] = json!(true);
-        assert!(parse(&serde_json::to_vec(&invalid).unwrap()).is_err());
+        assert!(parse::<ArchiveArtifactSpec>(&serde_json::to_vec(&invalid).unwrap()).is_err());
     }
 }

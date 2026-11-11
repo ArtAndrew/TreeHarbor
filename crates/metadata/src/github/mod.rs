@@ -8,6 +8,8 @@ mod admission_policy;
 mod archive_artifact;
 mod archive_observation;
 mod archive_proof;
+mod archive_proposal_stage;
+mod archive_proposals;
 mod archive_retention;
 mod archive_stage;
 mod host_policy;
@@ -21,6 +23,12 @@ pub use archive_observation::{
     ArchiveObservationReceipt, ArchiveObservationRequest,
 };
 pub use archive_proof::ArchiveProofWork;
+pub use archive_proposal_stage::{ArchiveProposalStageSpec, ArchiveProposalStageWork};
+pub use archive_proposals::{
+    ARCHIVE_PROPOSALS_FORMAT, ArchiveProposal, ArchiveProposalManifest, ArchiveProposalPatch,
+    ArchiveProposalResolution, archive_proposal_labels, archive_proposal_tip,
+    archive_proposals_fingerprint,
+};
 pub use archive_retention::{ArchiveRetentionWork, ArchiveStored};
 pub use archive_stage::{ArchiveBranchTip, ArchiveStageSpec};
 mod check_policy;
