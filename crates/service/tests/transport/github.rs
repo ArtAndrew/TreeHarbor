@@ -8,6 +8,8 @@ mod archive_activation;
 mod archive_observation;
 #[path = "github/archive_payload.rs"]
 mod archive_payload;
+#[path = "github/archive_reentry.rs"]
+mod archive_reentry;
 #[path = "github/archive_stage.rs"]
 mod archive_stage;
 #[path = "github/events.rs"]

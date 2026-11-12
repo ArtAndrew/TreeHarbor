@@ -36,15 +36,10 @@ fn archive_spool(f: &Fixture, bind: &Value) -> (PathBuf, Value, archive_payload:
     let second = commit("second parent", &[]);
     let main = commit("merge", &[&first, &second]);
     let topic = commit("independent branch", &[]);
-    let mut refs = BTreeMap::new();
     let mut heads = Vec::new();
     for (name, oid) in [("main", &main), ("stable", &main), ("topic", &topic)] {
         let reference = format!("refs/heads/{name}");
         git_reference::git(&git, &["update-ref", &reference, oid], b"");
-        let RevisionRef::Git(id) = format!("git:sha1:{oid}").parse().unwrap() else {
-            panic!("expected Git tip");
-        };
-        refs.insert(reference, id);
         heads.push(InventoryHead {
             id: format!("fixture-ref-{name}"),
             name: name.into(),
@@ -62,15 +57,49 @@ fn archive_spool(f: &Fixture, bind: &Value) -> (PathBuf, Value, archive_payload:
         b"",
     );
     let spool = dir.join("archive-spool");
-    fs::create_dir(&spool).unwrap();
-    fs::set_permissions(&spool, fs::Permissions::from_mode(0o700)).unwrap();
-    let store = LocalStore::open(&spool, &TenantId::new("archive-preflight").unwrap()).unwrap();
+    let archive = ArchivedBranches {
+        version: 1,
+        binding: serde_json::from_value(bind["specification"]["upstream"].clone()).unwrap(),
+        app_id: bind["specification"]["app_id"].as_u64().unwrap(),
+        repository_node_id: "fixture-repository".into(),
+        default_branch: "main".into(),
+        started_at_unix: 1,
+        finished_at_unix: 2,
+        heads,
+        token_revoked: true,
+    };
+    let spec = write_archive_spool(&spool, &bundle, &archive);
+    let full = archive_payload::make_bundle(dir, &git, &first, &commit("tag only", &[]));
+    fs::remove_dir_all(&git).unwrap();
+    fs::remove_file(&bundle).unwrap();
+    (spool, spec, full)
+}
+
+pub(super) fn write_archive_spool(
+    spool: &Path,
+    bundle: &Path,
+    archive: &ArchivedBranches,
+) -> Value {
+    fs::create_dir(spool).unwrap();
+    fs::set_permissions(spool, fs::Permissions::from_mode(0o700)).unwrap();
+    let store = LocalStore::open(spool, &TenantId::new("archive-preflight").unwrap()).unwrap();
+    let refs = archive
+        .heads
+        .iter()
+        .map(|head| {
+            let RevisionRef::Git(id) = format!("git:sha1:{}", head.target.oid).parse().unwrap()
+            else {
+                panic!("expected Git tip");
+            };
+            (format!("refs/heads/{}", head.name), id)
+        })
+        .collect();
     let imported = import_branches(
         &store,
         BundleInput {
             git: Path::new("/usr/bin/git"),
-            bundle: &bundle,
-            scratch: &spool,
+            bundle,
+            scratch: spool,
             limits: Limits::default(),
         },
         &refs,
@@ -91,20 +120,9 @@ fn archive_spool(f: &Fixture, bind: &Value) -> (PathBuf, Value, archive_payload:
         })
         .collect();
     let objects: Vec<_> = imported.objects.iter().map(ToString::to_string).collect();
-    let archive = ArchivedBranches {
-        version: 1,
-        binding: serde_json::from_value(bind["specification"]["upstream"].clone()).unwrap(),
-        app_id: bind["specification"]["app_id"].as_u64().unwrap(),
-        repository_node_id: "fixture-repository".into(),
-        default_branch: "main".into(),
-        started_at_unix: 1,
-        finished_at_unix: 2,
-        heads,
-        token_revoked: true,
-    };
     let bytes = format!(
         r#"{{"format":"treeharbor-archive-branch-spool","version":1,"archive":{},"branches":{},"objects":{},"encoded_bytes":{}}}"#,
-        serde_json::to_string(&archive).unwrap(),
+        serde_json::to_string(archive).unwrap(),
         serde_json::to_string(&branches).unwrap(),
         serde_json::to_string(&objects).unwrap(),
         imported.encoded_bytes,
@@ -114,10 +132,7 @@ fn archive_spool(f: &Fixture, bind: &Value) -> (PathBuf, Value, archive_payload:
     hash.update(b"treeharbor-archive-branch-spool\0v1\0");
     hash.update(bytes.as_bytes());
     let fingerprint = ObjectId::from_bytes(hash.finalize().into()).to_string();
-    let full = archive_payload::make_bundle(dir, &git, &first, &commit("tag only", &[]));
-    fs::remove_dir_all(&git).unwrap();
-    fs::remove_file(&bundle).unwrap();
-    let spec = json!({
+    json!({
         "version": 1,
         "spool_fingerprint": fingerprint,
         "app_id": archive.app_id,
@@ -126,8 +141,7 @@ fn archive_spool(f: &Fixture, bind: &Value) -> (PathBuf, Value, archive_payload:
         "branches": branches,
         "object_count": objects.len(),
         "encoded_bytes": imported.encoded_bytes,
-    });
-    (spool, spec, full)
+    })
 }
 
 pub(super) fn assert_rejected(output: Output, code: &str) {

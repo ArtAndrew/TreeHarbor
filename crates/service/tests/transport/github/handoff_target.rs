@@ -221,7 +221,7 @@ pub(super) async fn exercise(
     assert_eq!(switched["target_archived"], true);
     assert_eq!(switched["publication_ready"], false);
     drop(server);
-    let _restarted = f.start().await;
+    let restarted = f.start().await;
     assert_eq!(owner_command(f, &owner, activate).await, switched);
     let mut expected = initial;
     expected["authority"] = json!("connected");
@@ -291,4 +291,14 @@ pub(super) async fn exercise(
     assert_eq!(prepared["github_pull"], requested["github_pull"]);
     assert!(prepared["github_pull"].is_object());
     assert_eq!(prepared["publication_ready"], false);
+    Box::pin(archive_reentry::exercise(
+        f,
+        restarted,
+        owner_file,
+        bridge_file,
+        &destination,
+        &target,
+        &freeze,
+    ))
+    .await;
 }

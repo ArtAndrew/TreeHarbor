@@ -9,7 +9,7 @@ pub async fn assert_latest_schema(raw: &Client) {
         .await
         .unwrap()
         .get::<_, i32>(0);
-    assert_eq!(version, 34);
+    assert_eq!(version, 35);
 }
 
 pub async fn connection(schema: &str) -> Client {
@@ -114,6 +114,16 @@ pub async fn drop_unpopulated_v33(raw: &Client) {
 #[allow(dead_code)]
 pub async fn drop_unpopulated_v34(raw: &Client) {
     assert_eq!(
+        raw.query_one(
+            "SELECT count(*) FROM th_native_ref_updates WHERE kind='archive'",
+            &[]
+        )
+        .await
+        .unwrap()
+        .get::<_, i64>(0),
+        0
+    );
+    assert_eq!(
         raw.query_one("SELECT count(*) FROM th_archive_pull_origins", &[])
             .await
             .unwrap()
@@ -122,6 +132,9 @@ pub async fn drop_unpopulated_v34(raw: &Client) {
     );
     raw.batch_execute(
         r#"
+        ALTER TABLE th_native_ref_updates DROP CONSTRAINT th_native_archive_ref_update_check;
+        ALTER TABLE th_native_ref_updates DROP CONSTRAINT th_native_ref_updates_kind_check;
+        ALTER TABLE th_native_ref_updates ADD CHECK(kind IN ('create','policy','land'));
         ALTER TABLE th_change_versions DROP COLUMN archived_pull;
         ALTER TABLE th_change_versions ALTER COLUMN run SET NOT NULL;
         DROP TABLE th_archive_pull_origins;

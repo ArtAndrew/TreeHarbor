@@ -18,6 +18,8 @@ pub mod download;
 mod pack;
 mod process;
 pub mod publish;
+mod reattach;
+pub use reattach::{ReattachedBranches, ReattachedTip, reattach_branches};
 mod retained;
 pub use retained::{WorkspacePack, WorkspacePackIdentity, WorkspacePackScope};
 mod stream;
@@ -65,6 +67,8 @@ pub enum Error {
     InvalidProjection,
     #[error("Git bundle branch inventory does not match the expected refs and tips")]
     RefInventoryMismatch,
+    #[error("archived branch no longer contains its previously exported history: {0}")]
+    RefHistoryDiverged(String),
     #[error("Git bundle does not contain exactly the expected archived refs and their objects")]
     ArchiveInventoryMismatch,
     #[error("invalid export manifest: {0}")]

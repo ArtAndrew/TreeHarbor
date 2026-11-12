@@ -8,7 +8,7 @@ pub(crate) struct Graph {
     pub bytes: u64,
     pub has_origins: bool,
 }
-fn get(store: &impl ObjectStore, id: ObjectId) -> Result<Object> {
+pub(super) fn get(store: &impl ObjectStore, id: ObjectId) -> Result<Object> {
     checked_object(store, id).map(|(object, _)| object)
 }
 

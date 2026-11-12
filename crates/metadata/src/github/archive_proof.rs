@@ -172,6 +172,7 @@ pub struct VerifiedArchive {
     stage_key: String,
     receipt: StageReceipt,
     backend: String,
+    pub(super) mapping: git::VerifiedBranchMappings,
 }
 
 // The exact permanent base pins protect the whole closure while projecting.
@@ -252,6 +253,7 @@ impl RetainedArchive {
             stage_key: self.stage_key.clone(),
             receipt: self.receipt.clone(),
             backend: self.backend.clone(),
+            mapping: proof,
         })
     }
 }

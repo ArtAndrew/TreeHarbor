@@ -64,6 +64,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/032_external_api_runs.sql"),
     include_str!("../migrations/033_remote_tasks.sql"),
     include_str!("../migrations/034_archive_pull_origins.sql"),
+    include_str!("../migrations/035_archive_ref_updates.sql"),
 ];
 const MAX_JSON: usize = 1024 * 1024;
 
@@ -75,6 +76,8 @@ pub enum Error {
     ArchiveArtifactMismatch,
     #[error("archive activation requires drained tasks and settled host effects")]
     ArchiveActivationBusy,
+    #[error("the archived Git branches do not retain their previously exported native history")]
+    ArchiveHistoryDiverged,
     #[error("native handoff requires drained tasks and integration attempts")]
     NativeHandoffBusy,
     #[error("native handoff snapshot differs from the current freeze")]

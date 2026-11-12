@@ -7,7 +7,8 @@ use crate::{
 use deadpool::managed::Pool;
 use serde::Deserialize;
 use serde_json::{Value, json};
-use std::time::Instant;
+use std::{sync::Arc, time::Instant};
+use treeharbor_core::ObjectId;
 use treeharbor_metadata::{
     Scope,
     access::{Permission, SecretToken},
@@ -46,6 +47,20 @@ fn parse(body: &[u8]) -> Result<(Scope, Command, ArchiveActivateSpec), Failure> 
     ))
 }
 
+fn reentry_hold(scope: &Scope, command: &Command, id: ObjectId) -> Uuid {
+    let input = format!(
+        "treeharbor-archive-reentry\0v1\0{}\0{}\0{}\0{}\0{id}",
+        scope.tenant(),
+        scope.repository(),
+        command.epoch,
+        command.key
+    );
+    let digest = ObjectId::hash_frame(input.as_bytes());
+    let mut uuid = [0; 16];
+    uuid.copy_from_slice(&digest.as_bytes()[..16]);
+    Uuid::from_bytes(uuid)
+}
+
 pub(crate) async fn activate(
     body: &[u8],
     credential: &SecretToken,
@@ -70,7 +85,7 @@ pub(crate) async fn activate(
         .map_err(metadata)?;
     let work = match db
         .metadata
-        .prepare_archive_activation(&auth, &policy_auth, &command, &specification)
+        .prepare_archive_activation(&auth, &policy_auth, &command, &specification, deadline)
         .await
         .map_err(metadata)?
     {
@@ -78,18 +93,23 @@ pub(crate) async fn activate(
         ArchiveActivateWork::Verify(work) => work,
     };
     drop(db);
-    let permit = backend
-        .read_permits
-        .try_acquire_owned()
-        .map_err(|_| fail(503, "source_read_busy"))?;
+    let permit = Arc::new(
+        backend
+            .read_permits
+            .try_acquire_owned()
+            .map_err(|_| fail(503, "source_read_busy"))?,
+    );
     let tenant = TenantId::new(scope.tenant()).map_err(|_| fail(400, "invalid_request"))?;
-    let proof = tokio::task::spawn_blocking(move || {
-        let _permit = permit;
+    let hold = permit.clone();
+    let (proof, store) = tokio::task::spawn_blocking(move || {
+        let _permit = hold;
         let config = backend.config;
         let store = ManagedStore::open(&config.root, tenant, &config.backend)
             .map_err(|_| fail(500, "archive_storage_failed"))?;
-        work.verify(&store, &config.root, deadline)
-            .map_err(metadata)
+        let proof = work
+            .verify(&store, &config.root, deadline)
+            .map_err(metadata)?;
+        Ok::<_, Failure>((Arc::new(proof), store))
     })
     .await
     .map_err(|_| fail(500, "source_worker_failed"))??;
@@ -97,11 +117,62 @@ pub(crate) async fn activate(
         .get()
         .await
         .map_err(|_| fail(503, "database_unavailable"))?;
+    let mut leases = Vec::with_capacity(proof.new_commit_ids().len());
+    for &id in proof.new_commit_ids() {
+        if Instant::now() >= deadline {
+            return Err(fail(429, "upload_limit"));
+        }
+        let source = proof.clone();
+        let hold = permit.clone();
+        let object = tokio::task::spawn_blocking(move || {
+            let _permit = hold;
+            source.prepare_new_commit(id).map_err(metadata)
+        })
+        .await
+        .map_err(|_| fail(500, "source_worker_failed"))??;
+        let lease = db
+            .metadata
+            .reserve_object(&store, &object, reentry_hold(&scope, &command, id), 120)
+            .await
+            .map_err(metadata)?;
+        let target = store.clone();
+        let generation = lease.key().generation();
+        let upload = lease.requires_upload();
+        let hold = permit.clone();
+        let durable = tokio::task::spawn_blocking(move || {
+            let _permit = hold;
+            if upload {
+                target.put(generation, &object).map(Some)
+            } else {
+                target.get(generation, id).map(|_| None)
+            }
+        })
+        .await
+        .map_err(|_| fail(500, "source_worker_failed"))?
+        .map_err(|_| fail(500, "archive_storage_failed"))?;
+        if let Some(durable) = durable {
+            db.metadata
+                .publish_object(&lease, &durable)
+                .await
+                .map_err(metadata)?;
+        }
+        leases.push(lease);
+    }
     let result = db
         .metadata
-        .activate_archive(&auth, &policy_auth, &command, &specification, proof)
+        .activate_archive(
+            &auth,
+            &policy_auth,
+            &command,
+            &specification,
+            &proof,
+            &leases,
+        )
         .await
         .map_err(metadata)?;
+    for lease in leases {
+        let _ = db.metadata.release_object_hold(&lease).await;
+    }
     Ok(json!({"version":1,"result":result}))
 }
 

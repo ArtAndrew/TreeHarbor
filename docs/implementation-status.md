@@ -150,6 +150,20 @@ epoch. External host observations in this drill come from fixtures. Live
 destination preparation, GitHub reactivation and a full migration trial
 remain release gates.
 
+### Repeat transfer after GitHub advances (development)
+
+Archive activation can resume Standalone after a completed handoff back to the
+same GitHub repository. It verifies the previously exported graph, preserves
+existing native commit identities and attaches new Git commits to their exact
+parents. Schema 035 records existing branch updates with the old and new heads.
+Activation requires each previously exported branch to retain its prior history.
+Missing or diverged branches leave the Connected epoch active.
+
+The transport test advances the Git graph with a merge and an extra branch
+between the two transfers. It exercises the populated schema 034 upgrade,
+failure at the activation receipt, exact replay, native parent identities and
+the Git export of every archived branch. GitHub observations are fixtures.
+
 ## Export multiple branches to Git — 0.1.20-alpha.1
 
 [Git export](git-export.md#export-several-branches) can combine completed source

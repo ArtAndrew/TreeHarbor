@@ -47,6 +47,17 @@ pub(crate) async fn verified_projection(
     epoch: i64,
     key: &str,
 ) -> Result<HandoffProjectionSpec> {
+    let spec = load_projection(tx, scope, epoch, key).await?;
+    inputs(tx, scope, epoch, &spec).await?;
+    Ok(spec)
+}
+
+async fn load_projection(
+    tx: &Transaction<'_>,
+    scope: &Scope,
+    epoch: i64,
+    key: &str,
+) -> Result<HandoffProjectionSpec> {
     identifier(key, 128)?;
     let receipt: Value = tx.query_opt(
         "SELECT result FROM th_operations WHERE tenant=$1 AND repository=$2 AND key=$3 AND kind=$4",
@@ -65,7 +76,6 @@ pub(crate) async fn verified_projection(
     let spec: HandoffProjectionSpec = serde_json::from_value(receipt["specification"].clone())
         .map_err(|_| Error::SchemaMismatch)?;
     spec.validate()?;
-    inputs(tx, scope, epoch, &spec).await?;
     Ok(spec)
 }
 
@@ -94,6 +104,15 @@ async fn inputs(
     spec: &HandoffProjectionSpec,
 ) -> Result<FrozenInputs> {
     let freeze = current(tx, scope, epoch, &spec.freeze_key).await?;
+    pinned_inputs(tx, scope, spec, freeze).await
+}
+
+async fn pinned_inputs(
+    tx: &Transaction<'_>,
+    scope: &Scope,
+    spec: &HandoffProjectionSpec,
+    freeze: HandoffFreeze,
+) -> Result<FrozenInputs> {
     check_refs(tx, scope, &freeze).await?;
     if freeze.snapshot_sha256 != spec.snapshot_sha256
         || freeze.snapshot.refs.len() != spec.refs.len()
@@ -111,7 +130,7 @@ async fn inputs(
         JOIN th_objects o ON (o.tenant,o.digest,o.generation)=(p.tenant,p.digest,p.generation)
         WHERE r.tenant=$1 AND r.repository=$2 AND r.epoch=$3 AND p.digest=r.head AND o.kind=5 AND o.state='live'
         ORDER BY r.name COLLATE "C"
-        "#, &[&scope.tenant(), &scope.repository(), &epoch]).await?;
+        "#, &[&scope.tenant(), &scope.repository(), &freeze.snapshot.epoch]).await?;
     if rows.len() != freeze.snapshot.refs.len() {
         return Err(Error::ObjectNotLive);
     }
@@ -195,7 +214,7 @@ async fn closure(
     Ok(generations)
 }
 
-struct FrozenStore<'a> {
+pub(crate) struct FrozenStore<'a> {
     store: &'a ManagedStore,
     generations: &'a BTreeMap<ObjectId, i64>,
 }
@@ -219,6 +238,7 @@ pub enum HandoffProjectionWork {
     Verify(Box<FrozenProjection>),
 }
 
+#[derive(PartialEq, Eq)]
 pub struct FrozenProjection {
     input: FrozenInputs,
     spec: HandoffProjectionSpec,
@@ -233,21 +253,32 @@ pub struct VerifiedFrozenProjection {
 }
 
 impl FrozenProjection {
-    pub fn verify(
-        self: Box<Self>,
-        store: &ManagedStore,
-        scratch: &Path,
-        deadline: Instant,
-    ) -> Result<VerifiedFrozenProjection> {
+    pub(crate) fn freeze(&self) -> &HandoffFreeze {
+        &self.input.freeze
+    }
+
+    pub(crate) fn generations(&self) -> &BTreeMap<ObjectId, i64> {
+        &self.generations
+    }
+
+    pub(crate) fn source<'a>(&'a self, store: &'a ManagedStore) -> Result<FrozenStore<'a>> {
         if store.backend() != self.input.backend
             || store.tenant() != self.input.freeze.snapshot.tenant
         {
             return Err(Error::NativeHandoffMismatch);
         }
-        let store = FrozenStore {
+        Ok(FrozenStore {
             store,
             generations: &self.generations,
-        };
+        })
+    }
+
+    pub(crate) fn branch_mapping(
+        &self,
+        store: &FrozenStore<'_>,
+        scratch: &Path,
+        deadline: Instant,
+    ) -> Result<git::VerifiedBranchMappings> {
         let mut refs = BTreeMap::new();
         for tip in &self.input.freeze.snapshot.refs {
             let RevisionRef::Native(head) = tip.head.parse()? else {
@@ -271,7 +302,7 @@ impl FrozenProjection {
             return Err(Error::UploadLimit);
         }
         let verified = git::verify_branch_mappings(
-            &store,
+            store,
             refs,
             scratch,
             Limits {
@@ -289,6 +320,16 @@ impl FrozenProjection {
         if verified.source_objects() != self.generations.len() {
             return Err(Error::NativeHandoffMismatch);
         }
+        Ok(verified)
+    }
+
+    pub fn verify(
+        self: Box<Self>,
+        store: &ManagedStore,
+        scratch: &Path,
+        deadline: Instant,
+    ) -> Result<VerifiedFrozenProjection> {
+        let verified = self.branch_mapping(&self.source(store)?, scratch, deadline)?;
         Ok(VerifiedFrozenProjection {
             input: self.input,
             spec: self.spec,
@@ -296,6 +337,24 @@ impl FrozenProjection {
             encoded_bytes: verified.source_bytes(),
         })
     }
+}
+
+pub(crate) async fn retained_projection(
+    tx: &Transaction<'_>,
+    scope: &Scope,
+    epoch: i64,
+    projection_key: &str,
+    deadline: Instant,
+) -> Result<FrozenProjection> {
+    let spec = load_projection(tx, scope, epoch, projection_key).await?;
+    let freeze = retained_freeze(tx, scope, epoch, &spec.freeze_key).await?;
+    let input = pinned_inputs(tx, scope, &spec, freeze).await?;
+    let generations = closure(tx, scope, &input, deadline).await?;
+    Ok(FrozenProjection {
+        input,
+        spec,
+        generations,
+    })
 }
 
 fn projection_request(

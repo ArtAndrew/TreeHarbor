@@ -9,12 +9,16 @@ use crate::{
     identifier,
     integration::{
         HandoffProjectionSpec,
-        handoff::{quiescent, retire_frozen_work, verified_projection},
+        handoff::{
+            FrozenProjection, quiescent, retained_projection, retire_frozen_work,
+            verified_projection,
+        },
         ref_name,
     },
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use std::time::Instant;
 use treeharbor_core::ObjectId;
 
 const PLAN: &str = "github.handoff.plan.v1";
@@ -75,6 +79,87 @@ struct ObservationReceipt {
     state: String,
     plan: HandoffTargetPlan,
     observation: ArchiveObservation,
+}
+
+/// Read the last exported native history through its completed authority
+/// transfer. A GitHub App rebind or restore can advance the Connected epoch.
+pub(super) async fn retained_history(
+    tx: &Transaction<'_>,
+    scope: &Scope,
+    epoch: i64,
+    current_host: &ArchiveObservation,
+    deadline: Instant,
+) -> Result<Option<FrozenProjection>> {
+    let native = tx
+        .query_one(
+            "SELECT min(epoch),max(epoch) FROM th_native_refs WHERE tenant=$1 AND repository=$2",
+            &[&scope.tenant(), &scope.repository()],
+        )
+        .await?;
+    let Some(previous_epoch): Option<i64> = native.get(0) else {
+        return Ok(None);
+    };
+    if native.get::<_, Option<i64>>(1) != Some(previous_epoch) || previous_epoch >= epoch {
+        return Err(Error::NativeHandoffMismatch);
+    }
+    let completed = tx
+        .query(
+            "SELECT result FROM th_operations WHERE tenant=$1 AND repository=$2 AND kind=$3
+         AND result->'previous_epoch'=to_jsonb($4::bigint) LIMIT 2",
+            &[
+                &scope.tenant(),
+                &scope.repository(),
+                &ACTIVATE,
+                &previous_epoch,
+            ],
+        )
+        .await?;
+    let [completed] = completed.as_slice() else {
+        return Err(Error::NativeHandoffMismatch);
+    };
+    let receipt: Value = completed.get(0);
+    if receipt["version"] != 1
+        || receipt["state"] != "activated"
+        || receipt["authority"] != "connected"
+        || receipt["tenant"] != scope.tenant()
+        || receipt["repository"] != json!(scope.repository())
+        || receipt["epoch"] != previous_epoch + 1
+        || receipt["target_archived"] != true
+    {
+        return Err(Error::NativeHandoffMismatch);
+    }
+    let key = receipt["plan_key"].as_str().ok_or(Error::SchemaMismatch)?;
+    let plan: HandoffTargetPlan =
+        serde_json::from_value(operation_receipt(tx, scope, key, PLAN).await?)
+            .map_err(|_| Error::SchemaMismatch)?;
+    plan.target.validate()?;
+    if plan.version != 1
+        || plan.tenant != scope.tenant()
+        || plan.repository != scope.repository()
+        || plan.epoch != previous_epoch
+        || plan.key != key
+        || receipt["binding"] != json!(plan.target.binding)
+        || receipt["observation_key"] != plan.observation_key
+        || receipt["snapshot_sha256"] != plan.snapshot_sha256
+        || plan.target.specification.upstream.repository_id != current_host.upstream.repository_id
+        || plan.target.repository_node_id != current_host.repository_node_id
+    {
+        return Err(Error::NativeHandoffMismatch);
+    }
+    let projection = retained_projection(
+        tx,
+        scope,
+        previous_epoch,
+        &plan.target.projection_key,
+        deadline,
+    )
+    .await?;
+    if projection.freeze().snapshot_sha256 != plan.snapshot_sha256
+        || projection.freeze().snapshot.freeze_key != plan.freeze_key
+    {
+        return Err(Error::NativeHandoffMismatch);
+    }
+    Ok(Some(projection))
 }
 
 fn observation_key(plan_key: &str) -> String {
