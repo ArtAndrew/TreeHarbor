@@ -6,9 +6,9 @@ Run agents from the same commit, keep their changes after workspace cleanup,
 and send each change to GitHub as a draft PR. Built for platform teams running
 code migrations and maintenance jobs with their own agents.
 
-[**Install v0.1.21-alpha.1**](docs/try-treeharbor.md) ·
+[**Install the alpha**](docs/try-treeharbor.md) ·
 [Watch the 36-second demo](docs/demo.md) ·
-[Signed Linux packages](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.21-alpha.1)
+[Signed Linux packages](https://github.com/ArtAndrew/TreeHarbor/releases)
 
 **Alpha for test repositories.** Setup is manual on Linux with PostgreSQL.
 The two-agent walkthrough uses gVisor for execution isolation.
@@ -24,6 +24,7 @@ The two-agent walkthrough uses gVisor for execution isolation.
 - **Standalone (experimental).** Start an [empty native repository](docs/native-integration.md#start-a-new-project-with-empty-history),
   publish changes under TreeHarbor review and check policies, and
   [export all branches to Git](docs/git-export.md#export-all-branches-from-a-live-standalone-repository).
+  [Run the two-agent example](examples/standalone/README.md).
 
 Use your own agent controllers to claim tasks, download pinned source and submit
 changes over HTTPS. [Controller guide](docs/remote-tasks-v1.md) ·

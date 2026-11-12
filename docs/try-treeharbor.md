@@ -14,7 +14,7 @@ infrastructure.
 | Understand the result before installing | [Recorded two-agent trial](demo.md) | A browser; no credentials or installation |
 | Run two tasks and get real draft PRs | Steps below | Linux x86-64/ARM64, GitHub CLI, Git, Python 3.11+, PostgreSQL, GitHub App, Docker/cgroup v2 and gVisor |
 | Keep your existing agent runtime | [Remote task assignment](remote-tasks-v1.md) | Prepared TreeHarbor service and pinned source; your controller supplies execution/isolation |
-| Start an independent repository | [Standalone empty start](native-integration.md#start-a-new-project-with-empty-history) | Signed Linux package, PostgreSQL, Docker/gVisor and a check profile. [Verified ARM64 run](evidence/standalone-clean-install-20261112.json) |
+| Run two agents in Standalone | [Packaged overlap example](../examples/standalone/README.md) | Signed Linux package, Docker/gVisor, static BusyBox and a local PostgreSQL image |
 | Connect an MCP host | [Experimental MCP stdio adapter](mcp.md) | Prepared local service, scoped agent credential and stdio-capable host; no managed launch or GitHub publishing tool |
 
 This walk-through uses Git-compatible workspaces with private `.git` directories
@@ -24,24 +24,36 @@ binaries and ships the example in the verified archive.
 
 ## 1. Install a signed Linux package
 
-The commands below pin [0.1.21-alpha.1](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.21-alpha.1)
-and its signed source commit. Run them in a fresh Linux shell with an authenticated
-`gh`. The commands select `x86_64` (amd64) on 64-bit Intel or AMD Linux
-and `aarch64` on ARM64 Linux. Keep the generated directory and use the same
-shell for the following steps.
+Run these commands in a fresh Linux shell with an authenticated `gh`. They
+select the most recently published alpha, record its tag and commit, and verify
+the archive against that exact source and the release workflow. To use a specific
+published alpha, set `TH_TAG` first. Keep the generated directory and use the
+same shell for the following steps. [Published releases](https://github.com/ArtAndrew/TreeHarbor/releases)
 
 ```sh
 set -eu
 TH_REPO=ArtAndrew/TreeHarbor
-TH_VERSION=0.1.21-alpha.1
-TH_TAG="v$TH_VERSION"
-TH_SOURCE=e163bd27064496e3f59196c92beacaddb67b9b24
 test "$(uname -s)" = Linux
 TH_ARCH=$(uname -m)
 case "$TH_ARCH" in
   x86_64|aarch64) ;;
   *) printf '%s\n' "Unsupported Linux architecture: $TH_ARCH" >&2; exit 1 ;;
 esac
+TH_RELEASES=$(gh api --paginate "repos/$TH_REPO/releases?per_page=100" --jq '
+  .[] | select(.draft == false and .prerelease and .published_at != null)
+  | select(.tag_name | test("^v[0-9]+\\.[0-9]+\\.[0-9]+-alpha\\.[0-9]+$"))
+  | [.published_at, .tag_name] | @tsv')
+if [ -z "${TH_TAG:-}" ]; then
+  TH_TAG=$(printf '%s\n' "$TH_RELEASES" | LC_ALL=C sort -r | awk 'NR == 1 {print $2}')
+fi
+if ! printf '%s\n' "$TH_RELEASES" | awk -v tag="$TH_TAG" '$2 == tag && NF == 2 {found=1} END {exit !found}'; then
+  printf '%s\n' 'Choose a published TreeHarbor alpha tag from the Releases page.' >&2
+  exit 1
+fi
+TH_VERSION=${TH_TAG#v}
+TH_SOURCE=$(gh api "repos/$TH_REPO/git/ref/tags/$TH_TAG" --jq '.object | select(.type == "commit") | .sha')
+printf '%s\n' "$TH_SOURCE" | grep -Eq '^[a-f0-9]{40}$'
+printf 'Selected %s at %s\n' "$TH_TAG" "$TH_SOURCE"
 TH_ASSET="treeharbor-$TH_VERSION-$TH_ARCH-unknown-linux-musl"
 TH_TRIAL=$(mktemp -d "${TMPDIR:-/tmp}/treeharbor.XXXXXXXX")
 cd "$TH_TRIAL"
@@ -68,12 +80,12 @@ test "$("$TH_BIN" --version)" = "treeharbor $TH_VERSION"
 printf 'Trial directory: %s\n' "$TH_TRIAL"
 ```
 
-The CLI prints `treeharbor 0.1.21-alpha.1`. For a Standalone trial, follow the
-[native setup and empty start](native-integration.md#roles-and-setup). For a
-Connected trial, continue below. Use the `gh` login on the operator host for
-artifact verification. Set up the GitHub App and agent credentials separately.
+For a Standalone trial, use the [two-agent example](../examples/standalone/README.md)
+when the archive includes it, or [create a native repository](native-integration.md#start-a-new-project-with-empty-history).
+For a Connected trial, continue below. Use the `gh` login on the operator host
+for artifact verification. Set up the GitHub App and agent credentials separately.
 
-For an existing deployment, follow the [upgrade steps](release-packaging.md#upgrade-from-0120-alpha1)
+For an existing deployment, follow the [upgrade steps for your installed version](release-packaging.md)
 before restarting the service.
 
 ## 2. Prepare one disposable Connected repository

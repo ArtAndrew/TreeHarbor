@@ -150,7 +150,7 @@ epoch. External host observations in this drill come from fixtures. Live
 destination preparation, GitHub reactivation and a full migration trial
 remain release gates.
 
-### Repeat transfer after GitHub advances (development)
+### Repeat transfer after GitHub advances — 0.1.22-alpha.1
 
 Archive activation can resume Standalone after a completed handoff back to the
 same GitHub repository. It verifies the previously exported graph, preserves
@@ -163,6 +163,13 @@ The transport test advances the Git graph with a merge and an extra branch
 between the two transfers. It exercises the populated schema 034 upgrade,
 failure at the activation receipt, exact replay, native parent identities and
 the Git export of every archived branch. GitHub observations are fixtures.
+
+Both [signed Linux packages](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.22-alpha.1)
+passed installed runtime checks, including recovery of all Git branch tips and
+the exact merge graph. The signed ARM64 package ran its bundled
+[Standalone example](../examples/standalone/README.md) offline. Two agents
+edited the same file, a fresh check and review cleared the resolved change,
+and ordinary Git recovered the landed content.
 
 ## Export multiple branches to Git — 0.1.20-alpha.1
 
