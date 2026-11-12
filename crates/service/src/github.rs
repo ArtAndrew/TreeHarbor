@@ -481,7 +481,8 @@ pub async fn run(action: Action) -> Result<bool> {
             state,
             queue_state,
         } => {
-            dequeue::run(dequeue::Request {
+            // Keep the queue futures out of the shared CLI dispatch state.
+            Box::pin(dequeue::run(dequeue::Request {
                 config,
                 socket,
                 credential_file,
@@ -489,7 +490,7 @@ pub async fn run(action: Action) -> Result<bool> {
                 epoch,
                 state,
                 queue_state,
-            })
+            }))
             .await
         }
         Action::Queue {
@@ -510,7 +511,7 @@ pub async fn run(action: Action) -> Result<bool> {
             host_policy_group,
             host_policy_settings,
         } => {
-            queue::run(queue::Request {
+            Box::pin(queue::run(queue::Request {
                 config,
                 socket,
                 credential_file,
@@ -545,7 +546,7 @@ pub async fn run(action: Action) -> Result<bool> {
                 } else {
                     None
                 },
-            })
+            }))
             .await
         }
         Action::Inspect {

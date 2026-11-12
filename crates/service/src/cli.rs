@@ -1303,7 +1303,7 @@ pub async fn run(cli: Cli) -> Result<bool> {
             treeharbor_git_bridge::download::worker()?;
             Ok(true)
         }
-        Command::Github { action } => crate::github::run(action).await,
+        Command::Github { action } => Box::pin(crate::github::run(action)).await,
         Command::GitImport {
             bundle,
             commit,
@@ -1413,7 +1413,7 @@ pub async fn run(cli: Cli) -> Result<bool> {
             );
             Ok(true)
         }
-        Command::Node { action } => crate::node_cli::run(action).await,
+        Command::Node { action } => Box::pin(crate::node_cli::run(action)).await,
         Command::SourcePack {
             empty,
             directory,
