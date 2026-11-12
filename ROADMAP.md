@@ -14,6 +14,12 @@ evidence of adoption or production readiness.
 | **Standalone S2** | Own native history, review, checks and integration without Git/GitHub on the native path | Complete the native lifecycle and fenced migration on the shared Rust core, under the same ELv2. Prioritize after the first Connected usage evidence. |
 
 Available packages and their exact scope are listed in [signed alpha releases](https://github.com/ArtAndrew/TreeHarbor/releases).
+
+[0.1.22-alpha.1](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.22-alpha.1)
+preserves native commit IDs when a repository returns to Standalone after new
+Git commits. The signed package includes a [two-agent conflict example](examples/standalone/README.md)
+that runs without a GitHub account.
+
 [0.1.21-alpha.1](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.21-alpha.1) adds an operator-assisted mode transfer preview.
 The installed Linux packages pass the protected Standalone workflow.
 The migration contracts pass with PostgreSQL, Git and fixture host observations.
