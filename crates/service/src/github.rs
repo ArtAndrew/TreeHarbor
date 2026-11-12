@@ -303,6 +303,8 @@ pub enum Action {
     },
     /// Record a fresh read-only archive observation for a verified source request.
     ArchiveObserve(archive_observe::Options),
+    /// Observe the exact archived destination for a frozen native handoff plan.
+    HandoffObserve(archive_observe::Options),
     /// Retain a complete local Git bundle matching a saved archive observation.
     ArchivePreserve(archive_observe::preserve::Options),
     /// Upload a preserved archive and retain its complete object graph on the server.
@@ -799,6 +801,7 @@ pub async fn run(action: Action) -> Result<bool> {
         Action::ArchivePreflight(options) => archive_preflight::run(options).await,
         Action::ArchiveInventory { config } => archive_preflight::inventory(&config).await,
         Action::ArchiveObserve(options) => Box::pin(archive_observe::run(options)).await,
+        Action::HandoffObserve(options) => Box::pin(archive_observe::run_handoff(options)).await,
         Action::ArchivePreserve(options) => {
             tokio::task::spawn_blocking(move || archive_observe::preserve::run(options))
                 .await

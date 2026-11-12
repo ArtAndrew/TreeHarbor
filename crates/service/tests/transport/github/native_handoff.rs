@@ -52,6 +52,7 @@ pub(super) async fn exercise(
     server: Process,
     owner: &Path,
     worker: &Path,
+    bridge: &Path,
     changeset: &str,
     landed: &Value,
 ) {
@@ -414,5 +415,8 @@ exec /usr/bin/git "$@"
             .to_string_lossy()
             .starts_with(".treeharbor-branch-packs-")
     }));
-    drop(server);
+    Box::pin(handoff_target::exercise(
+        f, server, owner, bridge, changeset,
+    ))
+    .await;
 }

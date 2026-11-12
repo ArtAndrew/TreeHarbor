@@ -253,7 +253,7 @@ pub(super) async fn exercise(
     ))
     .await;
     Box::pin(native_handoff::exercise(
-        f, server, &owner, &worker, changeset, &landed,
+        f, server, &owner, &worker, bridge, changeset, &landed,
     ))
     .await;
 }

@@ -2,6 +2,7 @@
 mod projection;
 use super::{capture_refs, ref_name, request, *};
 use crate::identifier;
+pub(crate) use projection::verified_projection;
 pub use projection::{HandoffProjectionSpec, HandoffProjectionWork};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -102,7 +103,7 @@ impl HandoffFreeze {
     }
 }
 
-async fn quiescent(tx: &Transaction<'_>, scope: &Scope) -> Result<()> {
+pub(crate) async fn quiescent(tx: &Transaction<'_>, scope: &Scope) -> Result<()> {
     let busy: bool = tx.query_one(r#"
         SELECT EXISTS(SELECT 1 FROM th_workspaces WHERE tenant=$1 AND repository=$2 AND state<>'deleted')
           OR EXISTS(SELECT 1 FROM th_agent_runs WHERE tenant=$1 AND repository=$2
@@ -115,6 +116,26 @@ async fn quiescent(tx: &Transaction<'_>, scope: &Scope) -> Result<()> {
     if busy {
         return Err(Error::NativeHandoffBusy);
     }
+    Ok(())
+}
+
+pub(crate) async fn retire_frozen_work(
+    tx: &Transaction<'_>,
+    scope: &Scope,
+    epoch: i64,
+) -> Result<()> {
+    tx.execute(
+        r#"
+        UPDATE th_native_queue SET state='stale',reason='authority_epoch_changed'
+        WHERE tenant=$1 AND repository=$2 AND epoch=$3 AND state='queued'
+        "#,
+        &[&scope.tenant(), &scope.repository(), &epoch],
+    )
+    .await?;
+    tx.execute(r#"
+        UPDATE th_outbox SET state='done',worker=NULL,lease_until=NULL,completed_at=clock_timestamp()
+        WHERE tenant=$1 AND repository=$2 AND state<>'done'
+        "#, &[&scope.tenant(), &scope.repository()]).await?;
     Ok(())
 }
 
@@ -293,18 +314,7 @@ impl Metadata {
         if changed != freeze.snapshot.refs.len() as u64 {
             return Err(Error::NativeHandoffMismatch);
         }
-        tx.execute(
-            r#"
-            UPDATE th_native_queue SET state='stale',reason='authority_epoch_changed'
-            WHERE tenant=$1 AND repository=$2 AND epoch=$3 AND state='queued'
-            "#,
-            &[&scope.tenant(), &scope.repository(), &command.epoch],
-        )
-        .await?;
-        tx.execute(r#"
-            UPDATE th_outbox SET state='done',worker=NULL,lease_until=NULL,completed_at=clock_timestamp()
-            WHERE tenant=$1 AND repository=$2 AND state<>'done'
-            "#, &[&scope.tenant(), &scope.repository()]).await?;
+        retire_frozen_work(tx, scope, command.epoch).await?;
         let changed = tx.execute(r#"
             UPDATE th_repositories SET state='active',epoch=$4
             WHERE tenant=$1 AND repository=$2 AND authority='standalone' AND state='frozen' AND epoch=$3

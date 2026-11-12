@@ -13,6 +13,7 @@ mod archive_proposal_stage;
 mod archive_proposals;
 mod archive_retention;
 mod archive_stage;
+mod handoff;
 mod host_policy;
 pub use admission_policy::{AdmissionPolicy, ManagedRequirement};
 pub use archive_activate::{ArchiveActivateSpec, ArchiveActivateWork};
@@ -33,6 +34,7 @@ pub use archive_proposals::{
 };
 pub use archive_retention::{ArchiveRetentionWork, ArchiveStored};
 pub use archive_stage::{ArchiveBranchTip, ArchiveStageSpec};
+pub use handoff::{HandoffTargetPlan, HandoffTargetSpec};
 mod check_policy;
 mod check_publications;
 pub use check_publications::CheckPublicationSpec;

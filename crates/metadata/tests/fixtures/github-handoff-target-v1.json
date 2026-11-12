@@ -1,0 +1,43 @@
+{
+  "plan": {
+    "action": "handoff_plan",
+    "key": "plan-fixture",
+    "epoch": 2,
+    "target": {
+      "version": 1,
+      "projection_key": "projection-fixture",
+      "binding": "da7e3c18-321d-4fd5-ab93-79530b27ecb1",
+      "specification": {
+        "version": 1,
+        "app_id": 11,
+        "client_id": "fixture_client",
+        "bridge": "fixture-bridge",
+        "upstream": {"installation_id": 12, "repository_id": 13, "owner_id": 14, "owner": "fixture", "name": "repo"}
+      },
+      "repository_node_id": "fixture-repository-node",
+      "default_branch": "main"
+    }
+  },
+  "context": {"action": "handoff_context", "epoch": 2, "plan_key": "plan-fixture"},
+  "observe": {
+    "action": "handoff_observe",
+    "epoch": 2,
+    "observation": {
+      "version": 1,
+      "request_key": "plan-fixture",
+      "binding": "da7e3c18-321d-4fd5-ab93-79530b27ecb1",
+      "app_id": 11,
+      "upstream": {"installation_id": 12, "repository_id": 13, "owner_id": 14, "owner": "fixture", "name": "repo"},
+      "repository_node_id": "fixture-repository-node",
+      "default_branch": "main",
+      "started_at_unix": 2000000001,
+      "finished_at_unix": 2000000002,
+      "token_revoked": true,
+      "heads": {"refs/heads/main": "git:sha1:8a2c8d912556ce95e03144c18f99863173a01005"},
+      "tags": {"count": 0, "sha256": "sha256:8c3a0ad5699b48b9c03a3c6b5298247deb99c3e0fba621cb009d654a9b7ac33f"},
+      "open_pulls": {"count": 0, "sha256": "sha256:787a21579370d56deeec1864bcc0ef3dca7910947f1ebc1a850a9f289b5eac72"}
+    }
+  },
+  "activate": {"action": "handoff_activate", "epoch": 2, "key": "activate-fixture", "plan_key": "plan-fixture", "keep_target_archived": true},
+  "observation_key": "handoff-observed-33065638eb1577c30d054799eba502733e54a866df0b3c00d471de113ade5e8a"
+}

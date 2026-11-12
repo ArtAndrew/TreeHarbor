@@ -127,7 +127,7 @@ pub(super) async fn bridge(tx: &Transaction<'_>, s: &Scope, spec: &BindingSpec) 
     }
     Ok(())
 }
-async fn available(tx: &Transaction<'_>, s: &Scope, id: Uuid) -> Result<()> {
+pub(super) async fn available(tx: &Transaction<'_>, s: &Scope, id: Uuid) -> Result<()> {
     if tx.query_opt("SELECT binding FROM th_github_bindings WHERE tenant=$1 AND repository=$2 AND (binding=$3 OR state='active') LIMIT 1",&[&s.tenant(),&s.repository(),&id]).await?.is_some() {return Err(Error::HostBindingState)}
     Ok(())
 }
