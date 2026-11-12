@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.1.22-alpha.1 — repeat mode transfers and packaged Standalone demo
+
+- [Return to Standalone after GitHub advances](docs/github-connection.md#activate-standalone-from-an-archived-repository).
+  Previously published native commits keep their identities, and new Git
+  commits keep their exact Git IDs and merge parents. Activation reports a
+  conflict if a previously exported branch was removed or rewritten.
+- [Run two isolated agents in Standalone](examples/standalone/README.md) from
+  the extracted Linux package. See the queue handle overlapping edits, then
+  verify the landed result by restoring an ordinary Git bundle.
+- [Upgrade from schema 034 to 035](docs/release-packaging.md#upgrade-from-0121-alpha1).
+  Existing branch history stays in the database and each continuing branch
+  records its old and new heads when authority returns to Standalone.
+- The transport test uses PostgreSQL and real Git bundles through three mode
+  transfers, with GitHub observations supplied by the fixture. The live
+  migration trial remains a separate step.
+
 ## 0.1.21-alpha.1 — archived GitHub and Standalone handoff preview
 
 - [Import an archived GitHub repository](docs/github-connection.md#activate-standalone-from-an-archived-repository)
