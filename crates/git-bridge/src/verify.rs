@@ -31,6 +31,8 @@ impl VerifiedMapping {
 #[derive(Debug)]
 pub struct VerifiedBranchMappings {
     tips: BTreeMap<String, (ObjectId, GitOid)>,
+    pub(super) commits: BTreeMap<ObjectId, String>,
+    pub(super) format: HashAlgorithm,
     source_objects: usize,
     source_bytes: u64,
 }
@@ -161,6 +163,8 @@ fn verified(
     }
     Ok(VerifiedBranchMappings {
         tips,
+        commits: graph.commits,
+        format,
         source_objects: graph.objects,
         source_bytes: graph.bytes,
     })

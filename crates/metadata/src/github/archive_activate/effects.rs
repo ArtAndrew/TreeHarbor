@@ -23,6 +23,8 @@ struct Ref {
     name: String,
     head: String,
     pin: String,
+    old_head: Option<String>,
+    generation: i64,
 }
 
 #[derive(Serialize)]
@@ -81,12 +83,22 @@ impl NativeRows {
             return Err(Error::ArchiveArtifactMismatch);
         };
         let snapshot: ObjectId = tip.snapshot.parse()?;
+        self.native_base(revision, snapshot, generations)?;
+        Ok((revision, snapshot))
+    }
+
+    fn native_base(
+        &mut self,
+        revision: ObjectId,
+        snapshot: ObjectId,
+        generations: &BTreeMap<ObjectId, i64>,
+    ) -> Result<()> {
         let pin = format!("base:{}", revision.hex());
         self.pin(&pin, revision, 5, generations)?;
         match self.bases.entry(revision) {
             Entry::Vacant(slot) => {
                 slot.insert(Base {
-                    revision: tip.native_revision.clone(),
+                    revision: RevisionRef::Native(revision).to_string(),
                     snapshot: snapshot.hex(),
                     pin,
                 });
@@ -96,28 +108,78 @@ impl NativeRows {
             }
             Entry::Occupied(_) => {}
         }
-        Ok((revision, snapshot))
+        Ok(())
     }
 }
 
 fn native_rows(
     spec: &ArchiveActivateSpec,
     proof: &VerifiedArchiveActivation,
+    epoch: i64,
+    new_commits: &BTreeMap<ObjectId, i64>,
 ) -> Result<NativeRows> {
     let mut rows = NativeRows::default();
     let branches = &proof.branches;
-    for (name, tip) in &branches.receipt.specification.branches {
-        let name = name
+    let previous = proof.reentry.as_ref().map(|entry| {
+        entry
+            .history
+            .freeze()
+            .snapshot
+            .refs
+            .iter()
+            .map(|tip| (tip.name.as_str(), tip))
+            .collect::<BTreeMap<_, _>>()
+    });
+    for (reference, tip) in &branches.receipt.specification.branches {
+        let name = reference
             .strip_prefix("refs/heads/")
             .ok_or(Error::ArchiveArtifactMismatch)?;
         crate::integration::ref_name(name)?;
-        let (head, _) = rows.base(tip, &branches.generations)?;
-        let pin = format!("native-ref:{}", ObjectId::hash_frame(name.as_bytes()).hex());
-        rows.pin(&pin, head, 5, &branches.generations)?;
+        let (head, generations) = if let Some(reentry) = &proof.reentry {
+            let tip = reentry
+                .graph
+                .tips
+                .get(reference)
+                .ok_or(Error::ArchiveArtifactMismatch)?;
+            let generations = [
+                &branches.generations,
+                reentry.history.generations(),
+                new_commits,
+            ]
+            .into_iter()
+            .find(|objects| objects.contains_key(&tip.head))
+            .ok_or(Error::UploadMembership)?;
+            rows.native_base(tip.head, tip.snapshot, generations)?;
+            (tip.head, generations)
+        } else {
+            (
+                rows.base(tip, &branches.generations)?.0,
+                &branches.generations,
+            )
+        };
+        let prior = previous.as_ref().and_then(|entries| entries.get(name));
+        let hash = ObjectId::hash_frame(name.as_bytes()).hex();
+        let (pin, old_head, generation) = match prior {
+            Some(prior) => {
+                let RevisionRef::Native(old) = prior.head.parse()? else {
+                    return Err(Error::ArchiveArtifactMismatch);
+                };
+                let generation = prior.generation.checked_add(1).ok_or(Error::Fenced)?;
+                (
+                    format!("native-archive:{epoch}:{hash}"),
+                    Some(old.hex()),
+                    generation,
+                )
+            }
+            None => (format!("native-ref:{hash}"), None, 1),
+        };
+        rows.pin(&pin, head, 5, generations)?;
         rows.refs.push(Ref {
             name: name.into(),
             head: head.hex(),
             pin,
+            old_head,
+            generation,
         });
     }
 
@@ -300,12 +362,13 @@ pub(super) async fn install(
     command: &Command,
     spec: &ArchiveActivateSpec,
     proof: &VerifiedArchiveActivation,
+    new_commits: &BTreeMap<ObjectId, i64>,
 ) -> Result<Value> {
     let scope = auth.scope();
-    let rows = native_rows(spec, proof)?;
+    let epoch = command.epoch.checked_add(1).ok_or(Error::Fenced)?;
+    let rows = native_rows(spec, proof, epoch, new_commits)?;
     let policy = ObjectId::from_bytes(spec.policy.digest()?);
     let definition = spec.policy.canonical()?;
-    let epoch = command.epoch.checked_add(1).ok_or(Error::Fenced)?;
     pin(
         tx,
         scope,
@@ -342,26 +405,36 @@ pub(super) async fn install(
         return Err(Error::ArchiveArtifactMismatch);
     }
     let refs = json!(rows.refs);
-    tx.execute(
-        r#"
+    let installed = tx
+        .execute(
+            r#"
         INSERT INTO th_native_refs(tenant,repository,name,head,generation,epoch,policy,pin_holder)
-        SELECT $1,$2,name,decode(head,'hex'),1,$4,$5,pin
-        FROM jsonb_to_recordset($3::jsonb) AS r(name text,head text,pin text)
+        SELECT $1,$2,name,decode(head,'hex'),generation,$4,$5,pin
+        FROM jsonb_to_recordset($3::jsonb) AS r(name text,head text,pin text,generation bigint)
+        ON CONFLICT (tenant,repository,name) DO UPDATE
+        SET head=EXCLUDED.head,generation=EXCLUDED.generation,epoch=EXCLUDED.epoch,
+            policy=EXCLUDED.policy,pin_holder=EXCLUDED.pin_holder
+        WHERE th_native_refs.generation=EXCLUDED.generation-1
         "#,
-        &[
-            &scope.tenant(),
-            &scope.repository(),
-            &refs,
-            &epoch,
-            &policy_bytes,
-        ],
-    )
-    .await?;
+            &[
+                &scope.tenant(),
+                &scope.repository(),
+                &refs,
+                &epoch,
+                &policy_bytes,
+            ],
+        )
+        .await?;
+    if installed != rows.refs.len() as u64 {
+        return Err(Error::NativeHandoffMismatch);
+    }
     tx.execute(r#"
-        INSERT INTO th_native_ref_updates(tenant,repository,target,generation,new_head,policy,epoch,principal,operation_key,kind)
-        SELECT tenant,repository,name,generation,head,policy,epoch,$4,$5,'create'
-        FROM th_native_refs WHERE tenant=$1 AND repository=$2 AND epoch=$3
-        "#, &[&scope.tenant(), &scope.repository(), &epoch, &auth.principal(), &command.key]).await?;
+        INSERT INTO th_native_ref_updates(tenant,repository,target,generation,old_head,new_head,policy,epoch,principal,operation_key,kind)
+        SELECT r.tenant,r.repository,r.name,r.generation,decode(a.old_head,'hex'),r.head,r.policy,r.epoch,$5,$6,
+            CASE WHEN a.old_head IS NULL THEN 'create' ELSE 'archive' END
+        FROM jsonb_to_recordset($4::jsonb) AS a(name text,old_head text)
+        JOIN th_native_refs r ON r.tenant=$1 AND r.repository=$2 AND r.epoch=$3 AND r.name=a.name
+        "#, &[&scope.tenant(), &scope.repository(), &epoch, &refs, &auth.principal(), &command.key]).await?;
     insert_proposals(tx, auth, command, &spec.proposal_stage, &rows.proposals).await?;
     Ok(json!({
         "version":1,"state":"activated","authority":"standalone","previous_epoch":command.epoch,"epoch":epoch,

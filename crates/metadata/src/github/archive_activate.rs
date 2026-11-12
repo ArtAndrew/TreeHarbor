@@ -3,18 +3,25 @@ mod effects;
 
 use super::{
     archive_observation::current_archive_fence,
-    archive_proof::{RetainedArchive, retained_source, verified_stage},
+    archive_proof::{ArchiveStore, RetainedArchive, retained_source, verified_stage},
     archive_proposal_stage::{
         ArchiveProposalStage, StageReceipt, VerifiedArchiveProposalStage, check_retained_proposals,
         open_staged,
     },
     *,
 };
-use crate::{identifier, integration::Policy};
+use crate::{
+    catalog::ObjectLease,
+    identifier,
+    integration::{Policy, handoff::FrozenProjection},
+};
 use serde::{Deserialize, Serialize};
-use std::{io::sink, path::Path, time::Instant};
-use treeharbor_core::ObjectId;
-use treeharbor_storage::ManagedStore;
+use std::{
+    collections::BTreeMap, io::sink, os::unix::fs::PermissionsExt, path::Path, time::Instant,
+};
+use treeharbor_core::{ObjectId, ObjectStore};
+use treeharbor_git_bridge::{self as git, ReattachedBranches};
+use treeharbor_storage::{LocalStore, ManagedStore, PreparedObject, TenantId};
 
 const ACTIVATE: &str = "github.archive.activate.v1";
 
@@ -77,7 +84,6 @@ async fn quiescent(tx: &Transaction<'_>, scope: &Scope, epoch: i64) -> Result<()
                     AND NOT EXISTS(SELECT 1 FROM th_github_dequeues d
                         WHERE d.tenant=q.tenant AND d.repository=q.repository AND d.queue=q.queue
                           AND d.retained_receipt IS NOT NULL AND d.latest_observation#>'{after,entry}'='null'::jsonb))
-          OR EXISTS(SELECT 1 FROM th_native_refs WHERE tenant=$1 AND repository=$2)
         "#, &[&scope.tenant(), &scope.repository(), &epoch]).await?.get(0);
     if busy {
         return Err(Error::ArchiveActivationBusy);
@@ -91,6 +97,7 @@ async fn evidence(
     policy_auth: &Authorization,
     command: &Command,
     spec: &ArchiveActivateSpec,
+    deadline: Instant,
 ) -> Result<ArchiveActivate> {
     let scope = auth.scope();
     if policy_auth.token_id() != auth.token_id() {
@@ -115,11 +122,15 @@ async fn evidence(
     let (branch_stage_key, source) =
         verified_stage(tx, scope, command.epoch, &fence.request.proof_key).await?;
     let branches = retained_source(tx, scope, &branch_stage_key, source).await?;
+    let history =
+        super::handoff::retained_history(tx, scope, command.epoch, &fence.observation, deadline)
+            .await?;
     Ok(ArchiveActivate {
         stage_receipt,
         proposals,
         fence,
         branches,
+        history,
     })
 }
 
@@ -133,6 +144,7 @@ pub struct ArchiveActivate {
     proposals: Box<ArchiveProposalStage>,
     fence: ArchiveObservationReceipt,
     branches: RetainedArchive,
+    history: Option<FrozenProjection>,
 }
 
 pub struct VerifiedArchiveActivation {
@@ -140,6 +152,46 @@ pub struct VerifiedArchiveActivation {
     proposals: VerifiedArchiveProposalStage,
     fence: ArchiveObservationReceipt,
     branches: RetainedArchive,
+    reentry: Option<Reentry>,
+    deadline: Instant,
+}
+
+struct Reentry {
+    history: FrozenProjection,
+    graph: ReattachedBranches,
+    store: LocalStore,
+    _scratch: tempfile::TempDir,
+}
+
+impl VerifiedArchiveActivation {
+    pub fn new_commit_ids(&self) -> &[ObjectId] {
+        self.reentry
+            .as_ref()
+            .map_or(&[], |reentry| &reentry.graph.commits)
+    }
+
+    pub fn prepare_new_commit(&self, id: ObjectId) -> Result<PreparedObject> {
+        let reentry = self
+            .reentry
+            .as_ref()
+            .ok_or(Error::ArchiveArtifactMismatch)?;
+        let object = PreparedObject::new(&reentry.store.get(id)?)?;
+        if object.id() != id || object.kind() != 5 {
+            return Err(Error::ArchiveArtifactMismatch);
+        }
+        Ok(object)
+    }
+}
+
+fn archive_graph_error(error: git::Error) -> Error {
+    match error {
+        git::Error::Limit | git::Error::Source(treeharbor_core::Error::TooLarge) => {
+            Error::UploadLimit
+        }
+        git::Error::Source(error) => Error::Objects(error),
+        git::Error::RefHistoryDiverged(_) => Error::ArchiveHistoryDiverged,
+        _ => Error::ArchiveArtifactMismatch,
+    }
 }
 
 impl ArchiveActivate {
@@ -150,22 +202,50 @@ impl ArchiveActivate {
         deadline: Instant,
     ) -> Result<VerifiedArchiveActivation> {
         self.proposals.archive.write(store, deadline, sink())?;
-        self.branches
+        let branches = self
+            .branches
             .verify(store, scratch, deadline)
-            .map_err(|error| match error {
-                treeharbor_git_bridge::Error::Limit
-                | treeharbor_git_bridge::Error::Source(treeharbor_core::Error::TooLarge) => {
-                    Error::UploadLimit
-                }
-                treeharbor_git_bridge::Error::Source(error) => Error::Objects(error),
-                _ => Error::ArchiveArtifactMismatch,
-            })?;
+            .map_err(archive_graph_error)?;
         let proposals = self.proposals.verify(store, deadline)?;
+        let reentry = self
+            .history
+            .map(|history| {
+                let source = history.source(store)?;
+                let previous = history.branch_mapping(&source, scratch, deadline)?;
+                let imported = ArchiveStore {
+                    store,
+                    generations: &self.branches.generations,
+                };
+                let staged = tempfile::Builder::new()
+                    .prefix(".treeharbor-archive-reentry-")
+                    .permissions(std::fs::Permissions::from_mode(0o700))
+                    .tempdir_in(scratch)
+                    .map_err(|error| treeharbor_core::Error::Storage(error.to_string()))?;
+                let output = LocalStore::open(staged.path(), &TenantId::new(store.tenant())?)?;
+                let graph = git::reattach_branches(
+                    &source,
+                    &imported,
+                    &output,
+                    &previous,
+                    &branches.mapping,
+                    deadline,
+                )
+                .map_err(archive_graph_error)?;
+                Ok::<_, Error>(Reentry {
+                    history,
+                    graph,
+                    store: output,
+                    _scratch: staged,
+                })
+            })
+            .transpose()?;
         Ok(VerifiedArchiveActivation {
             stage_receipt: self.stage_receipt,
             proposals,
             fence: self.fence,
             branches: self.branches,
+            reentry,
+            deadline,
         })
     }
 }
@@ -177,12 +257,21 @@ impl Metadata {
         policy_auth: &Authorization,
         command: &Command,
         spec: &ArchiveActivateSpec,
+        deadline: Instant,
     ) -> Result<ArchiveActivateWork> {
         let mutation = match self.begin(operation(auth, command, spec)?).await? {
             Begin::Replay(value) => return Ok(ArchiveActivateWork::Replay(value)),
             Begin::Fresh(mutation) => mutation,
         };
-        let work = evidence(mutation.transaction(), auth, policy_auth, command, spec).await?;
+        let work = evidence(
+            mutation.transaction(),
+            auth,
+            policy_auth,
+            command,
+            spec,
+            deadline,
+        )
+        .await?;
         mutation.tx.commit().await?;
         Ok(ArchiveActivateWork::Verify(Box::new(work)))
     }
@@ -193,7 +282,8 @@ impl Metadata {
         policy_auth: &Authorization,
         command: &Command,
         spec: &ArchiveActivateSpec,
-        proof: VerifiedArchiveActivation,
+        proof: &VerifiedArchiveActivation,
+        leases: &[ObjectLease],
     ) -> Result<Value> {
         let mutation = match self.begin(operation(auth, command, spec)?).await? {
             Begin::Replay(value) => return Ok(value),
@@ -201,16 +291,31 @@ impl Metadata {
         };
         let tx = mutation.transaction();
         let scope = auth.scope();
-        let current = evidence(tx, auth, policy_auth, command, spec).await?;
+        let current = evidence(tx, auth, policy_auth, command, spec, proof.deadline).await?;
         if current.stage_receipt != proof.stage_receipt
             || current.proposals != proof.proposals.stage
             || current.fence != proof.fence
             || current.branches != proof.branches
+            || current.history.as_ref() != proof.reentry.as_ref().map(|reentry| &reentry.history)
         {
             return Err(Error::ArchiveArtifactMismatch);
         }
         check_retained_proposals(tx, scope, &proof.stage_receipt, &proof.proposals).await?;
-        let result = effects::install(tx, auth, command, spec, &proof).await?;
+        let mut generations = BTreeMap::new();
+        if leases.len() != proof.new_commit_ids().len() {
+            return Err(Error::UploadMembership);
+        }
+        for (&id, lease) in proof.new_commit_ids().iter().zip(leases) {
+            let key = lease.key();
+            if key.tenant() != scope.tenant()
+                || key.backend() != proof.proposals.stage.objects.backend
+                || key.id() != id
+                || generations.insert(id, key.generation()).is_some()
+            {
+                return Err(Error::UploadMembership);
+            }
+        }
+        let result = effects::install(tx, auth, command, spec, proof, &generations).await?;
         current_archive_fence(
             tx,
             scope,

@@ -55,7 +55,7 @@ pub(super) fn make_bundle(dir: &Path, repo: &Path, first: &str, tagged: &str) ->
     }
 }
 
-fn success(output: Output) -> Value {
+pub(super) fn success(output: Output) -> Value {
     assert!(
         output.status.success(),
         "{} {}",

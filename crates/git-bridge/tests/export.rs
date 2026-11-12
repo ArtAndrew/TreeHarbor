@@ -1091,3 +1091,129 @@ fn verifies_every_named_git_tip_in_one_shared_projection() {
         ));
     }
 }
+
+#[test]
+fn archived_git_progress_reattaches_to_exact_native_parents() {
+    use treeharbor_git_bridge::{
+        BundleInput, Error, import_branches, reattach_branches, verify_branch_mappings,
+    };
+
+    let temp = tempfile::tempdir().unwrap();
+    fs::set_permissions(temp.path(), fs::Permissions::from_mode(0o700)).unwrap();
+    let s = store(&temp.path().join("objects"));
+    let snap = tree(&s, &[(b"readme", EntryMode::File, b"native source\n")]);
+    let root = commit(&s, snap, vec![], "native root");
+    let main = commit(&s, snap, vec![root], "native main");
+    let stable = commit(&s, snap, vec![root], "native stable");
+    let out = temp.path().join("handoff");
+    let mut r = request(&out, main, HashAlgorithm::Sha1);
+    r.refs.insert("refs/heads/stable".into(), stable);
+    let manifest = export(&s, r).unwrap();
+    let parse = |oid: &str| match format!("git:sha1:{oid}").parse().unwrap() {
+        RevisionRef::Git(id) => id,
+        _ => panic!("expected a Git commit"),
+    };
+    let oid = |id: ObjectId| manifest.commits[&id.to_string()].as_str();
+    let prior = BTreeMap::from([
+        ("refs/heads/main".into(), (main, parse(oid(main)))),
+        ("refs/heads/stable".into(), (stable, parse(oid(stable)))),
+    ]);
+    let verify = |refs| verify_branch_mappings(&s, refs, temp.path(), Limits::default()).unwrap();
+    let previous = verify(prior);
+
+    let repo = temp.path().join("host.git");
+    run(
+        temp.path(),
+        &[
+            "clone",
+            "--bare",
+            out.join("history.bundle").to_str().unwrap(),
+            repo.to_str().unwrap(),
+        ],
+        b"",
+    );
+    let host_tree = text(run(&repo, &["rev-parse", "refs/heads/main^{tree}"], b""));
+    let host_commit = |parents: &[&str], message: &str| {
+        let parents: Vec<_> = parents.iter().map(|parent| (*parent).to_owned()).collect();
+        text(run(
+            &repo,
+            &["hash-object", "-t", "commit", "-w", "--stdin"],
+            &original_bytes(&host_tree, &parents, message),
+        ))
+    };
+    let patch = host_commit(&[oid(main)], "host patch\n");
+    let merge = host_commit(&[&patch, oid(stable)], "host merge\n");
+    run(&repo, &["update-ref", "refs/heads/main", &merge], b"");
+    run(&repo, &["update-ref", "refs/heads/new-branch", &patch], b"");
+    let bundle = temp.path().join("archived.bundle");
+    run(
+        &repo,
+        &["bundle", "create", bundle.to_str().unwrap(), "--branches"],
+        b"",
+    );
+    let refs = BTreeMap::from([
+        ("refs/heads/main".into(), parse(&merge)),
+        ("refs/heads/new-branch".into(), parse(&patch)),
+        ("refs/heads/stable".into(), parse(oid(stable))),
+    ]);
+    let imported = import_branches(
+        &s,
+        BundleInput {
+            git: git_path(),
+            bundle: &bundle,
+            scratch: temp.path(),
+            limits: Limits::default(),
+        },
+        &refs,
+    )
+    .unwrap();
+    assert_ne!(imported.refs["refs/heads/stable"].commit, stable);
+    let archive = verify(
+        imported
+            .refs
+            .iter()
+            .map(|(name, tip)| (name.clone(), (tip.commit, tip.origin)))
+            .collect(),
+    );
+    let attach = |archive: &treeharbor_git_bridge::VerifiedBranchMappings| {
+        reattach_branches(
+            &s,
+            &s,
+            &s,
+            &previous,
+            archive,
+            Instant::now() + Duration::from_secs(10),
+        )
+    };
+    let restored = attach(&archive).unwrap();
+    let patch_head = restored.tips["refs/heads/new-branch"].head;
+    let merge_head = restored.tips["refs/heads/main"].head;
+    assert_eq!(restored.tips["refs/heads/stable"].head, stable);
+    assert_eq!(restored.commits, [patch_head, merge_head]);
+    let parents = |id| match s.get(id).unwrap() {
+        Object::NativeCommit(commit) => commit.parents,
+        _ => panic!("expected a commit"),
+    };
+    assert_eq!(parents(merge_head), [patch_head, stable]);
+    assert_eq!(parents(patch_head), [main]);
+    let exact = verify(
+        restored
+            .tips
+            .iter()
+            .map(|(name, tip)| (name.clone(), (tip.head, refs[name])))
+            .collect(),
+    );
+    assert_eq!(exact.tips()["refs/heads/main"].1, parse(&merge));
+    assert_eq!(attach(&archive).unwrap(), restored);
+
+    let mut diverged = archive.tips().clone();
+    diverged.insert("refs/heads/main".into(), diverged["refs/heads/stable"]);
+    assert!(
+        matches!(attach(&verify(diverged)), Err(Error::RefHistoryDiverged(branch)) if branch == "refs/heads/main")
+    );
+    let mut removed = archive.tips().clone();
+    removed.remove("refs/heads/stable");
+    assert!(
+        matches!(attach(&verify(removed)), Err(Error::RefHistoryDiverged(branch)) if branch == "refs/heads/stable")
+    );
+}

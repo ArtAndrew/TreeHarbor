@@ -25,10 +25,10 @@ treeharbor-runtime.workspace = true
 treeharbor-merge.workspace = true
 treeharbor-history.workspace = true
 treeharbor-validation.workspace = true
+tempfile.workspace = true
 
 [dev-dependencies]
 tokio.workspace = true
-tempfile.workspace = true
 
 [lints]
 workspace = true

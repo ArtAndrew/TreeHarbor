@@ -49,6 +49,7 @@ impl CommandError {
             Self::Metadata(Error::ArchiveObservationMismatch) => "archive_observation_mismatch",
             Self::Metadata(Error::ArchiveArtifactMismatch) => "archive_artifact_mismatch",
             Self::Metadata(Error::ArchiveActivationBusy) => "archive_activation_busy",
+            Self::Metadata(Error::ArchiveHistoryDiverged) => "archive_history_diverged",
             Self::Metadata(Error::HostRecoveryRequired) => "host_recovery_required",
             Self::Metadata(Error::RestoreContextChanged) => "restore_context_changed",
             Self::Metadata(Error::RestoreDecisionConflict) => "restore_decision_conflict",

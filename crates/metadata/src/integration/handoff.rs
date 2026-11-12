@@ -3,6 +3,7 @@ mod projection;
 use super::{capture_refs, ref_name, request, *};
 use crate::identifier;
 pub(crate) use projection::verified_projection;
+pub(crate) use projection::{FrozenProjection, retained_projection};
 pub use projection::{HandoffProjectionSpec, HandoffProjectionWork};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -158,6 +159,16 @@ pub(crate) async fn current(
     {
         return Err(Error::Fenced);
     }
+    retained_freeze(tx, scope, epoch, key).await
+}
+
+async fn retained_freeze(
+    tx: &Transaction<'_>,
+    scope: &Scope,
+    epoch: i64,
+    key: &str,
+) -> Result<HandoffFreeze> {
+    identifier(key, 128)?;
     let row = tx.query_opt(
         "SELECT result FROM th_operations WHERE tenant=$1 AND repository=$2 AND key=$3 AND kind=$4",
         &[&scope.tenant(), &scope.repository(), &key, &FREEZE],

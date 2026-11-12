@@ -498,8 +498,8 @@ the uploaded proposal graphs.
 ## Activate Standalone from an archived repository
 
 This development command transfers a Connected repository with an archived
-GitHub upstream to native write authority. Use it for the initial transfer
-into a repository whose native refs are empty. Take a cold backup before
+GitHub upstream to native write authority. It also supports a later transfer
+from the same GitHub repository after a completed Standalone handoff. Take a cold backup before
 the transfer. Finish and remove workspaces, cancel unused remote tasks, and
 settle in-flight host writes. Keep the upstream archived for the entire time
 that TreeHarbor owns its branches. GitHub makes archived repositories
@@ -538,6 +538,16 @@ proposals, revokes the Connected binding and increments the authority epoch.
 An exact retry after a lost reply returns the same `activated` receipt.
 Keep the upstream archived while reconciling an uncertain response.
 
+On a repeat transfer, every previously exported branch must still exist and
+contain its exported tip. New branches and additional commits are supported.
+The service verifies the previous handoff and preserves the native commit IDs
+that were already published. New Git commits retain their Git IDs and attach to
+those same native parents. Existing branch generations advance, with an
+`archive` entry in the branch update log. A missing or rewritten branch returns
+`archive_history_diverged`. Restore the missing history on GitHub under its
+own write authority and capture a fresh archive before retrying. This path
+requires schema 035. The activation request and receipt stay at v1.
+
 The receipt maps ready PR numbers to version-1 ChangeSets and lists the
 others under `unresolved`. The staged archive retains the unresolved PR
 sources and discussion references. Native `diff` and rebase status expose
@@ -547,9 +557,10 @@ check assignment and review. The authority transaction carries GitHub
 provenance and exact source identity. Native validation starts with fresh
 checks and approvals.
 
-The tested profile uses a disposable database and a real Git bundle with a
-fixture for the archived GitHub observation. A live GitHub cutover and the
-reverse handoff are separate release checks.
+The test profile uses a disposable database and real Git bundles with fixtures
+for the archived GitHub observations. It covers both transfer directions and a
+repeat transfer after GitHub advances. Live GitHub cutover and reactivation
+remain separate release checks.
 
 ## Retain a connection in a running TreeHarbor server
 
