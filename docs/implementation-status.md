@@ -1,6 +1,6 @@
 # Implementation status
 
-Updated: 2026-11-11. This file describes implemented behavior and remaining release
+Updated: 2026-11-12. This file describes implemented behavior and remaining release
 gates. A foundation milestone does not complete either mode.
 
 For a concise current overview, see [what works today](../README.md#what-works-today)
@@ -9,7 +9,14 @@ below retain evidence from individual increments. Their earlier statements about
 unfinished work describe the scope at that time; they are not a replacement for
 the current overview or the full [release gate ledger](#release-gate-ledger).
 
-## Archived GitHub branch import preflight (development)
+## Archived GitHub and Standalone handoff preview — 0.1.21-alpha.1
+
+The signed Linux packages include the archived-repository transfer commands.
+The local migration drill uses fixture host observations. Both packaged Linux
+runtimes also passed the independent Standalone check and Git export workflow.
+[Release](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.21-alpha.1) · [Signed Linux jobs](https://github.com/ArtAndrew/TreeHarbor/actions/runs/43176290810)
+
+### Archived GitHub branch import preflight
 
 [`github archive-preflight`](github-connection.md#verify-a-bundle-from-an-archived-repository)
 matches a complete Git bundle against the observed branch inventory of an

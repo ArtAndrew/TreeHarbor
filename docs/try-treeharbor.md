@@ -24,7 +24,7 @@ binaries and ships the example in the verified archive.
 
 ## 1. Install a signed Linux package
 
-The commands below pin [0.1.20-alpha.1](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.20-alpha.1)
+The commands below pin [0.1.21-alpha.1](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.21-alpha.1)
 and its signed source commit. Run them in a fresh Linux shell with an authenticated
 `gh`. The commands select `x86_64` (amd64) on 64-bit Intel or AMD Linux
 and `aarch64` on ARM64 Linux. Keep the generated directory and use the same
@@ -33,9 +33,9 @@ shell for the following steps.
 ```sh
 set -eu
 TH_REPO=ArtAndrew/TreeHarbor
-TH_VERSION=0.1.20-alpha.1
+TH_VERSION=0.1.21-alpha.1
 TH_TAG="v$TH_VERSION"
-TH_SOURCE=c8712113cee8ae89a61ddcba74aa3569bdcb2dc5
+TH_SOURCE=e163bd27064496e3f59196c92beacaddb67b9b24
 test "$(uname -s)" = Linux
 TH_ARCH=$(uname -m)
 case "$TH_ARCH" in
@@ -68,12 +68,12 @@ test "$("$TH_BIN" --version)" = "treeharbor $TH_VERSION"
 printf 'Trial directory: %s\n' "$TH_TRIAL"
 ```
 
-The CLI prints `treeharbor 0.1.20-alpha.1`. For a Standalone trial, follow the
+The CLI prints `treeharbor 0.1.21-alpha.1`. For a Standalone trial, follow the
 [native setup and empty start](native-integration.md#roles-and-setup). For a
 Connected trial, continue below. Use the `gh` login on the operator host for
 artifact verification. Set up the GitHub App and agent credentials separately.
 
-For an existing deployment, follow the [upgrade steps](release-packaging.md#upgrade-from-0119-alpha1)
+For an existing deployment, follow the [upgrade steps](release-packaging.md#upgrade-from-0120-alpha1)
 before restarting the service.
 
 ## 2. Prepare one disposable Connected repository

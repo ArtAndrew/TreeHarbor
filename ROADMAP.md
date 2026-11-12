@@ -14,6 +14,10 @@ evidence of adoption or production readiness.
 | **Standalone S2** | Own native history, review, checks and integration without Git/GitHub on the native path | Complete the native lifecycle and fenced migration on the shared Rust core, under the same ELv2. Prioritize after the first Connected usage evidence. |
 
 Available packages and their exact scope are listed in [signed alpha releases](https://github.com/ArtAndrew/TreeHarbor/releases).
+[0.1.21-alpha.1](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.21-alpha.1) adds an operator-assisted mode transfer preview.
+The installed Linux packages pass the protected Standalone workflow.
+The migration contracts pass with PostgreSQL, Git and fixture host observations.
+
 [0.1.20-alpha.1](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.20-alpha.1) adds [one-command Standalone branch export](docs/git-export.md#export-all-branches-from-a-live-standalone-repository).
 Both signed Linux packages verified the complete branch set and Git merge
 history after restoring a backup.

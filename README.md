@@ -6,9 +6,9 @@ Run agents from the same commit, keep their changes after workspace cleanup,
 and send each change to GitHub as a draft PR. Built for platform teams running
 code migrations and maintenance jobs with their own agents.
 
-[**Install v0.1.20-alpha.1**](docs/try-treeharbor.md) ·
+[**Install v0.1.21-alpha.1**](docs/try-treeharbor.md) ·
 [Watch the 36-second demo](docs/demo.md) ·
-[Signed Linux packages](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.20-alpha.1)
+[Signed Linux packages](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.21-alpha.1)
 
 **Alpha for test repositories.** Setup is manual on Linux with PostgreSQL.
 The two-agent walkthrough uses gVisor for execution isolation.
