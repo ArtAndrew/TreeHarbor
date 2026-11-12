@@ -144,6 +144,29 @@ PostgreSQL, Docker/gVisor, bounded volumes and host access are separate prerequi
 Removing the CLI symlink and that version directory uninstalls the package; retain
 repository state and backups separately.
 
+### Upgrade from 0.1.21-alpha.1
+
+Capture changes you want to retain, drain workspaces and stop the service,
+controllers, nodes and GitHub writers. Keep the old installation and take a
+verified [cold backup](backup-restore.md) of the schema 034 database, object
+store and private deployment state. Verify and install the new archive in a
+separate prefix, then migrate while all writers are stopped.
+
+```sh
+"$TH_NEW_PREFIX/bin/treeharbor" admin --config "$TH_CONFIG" migrate
+"$TH_NEW_PREFIX/bin/treeharbor" doctor --config "$TH_CONFIG"
+```
+
+Schema 035 records continuing branch updates when an archived GitHub repository
+returns to Standalone. Existing branch updates, ChangeSets and retained history
+keep their identities. After restarting, verify a retained change and the
+current branch tips before reconnecting nodes with matching binaries.
+
+To roll back, preserve changes accepted after the backup, stop and fence the
+new deployment, and restore the schema 034 database and matching objects in
+a separate deployment. Reconcile GitHub effects and verify the active authority
+before resuming writes.
+
 ### Upgrade from 0.1.20-alpha.1
 
 Capture changes you want to retain, drain workspaces and stop the service,
