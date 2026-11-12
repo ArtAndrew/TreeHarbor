@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.1.21-alpha.1 — archived GitHub and Standalone handoff preview
+
+- [Import an archived GitHub repository](docs/github-connection.md#activate-standalone-from-an-archived-repository)
+  into Standalone with its complete branch history and ready pull proposals.
+  Preserve the original pull identity and require fresh native review and checks.
+- [Freeze Standalone and return it to GitHub](docs/git-export.md#return-write-authority-to-github)
+  through an exact Git branch export and a fresh observation of the archived
+  destination. Advance the write-authority epoch in one transaction.
+- [Upgrade from schema 033 to 034](docs/release-packaging.md#upgrade-from-0120-alpha1)
+  with a verified cold backup and stopped writers. Schema 034 records archived
+  pull provenance alongside existing agent-run lineage.
+- The migration preview was exercised with PostgreSQL, ordinary Git and fixture
+  host observations. Use a disposable target for a live migration trial.
+
 ## 0.1.20-alpha.1 — export all Standalone branches
 
 - Capture the complete active Standalone branch set and its authority epoch in

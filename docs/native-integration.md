@@ -387,3 +387,11 @@ The installed ARM64 run used a network namespace with no external interfaces
 and traced 207 native TreeHarbor invocations. The trace observed zero subprocess
 executions and zero IPv4 or IPv6 connection attempts before the separate Git
 projection. This evidence covers one scripted workflow. [Installed ARM64 receipt](evidence/standalone-agent-overlap-20261109.json)
+
+A second run installed the signed `0.1.20-alpha.1` package on a new Ubuntu ARM64
+VM with Docker, gVisor and PostgreSQL. It used a prebuilt agent test probe and
+started from an empty repository. The two agents reached a real file conflict,
+the resolution passed a fresh check and review, and ordinary Git recovered the
+landed bytes after cleanup. The trace recorded 270 native calls with zero child
+processes and zero IPv4 or IPv6 connections. The Git projection was run separately.
+[Clean installation receipt](evidence/standalone-clean-install-20261112.json)
