@@ -12,9 +12,9 @@ use treeharbor_github_contract::archive_inventory::ArchivedRepository;
 
 const BEGIN: &str = "github.archive.observe.begin.v1";
 const RECORD: &str = "github.archive.observe.record.v1";
-const REQUEST_SECONDS: u64 = 180;
-const FRESH_SECONDS: u64 = 120;
-const CLOCK_SKEW_SECONDS: u64 = 5;
+pub(super) const REQUEST_SECONDS: u64 = 180;
+pub(super) const FRESH_SECONDS: u64 = 120;
+pub(super) const CLOCK_SKEW_SECONDS: u64 = 5;
 const MAX_INVENTORY_ITEMS: usize = 5000;
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -49,7 +49,7 @@ impl ArchiveInventoryDigest {
         })
     }
 
-    fn validate(&self, set: &[u8]) -> Result<()> {
+    pub(super) fn validate(&self, set: &[u8]) -> Result<()> {
         let digest: ObjectId = self
             .sha256
             .parse()
@@ -159,7 +159,7 @@ pub struct ArchiveObservationContext {
     pub specification: BindingSpec,
 }
 
-async fn clock(tx: &Transaction<'_>) -> Result<u64> {
+pub(super) async fn clock(tx: &Transaction<'_>) -> Result<u64> {
     let unix: i64 = tx
         .query_one(
             "SELECT floor(extract(epoch FROM clock_timestamp()))::bigint",

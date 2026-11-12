@@ -24,6 +24,25 @@ pub enum WireCommand {
         epoch: i64,
         observation: Box<ArchiveObservation>,
     },
+    HandoffPlan {
+        key: String,
+        epoch: i64,
+        target: Box<HandoffTargetSpec>,
+    },
+    HandoffContext {
+        epoch: i64,
+        plan_key: String,
+    },
+    HandoffObserve {
+        epoch: i64,
+        observation: Box<ArchiveObservation>,
+    },
+    HandoffActivate {
+        key: String,
+        epoch: i64,
+        plan_key: String,
+        keep_target_archived: bool,
+    },
     RestoreTargetRegister {
         key: String,
         epoch: i64,
@@ -679,12 +698,14 @@ pub(super) fn id(s: &str) -> Result<Uuid> {
 impl WireCommand {
     pub fn permission(&self) -> Permission {
         match self {
-            Self::ArchiveStage { .. } | Self::ArchiveObserveBegin { .. } => {
-                Permission::RepositoryWrite
-            }
-            Self::ArchiveObserveContext { .. } | Self::ArchiveObserveRecord { .. } => {
-                Permission::HostRead
-            }
+            Self::ArchiveStage { .. }
+            | Self::ArchiveObserveBegin { .. }
+            | Self::HandoffPlan { .. }
+            | Self::HandoffActivate { .. } => Permission::RepositoryWrite,
+            Self::ArchiveObserveContext { .. }
+            | Self::ArchiveObserveRecord { .. }
+            | Self::HandoffContext { .. }
+            | Self::HandoffObserve { .. } => Permission::HostRead,
             Self::RestoreTargetRegister { .. } | Self::RestoreTargetStatus { .. } => {
                 Permission::RepositoryWrite
             }
@@ -851,6 +872,29 @@ impl WireCommand {
             }
             Self::ArchiveObserveRecord { epoch, observation } => {
                 Box::pin(db.record_archive_observation(auth, epoch, &observation)).await
+            }
+            Self::HandoffPlan { key, epoch, target } => {
+                Box::pin(db.begin_github_handoff(auth, &Command { key, epoch }, &target)).await
+            }
+            Self::HandoffContext { epoch, plan_key } => {
+                Box::pin(db.github_handoff_context(auth, epoch, &plan_key)).await
+            }
+            Self::HandoffObserve { epoch, observation } => {
+                Box::pin(db.record_github_handoff_observation(auth, epoch, &observation)).await
+            }
+            Self::HandoffActivate {
+                key,
+                epoch,
+                plan_key,
+                keep_target_archived,
+            } => {
+                Box::pin(db.activate_github_handoff(
+                    auth,
+                    &Command { key, epoch },
+                    &plan_key,
+                    keep_target_archived,
+                ))
+                .await
             }
             Self::RestoreAcquisitionContext {
                 epoch,

@@ -144,6 +144,65 @@ uses `POST /v1/native/handoff/verify-projection` over the private socket and
 `repository.write`. The receipt proves the source mapping. Target publication
 uses separate verification of the bundle bytes and remote branch state.
 
+### Return write authority to GitHub
+
+Keep Standalone frozen. Prepare a GitHub repository with the review and CI rules
+you want to use after the switch. Seed the exact projected branch set with an
+ordinary Git restore and a reviewed, fast-forward-only push under exclusive
+operator control. Reconcile unexpected or diverged branches before continuing.
+Archive the destination once its branches and default branch match. Keep it
+archived through activation so GitHub branches and PRs are read-only.
+[GitHub archive behavior](https://docs.github.com/en/repositories/archiving-a-github-repository/archiving-repositories)
+
+Submit the plan and activation with `repository.write`.
+
+```sh
+treeharbor client --socket "$TH_SOCKET" --credential-file "$TH_OWNER" \
+  github --request "$TH_PRIVATE/handoff-plan.json"
+```
+
+The [v1 plan request](../crates/metadata/tests/fixtures/github-handoff-target-v1.json)
+uses the `handoff_plan` action, a new key, the frozen epoch and `target`.
+Set `target.projection_key` to the verified projection key. Assign a fresh
+`target.binding` UUID and the destination's pinned App, installation, owner,
+repository and bridge identities in `target.specification`. Include the GitHub
+repository node ID and default branch in `target.repository_node_id` and
+`target.default_branch`.
+
+The assigned bridge needs `host.read` and its private App configuration.
+With an existing private state directory, run the observer while the plan is
+current. It reads two matching inventories from the archived GitHub repository,
+revokes the temporary read token and records the exact Git branch set. The
+bridge saves the inventory so a lost response can be retried without reading
+GitHub again.
+
+```sh
+treeharbor github handoff-observe --socket "$TH_SOCKET" \
+  --credential-file "$TH_BRIDGE" --epoch 2 --request-key return-to-github-1 \
+  --config "$TH_APP_CONFIG" --state "$TH_PRIVATE/handoff-observation"
+```
+
+Submit this request with the owner credential while the observation is fresh
+and GitHub is still archived. The 180-second plan starts after export and
+destination preparation. If it expires, create a new plan and observe again.
+
+```json
+{"action":"handoff_activate","key":"activate-github-1","epoch":2,"plan_key":"return-to-github-1","keep_target_archived":true}
+```
+
+The transaction installs a fresh Connected binding, advances the epoch and
+fences native writers. Native history, ChangeSets and validation audit remain
+available for recovery. Old native queue entries become stale. The new binding
+must go through the usual [connection and permission checks](github-connection.md)
+before publication. Use the [Connected projection flow](github-projection.md)
+for selected retained ChangeSet versions. GitHub evaluates their new PRs under
+its own CI and review rules.
+
+For an uncertain response, retry the exact activation and confirm the current
+Connected epoch and binding before unarchiving. Treat the replayed receipt as a
+record of the original operation. To abandon the migration before activation,
+keep the destination fenced and use the native resume flow above.
+
 ## Export several branches
 
 Capture the desired tips with [`ref_snapshot`](native-integration.md#capture-the-current-branch-tips)

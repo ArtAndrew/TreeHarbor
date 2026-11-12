@@ -119,8 +119,7 @@ captures every branch in the same transaction that fences native writes.
 The freeze is durable across restarts. The service leases only its captured
 branch roots, and the client publishes a Git bundle, projection and freeze
 proof together. An owner can resume at a new epoch while the destination
-remains fenced. Target publication and verified authority transfer are
-separate work.
+remains fenced.
 
 The PostgreSQL and CLI drill uses three native branches after archive
 activation and a native landing. It verifies busy and rollback paths, exact
@@ -128,6 +127,21 @@ replay after restart, root and credential fences, and Git recovery of all
 branches. Resuming during the Git projection fences final export publication.
 The prior live Git export drill still verifies criss-cross history and scoped
 reads across a restart.
+
+The [reverse GitHub handoff](git-export.md#return-write-authority-to-github)
+recomputes the frozen branch mapping from native history on the server. An
+assigned bridge verifies the full set against the pinned archived repository
+using a short-lived read token. An owner can activate Connected while the
+target stays archived. The transaction advances the epoch, creates a fresh
+binding, retains native refs and proposals and invalidates old queue work.
+The host continues to enforce its own CI and review policy after unarchival.
+
+The PostgreSQL transport drill covers both authority changes, real Git bundle
+export, stale and mismatched observations, rollback, exact replay after
+restart, old-epoch refusal and preparation of a retained proposal in the new
+epoch. External host observations in this drill come from fixtures. Live
+destination preparation, GitHub reactivation and a full migration trial
+remain release gates.
 
 ## Export multiple branches to Git — 0.1.20-alpha.1
 

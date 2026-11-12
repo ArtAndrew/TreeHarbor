@@ -68,9 +68,9 @@ impl Permission {
             "github.restore.reconnect.plan.v1"
             | "github.restore.reconnect.cancel.v1"
             | "github.restore.reconnect.activate.v1" => Ok(Self::RepositoryWrite),
-            "github.restore.reconnect.probe.v1" | "github.archive.observe.record.v1" => {
-                Ok(Self::HostRead)
-            }
+            "github.restore.reconnect.probe.v1"
+            | "github.archive.observe.record.v1"
+            | "github.handoff.observe.v1" => Ok(Self::HostRead),
             "github.recovery.request.v1" | "github.recovery.cancel.v1" => Ok(Self::RepositoryWrite),
             "github.recovery.page.v1"
             | "github.recovery.detail.v1"
@@ -107,6 +107,8 @@ impl Permission {
             | "github.archive.proposals.stage.v1"
             | "github.archive.activate.v1"
             | "github.archive.observe.begin.v1"
+            | "github.handoff.plan.v1"
+            | "github.handoff.activate.v1"
             | "github.bind.v1"
             | "github.revoke.v1" => Ok(Self::RepositoryWrite),
             "github.import.request.v1" | "github.import.cancel.v1" => Ok(Self::RepositoryWrite),

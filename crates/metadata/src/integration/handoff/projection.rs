@@ -21,7 +21,7 @@ pub struct HandoffProjectionSpec {
 }
 
 impl HandoffProjectionSpec {
-    fn validate(&self) -> Result<()> {
+    pub(crate) fn validate(&self) -> Result<()> {
         identifier(&self.freeze_key, 128)?;
         if self.version != 1
             || self.refs.is_empty()
@@ -39,6 +39,34 @@ impl HandoffProjectionSpec {
         }
         Ok(())
     }
+}
+
+pub(crate) async fn verified_projection(
+    tx: &Transaction<'_>,
+    scope: &Scope,
+    epoch: i64,
+    key: &str,
+) -> Result<HandoffProjectionSpec> {
+    identifier(key, 128)?;
+    let receipt: Value = tx.query_opt(
+        "SELECT result FROM th_operations WHERE tenant=$1 AND repository=$2 AND key=$3 AND kind=$4",
+        &[&scope.tenant(), &scope.repository(), &key, &PROJECTION],
+    ).await?.ok_or(Error::NativeHandoffMismatch)?.get(0);
+    if receipt["version"] != 1
+        || receipt["state"] != "verified"
+        || receipt["authority"] != "standalone"
+        || receipt["epoch"] != epoch
+        || receipt["tenant"] != scope.tenant()
+        || receipt["repository"] != json!(scope.repository())
+        || receipt["key"] != key
+    {
+        return Err(Error::NativeHandoffMismatch);
+    }
+    let spec: HandoffProjectionSpec = serde_json::from_value(receipt["specification"].clone())
+        .map_err(|_| Error::SchemaMismatch)?;
+    spec.validate()?;
+    inputs(tx, scope, epoch, &spec).await?;
+    Ok(spec)
 }
 
 fn git_id(revision: &str) -> Result<GitOid> {
