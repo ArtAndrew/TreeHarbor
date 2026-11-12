@@ -20,6 +20,13 @@ sys.dont_write_bytecode = True
 
 ROOT = Path(__file__).resolve().parents[1]
 TARGETS = {"x86_64-unknown-linux-musl": 62, "aarch64-unknown-linux-musl": 183}
+DEMO_SCRIPTS = (
+    "scripts/cold_restore.py",
+    "scripts/runtime_target.py",
+    "scripts/test-managed-runs.py",
+    "scripts/test-native-checks.py",
+    "scripts/test-runtime-controller.py",
+)
 TOOLCHAIN_NOTICES = {
     "third-party/toolchain/rust-1.99.1/COPYRIGHT": "rust-stdlib",
     "third-party/toolchain/rust-1.99.1/COPYRIGHT-library.html": "rust-stdlib",
@@ -163,21 +170,18 @@ def package(args):
         observations_digest = hashlib.sha256(data).hexdigest()
     for name in ("LICENSE", "NOTICE", "THIRD_PARTY_NOTICES.md", "README.md", "SECURITY.md", "Cargo.lock"):
         add(name, regular(ROOT / name))
-    # Only tracked public documentation/examples/notices are eligible. Never walk
-    # the workspace (which can contain operator state, credentials or local ADRs).
-    tracked = subprocess.check_output(["git", "ls-files", "-z", "docs", "examples", "third-party"], cwd=ROOT).split(b"\0")
-    verify_toolchain_notices({os.fsdecode(p) for p in tracked if p})
-    for raw in sorted(p for p in tracked if p):
-        name = os.fsdecode(raw)
+    # Only tracked public files and the explicit demo harness are eligible.
+    tracked = subprocess.check_output(
+        ["git", "ls-files", "-z", "docs", "examples", "third-party", *DEMO_SCRIPTS], cwd=ROOT,
+    ).split(b"\0")
+    names = {os.fsdecode(path) for path in tracked if path}
+    if not set(DEMO_SCRIPTS).issubset(names):
+        raise ValueError("the Standalone example requires all tracked harness scripts")
+    verify_toolchain_notices(names)
+    for name in sorted(names, key=os.fsencode):
         if name.startswith(("docs/adr/", "docs/specs/")):
             raise ValueError("internal documentation cannot enter a release")
         add(name, regular(ROOT / name))
-    # The Standalone example reuses the protected runtime drill against the
-    # installed binaries. Keep the shipped harness inputs explicit.
-    for name in ("cold_restore.py", "runtime_target.py", "test-managed-runs.py",
-                 "test-native-checks.py", "test-runtime-controller.py"):
-        path = f"scripts/{name}"
-        add(path, regular(ROOT / path))
     add("VERSION", (version + "\n").encode())
     add("install.sh", regular(ROOT / "scripts/install-release.sh"), 0o755)
     manifest = {"version": 1, "product_version": version, "target": args.target,

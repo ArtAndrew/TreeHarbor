@@ -47,6 +47,10 @@ class PackageTests(unittest.TestCase):
             self.write(name, name.encode())
         self.write("Cargo.toml", b'[workspace.package]\nversion="0.1.0-alpha.1"\n')
         self.write("docs/start.md", b"public instructions\n")
+        for name in (*module.DEMO_SCRIPTS, "examples/standalone/README.md",
+                     "examples/standalone/run.py", "examples/standalone/task.sh"):
+            self.write(name, (self.original / name).read_bytes())
+        self.write("scripts/operator-local.py", b"committed non-package sentinel\n")
         self.write("third-party/example/LICENSE", b"dependency license\n")
         self.write("rust-toolchain.toml", b'[toolchain]\nchannel="1.99.1"\n')
         notices = []
@@ -95,6 +99,9 @@ class PackageTests(unittest.TestCase):
             for path in module.TOOLCHAIN_NOTICES:
                 self.assertIn(prefix + path, names)
             self.assertIn(prefix + "docs/start.md", names)
+            for name in (*module.DEMO_SCRIPTS, "examples/standalone/run.py", "examples/standalone/task.sh"):
+                self.assertEqual(archive.extractfile(prefix + name).read(), (self.root / name).read_bytes())
+            self.assertNotIn(prefix + "scripts/operator-local.py", names)
             self.assertNotIn(prefix + "Cargo.toml", names)
             self.assertEqual(archive.getmember(prefix + "bin/treeharbor").mode, 0o755)
             manifest = json.load(archive.extractfile(prefix + "manifest.json"))
