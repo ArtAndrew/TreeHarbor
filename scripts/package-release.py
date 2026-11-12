@@ -172,6 +172,12 @@ def package(args):
         if name.startswith(("docs/adr/", "docs/specs/")):
             raise ValueError("internal documentation cannot enter a release")
         add(name, regular(ROOT / name))
+    # The Standalone example reuses the protected runtime drill against the
+    # installed binaries. Keep the shipped harness inputs explicit.
+    for name in ("cold_restore.py", "runtime_target.py", "test-managed-runs.py",
+                 "test-native-checks.py", "test-runtime-controller.py"):
+        path = f"scripts/{name}"
+        add(path, regular(ROOT / path))
     add("VERSION", (version + "\n").encode())
     add("install.sh", regular(ROOT / "scripts/install-release.sh"), 0o755)
     manifest = {"version": 1, "product_version": version, "target": args.target,

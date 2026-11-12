@@ -159,7 +159,7 @@ class Harness:
         self.admin("token-issue", *self.scope, "--principal", name, *grants, "--output", credential)
         return credential
 
-    def setup(self, empty_source=False):
+    def setup(self, empty_source=False, demo_busybox=None):
         # Installing runsc restarts the daemon; explicitly restart this disposable
         # CI service if Docker did not restore it automatically.
         docker("start", self.pg)
@@ -229,12 +229,18 @@ class Harness:
         build.mkdir()
         target = runtime_target()
         shutil.copy2(Path(os.environ.get("TH_TEST_RUNTIME_INIT", target / "treeharbor-runtime-init")), build / "init")
-        shutil.copy2(target / "examples/runtime_probe", build / "probe")
+        probe = Path("examples/standalone/task.sh") if demo_busybox else target / "examples/runtime_probe"
+        shutil.copy2(probe, build / "probe")
         # The image files are owned by root. The probe must remain executable
         # by the unprivileged task even after a private build with umask 077.
         for name in ("init", "probe"):
             (build / name).chmod(0o755)
-        (build / "Dockerfile").write_text("FROM scratch\nCOPY init /init\nCOPY probe /probe\n")
+        dockerfile = "FROM scratch\nCOPY init /init\nCOPY probe /probe\n"
+        if demo_busybox:
+            shutil.copy2(demo_busybox, build / "busybox")
+            (build / "busybox").chmod(0o755)
+            dockerfile += "COPY busybox /bin/busybox\n"
+        (build / "Dockerfile").write_text(dockerfile)
         self.image = docker("build", "--network=none", "--quiet", build).stdout.strip()
         self.transport = self.root / "proxy"
         self.transport.mkdir(mode=0o700)

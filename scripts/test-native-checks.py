@@ -743,12 +743,15 @@ if __name__ == "__main__":
     parser.add_argument("--overlap-only", action="store_true", help="run the protected two-agent scenario only")
     parser.add_argument("--shared-node", action="store_true", help="run both agents with one bounded node worker")
     parser.add_argument("--recover-shared-worker", action="store_true", help="kill and recover the node worker while both agents run")
+    parser.add_argument("--demo-busybox", type=Path, help="static BusyBox for the packaged overlap example")
     args = parser.parse_args()
     if args.recover_shared_worker and not args.shared_node:
         parser.error("--recover-shared-worker requires --shared-node")
+    if args.demo_busybox and (not args.overlap_only or args.shared_node or os.environ.get("TH_TEST_OVERLAY_DRIVER")):
+        parser.error("--demo-busybox requires the separate-node overlap-only run")
     h = Checks()
     try:
-        h.setup(empty_source=True)
+        h.setup(empty_source=True, demo_busybox=args.demo_busybox)
         h.exercise(overlap_only=args.overlap_only, shared_node=args.shared_node,
                    recover_shared_worker=args.recover_shared_worker)
     except Exception:

@@ -318,6 +318,11 @@ not a complete standalone release.
 
 ## Reproduce verification
 
+Run the [two-agent Standalone example](../examples/standalone/README.md) with an
+installed Linux package and a prepared Docker/gVisor host. It creates its own
+PostgreSQL instance and runs the overlap, resolution and Git export in one
+command. The example also runs from the source tree with the installed binary.
+
 ```sh
 cargo test -p treeharbor-merge --locked
 cargo test -p treeharbor-metadata --test intake integration:: --locked -- --ignored
