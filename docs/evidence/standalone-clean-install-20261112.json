@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "observed_utc_date": "2026-11-12",
+  "release": "v0.1.20-alpha.1",
+  "source_revision": "c8712113cee8ae89a61ddcba74aa3569bdcb2dc5",
+  "signed_producer_run": 43006261815,
+  "signed_producer_attempt": 1,
+  "archive": "treeharbor-0.1.20-alpha.1-aarch64-unknown-linux-musl.tar.gz",
+  "architecture": "aarch64",
+  "os": "Ubuntu 24.04.5 LTS",
+  "kernel": "Linux 6.8.0-142-generic",
+  "docker": "29.1.3",
+  "gvisor": "release-20261012.0",
+  "postgres": "18.6",
+  "postgres_image_id": "sha256:edb0c08dc33befd0262ab3b5cf1c4f3f8cfd8b09e88c05b45adee29d6761ddb6",
+  "rust_toolchain_installed": false,
+  "github_credentials_used": false,
+  "fixture": "scripts/test-native-checks.py --overlap-only with an existing native ARM64 test probe",
+  "coverage": [
+    "empty_repository",
+    "two_concurrent_gvisor_agents",
+    "overlapping_file_conflict",
+    "fresh_check_and_review_after_resolution",
+    "native_history_after_cleanup",
+    "ordinary_git_restore"
+  ],
+  "trace": {
+    "archive_sha256": "681d15e0986603bc74096b15dd3fc5232ef7622b9abcd9db3b767d23d728d148",
+    "native_invocations": 270,
+    "native_child_execs": 0,
+    "native_inet_connections": 0,
+    "external_interfaces": 0,
+    "separate_git_projection_invocations": 1
+  },
+  "temporary_vm_removed": true
+}

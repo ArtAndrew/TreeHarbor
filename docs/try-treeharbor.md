@@ -1,9 +1,9 @@
 # Try TreeHarbor
 
-Start here if you build agent infrastructure or run repeated automated changes
-and want to keep GitHub as your review and merge workflow. The current release is
-an **operator-assisted alpha**, for disposable repositories on dedicated test
-infrastructure. A local Git worktree may be sufficient for a few personal tasks.
+Start here if you build agent infrastructure or run repeated automated changes.
+Choose a GitHub pull request workflow or a Standalone repository. The current
+release is an **operator-assisted alpha** for disposable repositories on test
+infrastructure.
 
 [Watch the 36-second walkthrough](demo.md) · [Ask a setup question](https://github.com/ArtAndrew/TreeHarbor/discussions/categories/q-a)
 
@@ -14,7 +14,7 @@ infrastructure. A local Git worktree may be sufficient for a few personal tasks.
 | Understand the result before installing | [Recorded two-agent trial](demo.md) | A browser; no credentials or installation |
 | Run two tasks and get real draft PRs | Steps below | Linux x86-64/ARM64, GitHub CLI, Git, Python 3.11+, PostgreSQL, GitHub App, Docker/cgroup v2 and gVisor |
 | Keep your existing agent runtime | [Remote task assignment](remote-tasks-v1.md) | Prepared TreeHarbor service and pinned source; your controller supplies execution/isolation |
-| Start an independent repository | [Standalone empty start](native-integration.md#start-a-new-project-with-empty-history) | The signed package below, a local service and an approved check profile |
+| Start an independent repository | [Standalone empty start](native-integration.md#start-a-new-project-with-empty-history) | Signed Linux package, PostgreSQL, Docker/gVisor and a check profile. [Verified ARM64 run](evidence/standalone-clean-install-20261112.json) |
 | Connect an MCP host | [Experimental MCP stdio adapter](mcp.md) | Prepared local service, scoped agent credential and stdio-capable host; no managed launch or GitHub publishing tool |
 
 This walk-through uses Git-compatible workspaces with private `.git` directories
@@ -68,9 +68,10 @@ test "$("$TH_BIN" --version)" = "treeharbor $TH_VERSION"
 printf 'Trial directory: %s\n' "$TH_TRIAL"
 ```
 
-**Checkpoint:** the CLI prints `treeharbor 0.1.20-alpha.1`. Continue with the
-database and service setup. Use the `gh` login on the operator host only. The
-GitHub App and agent credentials are set up separately.
+The CLI prints `treeharbor 0.1.20-alpha.1`. For a Standalone trial, follow the
+[native setup and empty start](native-integration.md#roles-and-setup). For a
+Connected trial, continue below. Use the `gh` login on the operator host for
+artifact verification. Set up the GitHub App and agent credentials separately.
 
 For an existing deployment, follow the [upgrade steps](release-packaging.md#upgrade-from-0119-alpha1)
 before restarting the service.

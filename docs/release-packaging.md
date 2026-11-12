@@ -144,6 +144,26 @@ PostgreSQL, Docker/gVisor, bounded volumes and host access are separate prerequi
 Removing the CLI symlink and that version directory uninstalls the package; retain
 repository state and backups separately.
 
+### Upgrade from 0.1.20-alpha.1
+
+Capture changes you want to retain, drain workspaces and stop the service,
+controllers, nodes and GitHub writers. Keep the old installation and take a
+verified [cold backup](backup-restore.md) of the schema 033 database, object store
+and private deployment state. Verify the new archive and install it in a separate
+prefix before migrating.
+
+```sh
+"$TH_NEW_PREFIX/bin/treeharbor" admin --config "$TH_CONFIG" migrate
+"$TH_NEW_PREFIX/bin/treeharbor" doctor --config "$TH_CONFIG"
+```
+
+Schema 034 adds archived GitHub pull provenance. Existing agent runs and accepted
+change versions retain their identities. Start the new service, inspect a retained
+change and reconnect nodes with matching binaries before admitting new work.
+To roll back, preserve changes accepted after the backup, stop and fence the new
+deployment, and restore the schema 033 database and matching objects into a
+separate deployment. Reconcile external GitHub effects before reconnecting it.
+
 ### Upgrade from 0.1.19-alpha.1
 
 Verify the new archive and install it in a separate prefix. Capture and drain
