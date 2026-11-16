@@ -769,7 +769,8 @@ impl Metadata {
                     return Err(CommandError::InvalidRequest);
                 }
                 let upload = uuid(&upload)?;
-                let reused = self.reuse_source_base(&auth, upload, id).await?;
+                // Keep import admission's async state off the shared dispatcher stack.
+                let reused = Box::pin(self.reuse_source_base(&auth, upload, id)).await?;
                 json!({"upload":upload,"base":base,"objects":reused.objects,"bytes":reused.bytes})
             }
             Command::SourceAbort {
