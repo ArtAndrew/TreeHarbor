@@ -80,6 +80,20 @@ Starting with 0.1.18-alpha.1, imports may keep a bounded
 host with access to the private import directory. Import completion and retries
 work with older directories or with the derived files deleted.
 
+Development builds can also reuse the native object graph of the first parent
+during upload to the service. The parent must come from a completed import by
+this Bridge under the active binding and epoch. The `import_reuse_base` action
+takes `epoch`, `import` and `base` as an exact `native:sha256:…` revision.
+Its response identifies the upload, epoch and base, and counts the retained
+objects and bytes. These counts use the original import budget and deadline.
+Repeating the action during the same receiving session preserves its accounting.
+See the [v1 example](../crates/metadata/tests/fixtures/github-import-reuse-v1.json).
+
+The bridge still fetches and verifies the full Git input. It sends the new
+root frame and the objects outside the retained parent graph. Final admission
+still checks the root's exact Git origin against the requested commit. If the
+parent is unavailable, the bridge sends the full native pack.
+
 The bridge compares its App pins with the server binding, requests fresh access
 scoped to one repository and independently verifies that scope. It fetches into a
 new private bare directory, checks Git objects, creates a self-contained bundle,

@@ -103,6 +103,46 @@ pub(crate) async fn check_upload(
     }
     Ok(())
 }
+
+/// Called after `check_upload` with the repository and active upload locked.
+/// Only an earlier import by this bridge on the current binding can supply a base.
+pub(crate) async fn retained_import_base(
+    tx: &Transaction<'_>,
+    auth: &Authorization,
+    id: Uuid,
+    base: ObjectId,
+    expected_epoch: i64,
+) -> Result<ObjectId> {
+    let scope = auth.scope();
+    let current = load(tx, scope, id).await?;
+    epoch(&current, expected_epoch)?;
+    let root: Vec<u8> = current.get("native_commit");
+    let binding: Uuid = current.get("binding");
+    let revision: &str = current.get("git_revision");
+    let available: bool = tx
+        .query_one(
+            r#"
+        SELECT EXISTS(SELECT 1 FROM th_github_imports
+          WHERE tenant=$1 AND repository=$2 AND binding=$3 AND epoch=$4 AND bridge=$5
+            AND native_commit=$6 AND state='completed' AND git_revision<>$7)
+        "#,
+            &[
+                &scope.tenant(),
+                &scope.repository(),
+                &binding,
+                &expected_epoch,
+                &auth.principal(),
+                &base.as_bytes().as_slice(),
+                &revision,
+            ],
+        )
+        .await?
+        .get(0);
+    if !available {
+        return Err(Error::NotFound);
+    }
+    crate::uploads::oid(root)
+}
 async fn complete(
     mutation: Mutation<'_>,
     auth: &Authorization,

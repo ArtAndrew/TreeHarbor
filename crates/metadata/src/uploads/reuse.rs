@@ -23,13 +23,46 @@ impl Metadata {
         upload: Uuid,
         base: ObjectId,
     ) -> Result<ReusedSourceBase> {
-        let purpose = Purpose::Human;
+        self.reuse_source_base_in(auth, upload, base, None).await
+    }
+
+    pub(crate) async fn reuse_github_source_base(
+        &mut self,
+        auth: &crate::access::Authorization,
+        upload: Uuid,
+        base: ObjectId,
+        epoch: i64,
+    ) -> Result<ReusedSourceBase> {
+        self.reuse_source_base_in(auth, upload, base, Some(epoch))
+            .await
+    }
+
+    async fn reuse_source_base_in(
+        &mut self,
+        auth: &crate::access::Authorization,
+        upload: Uuid,
+        base: ObjectId,
+        github_epoch: Option<i64>,
+    ) -> Result<ReusedSourceBase> {
+        let purpose = if github_epoch.is_some() {
+            Purpose::Github
+        } else {
+            Purpose::Human
+        };
         let tx = self.client.transaction().await?;
         settings(&tx).await?;
         lock_authorized(&tx, auth, purpose).await?;
         let session = active_for(&tx, auth, upload, purpose).await?;
         let scope = auth.scope();
-        auth.check_additional_read(&tx).await?;
+        let excluded_commit = if let Some(epoch) = github_epoch {
+            Some(
+                crate::github::imports::retained_import_base(&tx, auth, upload, base, epoch)
+                    .await?,
+            )
+        } else {
+            auth.check_additional_read(&tx).await?;
+            None
+        };
         let tenant = scope.tenant();
         let repository = scope.repository();
         let backend: &str = session.get(0);
@@ -98,6 +131,11 @@ impl Metadata {
                 return Err(Error::ObjectNotLive);
             }
             let generation = row.get("generation");
+            let digest: Vec<u8> = row.get("digest");
+            if excluded_commit.is_some_and(|id| id.as_bytes().as_slice() == digest.as_slice()) {
+                // GitHub finish requires direct proof of the new commit's origin.
+                return Err(Error::NotFound);
+            }
             let kind = row.get("kind");
             let length: i64 = row.get("length");
             let snapshot: Option<Vec<u8>> = row.get("snapshot");
@@ -114,7 +152,7 @@ impl Metadata {
                 continue;
             }
             added_bytes += length;
-            digests.push(row.get("digest"));
+            digests.push(digest);
             generations.push(generation);
             kinds.push(kind);
             lengths.push(length);

@@ -1,4 +1,5 @@
 use super::*;
+use crate::import::{ParentReuse, ParentReuseRequest};
 use crate::pack::{GitCapture, Pack};
 use std::{
     fs::{File, OpenOptions},
@@ -205,15 +206,44 @@ pub(crate) async fn upload(
     epoch: i64,
     pack: Pack,
 ) -> Result<Value> {
-    command(socket,credential,json!({"action":"import_begin","key":format!("github-import-begin-{id}"),"epoch":epoch,"import":id.to_string(),"native_commit":pack.commit().to_string()})).await?;
-    let pack = Arc::new(pack);
+    let root = pack.commit();
+    let snapshot = pack.snapshot();
+    command(socket,credential,json!({"action":"import_begin","key":format!("github-import-begin-{id}"),"epoch":epoch,"import":id.to_string(),"native_commit":root.to_string()})).await?;
+    let (ids, store) = pack.into_frames();
+    let store = Arc::new(store);
     let finish = json!({"action":"import_finish","key":format!("github-import-finish-{id}"),"epoch":epoch,"import":id.to_string()});
-    for object in &pack.ids {
-        let object = *object;
-        let reader = pack.clone();
-        let frame = tokio::task::spawn_blocking(move || reader.frame(object))
+    let reuse = ParentReuseRequest {
+        socket,
+        credential,
+        timeout: Duration::from_secs(15),
+        upload: id,
+        github_epoch: Some(epoch),
+    };
+    let retained = match reuse.enroll(&store, root, ids.len()).await? {
+        ParentReuse::Continue(retained) => retained,
+        ParentReuse::Rejected(reply) => {
+            if reply.status.as_u16() == 409 && reply.body["error"]["code"] == "upload_state_changed"
+            {
+                return checked_completion(
+                    command(socket, credential, finish).await?,
+                    root,
+                    snapshot,
+                );
+            }
+            return Err(Error::GithubBinding {
+                status: reply.status.as_u16(),
+            });
+        }
+    };
+    for object in ids {
+        if retained.contains(&object) {
+            continue;
+        }
+        let reader = Arc::clone(&store);
+        let frame = tokio::task::spawn_blocking(move || reader.get(object)?.encode())
             .await
-            .map_err(|_| Error::ImportWorker)??;
+            .map_err(|_| Error::ImportWorker)?
+            .map_err(crate::pack::Error::Object)?;
         let reply = client::send_github_source_object(
             socket,
             credential,
@@ -239,9 +269,16 @@ pub(crate) async fn upload(
             return Err(Error::Http);
         }
     }
-    let result = command(socket, credential, finish).await?;
-    if result["revision"] != RevisionRef::Native(pack.commit()).to_string()
-        || result["snapshot"] != pack.snapshot().to_string()
+    checked_completion(command(socket, credential, finish).await?, root, snapshot)
+}
+
+fn checked_completion(
+    result: Value,
+    root: treeharbor_core::ObjectId,
+    snapshot: treeharbor_core::ObjectId,
+) -> Result<Value> {
+    if result["revision"] != RevisionRef::Native(root).to_string()
+        || result["snapshot"] != snapshot.to_string()
     {
         return Err(Error::Http);
     }

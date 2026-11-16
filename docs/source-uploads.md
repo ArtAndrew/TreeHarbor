@@ -71,8 +71,9 @@ session's original deadline. Use the complete PUT path for an initial import.
 when that parent is available as a retained base. It continues with a full
 upload when the server lacks the command, the caller has a write-only token,
 the base is unavailable, or reuse cannot fit the upload budget. The pack and
-replay journal formats stay at their existing versions. GitHub bridge imports
-and archive transfers still use their existing complete transfer paths.
+replay journal formats stay at their existing versions. The [GitHub bridge](github-import.md)
+has its own admission rule for a prior import. Archive transfers still send the
+complete supplied artifact.
 
 Finish returns `revision: native:sha256:…` and `snapshot`. Use that revision as
 the workspace base. Completion commits its persistent graph pin, base binding,
