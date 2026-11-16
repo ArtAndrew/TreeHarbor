@@ -263,6 +263,150 @@ fn graph() -> Vec<Object> {
 
 #[tokio::test]
 #[ignore = "requires disposable PostgreSQL; runs in database CI"]
+async fn reuse_retained_base_enrolls_only_its_graph_and_replays_after_disconnect() {
+    let (schema, scope, mut db) = setup().await;
+    let (_, owner) = actor(&mut db, &scope, "owner").await;
+    let (_dir, store) = store(&scope);
+    let prior = start(&mut db, &owner).await;
+    let objects = graph();
+    for object in &objects {
+        put(&mut db, &owner, prior, &store, object).await;
+    }
+    let unattached = Object::Blob(b"unreachable old upload object".to_vec());
+    put(&mut db, &owner, prior, &store, &unattached).await;
+    let base = objects.last().unwrap().id().unwrap();
+    db.finish_source_upload(
+        &owner.context("old-source-finish".into(), Authority::Standalone, 1),
+        prior,
+        base,
+    )
+    .await
+    .unwrap();
+
+    let limited = Uuid::new_v4();
+    db.begin_source_upload(
+        &owner.context("small-source-upload".into(), Authority::Standalone, 1),
+        "local-1",
+        limited,
+        &UploadLimits {
+            bytes: 22,
+            ..limits()
+        },
+    )
+    .await
+    .unwrap();
+    assert!(matches!(
+        db.reuse_source_base(&owner, limited, base).await,
+        Err(Error::UploadLimit)
+    ));
+    assert_eq!(
+        db.source_upload_status(&owner, limited).await.unwrap()["reserved_objects"],
+        0
+    );
+
+    let another = Scope::new(scope.tenant(), Uuid::new_v4()).unwrap();
+    db.create_repository(&another, Authority::Standalone)
+        .await
+        .unwrap();
+    let (_, other) = actor(&mut db, &another, "other-source-owner").await;
+    let other_upload = start(&mut db, &other).await;
+    assert!(matches!(
+        db.reuse_source_base(&other, other_upload, base).await,
+        Err(Error::NotFound)
+    ));
+
+    let next = start(&mut db, &owner).await;
+    let write_only = db
+        .issue_repository_token(
+            &scope,
+            "owner",
+            &[Permission::RepositoryWrite],
+            60,
+            "operator",
+        )
+        .await
+        .unwrap();
+    let write_only = db
+        .authorize(&write_only.secret, &scope, Permission::RepositoryWrite)
+        .await
+        .unwrap();
+    assert!(matches!(
+        db.reuse_source_base(&write_only, next, base).await,
+        Err(Error::Forbidden)
+    ));
+    put(&mut db, &owner, next, &store, &objects[0]).await;
+    let reused = db.reuse_source_base(&owner, next, base).await.unwrap();
+    let expected_bytes = objects
+        .iter()
+        .map(|o| o.encode().unwrap().len() as i64)
+        .sum::<i64>();
+    assert_eq!(
+        (reused.objects, reused.bytes),
+        (objects.len() as i64, expected_bytes)
+    );
+    drop(db);
+    let mut db = Metadata::new(connection(&schema).await).await.unwrap();
+    assert_eq!(
+        db.reuse_source_base(&owner, next, base).await.unwrap(),
+        reused
+    );
+
+    let sql = connection(&schema).await;
+    let members = sql
+        .query(
+            r#"
+        SELECT i.digest,i.complete,h.expires_at=u.expires_at AS deadline_matches
+        FROM th_source_upload_items i JOIN th_source_uploads u USING(tenant,repository,upload)
+        JOIN th_object_holds h ON (h.tenant,h.token,h.digest,h.generation)
+            =(i.tenant,i.hold_token,i.digest,i.generation)
+        WHERE i.upload=$1
+        "#,
+            &[&next],
+        )
+        .await
+        .unwrap();
+    let actual: std::collections::BTreeSet<Vec<u8>> = members
+        .iter()
+        .map(|row| {
+            assert!(row.get::<_, bool>("complete"));
+            assert!(row.get::<_, bool>("deadline_matches"));
+            row.get("digest")
+        })
+        .collect();
+    assert_eq!(
+        actual,
+        objects
+            .iter()
+            .map(|o| o.id().unwrap().as_bytes().to_vec())
+            .collect()
+    );
+    let state = db.source_upload_status(&owner, next).await.unwrap();
+    assert_eq!(state["reserved_objects"], reused.objects);
+    assert_eq!(state["reserved_bytes"], reused.bytes);
+    let Object::NativeCommit(mut commit) = objects.last().unwrap().clone() else {
+        panic!("fixture commit missing");
+    };
+    commit.parents.push(base);
+    commit.message = "new child".into();
+    let child = Object::NativeCommit(commit);
+    put(&mut db, &owner, next, &store, &child).await;
+    let completed = db
+        .finish_source_upload(
+            &owner.context("new-source-finish".into(), Authority::Standalone, 1),
+            next,
+            child.id().unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        completed["revision"],
+        RevisionRef::Native(child.id().unwrap()).to_string()
+    );
+    cleanup(&schema).await;
+}
+
+#[tokio::test]
+#[ignore = "requires disposable PostgreSQL; runs in database CI"]
 async fn completed_upload_is_replayable_after_restart_and_retains_a_workspace_base() {
     let (schema, s, mut db) = setup().await;
     let (token, auth) = actor(&mut db, &s, "human").await;

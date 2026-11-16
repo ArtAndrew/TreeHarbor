@@ -299,6 +299,16 @@ impl Authorization {
     pub fn context(&self, key: String, authority: Authority, epoch: i64) -> CommandContext {
         CommandContext::authenticated(self.clone(), key, authority, epoch)
     }
+    /// Verify that the same credential also grants read access without issuing
+    /// a reusable read authorization. The existing token and grants stay locked.
+    pub(crate) async fn check_additional_read(&self, tx: &Transaction<'_>) -> Result<()> {
+        let read = Self {
+            permission: Permission::Read,
+            ..self.clone()
+        };
+        read.check_transaction(tx, &self.scope, &self.principal, Permission::Read)
+            .await
+    }
     pub(crate) async fn check_transaction(
         &self,
         tx: &Transaction<'_>,
