@@ -36,9 +36,10 @@ changes over HTTPS. [Controller guide](docs/remote-tasks-v1.md) ·
 give each agent a writable layer. With **16 concurrent workspaces** and
 8,195 files on a Linux ARM64 VM, a first file read took **0.61 s** at the
 median with TreeHarbor and **2.27 s** with cached Git worktree. Source was
-already local, and TreeHarbor used file-only workspaces. Its initial local
-Git import took **51 s** separately.
+already local, and TreeHarbor used file-only workspaces. In that 0.1.23 run,
+the initial local Git import took **51 s**.
 [Method and raw data](docs/benchmark-preparation.md#signed-0123-sample-with-16-concurrent-tasks--16-november-2026)
+· [Source import with batches](docs/benchmark-preparation.md#first-source-admission-with-blob-batches--16-november-2026)
 
 ## What inspired it
 

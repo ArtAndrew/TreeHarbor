@@ -764,3 +764,31 @@ and CI are outside this comparison.
 
 [Raw observations](benchmarks/native-concurrency16-linux-arm64-20261116.json) ·
 [Verified binary](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.23-alpha.1)
+
+### First source admission with blob batches – 16 November 2026
+
+Both binaries imported the same local Git pack into fresh PostgreSQL 18.6
+databases and empty local object stores on one two-CPU Linux ARM64 VM.
+The fixture above has 8,195 tracked files and yielded 8,264 native frames
+totaling 34,163,347 encoded bytes. The reference is signed 0.1.23. The batch
+binary came from the installed runtime job at tested merge
+`adb31ee2e48aa5c1099ca85df90a144bcb7ab87a`.
+[CI run](https://github.com/ArtAndrew/TreeHarbor/actions/runs/43904620074)
+
+| Timing or counter | Signed 0.1.23 | Batch candidate |
+| --- | ---: | ---: |
+| Admission, first sample | 41.98 s | 14.43 s |
+| Admission, second sample | 49.89 s | 14.49 s |
+| Admission, median of two samples | 45.94 s | 14.46 s |
+| Transactions, separate profiled pair | 33,062 | 1,310 |
+
+Timing starts after Git conversion and includes the CLI source admission
+request through the committed revision receipt. The four timing runs followed
+reference, batch, batch, reference order. The separate transaction count uses
+`pg_stat_statements` with planning and I/O timing enabled. OS cache state was
+uncontrolled. Each full run exported the stored revision to a self-contained
+Git bundle and recovered the exact original commit under strict Git checks.
+Both mixed-version combinations also imported and recovered the exact commit
+on a smaller fixture.
+
+[Raw comparison](benchmarks/source-blob-batches-linux-arm64-20261116.json)
