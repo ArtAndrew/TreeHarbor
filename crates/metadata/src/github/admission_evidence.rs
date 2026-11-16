@@ -1,6 +1,7 @@
 //! Bounded, read-only evaluation of retained candidate checks. No merge authority.
 use super::*;
 use sha2::{Digest, Sha256};
+use std::cmp::Ordering;
 use std::collections::BTreeSet;
 use treeharbor_core::ObjectId;
 use treeharbor_github_contract::{
@@ -33,11 +34,61 @@ fn matches<'a>(snapshot: &'a gc::Snapshot, required: &RequiredCheck) -> Vec<&'a 
         .flat_map(|s| s.runs.iter().filter(|r| r.name == required.name))
         .collect()
 }
+
+fn publication_timing(
+    snapshot: &gc::Snapshot,
+    requirements: &[Value],
+    merged_at: Option<i64>,
+    complete: bool,
+    sources_trusted: bool,
+) -> Value {
+    let checks: Vec<_> = requirements
+        .iter()
+        .filter(|requirement| requirement["verified"] == true)
+        .filter_map(|requirement| {
+            let id = requirement["host_check"]["node_id"].as_str()?;
+            let selected = snapshot
+                .suites
+                .iter()
+                .flat_map(|suite| &suite.runs)
+                .find(|run| run.id == id)?;
+            let ordering = selected
+                .completed_at_unix_ms
+                .zip(merged_at)
+                .map(|(check, merge)| check.cmp(&merge));
+            let order = match ordering {
+                Some(Ordering::Less) => "before_merge",
+                Some(Ordering::Greater) => "after_merge",
+                _ => "unproven",
+            };
+            Some(json!({"node_id":id,"completed_at_unix_ms":selected.completed_at_unix_ms,"reported_order":order}))
+        })
+        .collect();
+    let order = if !sources_trusted || !complete || checks.len() != requirements.len() {
+        "unproven"
+    } else if checks
+        .iter()
+        .any(|check| check["reported_order"] == "after_merge")
+    {
+        "after_merge"
+    } else if !checks.is_empty()
+        && checks
+            .iter()
+            .all(|check| check["reported_order"] == "before_merge")
+    {
+        "before_merge"
+    } else {
+        "unproven"
+    };
+    json!({"merged_at_unix_ms":merged_at,"reported_order":order,"sources_trusted":sources_trusted,"checks":checks})
+}
+
 fn digest(evidence: &Value) -> Result<String> {
     let mut h = Sha256::new();
     h.update(match evidence["version"].as_u64() {
         Some(1) => b"treeharbor-connected-check-set\0v1\0",
         Some(2) => b"treeharbor-connected-check-set\0v2\0",
+        Some(3) => b"treeharbor-connected-check-set\0v3\0",
         _ => return Err(Error::SchemaMismatch),
     });
     h.update(serde_json::to_vec(evidence).map_err(|_| Error::SchemaMismatch)?);
@@ -368,18 +419,37 @@ impl Metadata {
         let complete = reasons.is_empty()
             && !requirements.is_empty()
             && requirements.iter().all(|r| r["verified"] == true);
+        let mut evidence_version = if host_policy_sequence.is_some() { 2 } else { 1 };
         let publication = if let Some(sequence) = publication_sequence {
             let r = report(&tx, s, id, sequence, &t).await?;
             let p = r.publication.ok_or(Error::Invalid("publication report"))?;
             publication::validate_report(&tx, s, &q, &p).await?;
             let exact = p.target == selected && p.exact_candidate_published(&t);
-            Some(
-                json!({"sequence":sequence,"exact_candidate_published":exact,"checked_candidate_published":exact && complete}),
-            )
+            let mut linked = json!({"sequence":sequence,"exact_candidate_published":exact,"checked_candidate_published":exact && complete});
+            if r.version == publication_contract::TIMED_OBSERVATION_VERSION {
+                let merged_at = p.before.merged_at_unix_ms.filter(|_| exact);
+                let sources_trusted = merged_at.is_some()
+                    && host_policy::current::trusted_sources(
+                        &tx,
+                        s,
+                        &q,
+                        &[check_sequence, selected.membership_sequence, sequence],
+                    )
+                    .await?;
+                linked["timing"] = publication_timing(
+                    &checks.checks.before,
+                    &requirements,
+                    merged_at,
+                    complete,
+                    sources_trusted,
+                );
+                evidence_version = 3;
+            }
+            Some(linked)
         } else {
             None
         };
-        let mut evidence = json!({"version":1,"tenant":s.tenant(),"repository":s.repository(),"queue":id,"binding":binding_id,"epoch":epoch,
+        let mut evidence = json!({"version":evidence_version,"tenant":s.tenant(),"repository":s.repository(),"queue":id,"binding":binding_id,"epoch":epoch,
             "policy":policy,"check_sequence":check_sequence,"membership_sequence":selected.membership_sequence,"candidate":candidate,
             "requirements":requirements,"reasons":reasons,"complete":complete,"publication":publication});
         let host_verified = if let Some(sequence) = host_policy_sequence {
@@ -393,7 +463,6 @@ impl Metadata {
                 &[check_sequence, selected.membership_sequence],
             )
             .await?;
-            evidence["version"] = json!(2);
             evidence["capture_sources_trusted"] = json!(sources_trusted);
             evidence["host_policy"] = host;
             verified && sources_trusted && current
@@ -411,6 +480,32 @@ impl Metadata {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn v3_encoding_binds_the_selected_check_and_reported_merge_time() {
+        let vector: Value = serde_json::from_str(include_str!(
+            "../../tests/fixtures/connected-check-set-v3.json"
+        ))
+        .unwrap();
+        let evidence = &vector["evidence"];
+        assert_eq!(
+            serde_json::to_vec(evidence).unwrap(),
+            vector["canonical"].as_str().unwrap().as_bytes()
+        );
+        assert_eq!(digest(evidence).unwrap(), vector["digest"]);
+        for field in [
+            "/publication/timing/merged_at_unix_ms",
+            "/publication/timing/sources_trusted",
+            "/publication/timing/reported_order",
+            "/publication/timing/checks/0/node_id",
+            "/publication/timing/checks/0/completed_at_unix_ms",
+        ] {
+            let mut changed = evidence.clone();
+            *changed.pointer_mut(field).unwrap() = Value::Null;
+            assert_ne!(digest(&changed).unwrap(), vector["digest"], "{field}");
+        }
+    }
+
     #[test]
     fn v2_encoding_binds_host_capture_owner_pin_and_source_trust_without_reinterpreting_v1() {
         let v: Value = serde_json::from_str(include_str!(
@@ -440,7 +535,7 @@ mod tests {
         let mut changed = e.clone();
         changed["version"] = json!(1);
         assert_ne!(digest(&changed).unwrap(), v["digest"]);
-        changed["version"] = json!(3);
+        changed["version"] = json!(4);
         assert!(digest(&changed).is_err());
     }
     #[test]

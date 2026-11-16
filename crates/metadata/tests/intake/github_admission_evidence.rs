@@ -496,7 +496,12 @@ impl Candidate {
             .await
             .unwrap()
     }
-    async fn final_publication(&mut self, label: &str, membership_sequence: i64) -> i64 {
+    async fn final_publication(
+        &mut self,
+        label: &str,
+        membership_sequence: i64,
+        merged_at_unix_ms: Option<i64>,
+    ) -> i64 {
         let selected = self
             .f
             .p
@@ -515,9 +520,15 @@ impl Candidate {
             pull,
             main: candidate.commit.clone(),
             final_commit: Some(candidate.clone()),
+            merged_at_unix_ms,
         };
         let mut observed = self.f.report().await;
-        observed.version = 8;
+        observed.version = if merged_at_unix_ms.is_some() {
+            observed.token_revoked = true;
+            published::TIMED_OBSERVATION_VERSION
+        } else {
+            8
+        };
         observed.publication = Some(published::Report {
             target,
             before: snapshot.clone(),
@@ -600,7 +611,9 @@ async fn admission_evidence_requires_every_program_and_is_pure_and_replayable() 
         let sequence = c
             .capture("complete-set-capture", c.snapshot(&released))
             .await;
-        let publication = c.final_publication("complete-set-publication", 1).await;
+        let publication = c
+            .final_publication("complete-set-publication", 1, None)
+            .await;
         let raw = connection(&c.f.p.f.schema).await;
         let sql = "SELECT jsonb_build_object('operations',(SELECT count(*) FROM th_operations),'outbox',(SELECT count(*) FROM th_outbox),'queue_reports',(SELECT count(*) FROM th_github_queue_reports),'checks',(SELECT count(*) FROM th_github_managed_checks),'publications',(SELECT count(*) FROM th_github_check_publications),'pins',(SELECT count(*) FROM th_object_pins))";
         let before: Value = raw.query_one(sql, &[]).await.unwrap().get(0);
@@ -861,7 +874,7 @@ async fn admission_evidence_final_publication_requires_its_exact_membership() {
             .as_i64()
             .unwrap();
     let publication = c
-        .final_publication("other-membership-publication", other)
+        .final_publication("other-membership-publication", other, None)
         .await;
     let result = c.evaluate(sequence, Some(publication)).await;
     assert_eq!(result["evidence"]["complete"], true);
@@ -874,6 +887,61 @@ async fn admission_evidence_final_publication_requires_its_exact_membership() {
         false
     );
     assert_eq!(result["merge_verified"], false);
+    cleanup(&c.f.p.f.schema).await;
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL; report order for exact source/check identity and publication"]
+async fn admission_evidence_distinguishes_early_late_and_unordered_check_times() {
+    let mut c = Candidate::new_with_configuration(1, true).await;
+    let released = c.release(0, 0, 2, cp::Outcome::Observed).await;
+    let id = json!(released.host)["node_id"].clone();
+    let initial = c.snapshot(&[released]);
+    let merged_at = c.f.report().await.finished_at_unix_ms - 5_000;
+    let publication = c
+        .final_publication("timed-publication", 1, Some(merged_at))
+        .await;
+    let mut earlier = None;
+    for (label, completed, order) in [
+        ("earlier", Some(merged_at - 1_000), "before_merge"),
+        ("later", Some(merged_at + 1_000), "after_merge"),
+        ("same-time", Some(merged_at), "unproven"),
+        ("missing-time", None, "unproven"),
+    ] {
+        let mut read = initial.clone();
+        read.before.suites[0].runs[0].completed_at_unix_ms = completed;
+        read.after = read.before.clone();
+        let sequence = c.capture(label, read).await;
+        let assessment = c.evaluate(sequence, Some(publication)).await;
+        assert_eq!(assessment["version"], 3);
+        assert_eq!(assessment["evidence"]["complete"], true);
+        let link = &assessment["evidence"]["publication"];
+        assert_eq!(link["exact_candidate_published"], true);
+        assert_eq!(
+            link["timing"],
+            json!({
+                "merged_at_unix_ms":merged_at,
+                "reported_order":order,
+                "sources_trusted":true,
+                "checks":[{"node_id":id,"completed_at_unix_ms":completed,"reported_order":order}]
+            })
+        );
+        assert_eq!(assessment["merge_verified"], false);
+        if order == "before_merge" {
+            earlier = Some((sequence, assessment["evidence_digest"].clone()));
+        }
+    }
+    c.f.p.f.db = Metadata::new(connection(&c.f.p.f.schema).await)
+        .await
+        .unwrap();
+    let (sequence, digest) = earlier.unwrap();
+    let historical = c.evaluate(sequence, Some(publication)).await;
+    assert_eq!(
+        historical["evidence"]["publication"]["timing"]["reported_order"],
+        "before_merge"
+    );
+    assert_eq!(historical["evidence_digest"], digest);
+    assert_eq!(historical["current_locally"], false);
     cleanup(&c.f.p.f.schema).await;
 }
 

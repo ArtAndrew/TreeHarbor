@@ -41,6 +41,7 @@ async fn publication_is_bound_to_retained_membership_and_survives_restart() {
         pull,
         main: c.commit.clone(),
         final_commit: Some(c.clone()),
+        merged_at_unix_ms: None,
     };
     let mut r = f.report().await;
     r.version = 8;

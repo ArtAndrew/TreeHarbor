@@ -1,5 +1,7 @@
 use serde_json::{Value, json};
-use treeharbor_github_contract::{groups::GroupCapture, queue::*};
+use treeharbor_github_contract::{
+    groups::GroupCapture, publication::TIMED_OBSERVATION_VERSION, queue::*,
+};
 fn fixture() -> (QueueTarget, QueueObservation, GroupCapture) {
     let v: Value = serde_json::from_str(include_str!("fixtures/inspection-v1.json")).unwrap();
     let g: QueueObservation =
@@ -85,6 +87,67 @@ fn published_exact_candidate_and_later_descendants_do_not_transfer_ci() {
         assert!(!q.exact_candidate_published(&t), "{case}");
     }
 }
+
+#[test]
+fn timed_publication_requires_a_bounded_provider_time_without_reinterpreting_legacy() {
+    let (target, _, _) = fixture();
+    let wire = include_str!("fixtures/publication-v11.json");
+    let captured: QueueObservation = serde_json::from_str(wire).unwrap();
+    assert_eq!(captured.version, TIMED_OBSERVATION_VERSION);
+    assert_eq!(
+        json!(captured),
+        serde_json::from_str::<Value>(wire).unwrap()
+    );
+    captured.validate(&target).unwrap();
+    assert!(
+        captured
+            .publication
+            .as_ref()
+            .unwrap()
+            .exact_candidate_published(&target)
+    );
+
+    let mut contradictory = captured.clone();
+    contradictory
+        .publication
+        .as_mut()
+        .unwrap()
+        .after
+        .merged_at_unix_ms = Some(captured.finished_at_unix_ms);
+    contradictory.validate(&target).unwrap();
+    assert!(
+        !contradictory
+            .publication
+            .unwrap()
+            .exact_candidate_published(&target)
+    );
+
+    for at in [None, Some(0), Some(captured.finished_at_unix_ms + 15_001)] {
+        let mut invalid = captured.clone();
+        invalid
+            .publication
+            .as_mut()
+            .unwrap()
+            .before
+            .merged_at_unix_ms = at;
+        assert!(invalid.validate(&target).is_err());
+    }
+    let mut legacy = captured.clone();
+    legacy.version = 8;
+    assert!(legacy.validate(&target).is_err());
+
+    let mut open = captured;
+    let p = open.publication.as_mut().unwrap();
+    for snapshot in [&mut p.before, &mut p.after] {
+        snapshot.pull.merged = false;
+        snapshot.pull.state = "open".into();
+        snapshot.final_commit = None;
+        snapshot.merged_at_unix_ms = None;
+    }
+    open.validate(&target).unwrap();
+    assert!(!open.publication.unwrap().exact_candidate_published(&target));
+}
+
 #[test]
 fn malformed_or_contradictory_publication_never_becomes_evidence() {
     let (t, r, g) = fixture();

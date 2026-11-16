@@ -4,7 +4,7 @@ use treeharbor_github_contract::publication as p;
 const QUERY: &str = r"query TreeHarborPublication($owner:String!,$name:String!,$number:Int!,$base:String!){
  repository(owner:$owner,name:$name){databaseId
  ref(qualifiedName:$base){name prefix target{__typename ... on Commit{oid tree{oid}}}}
- pullRequest(number:$number){id number headRefName headRefOid baseRefName baseRefOid state isDraft merged
+ pullRequest(number:$number){id number headRefName headRefOid baseRefName baseRefOid state isDraft merged mergedAt
  headRepository{databaseId} baseRepository{databaseId}
  mergeCommit{oid tree{oid} parents(first:8){totalCount pageInfo{hasNextPage hasPreviousPage} nodes{oid tree{oid}}}}}}}";
 #[derive(Deserialize)]
@@ -32,6 +32,7 @@ struct FinalPull {
     state: String,
     is_draft: bool,
     merged: bool,
+    merged_at: Option<String>,
     head_repository: DatabaseId,
     base_repository: DatabaseId,
     merge_commit: Option<groups::ParentCommit>,
@@ -113,7 +114,8 @@ impl Connection {
             "CLOSED" | "MERGED" => "closed",
             _ => return Err(Error::Evidence),
         };
-        if (pull.state == "MERGED") != pull.merged {
+        let merged_at_unix_ms = super::checks::timestamp(pull.merged_at)?;
+        if (pull.state == "MERGED") != pull.merged || merged_at_unix_ms.is_some() != pull.merged {
             return Err(Error::Evidence);
         }
         let snapshot = p::Snapshot {
@@ -134,6 +136,7 @@ impl Connection {
                 .merge_commit
                 .map(groups::ParentCommit::observation)
                 .transpose()?,
+            merged_at_unix_ms,
         };
         snapshot
             .pull
@@ -216,7 +219,7 @@ impl Connection {
         .and_then(|r| r);
         let revoked = self.revoke(&token).await.is_ok();
         let observation = QueueObservation {
-            version: 8,
+            version: p::TIMED_OBSERVATION_VERSION,
             started_at_unix_ms: started,
             finished_at_unix_ms: now()? as i64 * 1000,
             publication: Some(result?),

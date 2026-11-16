@@ -2,7 +2,7 @@ use super::*;
 use treeharbor_github_contract::publication as p;
 fn fixture() -> p::Report {
     let v: Value = serde_json::from_str(include_str!(
-        "../../../../github-contract/tests/fixtures/publication-v8.json"
+        "../../../../github-contract/tests/fixtures/publication-v11.json"
     ))
     .unwrap();
     serde_json::from_value(v["publication"].clone()).unwrap()
@@ -22,7 +22,7 @@ fn graph() -> Value {
     final_commit["parents"] = json!({"totalCount":c.parents.len(),"pageInfo":{"hasNextPage":false,"hasPreviousPage":false},"nodes":c.parents.iter().map(commit).collect::<Vec<_>>()});
     let mut main = commit(&s.main);
     main["__typename"] = json!("Commit");
-    json!({"data":{"repository":{"databaseId":11,"ref":{"name":"main","prefix":"refs/heads/","target":main},"pullRequest":{"id":pull.node_id,"number":pull.number,"headRefName":pull.head_ref,"headRefOid":oid(&pull.head_revision),"baseRefName":pull.base_ref,"baseRefOid":oid(&pull.base_revision),"state":"MERGED","isDraft":false,"merged":true,"headRepository":{"databaseId":11},"baseRepository":{"databaseId":11},"mergeCommit":final_commit}}}})
+    json!({"data":{"repository":{"databaseId":11,"ref":{"name":"main","prefix":"refs/heads/","target":main},"pullRequest":{"id":pull.node_id,"number":pull.number,"headRefName":pull.head_ref,"headRefOid":oid(&pull.head_revision),"baseRefName":pull.base_ref,"baseRefOid":oid(&pull.base_revision),"state":"MERGED","isDraft":false,"merged":true,"mergedAt":"2026-10-25T14:30:00Z","headRepository":{"databaseId":11},"baseRepository":{"databaseId":11},"mergeCommit":final_commit}}}})
 }
 fn comparison() -> Value {
     let f = fixture();
@@ -54,6 +54,7 @@ async fn publication_uses_immutable_compare_read_scope_and_revokes_token() {
         .await
         .unwrap();
     assert_eq!(out.observation.publication, Some(fixture()));
+    assert_eq!(out.observation.version, p::TIMED_OBSERVATION_VERSION);
     assert!(out.observation.token_revoked);
     assert!(
         out.observation
@@ -63,6 +64,7 @@ async fn publication_uses_immutable_compare_read_scope_and_revokes_token() {
     );
     let req = h.await.unwrap();
     assert_eq!(req.len(), 8);
+    assert!(request_text(&req[4]).contains("merged mergedAt"));
     let permissions: Value =
         serde_json::from_str(request_text(&req[1]).split_once("\r\n\r\n").unwrap().1).unwrap();
     assert_eq!(
@@ -79,7 +81,19 @@ async fn publication_uses_immutable_compare_read_scope_and_revokes_token() {
 #[tokio::test]
 async fn publication_rejects_incomplete_or_foreign_provider_data() {
     for case in [
-        "repo", "pull", "tag", "ref", "kind", "parents", "missing", "partial", "base", "counts",
+        "repo",
+        "pull",
+        "tag",
+        "ref",
+        "kind",
+        "parents",
+        "missing",
+        "partial",
+        "base",
+        "counts",
+        "no-time",
+        "invalid-time",
+        "unmerged-time",
     ] {
         let mut g = graph();
         let mut compare = comparison();
@@ -99,6 +113,16 @@ async fn publication_rejects_incomplete_or_foreign_provider_data() {
             "partial" => g["errors"] = json!([{"message":"partial"}]),
             "base" => compare["base_commit"]["sha"] = json!("cd".repeat(20)),
             "counts" => compare["ahead_by"] = json!(1),
+            "no-time" => g["data"]["repository"]["pullRequest"]["mergedAt"] = Value::Null,
+            "invalid-time" => {
+                g["data"]["repository"]["pullRequest"]["mergedAt"] = json!("2026-10-25")
+            }
+            "unmerged-time" => {
+                let pull = &mut g["data"]["repository"]["pullRequest"];
+                pull["state"] = json!("OPEN");
+                pull["merged"] = json!(false);
+                pull["mergeCommit"] = Value::Null;
+            }
             _ => unreachable!(),
         }
         let mut r = access();
@@ -120,13 +144,20 @@ async fn publication_rejects_incomplete_or_foreign_provider_data() {
 }
 #[tokio::test]
 async fn publication_keeps_later_descendants_and_ref_drift_distinct() {
-    for drift in [false, true] {
+    for drift in [None, Some("ref"), Some("time")] {
         let mut before = graph();
         before["data"]["repository"]["ref"]["target"]["oid"] = json!("ab".repeat(20));
         before["data"]["repository"]["ref"]["target"]["tree"]["oid"] = json!("ac".repeat(20));
         let mut after = before.clone();
-        if drift {
-            after["data"]["repository"]["ref"]["target"]["oid"] = json!("ad".repeat(20));
+        match drift {
+            Some("ref") => {
+                after["data"]["repository"]["ref"]["target"]["oid"] = json!("ad".repeat(20));
+            }
+            Some("time") => {
+                after["data"]["repository"]["pullRequest"]["mergedAt"] =
+                    json!("2026-10-25T14:30:01Z");
+            }
+            _ => (),
         }
         let mut compare = comparison();
         compare["status"] = json!("ahead");
@@ -149,7 +180,7 @@ async fn publication_keeps_later_descendants_and_ref_drift_distinct() {
                 .publication
                 .unwrap()
                 .exact_candidate_published(&target()),
-            !drift
+            drift.is_none()
         );
         let req = h.await.unwrap();
         assert!(
