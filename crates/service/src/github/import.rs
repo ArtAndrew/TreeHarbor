@@ -1,5 +1,5 @@
 use super::*;
-use crate::import::{ParentReuse, ParentReuseRequest};
+use crate::import::{ParentReuse, ParentReuseRequest, UploadFrames};
 use crate::pack::{GitCapture, Pack};
 use std::{
     fs::{File, OpenOptions},
@@ -8,6 +8,7 @@ use std::{
 };
 use treeharbor_core::{Object, ObjectStore, RevisionRef};
 use treeharbor_git_bridge::WorkspacePackScope;
+use treeharbor_metadata::uploads::Purpose;
 
 pub(super) struct Request {
     pub config: PathBuf,
@@ -235,39 +236,19 @@ pub(crate) async fn upload(
             });
         }
     };
-    for object in ids {
-        if retained.contains(&object) {
-            continue;
-        }
-        let reader = Arc::clone(&store);
-        let frame = tokio::task::spawn_blocking(move || reader.get(object)?.encode())
-            .await
-            .map_err(|_| Error::ImportWorker)?
-            .map_err(crate::pack::Error::Object)?;
-        let reply = client::send_github_source_object(
-            socket,
-            credential,
-            id,
-            object,
-            frame,
-            Duration::from_secs(15),
-        )
-        .await?;
-        if !reply.status.is_success() {
-            if reply.status.as_u16() == 409 && reply.body["error"]["code"] == "upload_state_changed"
-            {
-                break;
-            }
-            return Err(Error::GithubBinding {
-                status: reply.status.as_u16(),
-            });
-        }
-        if reply.body["version"] != 1
-            || reply.body["result"]["object"] != object.to_string()
-            || reply.body["result"]["state"] != "stored"
-        {
-            return Err(Error::Http);
-        }
+    let sender = UploadFrames {
+        socket,
+        credential,
+        timeout: Duration::from_secs(15),
+        upload: id,
+        purpose: Purpose::Github,
+    };
+    if let Some(reply) = sender.send(ids, store, &retained).await?
+        && (reply.status.as_u16() != 409 || reply.body["error"]["code"] != "upload_state_changed")
+    {
+        return Err(Error::GithubBinding {
+            status: reply.status.as_u16(),
+        });
     }
     checked_completion(command(socket, credential, finish).await?, root, snapshot)
 }

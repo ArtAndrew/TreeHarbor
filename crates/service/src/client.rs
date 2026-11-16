@@ -175,6 +175,37 @@ pub async fn send_github_source_object(
     )
     .await
 }
+pub(crate) async fn send_source_blobs(
+    socket: &Path,
+    credential: &Credential,
+    upload: Uuid,
+    frames: &[(treeharbor_core::ObjectId, Vec<u8>)],
+    timeout: Duration,
+    purpose: treeharbor_metadata::uploads::Purpose,
+) -> Result<Reply> {
+    use treeharbor_metadata::uploads::Purpose;
+    let purpose = match purpose {
+        Purpose::Human => "source",
+        Purpose::Github => "github",
+    };
+    let path = format!(
+        "/v1/{}/{}/{}/uploads/{}/blobs",
+        purpose,
+        credential.scope.tenant(),
+        credential.scope.repository(),
+        upload
+    );
+    send_request_to(
+        Endpoint::Unix(socket),
+        &credential.token,
+        "PUT",
+        path,
+        "application/octet-stream",
+        crate::source_batch::encode(frames)?,
+        timeout,
+    )
+    .await
+}
 async fn send_uploaded_object(
     endpoint: Endpoint<'_>,
     credential: &Credential,
