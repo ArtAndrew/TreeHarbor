@@ -4,7 +4,8 @@
 
 - [Source imports](docs/source-uploads.md) and the [GitHub bridge](docs/github-import.md)
   can reuse a verified parent already retained by the same repository and
-  transfer only new source objects for the next revision.
+  transfer only new source objects for the next revision. See the
+  [Linux ARM64 measurements](docs/benchmark-preparation.md#import-with-a-retained-parent-on-linux-arm64--16-november-2026).
 - Package the control plane as a [Docker image](examples/control-plane/README.md)
   for Linux AMD64 and ARM64. Run it with local objects and PostgreSQL over a
   Unix socket. Use the Linux package on the host for runtime helpers.

@@ -695,3 +695,39 @@ import for file-only TreeHarbor workspaces.
 
 [Raw observations](benchmarks/native-adjacent-revisions-linux-arm64-20261116.json) ·
 [Verified binary](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.22-alpha.1)
+
+### Import with a retained parent on Linux ARM64 – 16 November 2026
+
+The [installed CI candidate](https://github.com/ArtAndrew/TreeHarbor/actions/runs/43846751911)
+ran the same 8,195-file fixture and four-task batches on the same two-CPU VM.
+The binary was built from test merge `7e517bef1db789022d32b9e68fff07bc98006bcf`
+for [PR 201](https://github.com/ArtAndrew/TreeHarbor/pull/201). All 104
+workspace observations passed the content, mode and path checks.
+
+| Local source import phase | Signed 0.1.22 | CI candidate |
+| --- | ---: | ---: |
+| Initial parent upload and registration | 45.91 s | 45.26 s |
+| Child Git capture and conversion | 5.05 s | 5.02 s |
+| Child upload and registration | 54.31 s | 0.37 s |
+| Sum of child capture and registration | 59.35 s | 5.39 s |
+
+Each binary imported the parent and child once. The child edits eight files.
+After import, the first child batch took 538 ms in TreeHarbor and 412 ms in
+Git worktree. The median of five repeat batches was 136 ms and 396 ms,
+respectively. The sample p50/p95 for a workspace's first read was 141/545 ms
+for TreeHarbor and 396/471 ms for Git worktree. Both systems prepared the same
+file contents. Git worktree also
+retained its Git metadata. The Git mirror had both commits before the trial.
+These timings cover local conversion, source admission and file preparation.
+
+Generate the base with `python3 scripts/create-preparation-fixture.py
+"$FIXTURE" --modules 64 --files-per-module 128`. In bytewise path order, XOR the first byte of each of
+the first eight regular, tracked 4,096-byte files with `0xff`, skipping symlinks.
+Commit with author and committer `Benchmark Fixture <fixture@example.invalid>`,
+both dates set to `2026-11-10T07:00:00Z`, and the message
+`Edit eight files for the revision change fixture`. The base and child are
+`d2784632f690f8e2a226f0f4e084f7bd9f44bcc1` and
+`43c4be83b4145f8d1dee7fbd1b6f195162d5162f`. Run the command above with those
+two commits and fresh private volumes.
+
+[Raw candidate observations](benchmarks/native-parent-reuse-linux-arm64-20261116.json)
