@@ -11,6 +11,13 @@ links reported completion times to the exact selected check IDs and candidate.
 Passed checks reported after the merge are distinguishable from checks reported
 before it. Missing times and same-time observations remain unproven.
 
+The [final merge reader](github-admission-evidence.md#verify-an-observed-merge)
+joins the published Git commit to the exact required check and dispatch
+receipts and the signed lifecycle of one merge group. It checks the latest
+captures and remains usable after the queue entry disappears. Verification
+is limited to the supported single-member `MERGE`/`ALLGREEN` profile,
+with live certification still open.
+
 Updated: 2026-11-16. This file describes implemented behavior and remaining release
 gates. A foundation milestone does not complete either mode.
 

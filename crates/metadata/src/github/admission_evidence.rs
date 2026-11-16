@@ -10,6 +10,8 @@ use treeharbor_github_contract::{
     queue::{QueueObservation, QueueTarget},
 };
 
+mod final_merge;
+
 async fn report(
     tx: &Transaction<'_>,
     s: &Scope,
@@ -89,6 +91,7 @@ fn digest(evidence: &Value) -> Result<String> {
         Some(1) => b"treeharbor-connected-check-set\0v1\0",
         Some(2) => b"treeharbor-connected-check-set\0v2\0",
         Some(3) => b"treeharbor-connected-check-set\0v3\0",
+        Some(4) => b"treeharbor-connected-check-set\0v4\0",
         _ => return Err(Error::SchemaMismatch),
     });
     h.update(serde_json::to_vec(evidence).map_err(|_| Error::SchemaMismatch)?);
@@ -289,6 +292,13 @@ impl Evaluation<'_> {
     }
 }
 
+struct EvidenceSelection {
+    check_sequence: i64,
+    publication_sequence: Option<i64>,
+    host_policy_sequence: Option<i64>,
+    verify_merge: bool,
+}
+
 impl Metadata {
     pub async fn github_queue_admission_evidence(
         &mut self,
@@ -317,6 +327,55 @@ impl Metadata {
         publication_sequence: Option<i64>,
         host_policy_sequence: Option<i64>,
     ) -> Result<Value> {
+        self.read_github_queue_evidence(
+            auth,
+            epoch,
+            id,
+            EvidenceSelection {
+                check_sequence,
+                publication_sequence,
+                host_policy_sequence,
+                verify_merge: false,
+            },
+        )
+        .await
+    }
+
+    pub async fn github_queue_merge_evidence(
+        &mut self,
+        auth: &Authorization,
+        epoch: i64,
+        id: Uuid,
+        check_sequence: i64,
+        publication_sequence: i64,
+    ) -> Result<Value> {
+        self.read_github_queue_evidence(
+            auth,
+            epoch,
+            id,
+            EvidenceSelection {
+                check_sequence,
+                publication_sequence: Some(publication_sequence),
+                host_policy_sequence: None,
+                verify_merge: true,
+            },
+        )
+        .await
+    }
+
+    async fn read_github_queue_evidence(
+        &mut self,
+        auth: &Authorization,
+        epoch: i64,
+        id: Uuid,
+        selection: EvidenceSelection,
+    ) -> Result<Value> {
+        let EvidenceSelection {
+            check_sequence,
+            publication_sequence,
+            host_policy_sequence,
+            verify_merge,
+        } = selection;
         uuid(id)?;
         let tx = self.client.transaction().await?;
         settings(&tx).await?;
@@ -372,8 +431,23 @@ impl Metadata {
             Err(e) if eligible_error(&e) => current = false,
             Err(e) => return Err(e),
         }
+        let mut configuration = None;
         let policy = if let Some((pin, p, active)) = pinned {
             current &= active;
+            if verify_merge
+                && active
+                && b.get::<_, String>("state") == "active"
+                && let Some(c) = &p.host_configuration
+                && c.profile
+                    .queue
+                    .as_ref()
+                    .is_some_and(|q| q.merge_method == "MERGE" && q.merging_strategy == "ALLGREEN")
+            {
+                configuration = Some(
+                    c.digest(&c.visibility.target)
+                        .map_err(|_| Error::SchemaMismatch)?,
+                );
+            }
             let required = p.required(
                 spec.app_id,
                 epoch,
@@ -469,8 +543,18 @@ impl Metadata {
         } else {
             false
         };
+        let merge_verified = if verify_merge {
+            let assessed =
+                final_merge::evaluate(&tx, s, &q, &g, &evidence, configuration.as_deref()).await?;
+            let verified = assessed["verified"] == true;
+            evidence["version"] = json!(4);
+            evidence["merge"] = assessed;
+            verified
+        } else {
+            false
+        };
         let result = json!({"version":evidence["version"],"evidence_digest":digest(&evidence)?,"evidence":evidence,"current_locally":current,
-            "checks_verified":complete && current,"host_policy_verified":host_verified,"admission_verified":complete && current && host_verified,"merge_verified":false});
+            "checks_verified":complete && current,"host_policy_verified":host_verified,"admission_verified":complete && current && host_verified,"merge_verified":merge_verified});
         context(&tx, auth, epoch, Permission::Read).await?;
         tx.commit().await?;
         Ok(result)
@@ -480,6 +564,32 @@ impl Metadata {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn v4_encoding_binds_dispatch_decisions_and_signed_lifecycle() {
+        let vector: Value = serde_json::from_str(include_str!(
+            "../../tests/fixtures/connected-check-set-v4.json"
+        ))
+        .unwrap();
+        let evidence = &vector["evidence"];
+        assert_eq!(
+            serde_json::to_vec(evidence).unwrap(),
+            vector["canonical"].as_str().unwrap().as_bytes()
+        );
+        assert_eq!(digest(evidence).unwrap(), vector["digest"]);
+        for field in [
+            "/merge/verified",
+            "/merge/configuration_digest",
+            "/merge/signed_events/events/0/body_sha256",
+            "/merge/signed_events/events/1/fact/reason",
+            "/merge/check_dispatches/0/dispatch_policy_digest",
+            "/merge/check_dispatches/0/decided_at_unix_ms",
+        ] {
+            let mut changed = evidence.clone();
+            *changed.pointer_mut(field).unwrap() = Value::Null;
+            assert_ne!(digest(&changed).unwrap(), vector["digest"], "{field}");
+        }
+    }
 
     #[test]
     fn v3_encoding_binds_the_selected_check_and_reported_merge_time() {
@@ -535,7 +645,7 @@ mod tests {
         let mut changed = e.clone();
         changed["version"] = json!(1);
         assert_ne!(digest(&changed).unwrap(), v["digest"]);
-        changed["version"] = json!(4);
+        changed["version"] = json!(5);
         assert!(digest(&changed).is_err());
     }
     #[test]
