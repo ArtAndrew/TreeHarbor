@@ -2,6 +2,7 @@
 //! never authorizes enrollment, even if its bytes are available in the tenant.
 use super::{Purpose, active_for, lock_authorized};
 use crate::{Error, Metadata, Result, catalog::settings};
+use std::future::Future;
 use treeharbor_core::{ObjectId, RevisionRef};
 use uuid::Uuid;
 
@@ -17,24 +18,24 @@ impl Metadata {
     /// Enroll the exact live generations reachable from an accepted base in
     /// this repository. The caller may omit the corresponding source frames.
     /// Repeating this operation preserves the session budget and deadline.
-    pub async fn reuse_source_base(
+    pub fn reuse_source_base(
         &mut self,
         auth: &crate::access::Authorization,
         upload: Uuid,
         base: ObjectId,
-    ) -> Result<ReusedSourceBase> {
-        self.reuse_source_base_in(auth, upload, base, None).await
+    ) -> impl Future<Output = Result<ReusedSourceBase>> + Send {
+        // Allocate the transaction future outside the shared command dispatcher.
+        Box::pin(self.reuse_source_base_in(auth, upload, base, None))
     }
 
-    pub(crate) async fn reuse_github_source_base(
+    pub(crate) fn reuse_github_source_base(
         &mut self,
         auth: &crate::access::Authorization,
         upload: Uuid,
         base: ObjectId,
         epoch: i64,
-    ) -> Result<ReusedSourceBase> {
-        self.reuse_source_base_in(auth, upload, base, Some(epoch))
-            .await
+    ) -> impl Future<Output = Result<ReusedSourceBase>> + Send {
+        Box::pin(self.reuse_source_base_in(auth, upload, base, Some(epoch)))
     }
 
     async fn reuse_source_base_in(
