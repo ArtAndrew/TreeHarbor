@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.1.23-alpha.1 — reuse imported history and deploy with Docker
+
+- [Source imports](docs/source-uploads.md) and the [GitHub bridge](docs/github-import.md)
+  can reuse a verified parent already retained by the same repository and
+  transfer only new source objects for the next revision.
+- Package the control plane as a [Docker image](examples/control-plane/README.md)
+  for Linux AMD64 and ARM64. Run it with local objects and PostgreSQL over a
+  Unix socket. Use the Linux package on the host for runtime helpers.
+- Sign the exact archives and images retained by successful main CI. Both
+  native jobs load and run the saved image and compare its binary with the
+  installed package.
+- [Upgrade from 0.1.22](docs/release-packaging.md#upgrade-from-0122-alpha1)
+  using the existing schema 035.
+
 ## 0.1.22-alpha.1 — repeat mode transfers and packaged Standalone demo
 
 - [Return to Standalone after GitHub advances](docs/github-connection.md#activate-standalone-from-an-archived-repository).

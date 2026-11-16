@@ -1,6 +1,6 @@
 # Implementation status
 
-Updated: 2026-11-12. This file describes implemented behavior and remaining release
+Updated: 2026-11-16. This file describes implemented behavior and remaining release
 gates. A foundation milestone does not complete either mode.
 
 For a concise current overview, see [what works today](../README.md#what-works-today)
@@ -8,6 +8,15 @@ and the [roadmap](../ROADMAP.md). The entries
 below retain evidence from individual increments. Their earlier statements about
 unfinished work describe the scope at that time; they are not a replacement for
 the current overview or the full [release gate ledger](#release-gate-ledger).
+
+## Docker control plane (development)
+
+The [container profile](../examples/control-plane/README.md) runs the service
+with a local object directory and PostgreSQL socket. The image uses the static
+binary from the Linux package. In CI both native Linux jobs save and reload the
+image, compare its binary and license notices with the package, and run it as
+the configured non-root user. The signing workflow consumes the resulting
+package and image from the successful main attempt.
 
 ## Archived GitHub and Standalone handoff preview — 0.1.21-alpha.1
 

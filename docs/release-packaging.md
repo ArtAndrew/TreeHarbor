@@ -36,9 +36,12 @@ independent successful main-push CI run/attempt for that commit. It refuses bran
 dispatches, source/workflow mismatches and commits outside main. Ordinary PR CI
 keeps read-only permissions.
 
-Each Linux architecture builds, packages and installs once, runs the existing
-managed/native runtime tests with the installed binaries, records their exact
-hashes, then attests that same archive and its sidecars in the producing job.
+For each Linux architecture, the selected main CI attempt builds and installs
+the archive, runs the managed and native runtime tests, and saves and reloads
+the control-plane image. CI retains the exact files and their test receipt. The
+signing job selects the artifact by ID, verifies its digest and receipt, and
+attests the tested archive, image and sidecars. The receipt identifies the
+main CI attempt. The signature identifies the tagged signing run.
 The pinned [GitHub attestation action](https://github.com/actions/attest/tree/1e69f48acb82d1966a394da916b4c1698aa569d6)
 uses a short-lived GitHub signing identity; no stored signing key is required.
 The workflow verifies all signed subjects with the official CLI, constraining the
@@ -53,8 +56,9 @@ Connected onboarding gates, and attach the unchanged files to a prerelease.
 Each architecture has a distinct archive, `.metadata.zip` and
 `.provenance.sigstore.json`. The metadata ZIP keeps the original sidecar filenames
 and checksums together, so the two architectures do not collide in a release.
-The producer signs the ZIP too, without changing the runtime-tested archive.
-Attach both architectures' archive/checksum, metadata ZIP and signature bundle.
+The producer signs the ZIP using the same tagged workflow. Attach both
+architectures' package and image archives, their checksums, the metadata ZIP
+and the signature bundle. Releases before 0.1.23 omit the image.
 Do not rebuild or overwrite assets during publication; inspect any uncertain
 upload before retrying.
 
@@ -143,6 +147,17 @@ installer neither grants privileges nor modifies host mount or sudo policy.
 PostgreSQL, Docker/gVisor, bounded volumes and host access are separate prerequisites.
 Removing the CLI symlink and that version directory uninstalls the package; retain
 repository state and backups separately.
+
+### Upgrade from 0.1.22-alpha.1
+
+Both releases use schema 035. Use the same private configuration, database and
+object directory. Stop the service and any workers, take a cold backup, and
+install the verified 0.1.23 package alongside 0.1.22. Run `doctor` before
+restarting the service. To deploy with Docker, verify and load the
+[release image](../examples/control-plane/README.md#install-a-release-image)
+and mount the existing state directory and database socket. Keep one running
+service for that state. To roll back, stop the service and switch back to the
+retained 0.1.22 binary or container configuration.
 
 ### Upgrade from 0.1.21-alpha.1
 
@@ -258,13 +273,14 @@ adversarial probe as a separate fixture while executing the installed product
 binaries. Full Connected live acceptance remains a separate gate.
 
 After the managed and native lifecycle tests succeed, runtime CI now retains
-that exact archive as `treeharbor-runtime-tested-RUN-ATTEMPT-ARCH-SHA`. It compares
-the installed executables with the archived bytes and checks their links to the
-dependency reports before upload. No rebuild or repackaging occurs at this step.
-`tested-runtime-artifacts.json` records the archive digest, sidecar digests,
-actual checkout revision, workflow run/attempt and completed test commands.
-The receipt is unsigned; it is not build provenance or approval for release.
-Receipt version 2 additionally binds the native-input sidecar and build session.
+the exact package and verified image as `treeharbor-runtime-tested-RUN-ATTEMPT-ARCH-SHA`.
+It compares the installed executables with the archived bytes and checks their
+links to the dependency reports before upload. The `tested-runtime-artifacts.json`
+receipt records the archive digest, sidecar digests, actual checkout revision,
+workflow run and attempt, and completed test commands. Version 3 adds the
+image digest and the matching service binary digest. Version 2 binds the
+native-input sidecar and build session. The retained receipt is unsigned until
+the separate tagged workflow produces the release attestations.
 Earlier version-1 receipts cover their original Cargo-only sidecar set; do not
 backfill them with inputs observed during a later rebuild.
 
