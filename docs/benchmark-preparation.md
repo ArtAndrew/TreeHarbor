@@ -731,3 +731,36 @@ both dates set to `2026-11-10T07:00:00Z`, and the message
 two commits and fresh private volumes.
 
 [Raw candidate observations](benchmarks/native-parent-reuse-linux-arm64-20261116.json)
+
+### Signed 0.1.23 sample with 16 concurrent tasks – 16 November 2026
+
+The same fixture ran on a disposable two-CPU Linux ARM64 VM with Git 2.43.0
+and PostgreSQL 18.6. Both systems prepared all 8,195 tracked files (32 MiB).
+TreeHarbor used a shared copy-on-write source with 16 writable slots and
+file-only workspaces. Git worktree used two checkout workers per checkout
+and included Git metadata. The Git mirror started with both commits; each
+TreeHarbor revision was imported before its first measured batch.
+
+| After local source import | TreeHarbor | Git worktree |
+| --- | ---: | ---: |
+| First file read, p50 per workspace | 0.614 s | 2.265 s |
+| First file read, p95 per workspace | 1.147 s | 2.466 s |
+| First parent batch, all 16 reads | 1.147 s | 2.507 s |
+| First child batch, all 16 reads | 1.060 s | 2.401 s |
+
+The 26 batches yielded 416 per-workspace observations. Each verified the
+expected bytes, modes and paths. The first parent import added 4.861 s
+for Git capture and 45.703 s for TreeHarbor admission. The adjacent
+revision, which changed eight files, added 5.279 s and 0.462 s.
+The source store and two reusable images together occupied about 132 MiB
+allocated, versus 33.35 MiB for the Git mirror. Those figures exclude
+per-workspace storage and database overhead.
+
+For this run, use 16 private slot volumes with the same fixture and
+command above, setting `--concurrency 16`. OS cache
+state was uncontrolled. The timed batches include preparation and a
+read in each workspace. Network fetch, runtime startup, agent work
+and CI are outside this comparison.
+
+[Raw observations](benchmarks/native-concurrency16-linux-arm64-20261116.json) ·
+[Verified binary](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.23-alpha.1)
