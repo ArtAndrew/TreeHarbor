@@ -76,6 +76,7 @@ pub(crate) async fn send(request: Request<'_>) -> Result<Reply> {
             json!({"method":"github","request":{"action":"archive_stage","key":format!("archive-{upload}-stage"),
             "epoch":intent.epoch,"binding":intent.binding,"upload":upload,"specification":intent.specification}}),
         ),
+        source_root: None,
     };
     let reply = transfer
         .send(request.source.ids, request.source.store)

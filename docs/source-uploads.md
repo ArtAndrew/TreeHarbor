@@ -59,11 +59,20 @@ treeharbor client --socket "$TH_SOCKET" --credential-file "$TH_CREDENTIAL" \
 
 Upload blobs before their directories, subdirectories before parents, then
 snapshots/operations before commits, and every parent commit before its child.
-All typed references must belong to this session, even if the tenant store
-already has the same digest from another repository or upload. Each object needs
-complete verified bytes. Physical deduplication is allowed; digest-only attachment
-and cross-repository existence probes are not exposed. Incremental reuse of an
-existing authorized repository graph is a future capability.
+All typed references must belong to this session. The normal PUT path requires
+complete verified bytes. `source_reuse_base` can enroll the complete graph of a
+previously accepted native source base in the same repository. It uses the base's
+retained pin and exact live object generations to establish membership. The
+caller needs both `read` and `repository.write`. Each graph object counts toward
+the session's existing object and byte budgets, and the new holds use the
+session's original deadline. Use the complete PUT path for an initial import.
+
+`client source-import` uses the first parent in a verified full-history pack
+when that parent is available as a retained base. It continues with a full
+upload when the server lacks the command, the caller has a write-only token,
+the base is unavailable, or reuse cannot fit the upload budget. The pack and
+replay journal formats stay at their existing versions. GitHub bridge imports
+and archive transfers still use their existing complete transfer paths.
 
 Finish returns `revision: native:sha256:…` and `snapshot`. Use that revision as
 the workspace base. Completion commits its persistent graph pin, base binding,
@@ -83,6 +92,7 @@ Control operations use the existing `/v1/commands` envelope, version 1:
 | Method | Command fields |
 |---|---|
 | `source_begin` | `key`, `authority`, `epoch`, `upload`, `max_objects`, `max_bytes`, `ttl_seconds` |
+| `source_reuse_base` | `upload`, `base` as a canonical `native:sha256:…` revision |
 | `source_finish` | `key`, `authority`, `epoch`, `upload`, `commit` |
 | `source_abort` | `key`, `authority`, `epoch`, `upload` |
 | `source_status` | `upload` |
@@ -93,6 +103,12 @@ with `Content-Type: application/octet-stream`, the usual Bearer credential and
 fixed `Host: treeharbor.local`. Repository/upload UUIDs and hex digests must use
 canonical lowercase spelling. Query strings are not accepted. The successful
 response is `{"version":1,"result":{"object":"sha256:…","state":"stored"}}`.
+
+The reuse response contains the exact `upload` and `base`, with `objects` and
+`bytes` for the complete enrolled graph. The command repeats safely during
+the active session, returning the same graph counts without reserving its
+members again. Use at most 100,000 objects per reuse. See the
+[v1 request fixture](../crates/metadata/tests/fixtures/source-reuse-base-v1.json).
 
 A timeout, broken connection or lost response may have an unknown outcome.
 Retry the exact UUID/digest/bytes, or the exact control command and key. Object
@@ -123,6 +139,7 @@ pending. These resource limits are operational controls, not license limits.
 | 400 `invalid_object` | Digest, frame or canonical object is invalid |
 | 401/403 | Credential invalid/revoked or missing the required permission |
 | 404 | Upload not found in this repository and principal scope |
+| 404 on `source_reuse_base` | Base not retained in the current repository |
 | 409 `upload_membership` | Missing child, wrong child kind or incomplete commit |
 | 409 `upload_state_changed` | Expired, aborted or already completed upload |
 | 409 `repository_fenced` | Authority/epoch or active repository state changed |

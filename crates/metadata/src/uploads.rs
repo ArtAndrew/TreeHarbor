@@ -1,5 +1,8 @@
 //! Authenticated source ingestion. Complete verified bytes prove possession;
 //! tenant-level CAS deduplication alone never grants repository membership.
+mod reuse;
+pub use reuse::ReusedSourceBase;
+
 use crate::access::{Authorization, Permission};
 use crate::catalog::{ObjectKey, ObjectLease, publish_in, reserve_in, settings};
 use crate::intake::CommandContext;

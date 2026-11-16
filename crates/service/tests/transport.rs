@@ -652,6 +652,74 @@ async fn directory_import_resumes_partial_graph_and_completed_receipt_without_so
 async fn git_history_import_resumes_partial_graph_and_completed_receipt_without_source_or_git() {
     import_resumes_partial_graph_and_completed_receipt(true).await;
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires disposable PostgreSQL; actual Git capture and source CLI"]
+async fn source_import_omits_retained_ancestor_frames() {
+    let mut f = Fixture::new().await;
+    f.importer();
+    let prior = f.dir.path().join("prior-pack");
+    let child = f.dir.path().join("child-pack");
+    git_history_packs(&f, &child, Some(&prior));
+    let prior_state = f.dir.path().join("prior-upload.json");
+    let child_state = f.dir.path().join("child-upload.json");
+    let args = |pack: &std::path::Path, state: &std::path::Path| -> Vec<String> {
+        [
+            "source-import",
+            "--pack",
+            pack.to_str().unwrap(),
+            "--state",
+            state.to_str().unwrap(),
+            "--authority",
+            "standalone",
+            "--epoch",
+            "1",
+        ]
+        .into_iter()
+        .map(str::to_owned)
+        .collect()
+    };
+    let initial = args(&prior, &prior_state);
+    let following = args(&child, &child_state);
+    let server = f.start().await;
+    assert!(
+        f.cli(&initial.iter().map(String::as_str).collect::<Vec<_>>())
+            .status
+            .success()
+    );
+    f.sql.batch_execute(r#"
+        CREATE FUNCTION refuse_duplicate_frames() RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN
+            IF EXISTS (SELECT 1 FROM th_objects o WHERE (o.tenant,o.digest)=(NEW.tenant,NEW.digest)) THEN
+                RAISE EXCEPTION 'test refused retransmission of a retained source frame';
+            END IF;
+            RETURN NEW;
+        END $$;
+        CREATE TRIGGER refuse_duplicate_frames BEFORE INSERT ON th_objects
+        FOR EACH ROW EXECUTE FUNCTION refuse_duplicate_frames();
+    "#).await.unwrap();
+    let following: Vec<&str> = following.iter().map(String::as_str).collect();
+    let reply = f.cli(&following);
+    assert!(
+        reply.status.success(),
+        "{} {}",
+        String::from_utf8_lossy(&reply.stdout),
+        String::from_utf8_lossy(&reply.stderr)
+    );
+    let response: Value = serde_json::from_slice(&reply.stdout).unwrap();
+    let pack = treeharbor_service::pack::Pack::open(&child).unwrap();
+    assert_eq!(
+        response["result"]["revision"],
+        RevisionRef::Native(pack.commit()).to_string()
+    );
+    assert_eq!(response["result"]["snapshot"], pack.snapshot().to_string());
+    drop(server);
+    let server = f.start().await;
+    assert_eq!(f.cli(&following).stdout, reply.stdout);
+    drop(server);
+    f.cleanup().await;
+}
+
 async fn import_resumes_partial_graph_and_completed_receipt(git_history: bool) {
     let mut f = Fixture::new().await;
     f.importer();
@@ -1057,6 +1125,10 @@ impl Drop for Process {
 /// Build two commits with actual Git plumbing, then remove every Git input.
 /// The subsequent service, upload and node processes have no Git on PATH.
 fn git_history_pack(f: &Fixture, output: &std::path::Path) {
+    git_history_packs(f, output, None);
+}
+
+fn git_history_packs(f: &Fixture, output: &std::path::Path, prior: Option<&std::path::Path>) {
     let repo = f.dir.path().join("history.git");
     git_reference::git(
         f.dir.path(),
@@ -1070,6 +1142,7 @@ fn git_history_pack(f: &Fixture, output: &std::path::Path) {
         b"",
     );
     let mut parent = String::new();
+    let mut first = String::new();
     for body in [b"original\n".as_slice(), b"fn main() {}\n"] {
         let blob = git_reference::hash(&repo, "blob", body);
         let tree = String::from_utf8(git_reference::git(
@@ -1089,28 +1162,37 @@ fn git_history_pack(f: &Fixture, output: &std::path::Path) {
             "tree {tree}\n{ancestry}author Test <test@example.invalid> 1234567890 +0000\ncommitter Other <other@example.invalid> 1234567890 +0000\n\nimport fixture\n"
         );
         parent = git_reference::hash(&repo, "commit", raw.as_bytes());
+        if first.is_empty() {
+            first.clone_from(&parent);
+        }
     }
     let bundle = f.dir.path().join("history.bundle");
     git_reference::bundle(&repo, &bundle, &parent);
-    let captured = Command::new(&f.binary)
-        .env("PATH", "/treeharbor-test-no-executables")
-        .env("GIT_DIR", "/must-not-use-an-inherited-repository")
-        .env("GIT_CONFIG_COUNT", "1")
-        .env("GIT_CONFIG_KEY_0", "core.repositoryFormatVersion")
-        .env("GIT_CONFIG_VALUE_0", "999")
-        .args(["git-import", "--git", "/usr/bin/git", "--bundle"])
-        .arg(&bundle)
-        .arg("--commit")
-        .arg(format!("git:sha1:{parent}"))
-        .arg("--output")
-        .arg(output)
-        .output()
-        .unwrap();
-    assert!(
-        captured.status.success(),
-        "{}",
-        String::from_utf8_lossy(&captured.stderr)
-    );
+    let capture = |revision: &str, output: &std::path::Path| {
+        let captured = Command::new(&f.binary)
+            .env("PATH", "/treeharbor-test-no-executables")
+            .env("GIT_DIR", "/must-not-use-an-inherited-repository")
+            .env("GIT_CONFIG_COUNT", "1")
+            .env("GIT_CONFIG_KEY_0", "core.repositoryFormatVersion")
+            .env("GIT_CONFIG_VALUE_0", "999")
+            .args(["git-import", "--git", "/usr/bin/git", "--bundle"])
+            .arg(&bundle)
+            .arg("--commit")
+            .arg(format!("git:sha1:{revision}"))
+            .arg("--output")
+            .arg(output)
+            .output()
+            .unwrap();
+        assert!(
+            captured.status.success(),
+            "{}",
+            String::from_utf8_lossy(&captured.stderr)
+        );
+    };
+    capture(&parent, output);
+    if let Some(prior) = prior {
+        capture(&first, prior);
+    }
     let manifest: Value =
         serde_json::from_slice(&fs::read(output.join("manifest.json")).unwrap()).unwrap();
     let pack = treeharbor_service::pack::Pack::open(output).unwrap();

@@ -181,6 +181,7 @@ pub(in crate::github) async fn run(options: Options) -> Result<bool> {
             path: crate::archive_proposal_stage::PATH,
             fields: json!({"epoch":intent.epoch,"upload":upload,"specification":spec}),
         },
+        source_root: None,
     };
     let reply = transfer.send(ids, store).await?;
     if reply.status.is_success() {

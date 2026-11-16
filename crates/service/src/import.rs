@@ -7,8 +7,8 @@ use crate::{
 };
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
-use std::{fs::File, path::Path, sync::Arc, time::Duration};
-use treeharbor_core::{ObjectId, ObjectStore, RevisionRef};
+use std::{collections::BTreeSet, fs::File, path::Path, sync::Arc, time::Duration};
+use treeharbor_core::{Object, ObjectId, ObjectStore, RevisionRef};
 use treeharbor_metadata::Authority;
 use uuid::Uuid;
 
@@ -137,6 +137,7 @@ pub async fn send(request: Request<'_>) -> Result<Reply> {
         upload: journal.upload.parse().map_err(|_| Error::ImportState)?,
         begin: json!({"method":"source_begin","key":format!("import-{}-begin",journal.upload),"authority":journal.authority,"epoch":journal.epoch,"upload":journal.upload,"ttl_seconds":journal.ttl_seconds,"max_objects":journal.max_objects,"max_bytes":journal.max_bytes}),
         finish: Finish::Command(finish(&journal)),
+        source_root: Some(request.pack.commit()),
     };
     let (ids, store) = request.pack.into_frames();
     let reply = transfer.send(ids, store).await?;
@@ -155,6 +156,35 @@ pub(crate) struct Transfer<'a> {
     pub upload: Uuid,
     pub begin: Value,
     pub finish: Finish,
+    pub source_root: Option<ObjectId>,
+}
+
+fn source_ancestors(
+    store: &impl ObjectStore,
+    root: ObjectId,
+    expected_objects: usize,
+) -> Result<BTreeSet<ObjectId>> {
+    let mut reached = BTreeSet::new();
+    let mut pending = vec![root];
+    while let Some(id) = pending.pop() {
+        if reached.insert(id) {
+            if reached.len() > expected_objects {
+                return Err(Error::Http);
+            }
+            pending.extend(
+                store
+                    .get(id)
+                    .map_err(crate::pack::Error::Object)?
+                    .references()
+                    .into_iter()
+                    .map(|(target, _)| target),
+            );
+        }
+    }
+    if reached.len() != expected_objects {
+        return Err(Error::Http);
+    }
+    Ok(reached)
 }
 
 impl Transfer<'_> {
@@ -206,7 +236,61 @@ impl Transfer<'_> {
             return Ok(started);
         }
         let store = Arc::new(store);
+        let mut retained = BTreeSet::new();
+        if let Some(root) = self.source_root {
+            let reader = Arc::clone(&store);
+            let parent = tokio::task::spawn_blocking(move || -> Result<_> {
+                let Object::NativeCommit(commit) =
+                    reader.get(root).map_err(crate::pack::Error::Object)?
+                else {
+                    return Err(Error::ImportState);
+                };
+                Ok(commit.parents.first().copied())
+            })
+            .await
+            .map_err(|_| Error::ImportWorker)??;
+            if let Some(parent) = parent {
+                let base = RevisionRef::Native(parent).to_string();
+                let reply = self
+                    .command(
+                        &json!({"method":"source_reuse_base","upload": self.upload,"base": base}),
+                    )
+                    .await?;
+                if reply.status.is_success() {
+                    let result = &reply.body["result"];
+                    if reply.body["version"] != 1
+                        || result["upload"] != self.upload.to_string()
+                        || result["base"] != base
+                    {
+                        return Err(Error::Http);
+                    }
+                    let objects = result["objects"]
+                        .as_u64()
+                        .filter(|&n| n > 0 && n < ids.len() as u64)
+                        .ok_or(Error::Http)? as usize;
+                    let reader = Arc::clone(&store);
+                    retained = tokio::task::spawn_blocking(move || {
+                        source_ancestors(reader.as_ref(), parent, objects)
+                    })
+                    .await
+                    .map_err(|_| Error::ImportWorker)??;
+                } else {
+                    match (reply.status.as_u16(), reply.body["error"]["code"].as_str()) {
+                        (409, Some("upload_state_changed")) => return self.finish().await,
+                        (400, Some("invalid_request"))
+                        | (403, Some("forbidden"))
+                        | (404, Some("not_found"))
+                        | (409, Some("upload_membership"))
+                        | (429, Some("upload_limit")) => {}
+                        _ => return Ok(reply),
+                    }
+                }
+            }
+        }
         for object in ids {
+            if retained.contains(&object) {
+                continue;
+            }
             let reader = Arc::clone(&store);
             let frame = tokio::task::spawn_blocking(move || reader.get(object)?.encode())
                 .await

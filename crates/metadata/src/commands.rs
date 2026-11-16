@@ -126,6 +126,10 @@ enum Command {
         upload: String,
         commit: String,
     },
+    SourceReuseBase {
+        upload: String,
+        base: String,
+    },
     SourceAbort {
         key: String,
         authority: Mode,
@@ -388,6 +392,7 @@ impl Command {
             }
             Self::SourceBegin { .. }
             | Self::SourceFinish { .. }
+            | Self::SourceReuseBase { .. }
             | Self::SourceAbort { .. }
             | Self::RemoteTaskEnqueue { .. }
             | Self::RemoteTaskCancel { .. }
@@ -754,6 +759,19 @@ impl Metadata {
                 )
                 .await?
             }
+            Command::SourceReuseBase { upload, base } => {
+                let RevisionRef::Native(id) =
+                    base.parse().map_err(|_| CommandError::InvalidRequest)?
+                else {
+                    return Err(CommandError::InvalidRequest);
+                };
+                if RevisionRef::Native(id).to_string() != base {
+                    return Err(CommandError::InvalidRequest);
+                }
+                let upload = uuid(&upload)?;
+                let reused = self.reuse_source_base(&auth, upload, id).await?;
+                json!({"upload":upload,"base":base,"objects":reused.objects,"bytes":reused.bytes})
+            }
             Command::SourceAbort {
                 key,
                 authority,
@@ -922,6 +940,11 @@ mod tests {
         }
         let valid = format!(r#"{prefix}{{"method":"repository_info"}}}}"#);
         assert!(decode(valid.as_bytes()).is_ok());
+        let reuse = decode(include_bytes!(
+            "../tests/fixtures/source-reuse-base-v1.json"
+        ))
+        .unwrap();
+        assert!(matches!(reuse.command, Command::SourceReuseBase { .. }));
         assert!(decode(valid.replace("\"version\":1", "\"version\":2").as_bytes()).is_err());
         assert!(
             decode(
