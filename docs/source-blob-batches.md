@@ -1,6 +1,6 @@
 # Batch source blobs over the local socket
 
-The Rust importer can send consecutive file blobs in one request. It flushes
+Starting with 0.1.24, the Rust importer can send consecutive file blobs in one request. It flushes
 the batch before sending an object that depends on them. Large blobs,
 directories, snapshots, deltas and commits use the existing single-object
 endpoint. Only the local Unix socket exposes batch writes.

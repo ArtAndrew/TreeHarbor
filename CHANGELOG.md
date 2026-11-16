@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.1.24-alpha.1 — batch new source objects
+
+- The local importer and the Connected source bridge
+  [send independent file blobs in a batch](docs/source-blob-batches.md).
+  The server checks each frame and confirms membership after every object
+  is durable. An interrupted import can continue with its existing journal.
+- On the 8,195-file Linux ARM64 fixture, admission after local Git conversion
+  took 14.43–14.49 s with batches and 41.98–49.89 s on 0.1.23.
+  [Method and data](docs/benchmark-preparation.md#first-source-admission-with-blob-batches--16-november-2026).
+- The new client can import into a 0.1.23 server using single-object requests.
+  Both versions use schema 035. See the
+  [upgrade notes](docs/release-packaging.md#upgrade-from-0123-alpha1).
+- The signed 0.1.23 Linux ARM64 installation completed a real
+  [Connected and Standalone round trip](docs/implementation-status.md).
+  The native writer was fenced after return and the new connection passed
+  its read probe.
+
 ## 0.1.23-alpha.1 — reuse imported history and deploy with Docker
 
 - [Source imports](docs/source-uploads.md) and the [GitHub bridge](docs/github-import.md)
