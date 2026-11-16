@@ -7,9 +7,12 @@ fn preflight_digest(p: &cp::Preflight) -> Result<String> {
         .map_err(|_| Error::SchemaMismatch)
 }
 
-pub(in crate::github) async fn retained(tx: &Transaction<'_>, s: &Scope, r: &Row) -> Result<Value> {
+pub(in crate::github) async fn load_retained(
+    tx: &Transaction<'_>,
+    s: &Scope,
+    r: &Row,
+) -> Result<Option<(PolicyProof, ObjectId)>> {
     let id: Uuid = r.get("publication");
-    let mut v = json!({"version":1,"publication":id,"recorded":false,"proof":null,"digest":null,"merge_verified":false});
     if let Some(row) = tx.query_opt("SELECT * FROM th_github_check_dispatch_policy WHERE tenant=$1 AND repository=$2 AND publication=$3", &[&s.tenant(),&s.repository(),&id]).await? {
         let proof: PolicyProof = serde_json::from_value(row.get("proof")).map_err(|_| Error::SchemaMismatch)?;
         let digest: ObjectId = proof.digest().map_err(|_| Error::SchemaMismatch)?.parse()?;
@@ -24,11 +27,20 @@ pub(in crate::github) async fn retained(tx: &Transaction<'_>, s: &Scope, r: &Row
             || row.get::<_,Vec<u8>>("digest") != digest.as_bytes() {
             return Err(Error::SchemaMismatch);
         }
-        v["recorded"] = json!(true);
-        v["proof"] = json!(proof);
-        v["digest"] = json!(digest.to_string());
+        return Ok(Some((proof, digest)));
     }
-    Ok(v)
+    Ok(None)
+}
+
+pub(in crate::github) async fn retained(tx: &Transaction<'_>, s: &Scope, r: &Row) -> Result<Value> {
+    let (proof, digest) = match load_retained(tx, s, r).await? {
+        Some((proof, digest)) => (Some(proof), Some(digest.to_string())),
+        None => (None, None),
+    };
+    let id: Uuid = r.get("publication");
+    Ok(
+        json!({"version":1,"publication":id,"recorded":proof.is_some(),"proof":proof,"digest":digest,"merge_verified":false}),
+    )
 }
 
 async fn evaluate(

@@ -1,10 +1,10 @@
 # GitHub queue delivery (development)
 
 This development command requests the native GitHub merge queue, retains the
-provider's enqueue receipt and recovers observations after process
-loss. It does **not** yet verify final integration. An explicit
-[removal command](github-dequeue.md) adds remote dequeue;
-exact group/final-tree proof remains unfinished. Do not use this increment as a production merge controller.
+provider's enqueue receipt and recovers observations after process loss. The
+[removal command](github-dequeue.md) adds remote dequeue. The read-only
+[merge evidence request](github-admission-evidence.md#verify-an-observed-merge)
+can assess a supported single-member merge from its saved captures.
 
 ## Authorize a request
 
@@ -139,8 +139,9 @@ no-send evidence. The receipt permits a separately authorized dequeue request.
 by completion time. Neither establishes continuous membership of a mutable queue.
 `recorded_observation` in a report receipt acknowledges exactly the submitted
 record, including a late one. `merge_verified` and `host_policy_verified` remain
-false in this increment. Exit zero means an observation was stored, not that CI
-passed or the change merged. A pending report can recover without App configuration
+false in the queue delivery view. Exit zero acknowledges that the observation
+was stored. Use [merge evidence](github-admission-evidence.md#verify-an-observed-merge)
+for the separate final assessment. A pending report can recover without App configuration
 or credentials for GitHub, but still needs the original bridge's current TreeHarbor
 credential and authority epoch.
 

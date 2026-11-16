@@ -33,7 +33,7 @@ pub(super) async fn group_report(f: &QueueFixture) -> QueueObservation {
     r.validate(&f.target).unwrap();
     r
 }
-fn signed(name: &str) -> VerifiedDelivery {
+pub(super) fn signed(name: &str) -> VerifiedDelivery {
     let v: Value = serde_json::from_str(include_str!(
         "../../../github-webhook/tests/fixtures/vectors-v1.json"
     ))
@@ -57,7 +57,7 @@ fn signed(name: &str) -> VerifiedDelivery {
     )
     .unwrap()
 }
-async fn channel(f: &mut QueueFixture) -> Uuid {
+pub(super) async fn channel(f: &mut QueueFixture) -> Uuid {
     let probe = Uuid::new_v4();
     f.p.f
         .db

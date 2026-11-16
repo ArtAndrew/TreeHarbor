@@ -148,6 +148,17 @@ PostgreSQL, Docker/gVisor, bounded volumes and host access are separate prerequi
 Removing the CLI symlink and that version directory uninstalls the package; retain
 repository state and backups separately.
 
+### Upgrade from 0.1.24-alpha.1
+
+Both releases use schema 035. Stop the service and reporting bridges, then
+take a [cold backup](backup-restore.md) before installing 0.1.25 alongside
+0.1.24. Check the existing configuration with `doctor` and upgrade the
+service and reporting bridges together. Existing v8 queue publications
+remain readable. The new bridge records timestamps in v11 publications.
+If a rollback is needed after accepting a v11 report, retain the upgraded
+backup and its journals, then restore the pre-upgrade state before
+starting 0.1.24.
+
 ### Upgrade from 0.1.23-alpha.1
 
 Both releases use schema 035. Drain workers and stop the service before

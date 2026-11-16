@@ -142,6 +142,53 @@ completion timestamp. The comparison grants no authority and leaves
 capture, while `current_locally` reflects current trust and eligibility.
 [GitHub check API fields](https://docs.github.com/en/graphql/reference/checks#checkrun)
 
+## Verify an observed merge
+
+For a queue using `MERGE` and `ALLGREEN`, select the latest check capture
+and the latest v11 final-publication capture. Send this request with a
+repository reader credential through the same GitHub client command:
+
+```json
+{
+  "action": "queue_merge_evidence",
+  "epoch": 1,
+  "queue": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+  "check_sequence": 12,
+  "publication_sequence": 16
+}
+```
+
+The v4 response sets `merge_verified` for a supported single-member merge
+when all of the following evidence agrees:
+
+- The only retained member is at the observed base tip. GitHub reports the
+  exact candidate commit, tree and ordered parents for the original PR. That
+  commit belongs to the observed target history.
+- Each required check has a complete, currently attributable capture. The
+  selected provider ID and execution receipt match the candidate. The
+  completion times precede the reported merge time.
+- Each required check has a one-shot dispatch decision against the same,
+  still-active, owner-pinned policy. Its decision and configuration capture
+  precede the reported merge time. The retained reports and credentials
+  establish the origin of each decision and provider receipt.
+- The signed inbox contains the corresponding `checks_requested` and
+  `destroyed` with reason `merged` for the same group ref. Delivery order
+  has no bearing on the match. Additional or contradictory lifecycle facts
+  leave the merge unproven.
+
+The check and publication captures must be newest by both receipt and
+capture time. A later-arriving older capture cannot replace a newer result.
+Contradictory captures with equal timestamps leave the result unproven.
+Inspect `evidence.merge.reasons`, `check_dispatches` and the retained signed
+event identities for the basis of the assessment.
+
+This read describes a completed provider merge under the supported policy
+and trust assumptions. It can be evaluated after the candidate leaves the
+queue. Host reads have separate capture times, and the result grants no
+merge or dispatch permission. Squash, rebase, multiple members, workflow
+execution context and unproven review rules require separate evidence.
+The release gate also requires a live installed-App scenario.
+
 ## Encoding and recovery
 
 The digest is SHA-256 over `treeharbor-connected-check-set\0v1\0` followed by compact
@@ -154,6 +201,8 @@ and includes the host-policy assessment, its reasons and source trust. Independe
 encoding vectors cover all versions. Version 3 uses
 `treeharbor-connected-check-set\0v3\0` and additionally binds the exact
 publication's reported merge time, selected check completion times and source trust.
+Version 4 uses `treeharbor-connected-check-set\0v4\0` and also binds the merged
+group's signed event identities and every retained check dispatch decision.
 
 The evaluator writes no receipt, approval or outbox event. Identical retained inputs
 produce the same evidence after restart. Newly available receipt/file observations

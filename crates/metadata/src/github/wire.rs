@@ -197,6 +197,12 @@ pub enum WireCommand {
         publication_sequence: Option<i64>,
         host_policy_sequence: Option<i64>,
     },
+    QueueMergeEvidence {
+        epoch: i64,
+        queue: String,
+        check_sequence: i64,
+        publication_sequence: i64,
+    },
     AdmissionPolicyPlan {
         epoch: i64,
         binding: String,
@@ -750,7 +756,9 @@ impl WireCommand {
             Self::AdmissionPolicySet { .. } | Self::AdmissionPolicyPlan { .. } => {
                 Permission::PolicyWrite
             }
-            Self::AdmissionPolicy { .. } | Self::QueueAdmissionEvidence { .. } => Permission::Read,
+            Self::AdmissionPolicy { .. }
+            | Self::QueueAdmissionEvidence { .. }
+            | Self::QueueMergeEvidence { .. } => Permission::Read,
             Self::CheckPublicationRequest { .. } | Self::CheckPublicationCancel { .. } => {
                 Permission::HostQueue
             }
@@ -1160,14 +1168,29 @@ impl WireCommand {
                 publication_sequence,
                 host_policy_sequence,
             } => {
-                db.github_queue_admission_with_host_policy(
+                Box::pin(db.github_queue_admission_with_host_policy(
                     auth,
                     epoch,
                     id(&queue)?,
                     check_sequence,
                     publication_sequence,
                     host_policy_sequence,
-                )
+                ))
+                .await
+            }
+            Self::QueueMergeEvidence {
+                epoch,
+                queue,
+                check_sequence,
+                publication_sequence,
+            } => {
+                Box::pin(db.github_queue_merge_evidence(
+                    auth,
+                    epoch,
+                    id(&queue)?,
+                    check_sequence,
+                    publication_sequence,
+                ))
                 .await
             }
             Self::AdmissionPolicyPlan {

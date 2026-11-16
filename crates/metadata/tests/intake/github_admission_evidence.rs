@@ -127,7 +127,13 @@ impl Candidate {
         let (publisher, bridge) = actors(&mut f.p).await;
         f.request().await;
         let attempt = f.begin().await;
-        let membership = groups::group_report(&f).await;
+        let mut membership = groups::group_report(&f).await;
+        if full {
+            let capture = membership.group_capture.as_mut().unwrap();
+            for view in [&mut capture.before, &mut capture.after] {
+                view.main = view.members[0].entry.base.as_ref().unwrap().clone();
+            }
+        }
         f.p.f
             .db
             .report_github_queue(
@@ -493,6 +499,15 @@ impl Candidate {
             .f
             .db
             .github_queue_admission_evidence(&self.reader, 1, self.f.id, sequence, publication)
+            .await
+            .unwrap()
+    }
+    async fn evaluate_merge(&mut self, sequence: i64, publication: i64) -> Value {
+        self.f
+            .p
+            .f
+            .db
+            .github_queue_merge_evidence(&self.reader, 1, self.f.id, sequence, publication)
             .await
             .unwrap()
     }
@@ -943,6 +958,163 @@ async fn admission_evidence_distinguishes_early_late_and_unordered_check_times()
     assert_eq!(historical["evidence_digest"], digest);
     assert_eq!(historical["current_locally"], false);
     cleanup(&c.f.p.f.schema).await;
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL; join exact final publication, dispatched checks and signed events"]
+async fn final_merge_evidence_requires_current_captures_and_exact_signed_lifecycle() {
+    let mut c = Candidate::new_with_configuration(2, true).await;
+    let first = c.release(0, 0, 2, cp::Outcome::Observed).await;
+    let second = c.release(1, 0, 2, cp::Outcome::Observed).await;
+    let merge = c.f.report().await.finished_at_unix_ms + 4_000;
+    let mut captures = c.snapshot(&[first, second]);
+    for suite in &mut captures.before.suites {
+        suite.runs[0].completed_at_unix_ms = Some(merge - 1_000);
+    }
+    captures.after = captures.before.clone();
+    let checks = c.capture("final-checks", captures.clone()).await;
+    let publication = c
+        .final_publication("final-publication", 1, Some(merge))
+        .await;
+    groups::channel(&mut c.f).await;
+    // The two authenticated deliveries may arrive in reverse order.
+    c.f.p
+        .f
+        .db
+        .accept_github_event(Uuid::new_v4(), &groups::signed("destroyed-merged"))
+        .await
+        .unwrap();
+    let incomplete = c.evaluate_merge(checks, publication).await;
+    assert_eq!(incomplete["merge_verified"], false);
+    assert_eq!(
+        incomplete["evidence"]["merge"]["reasons"],
+        json!(["signed_merge_group_lifecycle_unproven"])
+    );
+    c.f.p
+        .f
+        .db
+        .accept_github_event(Uuid::new_v4(), &groups::signed("checks"))
+        .await
+        .unwrap();
+    let after_queue_removes_entry = c.f.report().await;
+    c.f.p
+        .f
+        .db
+        .report_github_queue(
+            &c.f.bridge,
+            &cmd("entry-no-longer-present"),
+            c.f.id,
+            c.attempt,
+            &after_queue_removes_entry,
+        )
+        .await
+        .unwrap();
+    let verified = c.evaluate_merge(checks, publication).await;
+    assert_eq!(verified["version"], 4);
+    assert_eq!(verified["merge_verified"], true, "{verified}");
+    assert_eq!(verified["current_locally"], false);
+    assert_eq!(
+        verified["evidence"]["merge"]["check_dispatches"]
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
+    let ordinary = c.evaluate(checks, Some(publication)).await;
+    assert_eq!(ordinary["version"], 3);
+    assert_eq!(ordinary["merge_verified"], false);
+    assert!(ordinary["evidence"].get("merge").is_none());
+    c.f.p.f.db = Metadata::new(connection(&c.f.p.f.schema).await)
+        .await
+        .unwrap();
+    assert_eq!(c.evaluate_merge(checks, publication).await, verified);
+
+    let raw = connection(&c.f.p.f.schema).await;
+    let prior: Value = raw
+        .query_one(
+            "SELECT report FROM th_github_queue_reports WHERE queue=$1 AND sequence=$2",
+            &[&c.f.id, &checks],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    // A later report of the same commit may expose a late check. Neither
+    // choosing the earlier report nor replaying it as a late arrival can certify.
+    captures.before.suites[0].runs[0].completed_at_unix_ms = Some(merge + 1_000);
+    captures.after = captures.before.clone();
+    let later = c.capture("later-final-check", captures).await;
+    let current = c.evaluate_merge(later, publication).await;
+    assert_eq!(current["merge_verified"], false);
+    assert_eq!(
+        current["evidence"]["publication"]["timing"]["reported_order"],
+        "after_merge"
+    );
+    let stale = c.evaluate_merge(checks, publication).await;
+    assert_eq!(stale["merge_verified"], false);
+    assert!(
+        stale["evidence"]["merge"]["reasons"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("newer_or_ambiguous_capture"))
+    );
+
+    let delayed = serde_json::from_value(prior).unwrap();
+    let delay_sequence =
+        c.f.p
+            .f
+            .db
+            .report_github_queue(
+                &c.f.bridge,
+                &cmd("delayed-old-final-checks"),
+                c.f.id,
+                c.attempt,
+                &delayed,
+            )
+            .await
+            .unwrap()["report_sequence"]
+            .as_i64()
+            .unwrap();
+    let delay = c.evaluate_merge(delay_sequence, publication).await;
+    assert_eq!(delay["merge_verified"], false);
+    assert!(
+        delay["evidence"]["merge"]["reasons"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("newer_or_ambiguous_capture"))
+    );
+
+    c.f.p
+        .f
+        .db
+        .accept_github_event(Uuid::new_v4(), &groups::signed("destroyed-invalidated"))
+        .await
+        .unwrap();
+    let conflict = c.evaluate_merge(later, publication).await;
+    assert_eq!(conflict["merge_verified"], false);
+    assert!(
+        conflict["evidence"]["merge"]["reasons"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("signed_merge_group_lifecycle_unproven"))
+    );
+    cleanup(&c.f.p.f.schema).await;
+}
+
+#[test]
+fn final_merge_wire_is_read_only_and_requires_the_exact_publication() {
+    let valid = json!({"action":"queue_merge_evidence","epoch":1,"queue":Uuid::new_v4(),
+        "check_sequence":1,"publication_sequence":2});
+    let request: WireCommand = serde_json::from_value(valid.clone()).unwrap();
+    assert_eq!(request.permission(), P::Read);
+    let mut without_publication = valid.clone();
+    without_publication
+        .as_object_mut()
+        .unwrap()
+        .remove("publication_sequence");
+    assert!(serde_json::from_value::<WireCommand>(without_publication).is_err());
+    let mut asserted = valid;
+    asserted["merge_verified"] = json!(true);
+    assert!(serde_json::from_value::<WireCommand>(asserted).is_err());
 }
 
 #[tokio::test]
