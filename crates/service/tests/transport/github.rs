@@ -19,6 +19,8 @@ mod events;
 mod git_workspace_runtime;
 #[path = "github/handoff_target.rs"]
 mod handoff_target;
+#[path = "github/import_reuse.rs"]
+mod import_reuse;
 #[path = "github/native_handoff.rs"]
 mod native_handoff;
 #[path = "github/projections.rs"]

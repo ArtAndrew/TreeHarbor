@@ -1,5 +1,6 @@
 use super::*;
 use serde::Deserialize;
+use treeharbor_core::RevisionRef;
 
 #[derive(Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
@@ -646,6 +647,11 @@ pub enum WireCommand {
         epoch: i64,
         import: String,
         native_commit: String,
+    },
+    ImportReuseBase {
+        epoch: i64,
+        import: String,
+        base: String,
     },
     ImportFinish {
         key: String,
@@ -1944,6 +1950,28 @@ impl WireCommand {
                 db.finish_github_import(auth, &Command { key, epoch }, id(&import)?)
                     .await
             }
+            Self::ImportReuseBase {
+                epoch,
+                import,
+                base,
+            } => {
+                let RevisionRef::Native(root) = base
+                    .parse()
+                    .map_err(|_| Error::Invalid("native import base"))?
+                else {
+                    return Err(Error::Invalid("native import base"));
+                };
+                if RevisionRef::Native(root).to_string() != base {
+                    return Err(Error::Invalid("native import base"));
+                }
+                let upload = id(&import)?;
+                let reused = db
+                    .reuse_github_source_base(auth, upload, root, epoch)
+                    .await?;
+                Ok(
+                    json!({"upload":upload,"epoch":epoch,"base":base,"objects":reused.objects,"bytes":reused.bytes}),
+                )
+            }
             Self::Bind {
                 key,
                 epoch,
@@ -2119,6 +2147,11 @@ mod tests {
             invalid["specification"][field] = json!("forbidden");
             assert!(serde_json::from_value::<WireCommand>(invalid).is_err());
         }
+        let reuse: WireCommand = serde_json::from_str(include_str!(
+            "../../tests/fixtures/github-import-reuse-v1.json"
+        ))
+        .unwrap();
+        assert_eq!(reuse.permission(), Permission::HostRead);
         for (action, permission) in [
             ("import_cancel", Permission::RepositoryWrite),
             ("import_status", Permission::Read),

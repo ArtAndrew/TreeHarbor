@@ -187,6 +187,93 @@ fn source_ancestors(
     Ok(reached)
 }
 
+pub(crate) enum ParentReuse {
+    Continue(BTreeSet<ObjectId>),
+    Rejected(Reply),
+}
+
+pub(crate) struct ParentReuseRequest<'a> {
+    pub socket: &'a Path,
+    pub credential: &'a Credential,
+    pub timeout: Duration,
+    pub upload: Uuid,
+    pub github_epoch: Option<i64>,
+}
+
+impl ParentReuseRequest<'_> {
+    pub(crate) async fn enroll(
+        &self,
+        store: &Arc<impl ObjectStore + Send + Sync + 'static>,
+        root: ObjectId,
+        pack_objects: usize,
+    ) -> Result<ParentReuse> {
+        let reader = Arc::clone(store);
+        let parent = tokio::task::spawn_blocking(move || -> Result<_> {
+            let Object::NativeCommit(commit) =
+                reader.get(root).map_err(crate::pack::Error::Object)?
+            else {
+                return Err(Error::ImportState);
+            };
+            Ok(commit.parents.first().copied())
+        })
+        .await
+        .map_err(|_| Error::ImportWorker)??;
+        let Some(parent) = parent else {
+            return Ok(ParentReuse::Continue(BTreeSet::new()));
+        };
+        let base = RevisionRef::Native(parent).to_string();
+        let command = if let Some(epoch) = self.github_epoch {
+            json!({"method":"github","request":{"action":"import_reuse_base","import":self.upload,"epoch":epoch,"base":base}})
+        } else {
+            json!({"method":"source_reuse_base","upload":self.upload,"base":base})
+        };
+        let reply = client::send(
+            self.socket,
+            &self.credential.token,
+            self.credential.request(command).to_string().into_bytes(),
+            self.timeout,
+        )
+        .await?;
+        if !reply.status.is_success() {
+            let status = (reply.status.as_u16(), reply.body["error"]["code"].as_str());
+            return Ok(
+                if matches!(
+                    status,
+                    (400, Some("invalid_request"))
+                        | (404, Some("not_found"))
+                        | (409, Some("upload_membership"))
+                        | (429, Some("upload_limit"))
+                ) || (self.github_epoch.is_none() && status == (403, Some("forbidden")))
+                {
+                    ParentReuse::Continue(BTreeSet::new())
+                } else {
+                    ParentReuse::Rejected(reply)
+                },
+            );
+        }
+        let result = &reply.body["result"];
+        if reply.body["version"] != 1
+            || result["upload"] != self.upload.to_string()
+            || result["base"] != base
+            || self
+                .github_epoch
+                .is_some_and(|epoch| result["epoch"] != epoch)
+        {
+            return Err(Error::Http);
+        }
+        let objects = result["objects"]
+            .as_u64()
+            .filter(|&n| n > 0 && n < pack_objects as u64)
+            .ok_or(Error::Http)? as usize;
+        let reader = Arc::clone(store);
+        let retained =
+            tokio::task::spawn_blocking(move || source_ancestors(reader.as_ref(), parent, objects))
+                .await
+                .map_err(|_| Error::ImportWorker)??;
+        Ok(ParentReuse::Continue(retained))
+    }
+}
+
 impl Transfer<'_> {
     async fn finish(&self) -> Result<Reply> {
         match &self.finish {
@@ -236,57 +323,28 @@ impl Transfer<'_> {
             return Ok(started);
         }
         let store = Arc::new(store);
-        let mut retained = BTreeSet::new();
-        if let Some(root) = self.source_root {
-            let reader = Arc::clone(&store);
-            let parent = tokio::task::spawn_blocking(move || -> Result<_> {
-                let Object::NativeCommit(commit) =
-                    reader.get(root).map_err(crate::pack::Error::Object)?
-                else {
-                    return Err(Error::ImportState);
-                };
-                Ok(commit.parents.first().copied())
-            })
-            .await
-            .map_err(|_| Error::ImportWorker)??;
-            if let Some(parent) = parent {
-                let base = RevisionRef::Native(parent).to_string();
-                let reply = self
-                    .command(
-                        &json!({"method":"source_reuse_base","upload": self.upload,"base": base}),
-                    )
-                    .await?;
-                if reply.status.is_success() {
-                    let result = &reply.body["result"];
-                    if reply.body["version"] != 1
-                        || result["upload"] != self.upload.to_string()
-                        || result["base"] != base
+        let retained = if let Some(root) = self.source_root {
+            let reuse = ParentReuseRequest {
+                socket: self.socket,
+                credential: self.credential,
+                timeout: self.timeout,
+                upload: self.upload,
+                github_epoch: None,
+            };
+            match reuse.enroll(&store, root, ids.len()).await? {
+                ParentReuse::Continue(retained) => retained,
+                ParentReuse::Rejected(reply) => {
+                    if reply.status.as_u16() == 409
+                        && reply.body["error"]["code"] == "upload_state_changed"
                     {
-                        return Err(Error::Http);
+                        return self.finish().await;
                     }
-                    let objects = result["objects"]
-                        .as_u64()
-                        .filter(|&n| n > 0 && n < ids.len() as u64)
-                        .ok_or(Error::Http)? as usize;
-                    let reader = Arc::clone(&store);
-                    retained = tokio::task::spawn_blocking(move || {
-                        source_ancestors(reader.as_ref(), parent, objects)
-                    })
-                    .await
-                    .map_err(|_| Error::ImportWorker)??;
-                } else {
-                    match (reply.status.as_u16(), reply.body["error"]["code"].as_str()) {
-                        (409, Some("upload_state_changed")) => return self.finish().await,
-                        (400, Some("invalid_request"))
-                        | (403, Some("forbidden"))
-                        | (404, Some("not_found"))
-                        | (409, Some("upload_membership"))
-                        | (429, Some("upload_limit")) => {}
-                        _ => return Ok(reply),
-                    }
+                    return Ok(reply);
                 }
             }
-        }
+        } else {
+            BTreeSet::new()
+        };
         for object in ids {
             if retained.contains(&object) {
                 continue;
