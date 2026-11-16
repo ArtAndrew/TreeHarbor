@@ -1965,9 +1965,9 @@ impl WireCommand {
                     return Err(Error::Invalid("native import base"));
                 }
                 let upload = id(&import)?;
-                let reused = db
-                    .reuse_github_source_base(auth, upload, root, epoch)
-                    .await?;
+                // Keep import admission's async state off the shared dispatcher stack.
+                let reused =
+                    Box::pin(db.reuse_github_source_base(auth, upload, root, epoch)).await?;
                 Ok(
                     json!({"upload":upload,"epoch":epoch,"base":base,"objects":reused.objects,"bytes":reused.bytes}),
                 )
