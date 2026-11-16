@@ -625,3 +625,73 @@ or `true` in the private `TH_TEST_CONNECTED_PREPARATION` JSON. The test measures
 local capture, imports through the local service and supplies the optional
 pack to the benchmark's Git-compatible node. Use new volumes and a new output
 path for every run. [Raw reports and exact input hashes](benchmarks/retained-git-pack-linux-arm64-20261110.json)
+
+## Reuse after the branch advances
+
+`--next-revision` runs the original revision, then one direct child, then
+one more batch at the original revision. The same node and source volume
+serve all three phases for native TreeHarbor workspaces. The Git worktree
+baseline uses the same private mirror and writable slot filesystems throughout.
+The probe checks every file, executable bit and symlink. Git workspaces must
+also match the exact commit and its ancestry.
+
+Use a local trusted SHA-1 fixture such as the two commits from the
+[adjacent-revision sample](#adjacent-revisions-on-signed-0116--10-november-2026).
+Provision four private ext4 slot mounts and one initially empty source mount
+with a `source/` directory as described in [the COW setup](experimental-cow.md#deployment-profile).
+Use 128 MiB mounts for this fixture, which allows both full images to fit on
+the source volume. Use a private database connection file and the verified
+installed TreeHarbor binary and COW helper.
+
+```sh
+python3 scripts/benchmark-workspace-preparation.py \
+  --binary "$TH_BINARY" --psql "$PSQL" --database-url-file "$DATABASE_URL_FILE" \
+  --repository "$FIXTURE" --revision "$BASE" --next-revision "$CHILD" \
+  --output "$RESULT" --concurrency 4 --iterations 6 --seed 721 \
+  --git-checkout-workers 2 --volume-limit-bytes 134217728 \
+  --workspace-volume "$SLOT0" --workspace-volume "$SLOT1" \
+  --workspace-volume "$SLOT2" --workspace-volume "$SLOT3" \
+  --cow-shared-node --cow-driver "$TH_COW_DRIVER" --cow-max-images 2 \
+  --cow-source-volume "$NATIVE_SOURCE"
+```
+
+The script creates a disposable Standalone repository in the local service.
+It loads each commit from a local bundle before that commit's first batch.
+The version 4 report includes separate capture and upload times, the Git
+commit for each preparation, cleanup observations, and total allocated bytes
+of the retained source images. TreeHarbor prepares file-only workspaces.
+The Git mirror already contains both commits. The operating system cache is
+uncontrolled. The probe excludes network fetch, agent execution and CI.
+
+### Signed 0.1.22 sample on Linux ARM64 – 16 November 2026
+
+The released binary ran on a two-CPU Linux VM with Git 2.43.0 and PostgreSQL
+18.6. Each batch prepared four workspaces from the same 8,195-file tree.
+The child changes eight files. The table shows time until all four workspaces
+read one file. Each repeat median comes from five batches. The final batch
+reopened the parent after the child had been prepared and cleaned up.
+
+| Batch | TreeHarbor native | Git worktree |
+| --- | ---: | ---: |
+| Parent, first | 547 ms | 453 ms |
+| Parent, repeat median | 159 ms | 435 ms |
+| Child, first | 661 ms | 498 ms |
+| Child, repeat median | 204 ms | 460 ms |
+| Return to parent | 182 ms | 436 ms |
+| Sum of all 13 batches | 3.22 s | 5.99 s |
+
+The first batch on either revision takes longer with TreeHarbor. Repeat
+batches benefit from the retained image, including when revisiting the
+parent. The two source images occupy about 66.4 MiB. The per-workspace
+cleanup medians were 62 ms for TreeHarbor and 247 ms for Git worktree;
+TreeHarbor cleanup was serialized and Git cleanup ran in parallel.
+
+Initial local Git conversion and upload to the TreeHarbor service took
+5.05 s and 45.91 s for the parent, and 5.05 s and 54.31 s for the child.
+These are separate from the preparation table. The Git baseline already
+has both commits in its mirror. Source admission dominates the new-revision
+time in this local profile. The results apply to local file preparation and
+import for file-only TreeHarbor workspaces.
+
+[Raw observations](benchmarks/native-adjacent-revisions-linux-arm64-20261116.json) ·
+[Verified binary](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.22-alpha.1)
