@@ -33,12 +33,12 @@ changes over HTTPS. [Controller guide](docs/remote-tasks-v1.md) ·
 ## Reuse the source between tasks
 
 [Copy-on-write workspaces](docs/experimental-cow.md) reuse prepared source and
-give each agent a writable layer. In a Linux ARM64 development benchmark with
-four workspaces and 8,195 files, reusing the imported Git pack cut first
-preparation from **1.70–1.73 s to 0.85–0.87 s** after import. Git worktree
-took **about 0.51 s** on those first reuse runs. Repeat batches took
-**0.14–0.16 s** with TreeHarbor and **about 0.65 s** with Git worktree.
-[Method and raw data](docs/benchmark-preparation.md#reusing-the-pack-from-import--10-november-2026)
+give each agent a writable layer. With **16 concurrent workspaces** and
+8,195 files on a Linux ARM64 VM, a first file read took **0.61 s** at the
+median with TreeHarbor and **2.27 s** with cached Git worktree. Source was
+already local, and TreeHarbor used file-only workspaces. Its initial local
+Git import took **51 s** separately.
+[Method and raw data](docs/benchmark-preparation.md#signed-0123-sample-with-16-concurrent-tasks--16-november-2026)
 
 ## What inspired it
 

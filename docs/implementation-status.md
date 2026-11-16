@@ -155,9 +155,20 @@ The host continues to enforce its own CI and review policy after unarchival.
 The PostgreSQL transport drill covers both authority changes, real Git bundle
 export, stale and mismatched observations, rollback, exact replay after
 restart, old-epoch refusal and preparation of a retained proposal in the new
-epoch. External host observations in this drill come from fixtures. Live
-destination preparation, GitHub reactivation and a full migration trial
-remain release gates.
+epoch. External host observations in this transport drill come from fixtures.
+
+On November 16, 2026, the signed Linux ARM64 0.1.23 alpha completed one
+Connected → Standalone → Connected trial on a test GitHub repository. It
+imported 13 branches and eight open pulls, landed the test change after an
+exact check and review, and froze its native refs. Ordinary Git verified the
+export of all 13 tips before one test branch advanced on GitHub. After a
+service restart, the archived destination matched the projection. TreeHarbor
+activated Connected, replay returned the same receipt, and the old native
+writer was refused. GitHub was unarchived and the new binding passed its read
+probe. Publication and queue verification on that binding and a live repeat
+transfer after new GitHub history are open.
+[Signed release](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.23-alpha.1) ·
+[Test PR](https://github.com/TreeHarbor/TreeHarbor-acceptance/pull/11)
 
 ### Repeat transfer after GitHub advances — 0.1.22-alpha.1
 
