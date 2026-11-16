@@ -154,11 +154,13 @@ pub(crate) async fn reserve_in(
     if updated != 1 {
         return Err(Error::ReceiptMismatch);
     }
-    tx.execute(
-        "UPDATE th_objects SET orphaned_at=NULL WHERE tenant=$1 AND digest=$2",
-        &[&tenant, &digest],
-    )
-    .await?;
+    if !inserted && state != "deleted" {
+        tx.execute(
+            "UPDATE th_objects SET orphaned_at=NULL WHERE tenant=$1 AND digest=$2",
+            &[&tenant, &digest],
+        )
+        .await?;
+    }
     Ok(ObjectLease {
         key: ObjectKey {
             tenant: tenant.into(),
@@ -233,15 +235,17 @@ pub(crate) async fn publish_in(
         children.push(bytes(child));
         generations.push(row.get::<_, i64>(1));
     }
-    tx.execute("INSERT INTO th_object_edges (tenant,parent,parent_generation,child,child_generation) SELECT $1,$2,$3,child,generation FROM unnest($4::bytea[],$5::bigint[]) AS edges(child,generation) ON CONFLICT DO NOTHING",
+    if !children.is_empty() {
+        tx.execute("INSERT INTO th_object_edges (tenant,parent,parent_generation,child,child_generation) SELECT $1,$2,$3,child,generation FROM unnest($4::bytea[],$5::bigint[]) AS edges(child,generation) ON CONFLICT DO NOTHING",
             &[&key.tenant,&digest,&key.generation,&children,&generations]).await?;
+        tx.execute(
+            "UPDATE th_objects SET orphaned_at=NULL WHERE tenant=$1 AND digest=ANY($2::bytea[])",
+            &[&key.tenant, &children],
+        )
+        .await?;
+    }
     tx.execute(
-        "UPDATE th_objects SET orphaned_at=NULL WHERE tenant=$1 AND digest=ANY($2::bytea[])",
-        &[&key.tenant, &digests],
-    )
-    .await?;
-    tx.execute(
-        "UPDATE th_objects SET state='live' WHERE tenant=$1 AND digest=$2",
+        "UPDATE th_objects SET state='live',orphaned_at=NULL WHERE tenant=$1 AND digest=$2",
         &[&key.tenant, &digest],
     )
     .await?;

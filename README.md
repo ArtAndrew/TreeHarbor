@@ -39,7 +39,7 @@ median with TreeHarbor and **2.27 s** with cached Git worktree. Source was
 already local, and TreeHarbor used file-only workspaces. In that 0.1.23 run,
 the initial local Git import took **51 s**.
 [Method and raw data](docs/benchmark-preparation.md#signed-0123-sample-with-16-concurrent-tasks--16-november-2026)
-· [Source import with batches](docs/benchmark-preparation.md#first-source-admission-with-blob-batches--16-november-2026)
+· [Four-task results including first import](docs/benchmark-preparation.md#signed-0124-sample-with-four-concurrent-tasks--16-november-2026)
 
 ## What inspired it
 
