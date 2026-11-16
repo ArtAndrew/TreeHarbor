@@ -1,5 +1,6 @@
 use super::*;
 use serde::Deserialize;
+use std::{future::Future, pin::Pin};
 use treeharbor_core::RevisionRef;
 
 #[derive(Deserialize)]
@@ -842,7 +843,36 @@ impl WireCommand {
             _ => Permission::HostRead,
         }
     }
-    pub async fn execute(
+    pub fn execute<'a>(
+        self,
+        db: &'a mut Metadata,
+        auth: &'a Authorization,
+        backend: Option<&'a str>,
+    ) -> Pin<Box<dyn Future<Output = Result<Value>> + Send + 'a>> {
+        // A queue report validates nested evidence. Select it before polling
+        // the general dispatcher, whose stack frame includes other commands.
+        match self {
+            Self::QueueReport {
+                key,
+                epoch,
+                queue,
+                attempt,
+                report,
+            } => Box::pin(async move {
+                db.report_github_queue(
+                    auth,
+                    &Command { key, epoch },
+                    id(&queue)?,
+                    id(&attempt)?,
+                    &report,
+                )
+                .await
+            }),
+            request => Box::pin(request.execute_general(db, auth, backend)),
+        }
+    }
+
+    async fn execute_general(
         self,
         db: &mut Metadata,
         auth: &Authorization,
@@ -1554,24 +1584,7 @@ impl WireCommand {
                 db.begin_github_queue(auth, &Command { key, epoch }, id(&queue)?, id(&attempt)?)
                     .await
             }
-            Self::QueueReport {
-                key,
-                epoch,
-                queue,
-                attempt,
-                report,
-            } => {
-                // Workflow/candidate report validation has a large async state;
-                // keep it out of the shared GitHub dispatcher stack.
-                Box::pin(db.report_github_queue(
-                    auth,
-                    &Command { key, epoch },
-                    id(&queue)?,
-                    id(&attempt)?,
-                    &report,
-                ))
-                .await
-            }
+            Self::QueueReport { .. } => unreachable!("queue reports have their own dispatcher"),
             Self::QueueCancel { key, epoch, queue } => {
                 db.cancel_github_queue(auth, &Command { key, epoch }, id(&queue)?)
                     .await
@@ -1965,9 +1978,9 @@ impl WireCommand {
                     return Err(Error::Invalid("native import base"));
                 }
                 let upload = id(&import)?;
-                // Keep import admission's async state off the shared dispatcher stack.
-                let reused =
-                    Box::pin(db.reuse_github_source_base(auth, upload, root, epoch)).await?;
+                let reused = db
+                    .reuse_github_source_base(auth, upload, root, epoch)
+                    .await?;
                 Ok(
                     json!({"upload":upload,"epoch":epoch,"base":base,"objects":reused.objects,"bytes":reused.bytes}),
                 )
