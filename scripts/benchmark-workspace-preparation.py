@@ -28,6 +28,7 @@ parser.add_argument('--database-url-file', type=Path,
 parser.add_argument('--connected-fixture', type=Path, help=argparse.SUPPRESS)
 parser.add_argument('--repository', required=True, type=Path, help='local Git fixture repository')
 parser.add_argument('--revision', required=True, help='exact commit to capture')
+parser.add_argument('--next-revision', help='also test a direct child, then return to the first revision on the same node')
 parser.add_argument('--output', required=True, type=Path)
 parser.add_argument('--iterations', type=int, default=5)
 parser.add_argument('--concurrency', type=int, default=1)
@@ -55,6 +56,11 @@ if args.cow_driver and (not volumes or not args.cow_driver.is_absolute()):
     parser.error('the local overlay experiment requires guarded volumes and an absolute driver path')
 if args.cow_shared_node and not args.cow_driver:
     parser.error('shared preparation requires the local overlay experiment')
+rotation = args.next_revision is not None
+if rotation and (args.connected_fixture or args.cow_max_images is None
+                 or not all(re.fullmatch(r'[0-9a-fA-F]{40}', revision)
+                            for revision in (args.revision, args.next_revision))):
+    parser.error('--next-revision requires local database setup, two full SHA-1 revisions and --cow-max-images')
 source_volumes = [path.resolve() for path in args.cow_source_volume]
 if source_volumes and (not args.cow_shared_node
                        or len(source_volumes) != (2 if args.connected_fixture else 1)
@@ -74,7 +80,7 @@ if args.connected_fixture:
     connected = json.loads(args.connected_fixture.read_text())
 else:
     if not args.psql or not args.database_url_file:
-        parser.error('provide --psql and --database-url-file for the standalone benchmark')
+        parser.error('provide --psql and --database-url-file for a disposable local database')
     PSQL = args.psql.resolve()
     if args.database_url_file.stat().st_mode & 0o077:
         parser.error('database URL file must not be accessible to group or other users')
@@ -88,8 +94,12 @@ if not GIT:
     parser.error('Git is required for the benchmark input and baselines')
 
 authority = 'connected' if connected else 'standalone'
-SYSTEMS = (('treeharbor', 'treeharbor-git', 'git-worktree') if connected
-           else ('treeharbor', 'git-worktree', 'git-shared-clone', 'git-full-clone'))
+if connected:
+    SYSTEMS = ('treeharbor', 'treeharbor-git', 'git-worktree')
+elif rotation:
+    SYSTEMS = ('treeharbor', 'git-worktree')
+else:
+    SYSTEMS = ('treeharbor', 'git-worktree', 'git-shared-clone', 'git-full-clone')
 TIMINGS = ('files_ready_seconds', 'first_read_seconds', 'cleanup_seconds')
 
 def run(*args):
@@ -146,25 +156,52 @@ with tempfile.TemporaryDirectory(prefix='th-import-') as tmp, ExitStack() as pla
                 time.sleep(.05)
         scope = ['--tenant', tenant, '--repository', repo_id]
         repository = args.repository.resolve()
+        def git_fixture(commit):
+            entries = run(GIT, '-C', repository, 'ls-tree', '-r', '-l', '-z', commit).split(b'\0')
+            fixture_bytes = 0
+            fixture = {'revision': commit, 'files': []}
+            for entry in filter(None, entries):
+                meta, path = entry.split(b'\t', 1)
+                mode, kind, oid, size = meta.split()
+                if kind != b'blob' or mode not in (b'100644', b'100755', b'120000'):
+                    raise RuntimeError('fixture contains an unsupported entry such as a submodule')
+                fixture_bytes += int(size)
+                if fixture_bytes > args.max_fixture_bytes:
+                    raise RuntimeError('fixture exceeds the configured byte limit')
+                fixture['files'].append({'path': path.decode('utf-8'), 'mode': mode.decode(),
+                                         'hex': run(GIT, '-C', repository, 'cat-file', 'blob', oid.decode()).hex()})
+            if not fixture['files']:
+                raise RuntimeError('fixture must contain files')
+            return fixture, fixture_bytes
+
         revision = run(GIT, '-C', repository, 'rev-parse', '--verify', args.revision + '^{commit}').decode().strip()
-        entries = run(GIT, '-C', repository, 'ls-tree', '-r', '-l', '-z', revision).split(b'\0')
-        fixture_bytes = 0
-        fixture = {'revision': revision, 'files': []}
-        for entry in filter(None, entries):
-            meta, path = entry.split(b'\t', 1)
-            mode, kind, oid, size = meta.split()
-            if kind != b'blob' or mode not in (b'100644', b'100755', b'120000'):
-                raise RuntimeError('fixture contains an unsupported entry such as a submodule')
-            fixture_bytes += int(size)
-            if fixture_bytes > args.max_fixture_bytes:
-                raise RuntimeError('fixture exceeds the configured byte limit')
-            fixture['files'].append({'path': path.decode('utf-8'), 'mode': mode.decode(),
-                                    'hex': run(GIT, '-C', repository, 'cat-file', 'blob', oid.decode()).hex()})
-        if not fixture['files']:
-            raise RuntimeError('fixture must contain files')
+        fixture, fixture_bytes = git_fixture(revision)
+        first_revision = revision
+        fixture_by_revision = {revision: (fixture, fixture_bytes)}
+        wave_revisions = [revision] * args.iterations
+        if rotation:
+            next_revision = run(GIT, '-C', repository, 'rev-parse', '--verify',
+                                args.next_revision + '^{commit}').decode().strip()
+            parents = run(GIT, '-C', repository, 'rev-list', '--parents', '-n', '1', next_revision).decode().split()
+            if parents != [next_revision, first_revision]:
+                raise RuntimeError('the next revision must have the first revision as its only parent')
+            fixture_by_revision[next_revision] = git_fixture(next_revision)
+            wave_revisions += [next_revision] * args.iterations + [first_revision]
         setup = {}
         git_import_pack = None
         retained_pack_hash = None
+
+        def upload_pack(pack, journal):
+            command = [BIN, 'client', '--socket', socket, '--credential-file', credential,
+                       'source-import', '--pack', pack, '--state', journal,
+                       '--authority', authority, '--epoch', '1']
+            start = time.perf_counter()
+            reply = json.loads(run(*command))['result']
+            seconds = time.perf_counter() - start
+            if reply['state'] != 'completed' or json.loads(run(*command))['result'] != reply:
+                raise RuntimeError('source upload did not return a stable completion receipt')
+            return reply['revision'], seconds
+
         if connected:
             if connected['git_revision'].rsplit(':', 1)[-1] != revision:
                 raise RuntimeError('the imported Git commit differs from the benchmark fixture')
@@ -177,7 +214,7 @@ with tempfile.TemporaryDirectory(prefix='th-import-') as tmp, ExitStack() as pla
                 retained_pack_hash = hashlib.sha256(pack_file.read_bytes()).hexdigest()
                 setup['retained_git_pack_bytes'] = pack_file.stat().st_size
                 setup['retained_git_pack_sha256'] = retained_pack_hash
-        else:
+        elif not rotation:
             source = root/'source'
             source.mkdir(mode=0o700)
             for f in fixture['files']:
@@ -198,23 +235,14 @@ with tempfile.TemporaryDirectory(prefix='th-import-') as tmp, ExitStack() as pla
             json.loads(run(BIN, 'source-pack', '--directory', source, '--output', root/'pack',
                  '--author-name', 'Benchmark', '--author-email', 'benchmark@example.invalid', *paths))
             setup['snapshot_pack_seconds'] = time.perf_counter()-start
-            command = [BIN, 'client', '--socket', socket, '--credential-file', credential,
-                       'source-import', '--pack', root/'pack', '--state', root/'import.json',
-                       '--authority', authority, '--epoch', '1']
-            start = time.perf_counter()
-            reply = json.loads(run(*command))
-            setup['native_import_seconds'] = time.perf_counter()-start
-            assert reply['result']['state']=='completed'
-            replay = json.loads(run(*command))
-            assert replay['result']==reply['result']
-            native_revision = reply['result']['revision']
+            native_revision, setup['native_import_seconds'] = upload_pack(root/'pack', root/'import.json')
         def client(*parts):
             return json.loads(run(BIN, 'client', '--socket', socket,
                                   '--credential-file', credential, *parts))
         profile = client('profile-put', '--key', 'bench-full', '--authority', authority,
                          '--epoch', '1', '--full')['result']['profile_digest']
         node_grants = ['--permission', 'runtime.control']
-        node_systems = ('treeharbor', 'treeharbor-git') if connected else ('treeharbor',)
+        node_systems = ('treeharbor', 'treeharbor-git') if authority == 'connected' else ('treeharbor',)
         nodes = {}
         for system in node_systems:
             for lane in range(args.concurrency):
@@ -283,10 +311,24 @@ with tempfile.TemporaryDirectory(prefix='th-import-') as tmp, ExitStack() as pla
         start = time.perf_counter()
         git('clone', '--mirror', '--no-hardlinks', '--template=', repository, mirror)
         mirror_seconds = time.perf_counter()-start
-        expected_history = git('-C', mirror, 'rev-list', revision) if connected else None
-        useful = next((f for f in fixture['files'] if f['mode'] in ('100644','100755')), None)
-        if useful is None:
-            raise RuntimeError('fixture needs at least one regular file for the useful read')
+        imports = {}
+        if rotation:
+            bundle = root/'revisions.bundle'
+            start = time.perf_counter()
+            git('-C', mirror, 'bundle', 'create', bundle, '--branches')
+            setup['git_bundle_seconds'] = time.perf_counter() - start
+            setup['git_bundle_bytes'] = bundle.stat().st_size
+
+        def import_revision(commit):
+            pack = root / f'pack-{commit}'
+            start = time.perf_counter()
+            json.loads(run(BIN, 'git-import', '--bundle', bundle, '--git', Path(GIT).absolute(),
+                           '--commit', f'git:sha1:{commit}', '--output', pack))
+            capture_seconds = time.perf_counter() - start
+            imported, upload_seconds = upload_pack(pack, root / f'import-{commit}.json')
+            return {'native_revision': imported, 'git_capture_seconds': capture_seconds,
+                    'native_import_seconds': upload_seconds}
+
         def read_useful(path):
             if (path/useful['path']).read_bytes() != bytes.fromhex(useful['hex']):
                 raise RuntimeError('first useful read differs from pinned input')
@@ -383,7 +425,7 @@ with tempfile.TemporaryDirectory(prefix='th-import-') as tmp, ExitStack() as pla
             observation['first_read_seconds'] = time.perf_counter() - start
             return path, workspace, generation, observation
 
-        def prepare_shared(system, wave, order, workers):
+        def prepare_shared(system, wave, order, workers, first_for_revision):
             start = time.perf_counter()
             requests = list(workers.map(request_workspace, [system] * args.concurrency))
             requested = time.perf_counter()
@@ -402,8 +444,8 @@ with tempfile.TemporaryDirectory(prefix='th-import-') as tmp, ExitStack() as pla
                 raise RuntimeError('shared preparation response does not match its exact requests')
             if len({row.get('path') for row in results}) != args.concurrency:
                 raise RuntimeError('shared preparation did not publish distinct placements')
-            if sum(row.get('preparation_statistics') is not None for row in results) != int(wave == 0):
-                raise RuntimeError('shared preparation did not build exactly one source image')
+            if sum(row.get('preparation_statistics') is not None for row in results) != int(first_for_revision):
+                raise RuntimeError('shared preparation did not build or reuse the expected source image')
             prepared = []
             for lane, (workspace, generation) in enumerate(requests):
                 observation = {'wave': wave, 'order': order, 'lane': lane, 'system': system}
@@ -437,21 +479,37 @@ with tempfile.TemporaryDirectory(prefix='th-import-') as tmp, ExitStack() as pla
         observations = []
         batches = []
         rng = random.Random(args.seed)
+        seen_revisions = set()
         with ThreadPoolExecutor(max_workers=args.concurrency) as workers:
-            for wave in range(args.iterations):
+            for wave, revision in enumerate(wave_revisions):
+                first_for_revision = revision not in seen_revisions
+                seen_revisions.add(revision)
+                if rotation:
+                    if first_for_revision:
+                        imports[revision] = import_revision(revision)
+                    native_revision = imports[revision]['native_revision']
+                fixture, _ = fixture_by_revision[revision]
+                useful = next((f for f in fixture['files'] if f['mode'] in ('100644', '100755')), None)
+                if useful is None:
+                    raise RuntimeError('fixture needs at least one regular file for the useful read')
+                expected_history = git('-C', mirror, 'rev-list', revision) if connected or rotation else None
                 order = list(SYSTEMS)
                 rng.shuffle(order)
                 for index, system in enumerate(order):
                     start = time.perf_counter()
                     shared = args.cow_shared_node and system in node_systems
                     if shared:
-                        prepared_cases = prepare_shared(system, wave, index, workers)
+                        prepared_cases = prepare_shared(system, wave, index, workers, first_for_revision)
                     else:
                         prepared_cases = list(workers.map(
                             lambda lane: prepare(system, wave, index, lane), range(args.concurrency)))
                     batches.append({'wave': wave, 'order': index, 'system': system,
                                     'all_first_reads_seconds': time.perf_counter() - start})
+                    if rotation:
+                        batches[-1].update(source_revision=revision, first_batch_for_revision=first_for_revision)
                     for path, _, _, observation in prepared_cases:
+                        if rotation:
+                            observation.update(source_revision=revision, first_batch_for_revision=first_for_revision)
                         verify(path)
                         observation['workspace_allocated_bytes'] = allocated(path)
                         observation['git_metadata_allocated_bytes'] = 0
@@ -460,7 +518,7 @@ with tempfile.TemporaryDirectory(prefix='th-import-') as tmp, ExitStack() as pla
                             observation['git_metadata_allocated_bytes'] = allocated(git_dir)
                             if system == 'git-worktree':
                                 observation['git_metadata_allocated_bytes'] += allocated(path/'.git')
-                            if connected:
+                            if expected_history is not None:
                                 if (git('-C', path, 'rev-parse', 'HEAD').decode().strip() != revision
                                         or git('-C', path, 'rev-list', 'HEAD') != expected_history):
                                     raise RuntimeError('Git workspace history differs from the fixture')
@@ -478,7 +536,7 @@ with tempfile.TemporaryDirectory(prefix='th-import-') as tmp, ExitStack() as pla
                                     if actual_pack_hash != retained_pack_hash:
                                         raise RuntimeError('workspace did not install the exact retained import pack')
                                     observation['verified_retained_git_pack'] = True
-                        elif connected and (path/'.git').exists():
+                        elif (connected or rotation) and (path/'.git').exists():
                             raise RuntimeError('file-only workspace contains Git metadata')
                         observation['verified_bytes_modes_paths'] = True
                     observations.extend(map(cleanup, prepared_cases) if shared
@@ -493,8 +551,9 @@ with tempfile.TemporaryDirectory(prefix='th-import-') as tmp, ExitStack() as pla
 
         medians = {system: summarize(system, statistics.median) for system in SYSTEMS}
         tails = {system: summarize(system, sample_p95) for system in SYSTEMS}
-        report={'version':3,'scope':'local-connected-preparation' if connected else 'local-full-file-preparation',
-            'source_revision':revision,'binary_sha256':hashlib.sha256(BIN.read_bytes()).hexdigest(),
+        fixture, fixture_bytes = fixture_by_revision[first_revision]
+        report={'version':3,'scope':'local-connected-preparation' if authority == 'connected' else 'local-full-file-preparation',
+            'source_revision':first_revision,'binary_sha256':hashlib.sha256(BIN.read_bytes()).hexdigest(),
             'binary_version':run(BIN,'--version').decode().strip(),
             'platform':platform.platform(),'machine':platform.machine(),'logical_cpus':os.cpu_count(),
             'git_version':git('--version').decode().strip(),
@@ -512,7 +571,7 @@ with tempfile.TemporaryDirectory(prefix='th-import-') as tmp, ExitStack() as pla
                      'git_mirror_allocated_bytes':allocated(mirror)},
             'observations':observations,'batches':batches,'sample_medians':medians,'sample_p95':tails,
             'limitations':['full files only; source already loaded on the same host',
-                ('Connected import completes before the measured phase' if connected
+                ('Full source import completes before the measured phase' if connected or rotation
                  else 'TreeHarbor snapshot vs Git full-history mirror; setup costs not directly equivalent'),
                 'no runtime, LLM, CI, GitHub, measured transport bytes or cold-cache claim',
                 'p95 is a nearest-rank sample statistic and is absent below 20 observations per system',
@@ -531,6 +590,14 @@ with tempfile.TemporaryDirectory(prefix='th-import-') as tmp, ExitStack() as pla
             report['treeharbor_source_placement'] = 'dedicated-ext4' if source_volumes else 'node-parent-filesystem'
         if args.cow_shared_node:
             report['limitations'].append('One node per format prepares concurrently; files are read after the whole batch reply and cleanup runs serially on that node')
+        if rotation:
+            report.update(version=4, scope='local-native-adjacent-revisions',
+                          wave_revisions=wave_revisions, revision_imports=imports)
+            report['limitations'].extend([
+                'The local Git mirror already contains both revisions; no GitHub fetch or incremental network update is measured',
+                'TreeHarbor uses file-only workspaces; the Git baseline includes per-workspace Git metadata',
+                'The last batch revisits the first revision; no two revisions are prepared in the same batch',
+            ])
     finally:
         if server is not None:
             server.terminate()
