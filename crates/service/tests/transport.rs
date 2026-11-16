@@ -21,6 +21,8 @@ mod native;
 mod proposals;
 #[path = "transport/review.rs"]
 mod review;
+#[path = "transport/source_batch.rs"]
+mod source_batch;
 #[path = "transport/workspace_new.rs"]
 mod workspace_new;
 use serde_json::{Value, json};

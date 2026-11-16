@@ -13,6 +13,8 @@ use treeharbor_core::{ObjectId, RevisionRef};
 use treeharbor_storage::{DurableObject, ManagedStore, PreparedObject};
 use uuid::Uuid;
 
+pub const SOURCE_BLOB_BATCH_OBJECTS: usize = 32;
+
 pub struct UploadLimits {
     pub objects: i64,
     pub bytes: i64,
@@ -36,7 +38,7 @@ pub struct UploadTicket {
     purpose: Purpose,
 }
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Purpose {
+pub enum Purpose {
     Human,
     Github,
 }
@@ -111,6 +113,9 @@ async fn membership(
     upload: Uuid,
     refs: &[(ObjectId, u8)],
 ) -> Result<()> {
+    if refs.is_empty() {
+        return Ok(());
+    }
     let mut expected = std::collections::BTreeMap::new();
     for &(id, kind) in refs {
         if expected.insert(id, kind).is_some_and(|old| old != kind) {
@@ -252,6 +257,38 @@ impl Metadata {
         object: &PreparedObject,
         purpose: Purpose,
     ) -> Result<UploadTicket> {
+        let mut tickets = self
+            .reserve_source_objects(auth, upload, store, std::slice::from_ref(object), purpose)
+            .await?;
+        tickets.pop().ok_or(Error::SchemaMismatch)
+    }
+    /// Blob-only batches acquire catalogue locks in digest order. No part of
+    /// the batch can reserve capacity if a frame or current fence is invalid.
+    pub async fn reserve_source_blob_batch(
+        &mut self,
+        auth: &Authorization,
+        upload: Uuid,
+        store: &ManagedStore,
+        objects: &[PreparedObject],
+        purpose: Purpose,
+    ) -> Result<Vec<UploadTicket>> {
+        if !(1..=SOURCE_BLOB_BATCH_OBJECTS).contains(&objects.len())
+            || objects.iter().any(|object| object.kind() != 1)
+            || objects.windows(2).any(|pair| pair[0].id() >= pair[1].id())
+        {
+            return Err(Error::Invalid("source blob batch"));
+        }
+        self.reserve_source_objects(auth, upload, store, objects, purpose)
+            .await
+    }
+    async fn reserve_source_objects(
+        &mut self,
+        auth: &Authorization,
+        upload: Uuid,
+        store: &ManagedStore,
+        objects: &[PreparedObject],
+        purpose: Purpose,
+    ) -> Result<Vec<UploadTicket>> {
         let tx = self.client.transaction().await?;
         settings(&tx).await?;
         lock_authorized(&tx, auth, purpose).await?;
@@ -260,54 +297,66 @@ impl Metadata {
         if store.tenant() != s.tenant || store.backend() != row.get::<_, String>(0) {
             return Err(Error::ReceiptMismatch);
         }
-        membership(&tx, s, upload, object.references()).await?;
-        let digest = object.id().as_bytes().to_vec();
-        let old=tx.query_opt("SELECT hold_token,generation FROM th_source_upload_items WHERE tenant=$1 AND repository=$2 AND upload=$3 AND digest=$4", &[&s.tenant,&s.repository,&upload,&digest]).await?;
-        let token = old.as_ref().map(|r| r.get(0)).unwrap_or_else(Uuid::new_v4);
-        if old.is_none()
-            && (row.get::<_, i64>(5) >= row.get::<_, i64>(3)
-                || object.length() as i64 > row.get::<_, i64>(4) - row.get::<_, i64>(6))
-        {
-            return Err(Error::UploadLimit);
-        }
-        let lease = reserve_in(&tx, store, object, token, 3600).await?;
-        if let Some(old) = old {
-            if lease.key().generation() != old.get::<_, i64>(1) {
-                return Err(Error::UploadState);
+        let mut tickets = Vec::with_capacity(objects.len());
+        let mut added_objects = 0_i64;
+        let mut added_bytes = 0_i64;
+        let remaining_objects = row.get::<_, i64>(3) - row.get::<_, i64>(5);
+        let remaining_bytes = row.get::<_, i64>(4) - row.get::<_, i64>(6);
+        for object in objects {
+            membership(&tx, s, upload, object.references()).await?;
+            let digest = object.id().as_bytes().to_vec();
+            let old=tx.query_opt("SELECT hold_token,generation FROM th_source_upload_items WHERE tenant=$1 AND repository=$2 AND upload=$3 AND digest=$4", &[&s.tenant,&s.repository,&upload,&digest]).await?;
+            let token = old.as_ref().map(|r| r.get(0)).unwrap_or_else(Uuid::new_v4);
+            let length = object.length() as i64;
+            if old.is_none()
+                && (added_objects >= remaining_objects || length > remaining_bytes - added_bytes)
+            {
+                return Err(Error::UploadLimit);
             }
-        } else {
-            let snapshot = object.commit_snapshot().map(|id| id.as_bytes().to_vec());
-            tx.execute("INSERT INTO th_source_upload_items(tenant,repository,upload,digest,generation,hold_token,kind,length,snapshot) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)", &[&s.tenant,&s.repository,&upload,&digest,&lease.key().generation(),&token,&(object.kind() as i16),&(object.length() as i64),&snapshot]).await?;
-            if let Some(origin) = object.commit_git_origin() {
-                // Migration 016 introduced this column. Preserve the ordinary
-                // upload path when constructing or upgrading a legacy database.
-                let stores_origin = purpose == Purpose::Github
-                    || tx
-                        .query_one(
-                            "SELECT EXISTS(SELECT 1 FROM th_schema_version WHERE singleton AND version>=16)",
-                            &[],
-                        )
-                        .await?
-                        .get::<_, bool>(0);
-                if stores_origin {
-                    let git_origin = RevisionRef::Git(origin).to_string();
-                    tx.execute("UPDATE th_source_upload_items SET git_origin=$5 WHERE tenant=$1 AND repository=$2 AND upload=$3 AND digest=$4",
-                        &[&s.tenant,&s.repository,&upload,&digest,&git_origin]).await?;
+            let lease = reserve_in(&tx, store, object, token, 3600).await?;
+            if let Some(old) = old {
+                if lease.key().generation() != old.get::<_, i64>(1) {
+                    return Err(Error::UploadState);
                 }
+            } else {
+                let snapshot = object.commit_snapshot().map(|id| id.as_bytes().to_vec());
+                tx.execute("INSERT INTO th_source_upload_items(tenant,repository,upload,digest,generation,hold_token,kind,length,snapshot) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)", &[&s.tenant,&s.repository,&upload,&digest,&lease.key().generation(),&token,&(object.kind() as i16),&length,&snapshot]).await?;
+                if let Some(origin) = object.commit_git_origin() {
+                    // Migration 016 introduced this column.
+                    let stores_origin = purpose == Purpose::Github
+                        || tx
+                            .query_one(
+                                "SELECT EXISTS(SELECT 1 FROM th_schema_version WHERE singleton AND version>=16)",
+                                &[],
+                            )
+                            .await?
+                            .get::<_, bool>(0);
+                    if stores_origin {
+                        let git_origin = RevisionRef::Git(origin).to_string();
+                        tx.execute("UPDATE th_source_upload_items SET git_origin=$5 WHERE tenant=$1 AND repository=$2 AND upload=$3 AND digest=$4",
+                            &[&s.tenant,&s.repository,&upload,&digest,&git_origin]).await?;
+                    }
+                }
+                added_objects += 1;
+                added_bytes += length;
             }
-            tx.execute("UPDATE th_source_uploads SET reserved_objects=reserved_objects+1,reserved_bytes=reserved_bytes+$4 WHERE tenant=$1 AND repository=$2 AND upload=$3", &[&s.tenant,&s.repository,&upload,&(object.length() as i64)]).await?;
+            tickets.push(UploadTicket {
+                upload,
+                lease,
+                purpose,
+            });
         }
-        // Retrying an object may never extend its session's fixed deadline.
-        tx.execute("UPDATE th_object_holds h SET expires_at=u.expires_at FROM th_source_uploads u WHERE u.tenant=$1 AND u.repository=$2 AND u.upload=$3 AND h.tenant=u.tenant AND h.token=$4", &[&s.tenant,&s.repository,&upload,&token]).await?;
+        if added_objects > 0 {
+            tx.execute("UPDATE th_source_uploads SET reserved_objects=reserved_objects+$4,reserved_bytes=reserved_bytes+$5 WHERE tenant=$1 AND repository=$2 AND upload=$3", &[&s.tenant,&s.repository,&upload,&added_objects,&added_bytes]).await?;
+        }
+        // Retrying a frame may never extend the session's fixed deadline.
+        let tokens: Vec<_> = tickets.iter().map(|ticket| ticket.lease.token()).collect();
+        tx.execute("UPDATE th_object_holds h SET expires_at=u.expires_at FROM th_source_uploads u WHERE u.tenant=$1 AND u.repository=$2 AND u.upload=$3 AND h.tenant=u.tenant AND h.token=ANY($4::uuid[])", &[&s.tenant,&s.repository,&upload,&tokens]).await?;
         active_for(&tx, auth, upload, purpose).await?;
         auth.check_transaction(&tx, s, auth.principal(), purpose.permission())
             .await?;
         tx.commit().await?;
-        Ok(UploadTicket {
-            upload,
-            lease,
-            purpose,
-        })
+        Ok(tickets)
     }
     pub async fn publish_source_object(
         &mut self,
@@ -334,28 +383,73 @@ impl Metadata {
         receipt: &DurableObject,
         purpose: Purpose,
     ) -> Result<()> {
-        if ticket.purpose != purpose {
+        self.publish_source_objects(
+            auth,
+            std::slice::from_ref(ticket),
+            std::slice::from_ref(receipt),
+            purpose,
+        )
+        .await
+    }
+    /// Publish membership only after every blob in the bounded batch is durable.
+    pub async fn publish_source_blob_batch(
+        &mut self,
+        auth: &Authorization,
+        tickets: &[UploadTicket],
+        receipts: &[DurableObject],
+        purpose: Purpose,
+    ) -> Result<()> {
+        if !(1..=SOURCE_BLOB_BATCH_OBJECTS).contains(&tickets.len())
+            || receipts.iter().any(|receipt| receipt.kind() != 1)
+            || tickets
+                .windows(2)
+                .any(|pair| pair[0].lease.key().id() >= pair[1].lease.key().id())
+        {
+            return Err(Error::Invalid("source blob batch"));
+        }
+        self.publish_source_objects(auth, tickets, receipts, purpose)
+            .await
+    }
+    async fn publish_source_objects(
+        &mut self,
+        auth: &Authorization,
+        tickets: &[UploadTicket],
+        receipts: &[DurableObject],
+        purpose: Purpose,
+    ) -> Result<()> {
+        let upload = tickets.first().ok_or(Error::ReceiptMismatch)?.upload;
+        if tickets.len() != receipts.len() {
+            return Err(Error::ReceiptMismatch);
+        }
+        if tickets
+            .iter()
+            .any(|ticket| ticket.purpose != purpose || ticket.upload != upload)
+        {
             return Err(Error::Forbidden);
         }
         let tx = self.client.transaction().await?;
         settings(&tx).await?;
         lock_authorized(&tx, auth, purpose).await?;
         let s = auth.scope();
-        active_for(&tx, auth, ticket.upload, purpose).await?;
-        if s.tenant != ticket.lease.key().tenant() {
-            return Err(Error::ReceiptMismatch);
+        active_for(&tx, auth, upload, purpose).await?;
+        let mut digests = Vec::with_capacity(tickets.len());
+        for (ticket, receipt) in tickets.iter().zip(receipts) {
+            if s.tenant != ticket.lease.key().tenant() {
+                return Err(Error::ReceiptMismatch);
+            }
+            let digest = ticket.lease.key().id().as_bytes().to_vec();
+            let item=tx.query_opt("SELECT generation,hold_token FROM th_source_upload_items WHERE tenant=$1 AND repository=$2 AND upload=$3 AND digest=$4", &[&s.tenant,&s.repository,&upload,&digest]).await?.ok_or(Error::UploadMembership)?;
+            if item.get::<_, i64>(0) != ticket.generation()
+                || item.get::<_, Uuid>(1) != ticket.lease.token()
+            {
+                return Err(Error::ReceiptMismatch);
+            }
+            membership(&tx, s, upload, receipt.references()).await?;
+            publish_in(&tx, &ticket.lease, receipt).await?;
+            digests.push(digest);
         }
-        let digest = ticket.lease.key().id().as_bytes().to_vec();
-        let item=tx.query_opt("SELECT generation,hold_token FROM th_source_upload_items WHERE tenant=$1 AND repository=$2 AND upload=$3 AND digest=$4", &[&s.tenant,&s.repository,&ticket.upload,&digest]).await?.ok_or(Error::UploadMembership)?;
-        if item.get::<_, i64>(0) != ticket.generation()
-            || item.get::<_, Uuid>(1) != ticket.lease.token()
-        {
-            return Err(Error::ReceiptMismatch);
-        }
-        membership(&tx, s, ticket.upload, receipt.references()).await?;
-        publish_in(&tx, &ticket.lease, receipt).await?;
-        tx.execute("UPDATE th_source_upload_items SET complete=true WHERE tenant=$1 AND repository=$2 AND upload=$3 AND digest=$4", &[&s.tenant,&s.repository,&ticket.upload,&digest]).await?;
-        active_for(&tx, auth, ticket.upload, purpose).await?;
+        tx.execute("UPDATE th_source_upload_items SET complete=true WHERE tenant=$1 AND repository=$2 AND upload=$3 AND digest=ANY($4::bytea[])", &[&s.tenant,&s.repository,&upload,&digests]).await?;
+        active_for(&tx, auth, upload, purpose).await?;
         auth.check_transaction(&tx, s, auth.principal(), purpose.permission())
             .await?;
         tx.commit().await?;

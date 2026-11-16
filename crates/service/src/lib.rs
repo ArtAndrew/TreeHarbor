@@ -33,6 +33,7 @@ mod review;
 mod seals;
 pub mod server;
 mod source;
+mod source_batch;
 mod source_checkout;
 mod source_export;
 mod source_read;

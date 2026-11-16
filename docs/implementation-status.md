@@ -1,5 +1,10 @@
 # Implementation status
 
+Source import batches consecutive blob frames over the local Unix socket.
+Each bounded batch shares reservation and publication transactions while
+keeping the existing upload budget and object durability checks. See the
+[versioned request and replay rules](source-blob-batches.md).
+
 Updated: 2026-11-16. This file describes implemented behavior and remaining release
 gates. A foundation milestone does not complete either mode.
 

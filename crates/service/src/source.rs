@@ -1,16 +1,17 @@
 //! Binary source-object upload adapter. Files and PostgreSQL remain separate
 //! durability domains; only final authenticated publication creates membership.
-use crate::{Error, Result, config::StorageConfig, database::Database, files};
+use crate::{Error, Result, config::StorageConfig, database::Database, files, source_batch};
 use deadpool::managed::Pool;
 use http_body_util::{BodyExt, Limited};
 use hyper::{Request, body::Incoming};
 use std::{fs, sync::Arc, time::Duration};
-use tokio::sync::Semaphore;
+use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use treeharbor_core::{FRAME_HEADER, MAX_PAYLOAD, ObjectId};
 use treeharbor_metadata::{
     Scope,
-    access::{Permission, SecretToken},
+    access::{Authorization, Permission, SecretToken},
     commands::CommandError,
+    uploads::Purpose,
 };
 use treeharbor_storage::{ManagedStore, PreparedObject, TenantId};
 use uuid::Uuid;
@@ -60,7 +61,7 @@ impl Backend {
 pub(crate) struct Route {
     scope: Scope,
     upload: Uuid,
-    object: ObjectId,
+    object: Option<ObjectId>,
     change: bool,
     github: bool,
 }
@@ -71,25 +72,47 @@ impl Route {
 }
 pub(crate) fn route(path: &str) -> Option<Route> {
     let parts: Vec<_> = path.split('/').collect();
-    if parts.len() != 9
-        || parts[1] != "v1"
-        || !matches!(parts[2], "source" | "changes" | "github")
-        || parts[5] != "uploads"
-        || parts[7] != "objects"
-    {
-        return None;
-    }
-    let repo: Uuid = parts[4].parse().ok()?;
-    let upload: Uuid = parts[6].parse().ok()?;
-    if repo.to_string() != parts[4] || upload.to_string() != parts[6] {
+    let (purpose, tenant, repo, upload, object) = match parts.as_slice() {
+        [
+            "",
+            "v1",
+            purpose @ ("source" | "changes" | "github"),
+            tenant,
+            repo,
+            "uploads",
+            upload,
+            "objects",
+            object,
+        ] => (
+            *purpose,
+            *tenant,
+            *repo,
+            *upload,
+            Some(object.parse().ok()?),
+        ),
+        [
+            "",
+            "v1",
+            purpose @ ("source" | "github"),
+            tenant,
+            repo,
+            "uploads",
+            upload,
+            "blobs",
+        ] => (*purpose, *tenant, *repo, *upload, None),
+        _ => return None,
+    };
+    let repository: Uuid = repo.parse().ok()?;
+    let upload_id: Uuid = upload.parse().ok()?;
+    if repository.to_string() != repo || upload_id.to_string() != upload {
         return None;
     }
     Some(Route {
-        scope: Scope::new(parts[3], repo).ok()?,
-        upload,
-        object: parts[8].parse().ok()?,
-        change: parts[2] == "changes",
-        github: parts[2] == "github",
+        scope: Scope::new(tenant, repository).ok()?,
+        upload: upload_id,
+        object,
+        change: purpose == "changes",
+        github: purpose == "github",
     })
 }
 pub(crate) struct Failure {
@@ -182,9 +205,14 @@ pub(crate) async fn put(
         .clone()
         .try_acquire_owned()
         .map_err(|_| fail(503, "upload_busy"))?;
+    let limit = if route.object.is_some() {
+        MAX_PAYLOAD + FRAME_HEADER
+    } else {
+        source_batch::MAX_BYTES
+    };
     let bytes = match tokio::time::timeout(
         Duration::from_secs(5),
-        Limited::new(request.into_body(), MAX_PAYLOAD + FRAME_HEADER).collect(),
+        Limited::new(request.into_body(), limit).collect(),
     )
     .await
     {
@@ -197,16 +225,27 @@ pub(crate) async fn put(
     };
     let tenant = route.scope.tenant().to_owned();
     let config = backend.config;
-    let (store, object, permit) = tokio::task::spawn_blocking(move || {
-        let object = PreparedObject::from_frame(route.object, bytes.to_vec())
-            .map_err(|_| fail(400, "invalid_object"))?;
+    let (store, mut objects, permit) = tokio::task::spawn_blocking(move || {
+        let objects = match route.object {
+            Some(id) => vec![
+                PreparedObject::from_frame(id, bytes.to_vec())
+                    .map_err(|_| fail(400, "invalid_object"))?,
+            ],
+            None => {
+                source_batch::decode(&bytes).ok_or_else(|| fail(400, "invalid_object_batch"))?
+            }
+        };
         let tenant = TenantId::new(&tenant).map_err(|_| fail(400, "invalid_request"))?;
         let store = ManagedStore::open(config.root, tenant, &config.backend)
             .map_err(|_| fail(500, "storage_error"))?;
-        Ok::<_, Failure>((store, object, permit))
+        Ok::<_, Failure>((store, objects, permit))
     })
     .await
     .map_err(|_| fail(500, "storage_error"))??;
+    if route.object.is_none() {
+        return put_blobs(route, auth, store, objects, permit, pool).await;
+    }
+    let object = objects.pop().ok_or_else(|| fail(500, "storage_error"))?;
     let mut db = pool
         .get()
         .await
@@ -271,4 +310,53 @@ pub(crate) async fn put(
     Ok(
         serde_json::json!({"version":1,"result":{"object":receipt.id().to_string(),"state":"stored"}}),
     )
+}
+
+async fn put_blobs(
+    route: Route,
+    auth: Authorization,
+    store: ManagedStore,
+    objects: Vec<PreparedObject>,
+    permit: OwnedSemaphorePermit,
+    pool: Pool<Database>,
+) -> std::result::Result<serde_json::Value, Failure> {
+    let purpose = if route.github {
+        Purpose::Github
+    } else {
+        Purpose::Human
+    };
+    let mut db = pool
+        .get()
+        .await
+        .map_err(|_| fail(503, "database_unavailable"))?;
+    let tickets = db
+        .metadata
+        .reserve_source_blob_batch(&auth, route.upload, &store, &objects, purpose)
+        .await
+        .map_err(metadata)?;
+    drop(db);
+    let (tickets, receipts, _permit) = tokio::task::spawn_blocking(move || {
+        let receipts = tickets
+            .iter()
+            .zip(&objects)
+            .map(|(ticket, object)| store.put(ticket.generation(), object))
+            .collect::<treeharbor_core::Result<Vec<_>>>()
+            .map_err(|_| fail(500, "storage_error"))?;
+        Ok::<_, Failure>((tickets, receipts, permit))
+    })
+    .await
+    .map_err(|_| fail(500, "storage_error"))??;
+    let mut db = pool
+        .get()
+        .await
+        .map_err(|_| fail(503, "database_unavailable"))?;
+    db.metadata
+        .publish_source_blob_batch(&auth, &tickets, &receipts, purpose)
+        .await
+        .map_err(metadata)?;
+    let ids: Vec<_> = receipts
+        .iter()
+        .map(|receipt| receipt.id().to_string())
+        .collect();
+    Ok(serde_json::json!({"version":1,"result":{"objects":ids,"state":"stored"}}))
 }

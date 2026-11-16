@@ -4,12 +4,13 @@ use crate::{
     client::{self, Credential, Reply},
     files,
     pack::Pack,
+    source_batch,
 };
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
 use std::{collections::BTreeSet, fs::File, path::Path, sync::Arc, time::Duration};
 use treeharbor_core::{Object, ObjectId, ObjectStore, RevisionRef};
-use treeharbor_metadata::Authority;
+use treeharbor_metadata::{Authority, uploads::Purpose};
 use uuid::Uuid;
 
 #[derive(Serialize, Deserialize)]
@@ -157,6 +158,150 @@ pub(crate) struct Transfer<'a> {
     pub begin: Value,
     pub finish: Finish,
     pub source_root: Option<ObjectId>,
+}
+
+pub(crate) struct UploadFrames<'a> {
+    pub socket: &'a Path,
+    pub credential: &'a Credential,
+    pub timeout: Duration,
+    pub upload: Uuid,
+    pub purpose: Purpose,
+}
+
+impl UploadFrames<'_> {
+    async fn send_one(&self, id: ObjectId, frame: Vec<u8>) -> Result<Option<Reply>> {
+        let reply = match self.purpose {
+            Purpose::Human => {
+                client::send_object(
+                    self.socket,
+                    self.credential,
+                    self.upload,
+                    id,
+                    frame,
+                    self.timeout,
+                )
+                .await?
+            }
+            Purpose::Github => {
+                client::send_github_source_object(
+                    self.socket,
+                    self.credential,
+                    self.upload,
+                    id,
+                    frame,
+                    self.timeout,
+                )
+                .await?
+            }
+        };
+        if !reply.status.is_success() {
+            return Ok(Some(reply));
+        }
+        if reply.body["version"] != 1
+            || reply.body["result"]["object"] != id.to_string()
+            || reply.body["result"]["state"] != "stored"
+        {
+            return Err(Error::Http);
+        }
+        Ok(None)
+    }
+
+    async fn flush(
+        &self,
+        blobs: &mut Vec<(ObjectId, Vec<u8>)>,
+        batch_available: &mut bool,
+    ) -> Result<Option<Reply>> {
+        if blobs.len() > 1 && *batch_available {
+            blobs.sort_unstable_by_key(|frame| frame.0);
+            let reply = client::send_source_blobs(
+                self.socket,
+                self.credential,
+                self.upload,
+                blobs,
+                self.timeout,
+                self.purpose,
+            )
+            .await?;
+            if reply.status.is_success() {
+                let ids: Vec<_> = blobs.iter().map(|(id, _)| id.to_string()).collect();
+                if reply.body["version"] != 1
+                    || reply.body["result"]["objects"] != json!(ids)
+                    || reply.body["result"]["state"] != "stored"
+                {
+                    return Err(Error::Http);
+                }
+                blobs.clear();
+                return Ok(None);
+            }
+            if reply.status.as_u16() != 404 || reply.body["error"]["code"] != "not_found" {
+                return Ok(Some(reply));
+            }
+            // Old servers have no batch route. A timeout or failure after the
+            // request reached a new server must use the normal import replay.
+            *batch_available = false;
+        }
+        for (id, frame) in blobs.drain(..) {
+            if let Some(rejection) = self.send_one(id, frame).await? {
+                return Ok(Some(rejection));
+            }
+        }
+        Ok(None)
+    }
+
+    pub(crate) async fn send(
+        &self,
+        ids: Vec<ObjectId>,
+        store: Arc<impl ObjectStore + Send + Sync + 'static>,
+        retained: &BTreeSet<ObjectId>,
+    ) -> Result<Option<Reply>> {
+        let mut blobs = Vec::with_capacity(source_batch::MAX_OBJECTS);
+        let mut bytes = source_batch::HEADER_BYTES;
+        let mut batch_available = true;
+        for id in ids {
+            if retained.contains(&id) {
+                continue;
+            }
+            let reader = Arc::clone(&store);
+            let (is_blob, frame) = tokio::task::spawn_blocking(move || {
+                let object = reader.get(id)?;
+                Ok::<_, treeharbor_core::Error>((
+                    matches!(object, Object::Blob(_)),
+                    object.encode()?,
+                ))
+            })
+            .await
+            .map_err(|_| Error::ImportWorker)?
+            .map_err(crate::pack::Error::Object)?;
+            let size = source_batch::LENGTH_BYTES + frame.len();
+            if batch_available
+                && is_blob
+                && source_batch::HEADER_BYTES + size <= source_batch::MAX_BYTES
+            {
+                if blobs.len() == source_batch::MAX_OBJECTS
+                    || bytes + size > source_batch::MAX_BYTES
+                {
+                    if let Some(rejection) = self.flush(&mut blobs, &mut batch_available).await? {
+                        return Ok(Some(rejection));
+                    }
+                    bytes = source_batch::HEADER_BYTES;
+                }
+                if batch_available {
+                    blobs.push((id, frame));
+                    bytes += size;
+                    continue;
+                }
+            } else if !blobs.is_empty() {
+                if let Some(rejection) = self.flush(&mut blobs, &mut batch_available).await? {
+                    return Ok(Some(rejection));
+                }
+                bytes = source_batch::HEADER_BYTES;
+            }
+            if let Some(rejection) = self.send_one(id, frame).await? {
+                return Ok(Some(rejection));
+            }
+        }
+        self.flush(&mut blobs, &mut batch_available).await
+    }
 }
 
 fn source_ancestors(
@@ -345,38 +490,18 @@ impl Transfer<'_> {
         } else {
             BTreeSet::new()
         };
-        for object in ids {
-            if retained.contains(&object) {
-                continue;
-            }
-            let reader = Arc::clone(&store);
-            let frame = tokio::task::spawn_blocking(move || reader.get(object)?.encode())
-                .await
-                .map_err(|_| Error::ImportWorker)?
-                .map_err(crate::pack::Error::Object)?;
-            let reply = client::send_object(
-                self.socket,
-                self.credential,
-                self.upload,
-                object,
-                frame,
-                self.timeout,
-            )
-            .await?;
-            if !reply.status.is_success() {
-                if reply.status.as_u16() == 409
-                    && reply.body["error"]["code"] == "upload_state_changed"
-                {
-                    return self.finish().await;
-                }
-                return Ok(reply);
-            }
-            if reply.body["version"] != 1
-                || reply.body["result"]["object"] != object.to_string()
-                || reply.body["result"]["state"] != "stored"
-            {
-                return Err(Error::Http);
-            }
+        let sender = UploadFrames {
+            socket: self.socket,
+            credential: self.credential,
+            timeout: self.timeout,
+            upload: self.upload,
+            purpose: Purpose::Human,
+        };
+        if let Some(reply) = sender.send(ids, store, &retained).await?
+            && (reply.status.as_u16() != 409
+                || reply.body["error"]["code"] != "upload_state_changed")
+        {
+            return Ok(reply);
         }
         self.finish().await
     }
