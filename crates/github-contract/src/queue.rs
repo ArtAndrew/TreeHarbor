@@ -353,9 +353,10 @@ fn is_false(value: &bool) -> bool {
 impl QueueObservation {
     pub fn validate(&self, t: &QueueTarget) -> Result<()> {
         t.validate()?;
-        if !matches!(self.version, 1..=10)
+        let timed_publication = self.version == crate::publication::TIMED_OBSERVATION_VERSION;
+        if (!matches!(self.version, 1..=10) && !timed_publication)
             || matches!(self.version, 9 | 10) != self.host_policy.is_some()
-            || (self.version == 8) != self.publication.is_some()
+            || (self.version == 8 || timed_publication) != self.publication.is_some()
             || (self.version == 7) != self.workflow_definition.is_some()
             || (self.mutation_not_sent
                 && (self.version < 2
@@ -440,8 +441,7 @@ impl QueueObservation {
             d.validate(t)?;
         }
         if let Some(p) = &self.publication {
-            if self.version != 8
-                || self.workflow_definition.is_some()
+            if self.workflow_definition.is_some()
                 || self.group_attempt.is_some()
                 || self.group_checks.is_some()
                 || self.group_capture.is_some()
@@ -454,6 +454,16 @@ impl QueueObservation {
                 return Err(InvalidEvidence);
             }
             p.validate(t)?;
+            for snapshot in [&p.before, &p.after] {
+                if (timed_publication && snapshot.pull.merged)
+                    != snapshot.merged_at_unix_ms.is_some()
+                    || snapshot
+                        .merged_at_unix_ms
+                        .is_some_and(|at| at > self.finished_at_unix_ms.saturating_add(15_000))
+                {
+                    return Err(InvalidEvidence);
+                }
+            }
         }
         if let Some(r) = &self.enqueue_receipt {
             if self.version != 3

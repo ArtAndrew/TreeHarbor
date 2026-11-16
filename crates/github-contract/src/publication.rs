@@ -2,6 +2,8 @@
 use crate::{groups::*, queue::*, *};
 use std::collections::BTreeMap;
 
+pub const TIMED_OBSERVATION_VERSION: u8 = 11;
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct Target {
@@ -47,12 +49,18 @@ pub struct Snapshot {
     pub pull: PullState,
     pub main: GitCommitObservation,
     pub final_commit: Option<CommitParents>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub merged_at_unix_ms: Option<i64>,
 }
 impl Snapshot {
     fn validate(&self, t: &QueueTarget) -> Result<()> {
         self.pull.validate(&t.pull)?;
         self.main.validate()?;
-        if self.pull.merged != self.final_commit.is_some() {
+        if self.pull.merged != self.final_commit.is_some()
+            || self
+                .merged_at_unix_ms
+                .is_some_and(|at| !self.pull.merged || at <= 0)
+        {
             return Err(InvalidEvidence);
         }
         if let Some(c) = &self.final_commit {

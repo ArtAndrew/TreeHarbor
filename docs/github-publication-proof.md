@@ -58,6 +58,12 @@ Concurrent target movement, an open PR, an unrelated final commit, divergent or
 behind history produce no positive match. Malformed or contradictory identities,
 missing objects, truncated parent lists and API failures reject collection.
 
+The bridge reads GitHub's `mergedAt` in both snapshots. A merged PR needs a
+positive timestamp within the capture clock bound. Changed timestamps between
+the reads leave the exact result unproven. The [candidate evidence reader](github-admission-evidence.md#check-timing-relative-to-merge)
+can compare this timestamp with the selected check runs' reported completion
+times.
+
 The result describes the observed interval, not an atomic lock on GitHub. A later
 force-push, policy change or failed rerun cannot be ruled out by an old capture.
 This read does not update the latest queue snapshot or transfer validations to a
@@ -70,8 +76,12 @@ payload, 128KiB per provider response and the existing bounded capture deadline.
 A large comparison response can exceed that cap and remain unverified; the
 collector does not silently omit data or fetch provider-supplied URLs.
 
-Version8 is an exclusive queue observation payload. Earlier report versions keep
-their bytes and meaning. The server resolves the original membership under the
+Queue observation v11 retains `merged_at_unix_ms` for each merged snapshot.
+Legacy v8 observations remain readable with no merge timestamp. Both versions
+are exclusive payloads and cannot be mixed with a queue snapshot or check report.
+Upgrade the bridge and service together to capture v11. The
+[encoding example](../crates/github-contract/tests/fixtures/publication-v11.json)
+fixes the wire shape. The server resolves the original membership under the
 same tenant, repository, queue, binding and authority epoch, rechecks the assigned
 bridge, and retains reports with idempotent transaction/outbox completion.
 Retiring a binding preserves historical reporting by its assigned, still-authorized

@@ -5,6 +5,12 @@ Each bounded batch shares reservation and publication transactions while
 keeping the existing upload budget and object durability checks. See the
 [versioned request and replay rules](source-blob-batches.md).
 
+Connected publication capture retains GitHub's merge timestamp in both reads.
+The [candidate evidence reader](github-admission-evidence.md#check-timing-relative-to-merge)
+links reported completion times to the exact selected check IDs and candidate.
+Passed checks reported after the merge are distinguishable from checks reported
+before it. Missing times and same-time observations remain unproven.
+
 Updated: 2026-11-16. This file describes implemented behavior and remaining release
 gates. A foundation milestone does not complete either mode.
 

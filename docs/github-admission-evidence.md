@@ -119,6 +119,29 @@ Current eligibility is based on retained provider observations. This read does n
 contact GitHub and is not an atomic transaction with the host. Final dispatch still
 needs the normal live provider checks; this endpoint grants none.
 
+## Check timing relative to merge
+
+A [publication capture v11](github-publication-proof.md#what-a-positive-match-establishes)
+adds `evidence.publication.timing` and produces evidence v3, with or without a
+complete host-policy capture. The merge time belongs to the exact matching
+membership, source head, final commit, tree and ordered parents. The timing
+record identifies each linked check by its opaque GitHub node ID.
+
+- `before_merge` means the complete selected check set reports completion
+  strictly before the merge, with attributable membership, check and publication
+  captures whose provider tokens were revoked and whose submitters remain trusted.
+- `after_merge` means a linked check reports a strictly later completion time
+  in a complete set under the same trusted capture conditions.
+- `unproven` covers missing timestamps, equality at GitHub's timestamp
+  precision, different candidate identity, or unproven sources. An incomplete
+  set cannot establish `before_merge`.
+
+These are comparisons of reported times. GitHub Apps can set their check
+completion timestamp. The comparison grants no authority and leaves
+`merge_verified` false. Historical evidence remains selectable after a later
+capture, while `current_locally` reflects current trust and eligibility.
+[GitHub check API fields](https://docs.github.com/en/graphql/reference/checks#checkrun)
+
 ## Encoding and recovery
 
 The digest is SHA-256 over `treeharbor-connected-check-set\0v1\0` followed by compact
@@ -128,7 +151,9 @@ program order, followed by canonical workflow order. IDs and integer values reta
 their exact representation. Current eligibility fields are outside this historical
 digest for version 1. Version 2 uses `treeharbor-connected-check-set\0v2\0`
 and includes the host-policy assessment, its reasons and source trust. Independent
-encoding vectors cover both versions.
+encoding vectors cover all versions. Version 3 uses
+`treeharbor-connected-check-set\0v3\0` and additionally binds the exact
+publication's reported merge time, selected check completion times and source trust.
 
 The evaluator writes no receipt, approval or outbox event. Identical retained inputs
 produce the same evidence after restart. Newly available receipt/file observations
