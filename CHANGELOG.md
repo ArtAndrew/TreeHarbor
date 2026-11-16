@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.25-alpha.1 — verify a completed GitHub merge
+
+- [`queue_merge_evidence`](docs/github-admission-evidence.md#verify-an-observed-merge)
+  links the published commit, tree and parents to the exact required checks,
+  dispatch decisions and signed events for one merge group. The reader covers
+  a single member under an owner-pinned `MERGE`/`ALLGREEN` policy. PostgreSQL
+  tests cover the join and rejection of later or conflicting captures. A live
+  trial of this full policy profile is pending.
+- [Upgrade from 0.1.24](docs/release-packaging.md#upgrade-from-0124-alpha1).
+  Both releases use schema 035. Keep a cold backup for rollback after writing
+  the new timed publication reports.
+
 ## 0.1.24-alpha.1 — batch new source objects
 
 - The local importer and the Connected source bridge

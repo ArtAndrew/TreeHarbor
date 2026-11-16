@@ -792,3 +792,36 @@ Both mixed-version combinations also imported and recovered the exact commit
 on a smaller fixture.
 
 [Raw comparison](benchmarks/source-blob-batches-linux-arm64-20261116.json)
+
+### Signed 0.1.24 sample with four concurrent tasks – 16 November 2026
+
+The signed Linux ARM64 package ran the same 8,195-file adjacent-revision
+fixture on a two-CPU VM with Git 2.43.0 and PostgreSQL 18.6. The command
+above used `--concurrency 4`, `--iterations 6`, and four private slot volumes.
+TreeHarbor used file-only workspaces. Git used two checkout workers per
+worktree and included Git metadata. All 104 observations verified file
+bytes, modes and paths. The Git worktree probe also verified Git history.
+
+| First file read after source is local | Samples per system | TreeHarbor | Git worktree |
+| --- | ---: | ---: | ---: |
+| First batch on each revision, p50 per workspace | 8 | 0.704 s | 0.574 s |
+| Repeat batches, p50 per workspace | 44 | 0.206 s | 0.527 s |
+| Repeat batches, sample p95 per workspace | 44 | 0.470 s | 0.564 s |
+| All batches, p50 per workspace | 52 | 0.261 s | 0.531 s |
+| All batches, sample p95 per workspace | 52 | 0.740 s | 0.624 s |
+
+From a prepared local bundle, the first four TreeHarbor workspaces read a
+file after 27.55 s. Git conversion took 6.17 s, source admission took 20.64 s,
+and the first batch took 0.74 s. Git mirror setup took 0.11 s with both commits
+already available locally, followed by 0.63 s for its first batch. Importing
+the eight-file child with a retained parent took 6.23 s for conversion and
+0.46 s for admission, followed by 0.67 s for the first child batch. The retained
+TreeHarbor objects and two images used about 132 MiB allocated. The Git mirror
+used about 33 MiB. These storage counters exclude workspace data and PostgreSQL.
+
+OS cache state was uncontrolled. The benchmark excludes network transfer,
+agent runtime and CI. Each read starts after the whole batch's preparation
+reply. The repeat samples include a final return to the original revision.
+
+[Raw observations](benchmarks/native-concurrency4-signed-v024-linux-arm64-20261116.json) ·
+[Verified binary](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.24-alpha.1)
