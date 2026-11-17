@@ -134,6 +134,99 @@ async fn membership(
     }
     Ok(())
 }
+
+/// The first upload of a blob batch can reserve all its rows together.
+/// Existing upload items or catalogue entries use the general path, which
+/// handles retries, shared live objects and retired generations.
+async fn reserve_fresh_blobs(
+    tx: &mut Transaction<'_>,
+    scope: &Scope,
+    upload: Uuid,
+    store: &ManagedStore,
+    objects: &[PreparedObject],
+    purpose: Purpose,
+) -> Result<Option<Vec<UploadTicket>>> {
+    let digests: Vec<_> = objects
+        .iter()
+        .map(|object| object.id().as_bytes().to_vec())
+        .collect();
+    let has_items: bool = tx
+        .query_one(
+            "SELECT EXISTS(SELECT 1 FROM th_source_upload_items WHERE tenant=$1 AND repository=$2 AND upload=$3 AND digest=ANY($4::bytea[]))",
+            &[&scope.tenant, &scope.repository, &upload, &digests],
+        )
+        .await?
+        .get(0);
+    if has_items {
+        return Ok(None);
+    }
+    let lengths: Vec<_> = objects
+        .iter()
+        .map(|object| object.length() as i64)
+        .collect();
+    let expected = objects.len() as u64;
+    let batch = tx.transaction().await?;
+    let inserted = batch
+        .execute(
+            "INSERT INTO th_objects (tenant,digest,generation,backend,kind,length,state)
+         SELECT $1,b.digest,1,$2,1,b.length,'uploading'
+         FROM unnest($3::bytea[],$4::bigint[]) AS b(digest,length) ORDER BY b.digest
+         ON CONFLICT DO NOTHING",
+            &[&scope.tenant, &store.backend(), &digests, &lengths],
+        )
+        .await?;
+    if inserted != expected {
+        // Release the attempted inserts before the fallback takes any locks.
+        // Keeping them could violate the digest order on a mixed batch.
+        batch.rollback().await?;
+        return Ok(None);
+    }
+    let tokens: Vec<_> = objects.iter().map(|_| Uuid::new_v4()).collect();
+    let held = batch
+        .execute(
+            "INSERT INTO th_object_holds (tenant,token,digest,generation,expires_at)
+         SELECT $1,b.token,b.digest,1,u.expires_at
+         FROM unnest($4::bytea[],$5::uuid[]) AS b(digest,token)
+         JOIN th_source_uploads u ON u.tenant=$1 AND u.repository=$2 AND u.upload=$3
+         ON CONFLICT DO NOTHING",
+            &[&scope.tenant, &scope.repository, &upload, &digests, &tokens],
+        )
+        .await?;
+    if held != expected {
+        return Err(Error::ReceiptMismatch);
+    }
+    let items = batch.execute(
+        "INSERT INTO th_source_upload_items (tenant,repository,upload,digest,generation,hold_token,kind,length,snapshot)
+         SELECT $1,$2,$3,b.digest,1,b.token,1,b.length,NULL
+         FROM unnest($4::bytea[],$5::uuid[],$6::bigint[]) AS b(digest,token,length)",
+        &[&scope.tenant, &scope.repository, &upload, &digests, &tokens, &lengths],
+    ).await?;
+    if items != expected {
+        return Err(Error::UploadMembership);
+    }
+    batch.commit().await?;
+    Ok(Some(
+        objects
+            .iter()
+            .zip(tokens)
+            .map(|(object, token)| UploadTicket {
+                upload,
+                lease: ObjectLease {
+                    key: ObjectKey {
+                        tenant: scope.tenant.clone(),
+                        backend: store.backend().into(),
+                        id: object.id(),
+                        generation: 1,
+                    },
+                    token,
+                    upload: true,
+                },
+                purpose,
+            })
+            .collect(),
+    ))
+}
+
 impl Metadata {
     /// Trusted deployment startup. An existing label may not silently point at
     /// an empty or different store. Legacy unbound catalog data needs migration.
@@ -289,7 +382,7 @@ impl Metadata {
         objects: &[PreparedObject],
         purpose: Purpose,
     ) -> Result<Vec<UploadTicket>> {
-        let tx = self.client.transaction().await?;
+        let mut tx = self.client.transaction().await?;
         settings(&tx).await?;
         lock_authorized(&tx, auth, purpose).await?;
         let s = auth.scope();
@@ -297,33 +390,50 @@ impl Metadata {
         if store.tenant() != s.tenant || store.backend() != row.get::<_, String>(0) {
             return Err(Error::ReceiptMismatch);
         }
-        let mut tickets = Vec::with_capacity(objects.len());
-        let mut added_objects = 0_i64;
-        let mut added_bytes = 0_i64;
         let remaining_objects = row.get::<_, i64>(3) - row.get::<_, i64>(5);
         let remaining_bytes = row.get::<_, i64>(4) - row.get::<_, i64>(6);
-        for object in objects {
-            membership(&tx, s, upload, object.references()).await?;
-            let digest = object.id().as_bytes().to_vec();
-            let old=tx.query_opt("SELECT hold_token,generation FROM th_source_upload_items WHERE tenant=$1 AND repository=$2 AND upload=$3 AND digest=$4", &[&s.tenant,&s.repository,&upload,&digest]).await?;
-            let token = old.as_ref().map(|r| r.get(0)).unwrap_or_else(Uuid::new_v4);
-            let length = object.length() as i64;
-            if old.is_none()
-                && (added_objects >= remaining_objects || length > remaining_bytes - added_bytes)
-            {
-                return Err(Error::UploadLimit);
-            }
-            let lease = reserve_in(&tx, store, object, token, 3600).await?;
-            if let Some(old) = old {
-                if lease.key().generation() != old.get::<_, i64>(1) {
-                    return Err(Error::UploadState);
+        let count = objects.len() as i64;
+        let bytes = objects
+            .iter()
+            .map(|object| object.length() as i64)
+            .sum::<i64>();
+        let fresh = if count > 1 && count <= remaining_objects && bytes <= remaining_bytes {
+            // Only reserve_source_blob_batch calls this with multiple frames,
+            // after checking that they are distinct, sorted blobs.
+            reserve_fresh_blobs(&mut tx, s, upload, store, objects, purpose).await?
+        } else {
+            None
+        };
+        let refresh_holds = fresh.is_none();
+        let (tickets, added_objects, added_bytes) = if let Some(tickets) = fresh {
+            (tickets, count, bytes)
+        } else {
+            let mut tickets = Vec::with_capacity(objects.len());
+            let mut added_objects = 0_i64;
+            let mut added_bytes = 0_i64;
+            for object in objects {
+                membership(&tx, s, upload, object.references()).await?;
+                let digest = object.id().as_bytes().to_vec();
+                let old=tx.query_opt("SELECT hold_token,generation FROM th_source_upload_items WHERE tenant=$1 AND repository=$2 AND upload=$3 AND digest=$4", &[&s.tenant,&s.repository,&upload,&digest]).await?;
+                let token = old.as_ref().map(|r| r.get(0)).unwrap_or_else(Uuid::new_v4);
+                let length = object.length() as i64;
+                if old.is_none()
+                    && (added_objects >= remaining_objects
+                        || length > remaining_bytes - added_bytes)
+                {
+                    return Err(Error::UploadLimit);
                 }
-            } else {
-                let snapshot = object.commit_snapshot().map(|id| id.as_bytes().to_vec());
-                tx.execute("INSERT INTO th_source_upload_items(tenant,repository,upload,digest,generation,hold_token,kind,length,snapshot) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)", &[&s.tenant,&s.repository,&upload,&digest,&lease.key().generation(),&token,&(object.kind() as i16),&length,&snapshot]).await?;
-                if let Some(origin) = object.commit_git_origin() {
-                    // Migration 016 introduced this column.
-                    let stores_origin = purpose == Purpose::Github
+                let lease = reserve_in(&tx, store, object, token, 3600).await?;
+                if let Some(old) = old {
+                    if lease.key().generation() != old.get::<_, i64>(1) {
+                        return Err(Error::UploadState);
+                    }
+                } else {
+                    let snapshot = object.commit_snapshot().map(|id| id.as_bytes().to_vec());
+                    tx.execute("INSERT INTO th_source_upload_items(tenant,repository,upload,digest,generation,hold_token,kind,length,snapshot) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)", &[&s.tenant,&s.repository,&upload,&digest,&lease.key().generation(),&token,&(object.kind() as i16),&length,&snapshot]).await?;
+                    if let Some(origin) = object.commit_git_origin() {
+                        // Migration 016 introduced this column.
+                        let stores_origin = purpose == Purpose::Github
                         || tx
                             .query_one(
                                 "SELECT EXISTS(SELECT 1 FROM th_schema_version WHERE singleton AND version>=16)",
@@ -331,27 +441,31 @@ impl Metadata {
                             )
                             .await?
                             .get::<_, bool>(0);
-                    if stores_origin {
-                        let git_origin = RevisionRef::Git(origin).to_string();
-                        tx.execute("UPDATE th_source_upload_items SET git_origin=$5 WHERE tenant=$1 AND repository=$2 AND upload=$3 AND digest=$4",
+                        if stores_origin {
+                            let git_origin = RevisionRef::Git(origin).to_string();
+                            tx.execute("UPDATE th_source_upload_items SET git_origin=$5 WHERE tenant=$1 AND repository=$2 AND upload=$3 AND digest=$4",
                             &[&s.tenant,&s.repository,&upload,&digest,&git_origin]).await?;
+                        }
                     }
+                    added_objects += 1;
+                    added_bytes += length;
                 }
-                added_objects += 1;
-                added_bytes += length;
+                tickets.push(UploadTicket {
+                    upload,
+                    lease,
+                    purpose,
+                });
             }
-            tickets.push(UploadTicket {
-                upload,
-                lease,
-                purpose,
-            });
-        }
+            (tickets, added_objects, added_bytes)
+        };
         if added_objects > 0 {
             tx.execute("UPDATE th_source_uploads SET reserved_objects=reserved_objects+$4,reserved_bytes=reserved_bytes+$5 WHERE tenant=$1 AND repository=$2 AND upload=$3", &[&s.tenant,&s.repository,&upload,&added_objects,&added_bytes]).await?;
         }
-        // Retrying a frame may never extend the session's fixed deadline.
-        let tokens: Vec<_> = tickets.iter().map(|ticket| ticket.lease.token()).collect();
-        tx.execute("UPDATE th_object_holds h SET expires_at=u.expires_at FROM th_source_uploads u WHERE u.tenant=$1 AND u.repository=$2 AND u.upload=$3 AND h.tenant=u.tenant AND h.token=ANY($4::uuid[])", &[&s.tenant,&s.repository,&upload,&tokens]).await?;
+        if refresh_holds {
+            // Retrying a frame may never extend the session's fixed deadline.
+            let tokens: Vec<_> = tickets.iter().map(|ticket| ticket.lease.token()).collect();
+            tx.execute("UPDATE th_object_holds h SET expires_at=u.expires_at FROM th_source_uploads u WHERE u.tenant=$1 AND u.repository=$2 AND u.upload=$3 AND h.tenant=u.tenant AND h.token=ANY($4::uuid[])", &[&s.tenant,&s.repository,&upload,&tokens]).await?;
+        }
         active_for(&tx, auth, upload, purpose).await?;
         auth.check_transaction(&tx, s, auth.principal(), purpose.permission())
             .await?;
