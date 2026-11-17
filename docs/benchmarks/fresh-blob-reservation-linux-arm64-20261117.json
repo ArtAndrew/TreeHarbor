@@ -1,0 +1,192 @@
+{
+  "version": 1,
+  "date_utc": "2026-11-17",
+  "scope": "Durable admission from an existing local TreeHarbor pack through source-import to a completed receipt. Setup, Git conversion, export and cleanup are outside the admission timer.",
+  "environment": {
+    "platform": "Linux arm64",
+    "virtual_cpus": 2,
+    "kernel": "6.8.0-149-generic",
+    "filesystem": "ext4",
+    "git": "2.43.0",
+    "rustc": "1.99.1",
+    "release_build": "aarch64-unknown-linux-musl, thin LTO, codegen-units=1, offline, -j1",
+    "sql_profiling": false,
+    "postgresql": {
+      "version": "PostgreSQL 18.6 (Debian 18.6-1.pgdg13+2) on aarch64-unknown-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit",
+      "fsync": "on",
+      "synchronous_commit": "on",
+      "full_page_writes": "on",
+      "shared_buffers": "128MB"
+    },
+    "postgresql_image_id": "sha256:edb0c08dc33befd0262ab3b5cf1c4f3f8cfd8b09e88c05b45adee29d6761ddb6",
+    "cache": "Fresh PostgreSQL and object store per sample, same verified local pack, uncontrolled OS cache"
+  },
+  "fixture": {
+    "encoded_bytes": 34163347,
+    "filesystem_entries": 8259,
+    "objects": 8264,
+    "revision": "native:sha256:51495bb9132753e329e3ae3834b73c88d72631513bb651371545dc6d7536f107",
+    "snapshot": "sha256:e769416b86efe6691ab97d6c984eaec60712b13024c819aaa36b98c67080208b",
+    "generator": "scripts/create-preparation-fixture.py",
+    "modules": 64,
+    "files_per_module": 128,
+    "tracked_paths": 8195,
+    "git_commit": "d2784632f690f8e2a226f0f4e084f7bd9f44bcc1",
+    "git_bundle_sha256": "338b3468b82345d445a708aa8984d17a620476071cbbd858650c7139c50166c4",
+    "pack_inventory_sha256": "cae2b852c077b816884fc0587030ea66c82ad560dd454915bcf9a3a8e06a37c4"
+  },
+  "client": {
+    "tag": "v0.1.27-alpha.1",
+    "signed_linux_arm64_binary_sha256": "e2f63c01d32e88fff6c2b7cab96a7519c0ccf020a628c834de2af0ffbc79b759"
+  },
+  "servers": {
+    "workspace_manifest_version_used_for_both_builds": "0.1.27-alpha.1",
+    "baseline": {
+      "runtime_source_commit": "598aaaba0e06897c2337dff2540de5d6e9f8aedb",
+      "source_sha256": {
+        "Cargo.toml": "19823894c3523241815b733c35c0059e92a305d24e8c0b3cb6e6bdc219260f46",
+        "Cargo.lock": "4ce881ee7580160b03b757dc0cacc7fc9966588c3e310d2d64910b4efcb0c85b",
+        "crates/metadata/src/catalog.rs": "6a2fb35d77c8ece0ce04958644b1218030c650afdcf4f3a94def55371affb2db",
+        "crates/metadata/src/uploads.rs": "14586f66ef06cbd172d01e5372f73185b4d906467f75ac5c47890252f398624f"
+      },
+      "server_sha256": "60ccaf4bd1449674350c50f212b922b11b4dafb604ec072ca1c4118894a6a9fd",
+      "benchmark_build_commit": "43d300d4fabfe7bb663eb69b5e28723d41e291c2"
+    },
+    "candidate": {
+      "runtime_source_commit": "39172f658a0b4ec3eea216e637dffd6669a04142",
+      "source_sha256": {
+        "Cargo.toml": "19823894c3523241815b733c35c0059e92a305d24e8c0b3cb6e6bdc219260f46",
+        "Cargo.lock": "4ce881ee7580160b03b757dc0cacc7fc9966588c3e310d2d64910b4efcb0c85b",
+        "crates/metadata/src/catalog.rs": "6a2fb35d77c8ece0ce04958644b1218030c650afdcf4f3a94def55371affb2db",
+        "crates/metadata/src/uploads.rs": "e73a59833b504bf234a5d566076e5773b3fbd8c0be453ac177efe4e1349b597b",
+        "crates/metadata/tests/uploads/batches.rs": "7c55cd63d5f9a2f8138edc212706a5739fb2847e50d0183ba66452d694199488"
+      },
+      "server_sha256": "f611d6056d7ba8974155fd4349f5acef0c44fe858b94f8a9c07acca7eff1496b"
+    }
+  },
+  "measurement_order": "Two discarded warm-ups (baseline then candidate), followed by baseline, candidate, candidate, baseline twice.",
+  "excluded_warmups": [
+    {
+      "build": "baseline",
+      "wall_seconds": 16.518918216999737,
+      "setup_seconds": 1.777808507,
+      "cleanup_seconds": 0.812413087,
+      "whole_case_seconds": 29.425464987,
+      "service_storage_allocated_bytes": 68759552,
+      "postgres_storage_allocated_bytes": 103133184,
+      "server_peak_rss_kib_at_end_of_admission": 11472,
+      "strict_git_roundtrip_passed": true
+    },
+    {
+      "build": "candidate",
+      "wall_seconds": 9.254150681999818,
+      "setup_seconds": 2.383529774,
+      "cleanup_seconds": 0.422695777,
+      "whole_case_seconds": 18.60075704,
+      "service_storage_allocated_bytes": 68759552,
+      "postgres_storage_allocated_bytes": 101314560,
+      "server_peak_rss_kib_at_end_of_admission": 11636,
+      "strict_git_roundtrip_passed": true
+    }
+  ],
+  "samples": [
+    {
+      "build": "baseline",
+      "wall_seconds": 14.013224578999143,
+      "setup_seconds": 1.636581216,
+      "cleanup_seconds": 0.460440858,
+      "whole_case_seconds": 23.526419457,
+      "service_storage_allocated_bytes": 68759552,
+      "postgres_storage_allocated_bytes": 103256064,
+      "server_peak_rss_kib_at_end_of_admission": 11588,
+      "strict_git_roundtrip_passed": true
+    },
+    {
+      "build": "candidate",
+      "wall_seconds": 7.912862082000174,
+      "setup_seconds": 1.713975304,
+      "cleanup_seconds": 0.588793783,
+      "whole_case_seconds": 17.636456092,
+      "service_storage_allocated_bytes": 68759552,
+      "postgres_storage_allocated_bytes": 101298176,
+      "server_peak_rss_kib_at_end_of_admission": 11640,
+      "strict_git_roundtrip_passed": true
+    },
+    {
+      "build": "candidate",
+      "wall_seconds": 9.037813705999724,
+      "setup_seconds": 1.706510132,
+      "cleanup_seconds": 0.403897931,
+      "whole_case_seconds": 17.901867526,
+      "service_storage_allocated_bytes": 68759552,
+      "postgres_storage_allocated_bytes": 101306368,
+      "server_peak_rss_kib_at_end_of_admission": 11624,
+      "strict_git_roundtrip_passed": true
+    },
+    {
+      "build": "baseline",
+      "wall_seconds": 14.29157448299975,
+      "setup_seconds": 1.821619939,
+      "cleanup_seconds": 0.490027715,
+      "whole_case_seconds": 24.32312636,
+      "service_storage_allocated_bytes": 68759552,
+      "postgres_storage_allocated_bytes": 103133184,
+      "server_peak_rss_kib_at_end_of_admission": 11588,
+      "strict_git_roundtrip_passed": true
+    },
+    {
+      "build": "baseline",
+      "wall_seconds": 13.393163605999689,
+      "setup_seconds": 1.769485146,
+      "cleanup_seconds": 0.365427168,
+      "whole_case_seconds": 22.264701934,
+      "service_storage_allocated_bytes": 68759552,
+      "postgres_storage_allocated_bytes": 103198720,
+      "server_peak_rss_kib_at_end_of_admission": 11488,
+      "strict_git_roundtrip_passed": true
+    },
+    {
+      "build": "candidate",
+      "wall_seconds": 7.685828182000478,
+      "setup_seconds": 1.638949237,
+      "cleanup_seconds": 0.430672665,
+      "whole_case_seconds": 17.070786439,
+      "service_storage_allocated_bytes": 68759552,
+      "postgres_storage_allocated_bytes": 101306368,
+      "server_peak_rss_kib_at_end_of_admission": 11628,
+      "strict_git_roundtrip_passed": true
+    },
+    {
+      "build": "candidate",
+      "wall_seconds": 8.350733721999859,
+      "setup_seconds": 1.749082688,
+      "cleanup_seconds": 0.431486094,
+      "whole_case_seconds": 18.083187393,
+      "service_storage_allocated_bytes": 68759552,
+      "postgres_storage_allocated_bytes": 101298176,
+      "server_peak_rss_kib_at_end_of_admission": 11632,
+      "strict_git_roundtrip_passed": true
+    },
+    {
+      "build": "baseline",
+      "wall_seconds": 13.200544039000306,
+      "setup_seconds": 1.961665696,
+      "cleanup_seconds": 0.36683471,
+      "whole_case_seconds": 21.663986024,
+      "service_storage_allocated_bytes": 68759552,
+      "postgres_storage_allocated_bytes": 103141376,
+      "server_peak_rss_kib_at_end_of_admission": 11608,
+      "strict_git_roundtrip_passed": true
+    }
+  ],
+  "median_wall_seconds": {
+    "baseline": 13.703194092499416,
+    "candidate": 8.131797902000017
+  },
+  "median_wall_time_reduction_fraction": 0.4065764633333888,
+  "validation": {
+    "same_native_revision_and_complete_frames": true,
+    "exact_original_git_commit_and_strict_fsck_each_case": true,
+    "all_cases_cleaned": true
+  }
+}
