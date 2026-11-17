@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.28-alpha.1 — batch source catalogue updates
+
+- Publish each bounded blob batch with grouped catalogue queries, preserving
+  generation checks, live upload reservations, durable object receipts and
+  atomic batch completion. Source pack and API formats are unchanged.
+  Admission from a local pack fell from 15.42 s to 12.46 s at the median on
+  the 8,195-path Linux ARM64 fixture. [Method and samples](docs/benchmark-preparation.md#first-source-admission-with-grouped-catalogue-queries--17-november-2026).
+- Document [recovery before re-enqueue](docs/github-dequeue.md#re-enqueue-after-an-interrupted-attempt),
+  including an already-absent PR and recovery from the original private journal.
+- [Upgrade from 0.1.27](docs/release-packaging.md#upgrade-from-0127-alpha1).
+  Both releases use schema 035.
+
 ## 0.1.27-alpha.1 — faster local Git bundle conversion
 
 - Sync imported objects once in a private stage and flush their directories

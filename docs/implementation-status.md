@@ -1,5 +1,27 @@
 # Implementation status
 
+## 0.1.28-alpha.1 — grouped source catalogue publication
+
+Source blob batches now use grouped catalogue reads and updates inside the
+existing publication transaction. The server checks the full batch's upload
+membership, object generations and unexpired reservations before marking any
+objects live. Durable file writes, replay and the source pack format are unchanged.
+
+Before the version bump, 15 real-PostgreSQL upload tests passed, including
+rollback/restart, replaced generations and contention between two repositories.
+The source-import service transport check, strict Clippy and formatting also
+passed. The [paired Linux ARM64 benchmark](benchmark-preparation.md#first-source-admission-with-grouped-catalogue-queries--17-november-2026)
+measured 15.42 s and 12.46 s median admission. Each sample exported the exact
+original Git commit.
+
+The [queue recovery guide](github-dequeue.md#re-enqueue-after-an-interrupted-attempt)
+explains when an earlier dispatch blocks a new enqueue. An installed 0.1.27
+trial recovered the old intent through explicit dequeue, recording positive
+no-send evidence and an unmerged PR's absence. Full managed merge certification
+remains open; this recovery did not enqueue or merge a PR.
+
+## Earlier increments
+
 Git bundle conversion syncs each new object in a private staging directory.
 Before publishing a pack it syncs the shard directories, writes the manifest
 and checks the complete pack. The existing atomic publication path then records
