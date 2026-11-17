@@ -173,6 +173,77 @@ pub(crate) async fn reserve_in(
     })
 }
 
+/// Blob receipts have no child edges. Lock the bounded set in the same digest
+/// order as individual publication, then validate every lease before any update.
+pub(crate) async fn publish_blobs_in(
+    tx: &Transaction<'_>,
+    leases: &[&ObjectLease],
+    receipts: &[DurableObject],
+) -> Result<()> {
+    let first = leases.first().ok_or(Error::ReceiptMismatch)?;
+    if leases.len() != receipts.len()
+        || leases
+            .windows(2)
+            .any(|pair| pair[0].key.id >= pair[1].key.id)
+    {
+        return Err(Error::ReceiptMismatch);
+    }
+    let tenant = &first.key.tenant;
+    for (lease, receipt) in leases.iter().zip(receipts) {
+        let key = &lease.key;
+        if key.tenant != *tenant
+            || key.tenant != receipt.tenant()
+            || key.backend != receipt.backend()
+            || key.generation != receipt.generation()
+            || key.id != receipt.id()
+            || receipt.kind() != 1
+            || !receipt.references().is_empty()
+        {
+            return Err(Error::ReceiptMismatch);
+        }
+    }
+    let digests: Vec<_> = leases.iter().map(|lease| bytes(lease.key.id)).collect();
+    let rows = tx.query(
+        "SELECT digest,generation,backend,kind,length,state FROM th_objects WHERE tenant=$1 AND digest=ANY($2::bytea[]) ORDER BY digest FOR UPDATE",
+        &[tenant, &digests],
+    ).await?;
+    if rows.len() != leases.len() {
+        return Err(Error::ObjectNotLive);
+    }
+    for ((lease, receipt), row) in leases.iter().zip(receipts).zip(rows) {
+        if row.get::<_, Vec<u8>>(0) != bytes(lease.key.id)
+            || row.get::<_, i64>(1) != lease.key.generation
+            || row.get::<_, String>(2) != lease.key.backend
+            || row.get::<_, i16>(3) != 1
+            || row.get::<_, i64>(4) != receipt.length()
+        {
+            return Err(Error::ReceiptMismatch);
+        }
+        if !matches!(row.get::<_, &str>(5), "uploading" | "live") {
+            return Err(Error::ObjectNotLive);
+        }
+    }
+    let tokens: Vec<_> = leases.iter().map(|lease| lease.token).collect();
+    let holds = tx.query(
+        "SELECT token,digest,generation FROM th_object_holds WHERE tenant=$1 AND token=ANY($2::uuid[]) AND expires_at>clock_timestamp()",
+        &[tenant, &tokens],
+    ).await?;
+    let holds: BTreeMap<Uuid, (Vec<u8>, i64)> = holds
+        .into_iter()
+        .map(|row| (row.get(0), (row.get(1), row.get(2))))
+        .collect();
+    for lease in leases {
+        if holds.get(&lease.token) != Some(&(bytes(lease.key.id), lease.key.generation)) {
+            return Err(Error::StaleLease);
+        }
+    }
+    tx.execute(
+        "UPDATE th_objects SET state='live',orphaned_at=NULL WHERE tenant=$1 AND digest=ANY($2::bytea[])",
+        &[tenant, &digests],
+    ).await?;
+    Ok(())
+}
+
 pub(crate) async fn publish_in(
     tx: &Transaction<'_>,
     lease: &ObjectLease,
