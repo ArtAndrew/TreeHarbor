@@ -1,5 +1,12 @@
 # Implementation status
 
+Connected configuration inspection checks the queue's minimum group wait and
+check timeout against one applicable REST rule. A retained GitHub observation
+reported 180 for a three-minute group wait. Replaying both reads with the
+collector resolved the configuration mismatch. `cargo test -p treeharbor-github`
+passed 132 tests, including transport cases that reject contradictory settings
+and verify token revocation. See [host-policy settings](github-host-policy.md).
+
 Source import batches consecutive blob frames over the local Unix socket.
 Each bounded batch shares reservation and publication transactions while
 keeping the existing upload budget and object durability checks. See the
@@ -18,7 +25,7 @@ captures and remains usable after the queue entry disappears. Verification
 is limited to the supported single-member `MERGE`/`ALLGREEN` profile,
 with live certification still open.
 
-Updated: 2026-11-16. This file describes implemented behavior and remaining release
+Updated: 2026-11-17. This file describes implemented behavior and remaining release
 gates. A foundation milestone does not complete either mode.
 
 For a concise current overview, see [what works today](../README.md#what-works-today)
