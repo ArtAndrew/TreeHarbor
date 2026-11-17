@@ -1,0 +1,122 @@
+{
+  "version": 1,
+  "date_utc": "2026-11-17",
+  "scope": "Existing local Git bundle to a new, verified durable TreeHarbor pack; no network, admission, workspace or CI.",
+  "environment": {
+    "cpu": "ARM64",
+    "virtual_cpus": 2,
+    "kernel": "Linux 6.8.0-149-generic",
+    "filesystem": "ext4",
+    "git": "2.43.0",
+    "candidate_rustc": "1.99.1",
+    "os_cache_state": "uncontrolled"
+  },
+  "fixture": {
+    "generator": "scripts/create-preparation-fixture.py",
+    "modules": 64,
+    "files_per_module": 128,
+    "git_commit": "d2784632f690f8e2a226f0f4e084f7bd9f44bcc1",
+    "tracked_paths": 8195,
+    "directories": 64,
+    "bundle_sha256": "d643395f141cbd7f8d300076536d49fc14553b7d92cc02cc81864716e9ffe36f"
+  },
+  "baseline": {
+    "tag": "v0.1.26-alpha.1",
+    "binary_sha256": "bad9d34aa2f036d536e30515e31fd05037cdc471713060f14d98e95c10cb8bec"
+  },
+  "candidate": {
+    "source_commit": "f10bd7f2fdafe5994b37e783a677305c6973e31d",
+    "binary_sha256": "4441f4e1b7f3ed1454bd55cb05e96b7041ef611df54997e0d66874d3bbd457b7",
+    "build_profile": "release",
+    "signed": false
+  },
+  "samples": [
+    {
+      "slot": 1,
+      "build": "baseline",
+      "wall_seconds": 6.66,
+      "user_cpu_seconds": 0.55,
+      "system_cpu_seconds": 0.91,
+      "peak_rss_kib": 12516
+    },
+    {
+      "slot": 2,
+      "build": "candidate",
+      "wall_seconds": 3.56,
+      "user_cpu_seconds": 0.42,
+      "system_cpu_seconds": 0.66,
+      "peak_rss_kib": 12708
+    },
+    {
+      "slot": 3,
+      "build": "candidate",
+      "wall_seconds": 3.9,
+      "user_cpu_seconds": 0.47,
+      "system_cpu_seconds": 0.71,
+      "peak_rss_kib": 12532
+    },
+    {
+      "slot": 4,
+      "build": "baseline",
+      "wall_seconds": 6.07,
+      "user_cpu_seconds": 0.54,
+      "system_cpu_seconds": 0.92,
+      "peak_rss_kib": 12448
+    },
+    {
+      "slot": 5,
+      "build": "baseline",
+      "wall_seconds": 5.84,
+      "user_cpu_seconds": 0.51,
+      "system_cpu_seconds": 0.91,
+      "peak_rss_kib": 12380
+    },
+    {
+      "slot": 6,
+      "build": "candidate",
+      "wall_seconds": 3.57,
+      "user_cpu_seconds": 0.45,
+      "system_cpu_seconds": 0.68,
+      "peak_rss_kib": 12676
+    },
+    {
+      "slot": 7,
+      "build": "candidate",
+      "wall_seconds": 3.75,
+      "user_cpu_seconds": 0.46,
+      "system_cpu_seconds": 0.71,
+      "peak_rss_kib": 12688
+    },
+    {
+      "slot": 8,
+      "build": "baseline",
+      "wall_seconds": 5.78,
+      "user_cpu_seconds": 0.49,
+      "system_cpu_seconds": 0.95,
+      "peak_rss_kib": 12536
+    }
+  ],
+  "median_wall_seconds": {
+    "baseline": 5.955,
+    "candidate": 3.66
+  },
+  "separate_strace_fsync_calls": {
+    "baseline": 25527,
+    "candidate": 9116
+  },
+  "verified_pack": {
+    "encoded_bytes": 34163347,
+    "filesystem_entries": 8259,
+    "objects": 8264,
+    "revision": "native:sha256:51495bb9132753e329e3ae3834b73c88d72631513bb651371545dc6d7536f107",
+    "snapshot": "sha256:e769416b86efe6691ab97d6c984eaec60712b13024c819aaa36b98c67080208b",
+    "manifest_sha256": "0fd4f5dad66574441cd881a7892ef7f884b184a30189345d20c5d37f2aebaa64"
+  },
+  "validation": {
+    "all_manifests_byte_identical": true,
+    "no_published_pack_when_interrupted_during_staging": true,
+    "retry_manifest_byte_identical": true,
+    "git_fsck_strict_passed_after_retry": true,
+    "exported_git_commit": "d2784632f690f8e2a226f0f4e084f7bd9f44bcc1"
+  }
+}

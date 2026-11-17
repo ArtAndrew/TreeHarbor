@@ -825,3 +825,42 @@ reply. The repeat samples include a final return to the original revision.
 
 [Raw observations](benchmarks/native-concurrency4-signed-v024-linux-arm64-20261116.json) ·
 [Verified binary](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.24-alpha.1)
+
+### Local Git bundle conversion with durable staging — 17 November 2026
+
+One two-vCPU Linux ARM64 VM ran the signed 0.1.26 and an optimized build
+with staged writes against the same local bundle. It contained 8,195 tracked
+paths, including an executable and a symlink. Both binaries produced the
+same manifest and 8,264 verified native frames.
+
+| `git-import` with a new output directory | Signed 0.1.26 | Candidate |
+| --- | ---: | ---: |
+| Wall time, median of four runs | 5.96 s | 3.66 s |
+| Wall time, observed range | 5.78–6.66 s | 3.56–3.90 s |
+| `fsync` calls, separate traced run | 25,527 | 9,116 |
+
+The VM used ext4 and Git 2.43.0. OS cache state was uncontrolled. Timing starts
+with an existing local bundle and ends at a verified, durably published pack.
+It excludes network fetch, source admission into PostgreSQL, workspaces and CI.
+Killing the candidate during staging left the public destination absent.
+Retry produced the same manifest and `git fsck --strict` passed on the export
+with the exact original commit.
+
+Generate the source with the existing fixture script and use the two binaries
+from the recorded comparison:
+
+```sh
+sample=$(mktemp -d)
+revision=$(python3 scripts/create-preparation-fixture.py "$sample/repo" \
+  --modules 64 --files-per-module 128)
+git -C "$sample/repo" bundle create "$sample/source.bundle" main
+/usr/bin/time -f '%e %U %S %M' "$TREEHARBOR_BINARY" git-import \
+  --bundle "$sample/source.bundle" --commit "git:sha1:$revision" \
+  --output "$sample/pack-1"
+```
+
+Use a fresh output name for each run. The sample order was baseline, candidate,
+candidate, baseline, then the same four again. Count `fsync` in a separate run
+with `strace -f -c -e trace=fsync` to exclude tracing overhead from the timings.
+[Raw observations](benchmarks/git-bundle-staging-linux-arm64-20261117.json) ·
+[Baseline binary](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.26-alpha.1)

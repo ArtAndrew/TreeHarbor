@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.27-alpha.1 — faster local Git bundle conversion
+
+- Sync imported objects once in a private stage and flush their directories
+  before publishing the complete pack. In four paired runs on the 8,195-path
+  Linux ARM64 fixture, the median local conversion time fell from 5.96 s to
+  3.66 s. [Scope and data](docs/benchmark-preparation.md#local-git-bundle-conversion-with-durable-staging--17-november-2026).
+- Compare the GitHub queue wait and check timeout against the applicable REST
+  rule to reconcile minutes and seconds. Ambiguous policy still blocks adoption.
+- [Upgrade from 0.1.26](docs/release-packaging.md#upgrade-from-0126-alpha1).
+  Both releases use schema 035.
+
 ## 0.1.26-alpha.1 — reduce source writes and inspect GitHub rulesets
 
 - Reduce redundant PostgreSQL writes during source admission while preserving
