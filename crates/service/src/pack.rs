@@ -20,7 +20,7 @@ use treeharbor_core::{
     ObjectStore, RepoPath, SourceProfile,
 };
 use treeharbor_git_bridge::WorkspacePackScope;
-use treeharbor_storage::{LocalStore, TenantId};
+use treeharbor_storage::{LocalStore, StagedStore, TenantId};
 
 pub(crate) mod archive_branches;
 pub(crate) mod git_export;
@@ -737,7 +737,7 @@ fn capture_git_inner(request: GitCapture<'_>, scope: Option<&WorkspacePackScope>
         .prefix(".treeharbor-git-pack-")
         .tempdir_in(&parent)?;
     fs::set_permissions(stage.path(), fs::Permissions::from_mode(0o700))?;
-    let store = LocalStore::open(stage.path(), &TenantId::new("native-pack")?)?;
+    let store = StagedStore::open(&stage, &TenantId::new("native-pack")?)?;
     let import = treeharbor_git_bridge::Import {
         git: request.git,
         bundle: request.bundle,
@@ -749,6 +749,7 @@ fn capture_git_inner(request: GitCapture<'_>, scope: Option<&WorkspacePackScope>
         Some(scope) => treeharbor_git_bridge::import_with_workspace_pack(&store, import, scope)?,
         None => treeharbor_git_bridge::import(&store, import)?,
     };
+    store.seal()?;
     let manifest = FullManifest {
         version: 2,
         selection: "full".into(),

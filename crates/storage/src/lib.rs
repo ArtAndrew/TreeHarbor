@@ -2,7 +2,7 @@
 //! metadata layer; storing a blob alone never acknowledges an agent change.
 
 use std::{
-    fs::{self, File},
+    fs::{self, File, OpenOptions},
     io::{Read, Write},
     path::{Path, PathBuf},
 };
@@ -65,6 +65,76 @@ impl TenantId {
 pub struct LocalStore {
     objects: PathBuf,
     staging: PathBuf,
+}
+
+/// Immutable objects in an unpublished, single-writer temporary directory.
+/// Each file is synced on write. The caller must seal the store before
+/// publishing the directory. A failed write requires discarding the stage.
+pub struct StagedStore {
+    store: LocalStore,
+}
+
+impl StagedStore {
+    pub fn open(stage: &tempfile::TempDir, tenant: &TenantId) -> Result<Self> {
+        if fs::read_dir(stage.path())
+            .map_err(io_error)?
+            .next()
+            .is_some()
+        {
+            return Err(Error::Storage("object stage must start empty".into()));
+        }
+        Ok(Self {
+            store: LocalStore::open(stage.path(), tenant)?,
+        })
+    }
+
+    /// Persist each shard's directory entries before the stage is published.
+    pub fn seal(self) -> Result<()> {
+        for shard in fs::read_dir(&self.store.objects).map_err(io_error)? {
+            let shard = shard.map_err(io_error)?;
+            if !shard.file_type().map_err(io_error)?.is_dir() {
+                return Err(Error::Storage("invalid object stage shard".into()));
+            }
+            sync_directory(&shard.path())?;
+        }
+        sync_directory(&self.store.objects)
+    }
+}
+
+impl ObjectStore for StagedStore {
+    fn get(&self, id: ObjectId) -> Result<Object> {
+        self.store.get(id)
+    }
+
+    fn put(&self, object: &Object) -> Result<ObjectId> {
+        let bytes = object.encode()?;
+        let id = ObjectId::hash_frame(&bytes);
+        let path = self.store.path(id);
+        let parent = path
+            .parent()
+            .ok_or(Error::Storage("object parent missing".into()))?;
+        ensure_private_dir(parent)?;
+        let mut options = OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        match options.open(path) {
+            Ok(mut file) => {
+                file.write_all(&bytes).map_err(io_error)?;
+                file.sync_all().map_err(io_error)?;
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                if self.store.get(id)?.encode()? != bytes {
+                    return Err(Error::InvalidObject("existing object differs"));
+                }
+            }
+            Err(e) => return Err(io_error(e)),
+        }
+        Ok(id)
+    }
 }
 
 impl LocalStore {
