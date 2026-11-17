@@ -864,3 +864,43 @@ candidate, baseline, then the same four again. Count `fsync` in a separate run
 with `strace -f -c -e trace=fsync` to exclude tracing overhead from the timings.
 [Raw observations](benchmarks/git-bundle-staging-linux-arm64-20261117.json) ·
 [Baseline binary](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.26-alpha.1)
+
+### First source admission with grouped catalogue queries — 17 November 2026
+
+Two optimized server builds, `b1a4d65` and `43d300d`, each imported the same
+8,264 frames (34,163,347 encoded bytes) into a fresh PostgreSQL 18.6 database
+and empty local object store. Both ran on one ext4 Linux ARM64 VM with two
+vCPUs, using the signed 0.1.27 CLI. PostgreSQL used `fsync=on`,
+`synchronous_commit=on` and `full_page_writes=on`. OS cache state was uncontrolled.
+
+| From local pack to completed source receipt | Baseline | Grouped catalogue |
+| --- | ---: | ---: |
+| Wall time, median of four runs | 15.42 s | 12.46 s |
+| Wall time, observed range | 14.73–15.69 s | 12.33–12.95 s |
+| Service state, allocated after import | 65.57 MiB | 65.57 MiB |
+| PostgreSQL state, allocated median after import | 98.10 MiB | 98.38 MiB |
+
+The median fell by 19%. After one warm-up per build, run baseline, candidate,
+candidate, baseline twice. The timer includes pack verification, object writes
+and the committed import receipt. Git conversion, setup, Git export and cleanup
+were recorded separately or performed outside that timer. Each case restored
+the exact original commit under `git fsck --full --strict` and removed its
+temporary database and object store. This comparison covers local source admission.
+
+To repeat it, use the fixture and bundle command above. Convert the bundle once
+with the signed 0.1.27 client. Build each recorded server revision from clean
+sources with `cargo build --locked --release --target aarch64-unknown-linux-musl
+-p treeharbor-service --bin treeharbor -j1`, using Rust 1.99.1 and a separate
+target directory for each revision. For each run start that server with a fresh
+[local instance](init.md), Standalone repository and scoped `read` and
+`repository.write` credential. Use a new private journal and the same input pack.
+
+```sh
+/usr/bin/time -f '%e' "$SIGNED_027_CLI" client --socket "$SOCKET" \
+  --credential-file "$OWNER_CREDENTIAL" source-import --authority standalone \
+  --epoch 1 --pack "$PACK" --state "$NEW_IMPORT_JOURNAL"
+```
+
+After each timed import, [export the retained revision](git-export.md) and verify
+its Git commit before removing the test instance.
+[Raw samples, binary hashes and environment](benchmarks/bulk-source-admission-linux-arm64-20261117.json)

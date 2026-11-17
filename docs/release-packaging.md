@@ -148,6 +148,15 @@ PostgreSQL, Docker/gVisor, bounded volumes and host access are separate prerequi
 Removing the CLI symlink and that version directory uninstalls the package; retain
 repository state and backups separately.
 
+### Upgrade from 0.1.27-alpha.1
+
+Both releases use schema 035 and the same source pack, blob-batch request and
+queue report formats. Drain workers, stop the service and bridges, and take a
+[cold backup](backup-restore.md). Install 0.1.28 alongside 0.1.27 and run
+`doctor` with the existing configuration before starting it. Keep the prior
+package and original import/queue journals. To roll back, stop all writers
+before switching to the retained 0.1.27 package.
+
 ### Upgrade from 0.1.26-alpha.1
 
 Both releases use schema 035 and the same source pack and queue report formats.

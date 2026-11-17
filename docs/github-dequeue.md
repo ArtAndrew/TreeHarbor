@@ -120,6 +120,44 @@ current intent. Absent entries or transport timeouts alone cannot prove an earli
 mutation stopped. A revoked binding requires owner/operator action, not broader
 bridge credentials or automatic retries.
 
+## Re-enqueue after an interrupted attempt
+
+Use this sequence when an earlier enqueue blocks a new request, including when
+GitHub no longer shows the PR in its queue:
+
+1. Read the original [`queue_status`](github-queues.md#interpret-recovery-and-status)
+   and retain its private journal. Expiry, a timeout or an absent entry does not
+   establish whether that enqueue completed.
+2. Submit the [owner request above](#owner-authorization) with the old queue UUID,
+   a new dequeue UUID/key and the current authority epoch. This authorizes removal
+   of that PR if it is queued and sets the original local cancellation flag.
+3. Run [`treeharbor github dequeue`](#dispatch-and-recovery) with a separate
+   removal directory. Add `--queue-state` only if the original enqueue is
+   unresolved, pointing it at the **original enqueue journal**, not a new empty
+   directory. Omit it if a retained terminal result or enqueue receipt already
+   establishes `enqueue_settled: true`. Repeat with the same dequeue UUID and
+   state paths.
+   If the enqueue has settled and the PR is already absent, the command records
+   `mutation_not_sent: true` and the absence without sending a removal mutation.
+4. Read `dequeue_status` using the request above. Before requesting another enqueue,
+   require all three conditions:
+
+   - `enqueue_settled: true`;
+   - a non-null `retained_receipt` or `mutation_not_sent: true`;
+   - the latest `observation.after.pull.merged: false` and
+     `observation.after.entry: null`.
+
+   Exit zero or `state: removal_observed` alone is insufficient. If the PR has
+   merged, assess the merge instead of enqueueing it again.
+5. Obtain a [fresh inspection](github-inspections.md#request-a-capture), then make
+   a [new queue request](github-queues.md#authorize-a-request) with a new UUID/key
+   and use a new queue state directory. Do not replay the old write as a retry.
+
+If recovery remains `enqueue_unresolved`, investigate the original operation and
+recover its receipt or terminal result. `--queue-state` never resends enqueue.
+When the only evidence was lost, an absent entry cannot safely unblock the PR;
+do not clear journals or change database records to force a new dispatch.
+
 ## Wire and migration
 
 Schema22 preserves schema21 grants, reports and local cancellations. Removal

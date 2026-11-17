@@ -164,6 +164,14 @@ intent for that PR. A confirmed request failure or positive no-send report permi
 request with a new UUID/key and fresh checks; replaying the original intent never
 resends it. Source pins are preserved across these transitions.
 
+### A previous request blocks a new enqueue
+
+If a new request is rejected after an interrupted attempt, check the old
+`queue_status`. An empty GitHub queue or an expired dispatch deadline does not
+close the old intent. Follow [re-enqueue recovery](github-dequeue.md#re-enqueue-after-an-interrupted-attempt)
+with its original journal before creating another request. Changing the UUID or
+locally cancelling the old request does not resolve a dispatched operation.
+
 The shared Rust contract rejects extra/unknown fields and malformed
 identities. [Async-result vectors](../crates/github-contract/tests/fixtures/queue-result-v1.json)
 cover pending, enqueue, failure, merge and unavailable outcomes. Version2 queue
