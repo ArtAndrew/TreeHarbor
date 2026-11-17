@@ -3,7 +3,7 @@ use std::{
     sync::{Arc, Barrier},
 };
 use treeharbor_core::{Error, Object, ObjectStore};
-use treeharbor_storage::{LocalStore, TenantId};
+use treeharbor_storage::{LocalStore, StagedStore, TenantId};
 
 #[test]
 fn object_survives_store_restart_and_tenants_do_not_share_access() {
@@ -106,6 +106,22 @@ fn abandoned_upload_does_not_become_a_readable_object() {
     let store = LocalStore::open(temp.path(), &tenant).unwrap();
     assert!(!store.contains(object.id().unwrap()).unwrap());
     assert_eq!(store.put(&object).unwrap(), object.id().unwrap());
+}
+
+#[test]
+fn sealed_stage_is_readable_as_an_ordinary_object_store() {
+    let temp = private_tempdir();
+    let tenant = TenantId::new("test").unwrap();
+    let stage = StagedStore::open(&temp, &tenant).unwrap();
+    let object = Object::Blob(b"immutable staged bytes".to_vec());
+    let id = stage.put(&object).unwrap();
+    assert_eq!(stage.put(&object).unwrap(), id);
+    assert_eq!(stage.get(id).unwrap(), object);
+    assert!(StagedStore::open(&temp, &tenant).is_err());
+    stage.seal().unwrap();
+    let opened = LocalStore::open(temp.path(), &tenant).unwrap();
+    assert_eq!(opened.get(id).unwrap(), object);
+    assert_eq!(fs::read_dir(opened.staging_directory()).unwrap().count(), 0);
 }
 
 fn private_tempdir() -> tempfile::TempDir {
