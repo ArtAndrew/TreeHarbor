@@ -1,3 +1,5 @@
+#[path = "uploads/batches.rs"]
+mod batches;
 mod common;
 #[path = "uploads/exports.rs"]
 mod exports;

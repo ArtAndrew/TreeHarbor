@@ -4,7 +4,7 @@ mod reuse;
 pub use reuse::ReusedSourceBase;
 
 use crate::access::{Authorization, Permission};
-use crate::catalog::{ObjectKey, ObjectLease, publish_in, reserve_in, settings};
+use crate::catalog::{ObjectKey, ObjectLease, publish_blobs_in, publish_in, reserve_in, settings};
 use crate::intake::CommandContext;
 use crate::{Begin, Error, Metadata, Result, Scope, identifier, ttl_valid};
 use serde_json::{Value, json};
@@ -388,6 +388,7 @@ impl Metadata {
             std::slice::from_ref(ticket),
             std::slice::from_ref(receipt),
             purpose,
+            false,
         )
         .await
     }
@@ -407,7 +408,7 @@ impl Metadata {
         {
             return Err(Error::Invalid("source blob batch"));
         }
-        self.publish_source_objects(auth, tickets, receipts, purpose)
+        self.publish_source_objects(auth, tickets, receipts, purpose, true)
             .await
     }
     async fn publish_source_objects(
@@ -416,6 +417,7 @@ impl Metadata {
         tickets: &[UploadTicket],
         receipts: &[DurableObject],
         purpose: Purpose,
+        blob_batch: bool,
     ) -> Result<()> {
         let upload = tickets.first().ok_or(Error::ReceiptMismatch)?.upload;
         if tickets.len() != receipts.len() {
@@ -432,21 +434,46 @@ impl Metadata {
         lock_authorized(&tx, auth, purpose).await?;
         let s = auth.scope();
         active_for(&tx, auth, upload, purpose).await?;
-        let mut digests = Vec::with_capacity(tickets.len());
-        for (ticket, receipt) in tickets.iter().zip(receipts) {
-            if s.tenant != ticket.lease.key().tenant() {
-                return Err(Error::ReceiptMismatch);
+        let digests: Vec<_> = tickets
+            .iter()
+            .map(|ticket| ticket.lease.key().id().as_bytes().to_vec())
+            .collect();
+        if tickets
+            .iter()
+            .any(|ticket| s.tenant != ticket.lease.key().tenant())
+        {
+            return Err(Error::ReceiptMismatch);
+        }
+        if blob_batch {
+            let items = tx.query(
+                "SELECT digest,generation,hold_token FROM th_source_upload_items WHERE tenant=$1 AND repository=$2 AND upload=$3 AND digest=ANY($4::bytea[]) ORDER BY digest",
+                &[&s.tenant, &s.repository, &upload, &digests],
+            ).await?;
+            if items.len() != tickets.len() {
+                return Err(Error::UploadMembership);
             }
-            let digest = ticket.lease.key().id().as_bytes().to_vec();
-            let item=tx.query_opt("SELECT generation,hold_token FROM th_source_upload_items WHERE tenant=$1 AND repository=$2 AND upload=$3 AND digest=$4", &[&s.tenant,&s.repository,&upload,&digest]).await?.ok_or(Error::UploadMembership)?;
-            if item.get::<_, i64>(0) != ticket.generation()
-                || item.get::<_, Uuid>(1) != ticket.lease.token()
-            {
-                return Err(Error::ReceiptMismatch);
+            for (ticket, item) in tickets.iter().zip(items) {
+                if item.get::<_, Vec<u8>>(0) != ticket.lease.key().id().as_bytes()
+                    || item.get::<_, i64>(1) != ticket.generation()
+                    || item.get::<_, Uuid>(2) != ticket.lease.token()
+                {
+                    return Err(Error::ReceiptMismatch);
+                }
             }
-            membership(&tx, s, upload, receipt.references()).await?;
-            publish_in(&tx, &ticket.lease, receipt).await?;
-            digests.push(digest);
+            let leases: Vec<_> = tickets.iter().map(|ticket| &ticket.lease).collect();
+            publish_blobs_in(&tx, &leases, receipts).await?;
+        } else {
+            for (ticket, receipt) in tickets.iter().zip(receipts) {
+                let digest = ticket.lease.key().id().as_bytes().to_vec();
+                let item=tx.query_opt("SELECT generation,hold_token FROM th_source_upload_items WHERE tenant=$1 AND repository=$2 AND upload=$3 AND digest=$4", &[&s.tenant,&s.repository,&upload,&digest]).await?.ok_or(Error::UploadMembership)?;
+                if item.get::<_, i64>(0) != ticket.generation()
+                    || item.get::<_, Uuid>(1) != ticket.lease.token()
+                {
+                    return Err(Error::ReceiptMismatch);
+                }
+                membership(&tx, s, upload, receipt.references()).await?;
+                publish_in(&tx, &ticket.lease, receipt).await?;
+            }
         }
         tx.execute("UPDATE th_source_upload_items SET complete=true WHERE tenant=$1 AND repository=$2 AND upload=$3 AND digest=ANY($4::bytea[])", &[&s.tenant,&s.repository,&upload,&digests]).await?;
         active_for(&tx, auth, upload, purpose).await?;
