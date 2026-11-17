@@ -934,3 +934,40 @@ the source at `v0.1.29-alpha.1`. In both benchmark checkouts restore just
 This pins the embedded package version and dependencies used for these
 measurements. Use the same signed 0.1.27 client for both.
 [Samples, build identities and checks](benchmarks/fresh-blob-reservation-linux-arm64-20261117.json)
+
+### Four parallel workspaces with local setup
+
+On 17 November 2026 the 0.1.29 source-import code ran the adjacent-revision
+fixture on two Linux ARM64 vCPUs with PostgreSQL 18.6 and Git 2.43.0. Each
+system prepared four workspaces at a time across 13 batches. Every workspace
+matched the pinned files, modes and paths. TreeHarbor used file-only
+copy-on-write workspaces. Git used two checkout workers per worktree and
+also prepared Git metadata.
+
+| Measured phase | TreeHarbor | Git mirror + worktree |
+| --- | ---: | ---: |
+| First four workspaces including local setup, sum of phases | 12.935 s | 0.754 s |
+| First batch after source setup, all four reads | 0.653 s | 0.621 s |
+| Repeat workspace first read, median of 44 | 0.176 s | 0.487 s |
+| Repeat workspace first read, sample p95 | 0.213 s | 0.701 s |
+
+Both paths started from the same local Git repository. Creating the private
+mirror took 0.133 s. TreeHarbor then spent 0.409 s building a bundle from
+that mirror, 3.953 s converting its first revision and 7.787 s admitting
+the source. With the bundle already present, the sum through all four
+first reads was 12.393 s. On the child commit, which changed eight files,
+conversion took 4.028 s and admission took 0.441 s.
+
+The repeat rows exclude the first batch for each revision and include the
+last batch, which returned to the parent. The operating system cache was
+uncontrolled. Service data plus two source images occupied 132.08 MiB before
+database and workspace storage. The Git mirror occupied 33.35 MiB. Network
+fetch, agent execution and CI were outside the timers.
+
+To reproduce, use the [adjacent-revision fixture and command](#reuse-after-the-branch-advances)
+with four workspace slots, six iterations, seed 721 and two retained source
+images. The optimized binary used the server source from
+[PR 213](https://github.com/ArtAndrew/TreeHarbor/pull/213) and the 0.1.27
+Cargo manifest and lockfile used in the preceding benchmark. The raw report
+records the binary digest, all 104 observations, setup and cleanup times.
+[Raw observations](benchmarks/four-workspaces-linux-arm64-20261117.json)
