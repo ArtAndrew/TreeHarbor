@@ -1,5 +1,11 @@
 # Implementation status
 
+Git bundle conversion syncs each new object in a private staging directory.
+Before publishing a pack it syncs the shard directories, writes the manifest
+and checks the complete pack. The existing atomic publication path then records
+the final directory. The [Linux ARM64 comparison](benchmark-preparation.md#local-git-bundle-conversion-with-durable-staging--17-november-2026)
+verified unchanged manifests, replay after interruption and exact Git export.
+
 Connected configuration inspection checks the queue's minimum group wait and
 check timeout against one applicable REST rule. A retained GitHub observation
 reported 180 for a three-minute group wait. Replaying both reads with the
