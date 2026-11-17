@@ -251,15 +251,12 @@ Required deployments remain a separate candidate condition. Personal repositorie
 receive `personal_repository_queue_unsupported`; this command does not turn them
 into organization merge queues.
 
-The configuration collector reconciles the queue check timeout against exactly
-one applicable REST merge-queue rule, whose field explicitly uses minutes.
-It accepts the GraphQL value when equal to that minute count, or to exactly sixty
-times that count to handle observed provider responses. No rounding or size-based
-guess is used. Missing, invalid, duplicate or mismatching anchors refuse collection.
-Other queue settings retain their documented units. This applies to configuration
-inspection and host-policy settings collection; ordinary queue observations keep
-their existing decoding. GitHub's [GraphQL reference](https://docs.github.com/en/graphql/reference/pulls#mergequeueconfiguration)
-describes the field in minutes, so a universal seconds conversion is not assumed.
+The configuration collector checks the queue's check timeout and minimum group
+wait against the minute values in one applicable REST merge-queue rule. For each
+field, the GraphQL value must equal the REST value or exactly 60 times that value.
+A missing, invalid, duplicate or mismatching rule leaves the configuration
+unverified. This check applies to branch policy inspection and candidate policy
+collection. [GitHub GraphQL reference](https://docs.github.com/en/graphql/reference/pulls#mergequeueconfiguration).
 
 The collector rejects incomplete or duplicate bypass connections (maximum 100
 allowances each), incomplete rule pages, foreign repository/source identities and

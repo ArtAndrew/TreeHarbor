@@ -224,8 +224,8 @@ async fn ruleset_audit_refuses_a_token_listing_another_repository_and_revokes_bo
     }
 }
 #[tokio::test]
-async fn timeout_compatibility_is_anchored_to_the_same_rest_capture() {
-    for raw in [10, 600] {
+async fn queue_times_are_anchored_to_the_same_rest_capture() {
+    for (timeout, wait) in [(10, 3), (600, 180), (10, 180), (600, 3)] {
         let mut c = fixture();
         let q = c.profile.queue.as_mut().unwrap();
         q.check_timeout_minutes = 10;
@@ -235,7 +235,9 @@ async fn timeout_compatibility_is_anchored_to_the_same_rest_capture() {
         c.profile.rulesets[0].document.value.as_mut().unwrap()["rules"][0]["parameters"] =
             c.profile.rules[0]["parameters"].clone();
         let mut g = graph(&c, true);
-        g["data"]["repository"]["mergeQueue"]["configuration"]["checkResponseTimeout"] = json!(raw);
+        let configuration = &mut g["data"]["repository"]["mergeQueue"]["configuration"];
+        configuration["checkResponseTimeout"] = json!(timeout);
+        configuration["minimumEntriesToMergeWaitTime"] = json!(wait);
         let mut replies = access(true);
         replies.extend(round(&c, g.clone()));
         replies.extend(round(&c, g.clone()));
@@ -249,29 +251,26 @@ async fn timeout_compatibility_is_anchored_to_the_same_rest_capture() {
         assert_eq!(*report.before, c);
         assert_eq!(*report.after, c);
         assert!(report.reasons(&c.visibility.target).unwrap().is_empty());
-        assert_eq!(
-            g["data"]["repository"]["mergeQueue"]["configuration"]["checkResponseTimeout"],
-            json!(raw)
-        );
         assert_eq!(req.len(), 13);
         assert!(report.token_revoked);
         assert!(!req.iter().any(|r| request_text(r).contains("mutation ")));
     }
 }
 #[tokio::test]
-async fn unmatched_or_malformed_timeout_revokes_without_guessing_units() {
-    for (raw, malformed) in [
-        (json!(601), false),
-        (json!(0), false),
-        (json!(-1), true),
-        (json!(u64::from(u32::MAX) + 1), true),
-        (Value::Null, true),
-        (json!("600"), true),
+async fn unmatched_or_malformed_times_revoke_without_guessing_units() {
+    for (field, raw, malformed) in [
+        ("checkResponseTimeout", json!(601), false),
+        ("checkResponseTimeout", json!(0), false),
+        ("checkResponseTimeout", json!(-1), true),
+        ("checkResponseTimeout", json!(u64::from(u32::MAX) + 1), true),
+        ("checkResponseTimeout", Value::Null, true),
+        ("checkResponseTimeout", json!("600"), true),
+        ("minimumEntriesToMergeWaitTime", json!(180), false),
+        ("minimumEntriesToMergeWaitTime", Value::Null, true),
     ] {
         let c = fixture();
         let mut g = graph(&c, true);
-        g["data"]["repository"]["mergeQueue"]["configuration"]["checkResponseTimeout"] =
-            raw.clone();
+        g["data"]["repository"]["mergeQueue"]["configuration"][field] = raw.clone();
         let mut replies = access(true);
         if malformed {
             replies.push(response(200, g));
@@ -284,7 +283,7 @@ async fn unmatched_or_malformed_timeout_revokes_without_guessing_units() {
             .inspect_host_configuration(&binding(), "main", true)
             .await;
         let req = h.await.unwrap();
-        assert!(matches!(result, Err(Error::Evidence)), "{raw}");
+        assert!(matches!(result, Err(Error::Evidence)), "{field}: {raw}");
         assert_eq!(req.len(), if malformed { 6 } else { 9 });
         assert!(request_text(req.last().unwrap()).starts_with("DELETE /installation/token "));
         assert!(!req.iter().any(|r| request_text(r).contains("mutation ")));
