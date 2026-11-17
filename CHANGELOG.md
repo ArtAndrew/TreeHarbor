@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.1.26-alpha.1 — reduce source writes and inspect GitHub rulesets
+
+- Reduce redundant PostgreSQL writes during source admission while preserving
+  object verification and durable receipts. On the Linux ARM64 fixture of
+  8,264 frames, the median admission time was 14.83 s with the candidate
+  and 18.22 s with 0.1.25. This phase starts after local Git conversion.
+  [Measurement and scope](https://github.com/ArtAndrew/TreeHarbor/pull/207).
+- Read hidden GitHub ruleset bypass lists through an
+  [explicit operator option](docs/github-host-policy.md#inspect-configuration-before-the-first-pr).
+  The CLI uses a separate repository-scoped token for ruleset detail reads.
+  Rulesets that GitHub still redacts remain unverified.
+  Full live queue acceptance is pending.
+- [Upgrade from 0.1.25](docs/release-packaging.md#upgrade-from-0125-alpha1).
+  Both releases use schema 035.
+
 ## 0.1.25-alpha.1 — verify a completed GitHub merge
 
 - [`queue_merge_evidence`](docs/github-admission-evidence.md#verify-an-observed-merge)

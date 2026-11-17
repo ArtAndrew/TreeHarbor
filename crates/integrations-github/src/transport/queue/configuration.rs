@@ -1,5 +1,6 @@
 //! Branch configuration before the first PR. No mutation or implicit scope upgrade.
 use super::*;
+use crate::PolicyReadOptions;
 use treeharbor_github_contract::{host_configuration as hc, host_policy_evaluation::Profile};
 
 const CONFIGURATION_QUERY: &str = r"query TreeHarborHostConfiguration($owner:String!,$name:String!,$branch:String!,$ref:String!,$settings:Boolean!){
@@ -172,18 +173,91 @@ fn decode(
     ))
 }
 
+pub(super) struct PolicyAccess {
+    pub(super) owner_type: OwnerType,
+    pub(super) token: wire::Token,
+    ruleset_token: Option<wire::Token>,
+}
+
+impl PolicyAccess {
+    pub(super) fn ruleset_token(&self) -> &wire::Token {
+        self.ruleset_token.as_ref().unwrap_or(&self.token)
+    }
+}
+
 impl Connection {
+    async fn mint_verified_policy_token(
+        &self,
+        b: &RepositoryBinding,
+        capability: wire::Capability,
+    ) -> Result<(OwnerType, wire::Token)> {
+        let (installation, token) =
+            tokio::time::timeout(PROBE_TIMEOUT, self.mint_for(b, capability))
+                .await
+                .map_err(|_| Error::Deadline)??;
+        let verified = tokio::time::timeout(
+            PROBE_TIMEOUT,
+            self.observe_for(b, &installation, &token, capability),
+        )
+        .await
+        .map_err(|_| Error::Deadline)
+        .and_then(|r| r);
+        match verified {
+            Ok(probe) => Ok((probe.owner_type, token)),
+            Err(error) => {
+                let _ = self.revoke(&token).await;
+                Err(error)
+            }
+        }
+    }
+
+    pub(super) async fn mint_policy_access(
+        &self,
+        b: &RepositoryBinding,
+        capability: wire::Capability,
+        include_ruleset_bypass: bool,
+    ) -> Result<PolicyAccess> {
+        let (owner_type, token) = self.mint_verified_policy_token(b, capability).await?;
+        let mut access = PolicyAccess {
+            owner_type,
+            token,
+            ruleset_token: None,
+        };
+        if include_ruleset_bypass {
+            match self
+                .mint_verified_policy_token(b, wire::Capability::RulesetAudit)
+                .await
+            {
+                Ok((_, token)) => access.ruleset_token = Some(token),
+                Err(error) => {
+                    let _ = self.revoke(&access.token).await;
+                    return Err(error);
+                }
+            }
+        }
+        Ok(access)
+    }
+
+    pub(super) async fn revoke_policy_access(&self, access: &PolicyAccess) -> bool {
+        let audit_revoked = if let Some(token) = &access.ruleset_token {
+            self.revoke(token).await.is_ok()
+        } else {
+            true
+        };
+        self.revoke(&access.token).await.is_ok() && audit_revoked
+    }
+
     pub(super) async fn configuration_round(
         &self,
         b: &RepositoryBinding,
         t: &hc::Target,
-        kind: OwnerType,
-        token: &wire::Token,
+        access: &PolicyAccess,
         settings: bool,
     ) -> Result<hc::Configuration> {
+        let token = &access.token;
         let v=self.json(Stage::CheckEvidence,Method::POST,"graphql",token.token.header()?,
             Some(json!({"query":CONFIGURATION_QUERY,"variables":{"owner":b.owner,"name":b.name,"branch":t.base_ref,"ref":format!("refs/heads/{}",t.base_ref),"settings":settings}})),StatusCode::OK).await?;
-        let (visibility, queue) = decode(v, b, t, kind, settings)?;
+        let (visibility, queue) = decode(v, b, t, access.owner_type, settings)?;
         visibility.validate(t).map_err(|_| Error::Evidence)?;
         let base = t.base_ref.replace('/', "%2F");
         let protection = self
@@ -192,7 +266,9 @@ impl Connection {
                 token,
             )
             .await?;
-        let (rules, rulesets) = self.host_rules(b, &t.base_ref, token).await?;
+        let (rules, rulesets) = self
+            .host_rules(b, &t.base_ref, token, access.ruleset_token())
+            .await?;
         let queue = anchored_queue_timeout(queue, &rules)?;
         let c = hc::Configuration {
             version: 1,
@@ -211,14 +287,15 @@ impl Connection {
         c.validate(t).map_err(|_| Error::Evidence)?;
         Ok(c)
     }
-    /// No PR, service mutation or approval prerequisite. Settings reads explicitly
-    /// request Contents-write; false never falls back to broader credentials.
+    /// Observe policy before a PR exists. Additional token permissions require an
+    /// explicit option and are limited to the selected repository.
     pub async fn inspect_host_configuration(
         &self,
         b: &RepositoryBinding,
         base: &str,
-        include_queue_settings: bool,
+        options: impl Into<PolicyReadOptions>,
     ) -> Result<hc::Inspection> {
+        let options = options.into();
         b.validate()?;
         let t = hc::Target {
             repository_id: b.repository_id,
@@ -231,28 +308,27 @@ impl Connection {
             .map_err(|_| Error::Deadline)?
             .map_err(|_| Error::Configuration)?;
         let started = now()? as i64 * 1000;
-        let cap = if include_queue_settings {
+        let cap = if options.include_queue_settings {
             wire::Capability::PolicySettings
         } else {
             wire::Capability::PolicyInspect
         };
-        let (installation, token) = tokio::time::timeout(PROBE_TIMEOUT, self.mint_for(b, cap))
-            .await
-            .map_err(|_| Error::Deadline)??;
+        let access = self
+            .mint_policy_access(b, cap, options.include_ruleset_bypass)
+            .await?;
         let result = tokio::time::timeout(PROBE_TIMEOUT, async {
-            let observed = self.observe_for(b, &installation, &token, cap).await?;
             let before = self
-                .configuration_round(b, &t, observed.owner_type, &token, include_queue_settings)
+                .configuration_round(b, &t, &access, options.include_queue_settings)
                 .await?;
             let after = self
-                .configuration_round(b, &t, observed.owner_type, &token, include_queue_settings)
+                .configuration_round(b, &t, &access, options.include_queue_settings)
                 .await?;
             Ok::<_, Error>((before, after))
         })
         .await
         .map_err(|_| Error::Deadline)
         .and_then(|r| r);
-        let token_revoked = self.revoke(&token).await.is_ok();
+        let token_revoked = self.revoke_policy_access(&access).await;
         let (before, after) = result?;
         let report = hc::Inspection {
             version: 1,

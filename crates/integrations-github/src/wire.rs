@@ -15,6 +15,7 @@ pub(crate) enum Capability {
     HostPolicySettings,
     PolicyInspect,
     PolicySettings,
+    RulesetAudit,
     CheckWrite,
     QueueRead,
     QueueWrite,
@@ -24,31 +25,30 @@ pub(crate) enum Capability {
 }
 impl Capability {
     pub fn permissions(self) -> BTreeMap<String, String> {
-        let mut permissions = BTreeMap::from([
-            (
-                "contents".into(),
-                match self {
-                    Self::Source
-                    | Self::PullRead
-                    | Self::PullWrite
-                    | Self::Evidence
-                    | Self::AttemptEvidence
-                    | Self::HostPolicy
-                    | Self::PolicyInspect
-                    | Self::CheckWrite
-                    | Self::QueueRead => "read",
-                    Self::Branch
-                    | Self::HostPolicySettings
-                    | Self::PolicySettings
-                    | Self::QueueWrite
-                    | Self::QueueGraphql
-                    | Self::QueueResult
-                    | Self::QueueRemove => "write",
-                }
-                .into(),
-            ),
-            ("metadata".into(), "read".into()),
-        ]);
+        let mut permissions = BTreeMap::from([("metadata".into(), "read".into())]);
+        let contents = match self {
+            Self::RulesetAudit => {
+                permissions.insert("administration".into(), "write".into());
+                return permissions;
+            }
+            Self::Source
+            | Self::PullRead
+            | Self::PullWrite
+            | Self::Evidence
+            | Self::AttemptEvidence
+            | Self::HostPolicy
+            | Self::PolicyInspect
+            | Self::CheckWrite
+            | Self::QueueRead => "read",
+            Self::Branch
+            | Self::HostPolicySettings
+            | Self::PolicySettings
+            | Self::QueueWrite
+            | Self::QueueGraphql
+            | Self::QueueResult
+            | Self::QueueRemove => "write",
+        };
+        permissions.insert("contents".into(), contents.into());
         if matches!(
             self,
             Self::PullRead

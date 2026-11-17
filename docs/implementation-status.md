@@ -1635,6 +1635,15 @@ component/member completeness and signed source/build provenance remain unproven
 
 ## Current GitHub configuration observations
 
+An operator can request a separate repository-scoped token for ruleset detail
+reads with `policy-inspect --include-ruleset-bypass` or
+`queue --host-policy-group SEQUENCE --host-policy-ruleset-bypass`. GitHub may
+hide bypass actors from the primary observation token. The auxiliary token
+requests Administration write and Metadata read, verifies the exact
+repository, and reports revocation together with the primary token. The
+existing complete-evidence requirement still applies to every ruleset.
+See [host-policy scope](github-host-policy.md).
+
 The analyzer recognizes the optional extra-approval rule and caller-bypass
 indicator conservatively. Zero-approval interpretation requires the whole
 effective/source policy to agree; missing legacy-review settings need explicit

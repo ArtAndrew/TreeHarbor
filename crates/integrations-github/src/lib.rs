@@ -26,6 +26,23 @@ pub use transport::restore_inventory::{
 };
 
 pub const API_VERSION: &str = "2026-03-10";
+
+/// Explicit permission choices for host-policy reads. Both are off by default.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct PolicyReadOptions {
+    pub include_queue_settings: bool,
+    pub include_ruleset_bypass: bool,
+}
+
+impl From<bool> for PolicyReadOptions {
+    fn from(include_queue_settings: bool) -> Self {
+        Self {
+            include_queue_settings,
+            ..Self::default()
+        }
+    }
+}
+
 pub struct GitDownload {
     pub worker: std::path::PathBuf,
     pub git: std::path::PathBuf,

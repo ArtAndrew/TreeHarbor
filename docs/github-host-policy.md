@@ -38,6 +38,15 @@ Contents **write** in the temporary token; the App must already have that grant.
 Other permissions remain read-only, and the command performs no host mutation.
 There is no automatic escalation when the default capture is incomplete.
 
+If GitHub reports a redacted ruleset bypass list, the operator can add
+`--host-policy-ruleset-bypass` to this capture. The App needs
+Administration **write** on the selected repository. This option mints a
+second installation token with Administration write and Metadata read,
+verifies its single-repository scope, and uses it for ruleset detail GETs.
+Queue, branch and PR observations use the primary token. The report requires
+both token revocations. An inherited ruleset with a hidden list remains
+unproven.
+
 A repository reader sends this through `treeharbor client ... github --request`:
 
 ```json
@@ -204,6 +213,13 @@ that grant. This option still performs only configuration reads; it cannot chang
 App grants, branches, rules or queue entries. Without it, omitted queue settings
 remain `queue_configuration_unproven`. GitHub permission errors fail the read;
 there is no automatic retry with broader privileges.
+
+To read the bypass lists for applicable rulesets, add
+`--include-ruleset-bypass` to `policy-inspect`. GitHub requires write access
+to the ruleset to return those lists. This flag requests the same separate,
+repository-scoped Administration-write token as the candidate flag above.
+Both flags belong on trusted operator hosts.
+[Ruleset visibility](https://docs.github.com/en/rest/repos/rules#get-a-repository-ruleset)
 
 The JSON result contains the full versioned `inspection`, its `digest`, both
 configuration digests, both analyses and `reasons`. `approved` and

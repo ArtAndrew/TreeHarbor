@@ -8,7 +8,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
-use treeharbor_github::{AppCredentials, Connection, RepositoryBinding};
+use treeharbor_github::{AppCredentials, Connection, PolicyReadOptions, RepositoryBinding};
 use uuid::Uuid;
 mod archive_observe;
 mod archive_preflight;
@@ -153,6 +153,9 @@ pub enum Action {
         /// Include queue settings; explicitly requests Contents-write for this read.
         #[arg(long, requires = "host_policy_group")]
         host_policy_settings: bool,
+        /// Use a separate Administration-write token to read ruleset bypass actors.
+        #[arg(long, requires = "host_policy_group")]
+        host_policy_ruleset_bypass: bool,
     },
     /// Capture exact selected PR checks and active rulesets; does not authorize merge.
     Inspect {
@@ -286,6 +289,9 @@ pub enum Action {
         /// Explicitly request Contents-write to read queue settings. No host write.
         #[arg(long)]
         include_queue_settings: bool,
+        /// Use a separate Administration-write token to read ruleset bypass actors.
+        #[arg(long)]
+        include_ruleset_bypass: bool,
     },
     /// Verify a selected repository with a temporary read-only App token.
     /// Creates no binding, branch or PR and makes no queue-readiness claim.
@@ -510,6 +516,7 @@ pub async fn run(action: Action) -> Result<bool> {
             publication_group,
             host_policy_group,
             host_policy_settings,
+            host_policy_ruleset_bypass,
         } => {
             Box::pin(queue::run(queue::Request {
                 config,
@@ -520,7 +527,10 @@ pub async fn run(action: Action) -> Result<bool> {
                 state,
                 publication_group,
                 host_policy_group,
-                host_policy_settings,
+                host_policy_options: PolicyReadOptions {
+                    include_queue_settings: host_policy_settings,
+                    include_ruleset_bypass: host_policy_ruleset_bypass,
+                },
                 definition_attempt: attempt_report,
                 check: group_report.map(|sequence| {
                     (
@@ -762,6 +772,7 @@ pub async fn run(action: Action) -> Result<bool> {
             config,
             base,
             include_queue_settings,
+            include_ruleset_bypass,
         } => {
             let (credentials, config) = load(&config)?;
             let target = treeharbor_github_contract::host_configuration::Target {
@@ -770,7 +781,14 @@ pub async fn run(action: Action) -> Result<bool> {
                 base_ref: base.clone(),
             };
             let report = Connection::new(credentials)?
-                .inspect_host_configuration(&config.repository, &base, include_queue_settings)
+                .inspect_host_configuration(
+                    &config.repository,
+                    &base,
+                    PolicyReadOptions {
+                        include_queue_settings,
+                        include_ruleset_bypass,
+                    },
+                )
                 .await?;
             let output = json!({
                 "version": 1, "inspection": report,

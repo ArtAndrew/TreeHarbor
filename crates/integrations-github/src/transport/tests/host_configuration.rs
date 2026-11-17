@@ -43,6 +43,21 @@ fn access(settings: bool) -> Vec<Vec<u8>> {
         response(200, repository()),
     ]
 }
+
+const AUDIT_TOKEN: &str = "ghs_public-ruleset-audit-test-fixture";
+
+fn ruleset_access_token() -> Value {
+    let mut audit = token();
+    audit["token"] = json!(AUDIT_TOKEN);
+    audit["permissions"] = json!({"administration":"write","metadata":"read"});
+    audit
+}
+
+fn uses_audit_token(request: &str) -> bool {
+    request
+        .lines()
+        .any(|line| line.eq_ignore_ascii_case(&format!("authorization: Bearer {AUDIT_TOKEN}")))
+}
 pub(super) fn round(c: &Configuration, g: Value) -> Vec<Vec<u8>> {
     vec![
         response(200, g),
@@ -109,6 +124,103 @@ async fn configuration_inspection_is_pr_independent_and_never_implicitly_upgrade
             json!({"owner":"example-org","name":"demo","branch":"main","ref":"refs/heads/main","settings":settings})
         );
         assert!(request_text(req.last().unwrap()).starts_with("DELETE /installation/token "));
+    }
+}
+
+#[tokio::test]
+async fn explicit_ruleset_audit_uses_an_independent_token_and_requires_both_revocations() {
+    for audit_revoked in [true, false] {
+        let c = fixture();
+        let mut replies = access(true);
+        replies.extend([
+            response(200, installation()),
+            response(201, ruleset_access_token()),
+            response(200, json!({"total_count":1,"repositories":[{"id":11}]})),
+            response(200, repository()),
+        ]);
+        replies.extend(round(&c, graph(&c, true)));
+        replies.extend(round(&c, graph(&c, true)));
+        replies.push(if audit_revoked {
+            revoked()
+        } else {
+            response(503, json!({"message":"synthetic audit revocation failure"}))
+        });
+        replies.push(revoked());
+        let (connection, host) = host(replies).await;
+        let report = connection
+            .inspect_host_configuration(
+                &binding(),
+                "main",
+                crate::PolicyReadOptions {
+                    include_queue_settings: true,
+                    include_ruleset_bypass: true,
+                },
+            )
+            .await
+            .unwrap();
+        let requests = host.await.unwrap();
+        assert_eq!(*report.before, c);
+        assert_eq!(*report.after, c);
+        assert_eq!(report.token_revoked, audit_revoked);
+        assert_eq!(
+            report.reasons(&c.visibility.target).unwrap().is_empty(),
+            audit_revoked
+        );
+        let mint: Value =
+            serde_json::from_str(request_text(&requests[5]).split_once("\r\n\r\n").unwrap().1)
+                .unwrap();
+        assert_eq!(
+            mint,
+            json!({"repository_ids":[11],"permissions":{"administration":"write","metadata":"read"}})
+        );
+        for request in &requests[8..16] {
+            let request = request_text(request);
+            assert_eq!(
+                uses_audit_token(request),
+                request.starts_with("GET /repos/example-org/demo/rulesets/42?")
+            );
+            assert!(!request.contains("mutation "));
+        }
+        for (request, expected_audit) in requests[16..].iter().zip([true, false]) {
+            let request = request_text(request);
+            assert!(request.starts_with("DELETE /installation/token "));
+            assert_eq!(uses_audit_token(request), expected_audit);
+        }
+    }
+}
+
+#[tokio::test]
+async fn ruleset_audit_refuses_a_token_listing_another_repository_and_revokes_both() {
+    let mut replies = access(false);
+    replies.extend([
+        response(200, installation()),
+        response(201, ruleset_access_token()),
+        response(
+            200,
+            json!({"total_count":2,"repositories":[{"id":11},{"id":12}]}),
+        ),
+        revoked(),
+        revoked(),
+    ]);
+    let (connection, host) = host(replies).await;
+    let error = connection
+        .inspect_host_configuration(
+            &binding(),
+            "main",
+            crate::PolicyReadOptions {
+                include_ruleset_bypass: true,
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(error, Error::TokenScope);
+    let requests = host.await.unwrap();
+    assert_eq!(requests.len(), 9);
+    for (request, expected_audit) in requests[7..].iter().zip([true, false]) {
+        let request = request_text(request);
+        assert!(request.starts_with("DELETE /installation/token "));
+        assert_eq!(uses_audit_token(request), expected_audit);
     }
 }
 #[tokio::test]

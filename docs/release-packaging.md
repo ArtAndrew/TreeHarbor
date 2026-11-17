@@ -148,6 +148,15 @@ PostgreSQL, Docker/gVisor, bounded volumes and host access are separate prerequi
 Removing the CLI symlink and that version directory uninstalls the package; retain
 repository state and backups separately.
 
+### Upgrade from 0.1.25-alpha.1
+
+Both releases use schema 035 and the same retained object and queue report
+formats. Drain workers, stop the service and bridges, and take a
+[cold backup](backup-restore.md). Install 0.1.26 alongside 0.1.25 and
+run `doctor` against the existing configuration before starting it.
+The new GitHub flags are optional. An earlier CLI accepts the original
+flags when rolling back.
+
 ### Upgrade from 0.1.24-alpha.1
 
 Both releases use schema 035. Stop the service and reporting bridges, then

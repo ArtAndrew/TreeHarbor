@@ -1,5 +1,7 @@
 //! Read-only complete policy/review observations. No configuration or merge writes.
+use super::configuration::PolicyAccess;
 use super::*;
+use crate::PolicyReadOptions;
 use std::collections::{BTreeMap, BTreeSet};
 use treeharbor_github_contract::{host_policy as hp, publication};
 
@@ -107,6 +109,7 @@ impl Connection {
         b: &RepositoryBinding,
         base: &str,
         token: &wire::Token,
+        ruleset_token: &wire::Token,
     ) -> Result<(Vec<Value>, Vec<hp::Ruleset>)> {
         let base = base.replace('/', "%2F");
         let repository = format!("{}/{}", b.owner, b.name);
@@ -152,7 +155,7 @@ impl Connection {
                                 "repos/{}/{}/rulesets/{}?includes_parents=true",
                                 b.owner, b.name, source.id
                             ),
-                            token,
+                            ruleset_token,
                         )
                         .await?;
                     sets.push(hp::Ruleset { source, document });
@@ -258,38 +261,38 @@ impl Connection {
         &self,
         b: &RepositoryBinding,
         t: &QueueTarget,
-        token: &wire::Token,
-        configuration: Option<(OwnerType, bool)>,
+        access: &PolicyAccess,
+        configuration: Option<PolicyReadOptions>,
     ) -> Result<hp::Snapshot> {
+        let token = &access.token;
         let mut group = self.group_snapshot(b, t, token).await?;
-        let (protection, rules, rulesets, visibility) =
-            if let Some((kind, settings)) = configuration {
-                let target = treeharbor_github_contract::host_configuration::Target {
-                    repository_id: b.repository_id,
-                    repository_name: format!("{}/{}", b.owner, b.name),
-                    base_ref: t.pull.base_ref.clone(),
-                };
-                let c = self
-                    .configuration_round(b, &target, kind, token, settings)
-                    .await?;
-                group.target.configuration = c.profile.queue;
-                (
-                    c.profile.protection,
-                    c.profile.rules,
-                    c.profile.rulesets,
-                    Some(Box::new(c.visibility)),
-                )
-            } else {
-                let base = t.pull.base_ref.replace('/', "%2F");
-                let protection = self
-                    .host_document(
-                        &format!("repos/{}/{}/branches/{base}/protection", b.owner, b.name),
-                        token,
-                    )
-                    .await?;
-                let (rules, rulesets) = self.host_rules(b, &t.pull.base_ref, token).await?;
-                (protection, rules, rulesets, None)
+        let (protection, rules, rulesets, visibility) = if let Some(options) = configuration {
+            let target = treeharbor_github_contract::host_configuration::Target {
+                repository_id: b.repository_id,
+                repository_name: format!("{}/{}", b.owner, b.name),
+                base_ref: t.pull.base_ref.clone(),
             };
+            let c = self
+                .configuration_round(b, &target, access, options.include_queue_settings)
+                .await?;
+            group.target.configuration = c.profile.queue;
+            (
+                c.profile.protection,
+                c.profile.rules,
+                c.profile.rulesets,
+                Some(Box::new(c.visibility)),
+            )
+        } else {
+            let base = t.pull.base_ref.replace('/', "%2F");
+            let protection = self
+                .host_document(
+                    &format!("repos/{}/{}/branches/{base}/protection", b.owner, b.name),
+                    token,
+                )
+                .await?;
+            let (rules, rulesets) = self.host_rules(b, &t.pull.base_ref, token, token).await?;
+            (protection, rules, rulesets, None)
+        };
         let review = self.host_review(b, t, token).await?;
         let snapshot = hp::Snapshot {
             group,
@@ -314,16 +317,16 @@ impl Connection {
     ) -> Result<ObservedQueue> {
         self.observe_host_policy_inner(b, t, target, None).await
     }
-    /// Capture full configuration in the candidate's two rounds. Queue settings
-    /// need explicit Contents-write; false never silently escalates credentials.
+    /// Capture full configuration in the candidate's two rounds. Additional
+    /// permissions are confined to explicitly selected, repository-scoped reads.
     pub async fn observe_candidate_configuration(
         &self,
         b: &RepositoryBinding,
         t: &QueueTarget,
         target: &publication::Target,
-        include_queue_settings: bool,
+        options: impl Into<PolicyReadOptions>,
     ) -> Result<ObservedQueue> {
-        self.observe_host_policy_inner(b, t, target, Some(include_queue_settings))
+        self.observe_host_policy_inner(b, t, target, Some(options.into()))
             .await
     }
     async fn observe_host_policy_inner(
@@ -331,7 +334,7 @@ impl Connection {
         b: &RepositoryBinding,
         t: &QueueTarget,
         target: &publication::Target,
-        configuration: Option<bool>,
+        configuration: Option<PolicyReadOptions>,
     ) -> Result<ObservedQueue> {
         b.validate()?;
         t.validate().map_err(|_| Error::Evidence)?;
@@ -344,19 +347,18 @@ impl Connection {
             .map_err(|_| Error::Deadline)?
             .map_err(|_| Error::Configuration)?;
         let started = now()? as i64 * 1000;
-        let cap = if configuration == Some(true) {
+        let options = configuration.unwrap_or_default();
+        let cap = if options.include_queue_settings {
             wire::Capability::HostPolicySettings
         } else {
             wire::Capability::HostPolicy
         };
-        let (installation, token) = tokio::time::timeout(PROBE_TIMEOUT, self.mint_for(b, cap))
-            .await
-            .map_err(|_| Error::Deadline)??;
+        let access = self
+            .mint_policy_access(b, cap, options.include_ruleset_bypass)
+            .await?;
         let result = tokio::time::timeout(PROBE_TIMEOUT, async {
-            let observed = self.observe_for(b, &installation, &token, cap).await?;
-            let mode = configuration.map(|settings| (observed.owner_type, settings));
-            let before = self.host_snapshot(b, t, &token, mode).await?;
-            let after = self.host_snapshot(b, t, &token, mode).await?;
+            let before = self.host_snapshot(b, t, &access, configuration).await?;
+            let after = self.host_snapshot(b, t, &access, configuration).await?;
             Ok::<_, Error>(hp::Report {
                 version: if configuration.is_some() { 2 } else { 1 },
                 repository_name: format!("{}/{}", b.owner, b.name),
@@ -368,7 +370,7 @@ impl Connection {
         .await
         .map_err(|_| Error::Deadline)
         .and_then(|r| r);
-        let revoked = self.revoke(&token).await.is_ok();
+        let revoked = self.revoke_policy_access(&access).await;
         let observation = QueueObservation {
             version: if configuration.is_some() { 10 } else { 9 },
             started_at_unix_ms: started,
@@ -390,7 +392,7 @@ impl Connection {
         Ok(ObservedQueue {
             binding: b.clone(),
             observation,
-            token_expires_at: token.expires_at.clone(),
+            token_expires_at: access.token.expires_at.clone(),
         })
     }
 }

@@ -56,6 +56,10 @@ configuration or unproven token revocation. It writes a new private file, refuse
 to overwrite existing output and never adopts a policy. It accepts either raw
 Inspection v1 JSON or `policy-inspect` output; derived envelope flags are ignored.
 
+For a `bypass_redacted` diagnostic, use the
+[explicit ruleset read option](github-host-policy.md#inspect-configuration-before-the-first-pr)
+if the App has write access to the affected ruleset.
+
 `policy-plan` is an authenticated owner preview. It does not change GitHub or
 store an approval. It returns required App/name pairs and, for version2,
 `host_configuration.required_matches`. This can be false during setup: configure
