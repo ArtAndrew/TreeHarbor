@@ -20,6 +20,81 @@ async fn publication_counts(raw: &tokio_postgres::Client) -> (i64, i64) {
 
 #[tokio::test]
 #[ignore = "requires disposable PostgreSQL; runs in database CI"]
+async fn mixed_blob_reservation_rolls_back_then_reuses_the_existing_generation() {
+    let (schema, s, mut db) = setup().await;
+    let (_, auth) = actor(&mut db, &s, "human").await;
+    let (_dir, store) = store(&s);
+    let objects = blobs();
+    let first = start(&mut db, &auth).await;
+    let held = db
+        .reserve_source_object(&auth, first, &store, &objects[1])
+        .await
+        .unwrap();
+    let upload = start(&mut db, &auth).await;
+    assert!(matches!(
+        db.reserve_source_blob_batch(&auth, upload, &store, &objects, Purpose::Human)
+            .await,
+        Err(Error::ObjectBusy)
+    ));
+    let raw = connection(&schema).await;
+    let row = raw
+        .query_one(
+            "SELECT (SELECT count(*) FROM th_objects), (SELECT count(*) FROM th_object_holds),
+                (SELECT count(*) FROM th_source_upload_items WHERE upload=$1)",
+            &[&upload],
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        (
+            row.get::<_, i64>(0),
+            row.get::<_, i64>(1),
+            row.get::<_, i64>(2)
+        ),
+        (1, 1, 0)
+    );
+    assert_eq!(
+        db.source_upload_status(&auth, upload).await.unwrap()["reserved_objects"],
+        0
+    );
+
+    let receipt = store.put(held.generation(), &objects[1]).unwrap();
+    db.publish_source_object(&auth, &held, &receipt)
+        .await
+        .unwrap();
+    let tickets = db
+        .reserve_source_blob_batch(&auth, upload, &store, &objects, Purpose::Human)
+        .await
+        .unwrap();
+    assert_eq!(tickets[1].generation(), held.generation());
+    let receipts: Vec<_> = tickets
+        .iter()
+        .zip(&objects)
+        .map(|(ticket, object)| store.put(ticket.generation(), object).unwrap())
+        .collect();
+    db.publish_source_blob_batch(&auth, &tickets, &receipts, Purpose::Human)
+        .await
+        .unwrap();
+    let replay = db
+        .reserve_source_blob_batch(&auth, upload, &store, &objects, Purpose::Human)
+        .await
+        .unwrap();
+    db.publish_source_blob_batch(&auth, &replay, &receipts, Purpose::Human)
+        .await
+        .unwrap();
+    assert_eq!(publication_counts(&raw).await, (3, 4));
+    let holds_match: i64 = raw.query_one(
+        "SELECT count(*) FROM th_source_upload_items i
+         JOIN th_source_uploads u USING (tenant,repository,upload)
+         JOIN th_object_holds h ON (h.tenant,h.token,h.digest,h.generation)=(i.tenant,i.hold_token,i.digest,i.generation)
+         WHERE i.upload=$1 AND h.expires_at=u.expires_at", &[&upload],
+    ).await.unwrap().get(0);
+    assert_eq!(holds_match, 3);
+    cleanup(&schema).await;
+}
+
+#[tokio::test]
+#[ignore = "requires disposable PostgreSQL; runs in database CI"]
 async fn bulk_blobs_validate_the_whole_batch_and_replay_after_rollback_and_restart() {
     let (schema, s, mut db) = setup().await;
     let (token, auth) = actor(&mut db, &s, "human").await;
