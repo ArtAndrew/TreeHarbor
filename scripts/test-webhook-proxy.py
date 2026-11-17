@@ -183,7 +183,9 @@ def main():
             signature = "sha256=" + hmac.new(secret, body, hashlib.sha256).hexdigest()
             assert request(body + b" ", signature=signature)[0] == 401
             assert request(body, extra={"Content-Encoding": "gzip"})[0] == 415
-            assert request(body, path="/github/events?unexpected=1")[0] == 404
+            query_path = "/github/events?unexpected=1"
+            query_status = request(body, path=query_path)[0]
+            assert query_status == 404, query_status
             assert request(body, path="/commands")[0] == 404
             assert request(body, method="GET")[0] == 404
             assert request(body, duplicate=("X-GitHub-Event", "ping"))[0] == 400
@@ -211,6 +213,8 @@ def main():
             assert request(group + b" ", extra=headers)[0] == 409
             receiver.terminate()
             receiver.wait(timeout=5)
+            query_status = request(body, path=query_path)[0]
+            assert query_status == 404, query_status
             private_marker = "TH_PRIVATE_HEADER_MARKER"
             assert request(group, extra=dict(headers, **{"X-Diagnostic": private_marker}))[0] == 502
             receiver = start(BINARY, "webhook-serve", "--config", receiver_config)

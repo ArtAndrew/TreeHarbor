@@ -67,8 +67,9 @@ does not prove that a group can commit.
 
 ## Request and operational behavior
 
-- Only the exact path and POST method can reach the receiver. Query suffixes are
-  rejected by the receiver. Other routes, including `/health`, return 404 publicly.
+- Caddy forwards only `POST /github/events`. A query suffix, a different path
+  or a different method returns 404 at the proxy, even while the receiver is
+  offline. The receiver also checks the complete request URI.
 - Original bytes and signature headers pass through; there is no JSON rewriting,
   decompression, automatic write retry or generic upstream URL. Environment proxy
   variables are ignored for the Unix upstream.

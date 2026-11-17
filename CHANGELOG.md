@@ -6,6 +6,8 @@
   On the 8,195-file Linux ARM64 fixture, importing a prepared pack took
   8.13 s at the median, down from 13.70 s with the 0.1.28 code.
   [Method and raw timings](docs/benchmark-preparation.md#reserving-new-source-blobs-in-batches).
+- The bundled HTTPS proxy rejects GitHub webhook URLs with a query string
+  before contacting the receiver.
 - [Upgrade from 0.1.28](docs/release-packaging.md#upgrade-from-0128-alpha1).
   Both versions use schema 035.
 
