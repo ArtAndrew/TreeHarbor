@@ -157,30 +157,32 @@ async fn current_host_policy_joins_exact_complete_checks_and_never_reuses_drift_
     cleanup(&c.f.p.f.schema).await;
 }
 
-#[tokio::test]
-#[ignore = "requires PostgreSQL; incomplete checks, stale pin, old capture, unknown token revocation and cancellation cannot admit"]
-async fn current_host_policy_never_upgrades_incomplete_or_outdated_admission() {
-    for case in [
-        "checks",
-        "policy",
-        "legacy",
-        "revocation",
-        "cancel",
-        "before_checks",
-        "check_source",
-        "membership_source",
-        "membership_configuration",
-    ] {
-        let mut c =
-            Candidate::new_with_configuration(if case == "checks" { 2 } else { 1 }, true).await;
-        let released = vec![c.release(0, 0, 2, cp::Outcome::Observed).await];
-        let earlier = if case == "before_checks" {
-            Some(c.host_report().await)
-        } else {
-            None
-        };
-        let mut checks = c.capture("negative-checks", c.snapshot(&released)).await;
-        if case == "check_source" {
+#[derive(Debug, PartialEq, Eq)]
+enum Rejection {
+    IncompleteChecks,
+    RevokedPolicy,
+    LegacyCapture,
+    UnrevokedProviderToken,
+    CancelledQueue,
+    BeforeChecks,
+    UntrustedChecks,
+    UntrustedMembership,
+    ChangedMembershipConfiguration,
+}
+
+async fn rejects_admission(case: Rejection) {
+    use Rejection::*;
+    let required_programs = if case == IncompleteChecks { 2 } else { 1 };
+    let mut c = Candidate::new_with_configuration(required_programs, true).await;
+    let released = vec![c.release(0, 0, 2, cp::Outcome::Observed).await];
+    let earlier = if case == BeforeChecks {
+        Some(c.host_report().await)
+    } else {
+        None
+    };
+    let mut checks = c.capture("negative-checks", c.snapshot(&released)).await;
+    match case {
+        UntrustedChecks => {
             let raw = connection(&c.f.p.f.schema).await;
             let value: Value = raw
                 .query_one(
@@ -194,12 +196,12 @@ async fn current_host_policy_never_upgrades_incomplete_or_outdated_admission() {
             source.token_revoked = false;
             checks = c.save_host("unrevoked-check-source", &source).await;
         }
-        if case == "membership_source" {
+        UntrustedMembership => {
             let mut source = c.membership.clone();
             source.token_revoked = false;
             c.save_host("unrevoked-membership-source", &source).await;
         }
-        if case == "membership_configuration" {
+        ChangedMembershipConfiguration => {
             let mut source = c.membership.clone();
             let mut config = c
                 .policy
@@ -217,52 +219,79 @@ async fn current_host_policy_never_upgrades_incomplete_or_outdated_admission() {
             source.snapshot = Some(group.after.target.clone());
             c.save_host("changed-membership-settings", &source).await;
         }
-        let mut r = if let Some(r) = earlier {
-            r
-        } else {
-            c.host_report().await
-        };
-        if case == "legacy" {
-            r.version = 9;
-            let p = r.host_policy.as_mut().unwrap();
-            p.version = 1;
-            p.before.visibility = None;
-            p.after.visibility = None;
-        }
-        if case == "revocation" {
-            r.token_revoked = false;
-        }
-        let host = c.save_host("negative-host", &r).await;
-        match case {
-            "policy" => {
-                set(&mut c.f.p, &c.owner, 1, None).await;
-            }
-            "cancel" => {
-                c.f.p
-                    .f
-                    .db
-                    .cancel_github_queue(&c.f.owner, &cmd("cancel-current"), c.f.id)
-                    .await
-                    .unwrap();
-            }
-            _ => (),
-        }
-        let v = c.with_host(checks, host).await;
-        assert_eq!(v["admission_verified"], false, "{case}: {v}");
-        assert_eq!(v["merge_verified"], false);
-        match case {
-            "checks" => assert_eq!(v["checks_verified"], false),
-            "policy" => reason(&v, "owner_policy_not_current"),
-            "legacy" => reason(&v, "owner_configuration_mismatch"),
-            "revocation" => reason(&v, "provider_token_revocation_unproven"),
-            "cancel" => reason(&v, "queue_not_current"),
-            "check_source" => assert_eq!(v["evidence"]["capture_sources_trusted"], false),
-            "membership_source" => reason(&v, "latest_membership_not_trusted"),
-            "membership_configuration" => reason(&v, "latest_membership_changed"),
-            _ => reason(&v, "policy_capture_not_fresh_after_checks"),
-        }
-        cleanup(&c.f.p.f.schema).await;
+        _ => (),
     }
+    let mut r = if let Some(r) = earlier {
+        r
+    } else {
+        c.host_report().await
+    };
+    if case == LegacyCapture {
+        r.version = 9;
+        let p = r.host_policy.as_mut().unwrap();
+        p.version = 1;
+        p.before.visibility = None;
+        p.after.visibility = None;
+    }
+    if case == UnrevokedProviderToken {
+        r.token_revoked = false;
+    }
+    let host = c.save_host("negative-host", &r).await;
+    match case {
+        RevokedPolicy => {
+            set(&mut c.f.p, &c.owner, 1, None).await;
+        }
+        CancelledQueue => {
+            c.f.p
+                .f
+                .db
+                .cancel_github_queue(&c.f.owner, &cmd("cancel-current"), c.f.id)
+                .await
+                .unwrap();
+        }
+        _ => (),
+    }
+    let v = c.with_host(checks, host).await;
+    assert_eq!(v["admission_verified"], false, "{case:?}: {v}");
+    assert_eq!(v["merge_verified"], false);
+    match case {
+        IncompleteChecks => assert_eq!(v["checks_verified"], false),
+        RevokedPolicy => reason(&v, "owner_policy_not_current"),
+        LegacyCapture => reason(&v, "owner_configuration_mismatch"),
+        UnrevokedProviderToken => reason(&v, "provider_token_revocation_unproven"),
+        CancelledQueue => reason(&v, "queue_not_current"),
+        BeforeChecks => reason(&v, "policy_capture_not_fresh_after_checks"),
+        UntrustedChecks => assert_eq!(v["evidence"]["capture_sources_trusted"], false),
+        UntrustedMembership => reason(&v, "latest_membership_not_trusted"),
+        ChangedMembershipConfiguration => reason(&v, "latest_membership_changed"),
+    }
+    cleanup(&c.f.p.f.schema).await;
+}
+
+// Each case provisions its own schema. Let libtest schedule those transactions
+// independently and report the exact rejection that fails.
+macro_rules! rejection_cases {
+    ($($test:ident: $case:ident),+ $(,)?) => {
+        $(
+            #[tokio::test]
+            #[ignore = "requires PostgreSQL; actual admission with fixture host/runtime observations"]
+            async fn $test() {
+                rejects_admission(Rejection::$case).await;
+            }
+        )+
+    };
+}
+
+rejection_cases! {
+    current_host_policy_rejects_incomplete_checks: IncompleteChecks,
+    current_host_policy_rejects_revoked_policy: RevokedPolicy,
+    current_host_policy_rejects_legacy_capture: LegacyCapture,
+    current_host_policy_rejects_unrevoked_provider_token: UnrevokedProviderToken,
+    current_host_policy_rejects_cancelled_queue: CancelledQueue,
+    current_host_policy_rejects_capture_before_checks: BeforeChecks,
+    current_host_policy_rejects_untrusted_checks: UntrustedChecks,
+    current_host_policy_rejects_untrusted_membership: UntrustedMembership,
+    current_host_policy_rejects_changed_membership_configuration: ChangedMembershipConfiguration,
 }
 
 #[tokio::test]
