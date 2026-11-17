@@ -28,7 +28,7 @@ https://{$TH_WEBHOOK_ADDRESS} {
 	tls "{$TH_WEBHOOK_TLS_CERT}" "{$TH_WEBHOOK_TLS_KEY}"
 	@delivery {
 		method POST
-		path /github/events
+		expression `{http.request.orig_uri} == "/github/events"`
 	}
 	handle @delivery {
 		request_body {
