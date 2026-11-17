@@ -904,3 +904,33 @@ target directory for each revision. For each run start that server with a fresh
 After each timed import, [export the retained revision](git-export.md) and verify
 its Git commit before removing the test instance.
 [Raw samples, binary hashes and environment](benchmarks/bulk-source-admission-linux-arm64-20261117.json)
+
+### Reserving new source blobs in batches
+
+On 17 November 2026 we repeated the admission test above with the 0.1.28
+server code and a change that reserves new blobs in groups of up to 32.
+Each run imported the same prepared pack of 8,264 frames (34,163,347 bytes)
+into a fresh PostgreSQL database and object store. The OS cache was
+uncontrolled. Both servers ran on the same two-vCPU Linux ARM64 VM, with
+PostgreSQL 18.6, ext4 and durable writes enabled.
+
+| Local pack to completed import | 0.1.28 code | Batched reservations |
+| --- | ---: | ---: |
+| Median of four runs | 13.70 s | 8.13 s |
+| Observed range | 13.20–14.29 s | 7.69–9.04 s |
+| Service storage allocated after import | 65.57 MiB | 65.57 MiB |
+| PostgreSQL storage allocated after import, median | 98.39 MiB | 96.61 MiB |
+
+Alternating the two builds gave a 40.7% reduction in median admission time.
+The raw samples include setup and cleanup separately. Each run, including both
+warm-ups, exported the original Git commit and passed `git fsck --full --strict`.
+Git conversion, agent startup and workspace preparation are outside this timer.
+
+To reproduce, follow the preceding fixture, import and export procedure.
+Use a separate source checkout and build directory for each server. For
+the baseline use the source at `v0.1.28-alpha.1` and for the new server use
+the source at `v0.1.29-alpha.1`. In both benchmark checkouts restore just
+`Cargo.toml` and `Cargo.lock` from `v0.1.27-alpha.1` before compiling.
+This pins the embedded package version and dependencies used for these
+measurements. Use the same signed 0.1.27 client for both.
+[Samples, build identities and checks](benchmarks/fresh-blob-reservation-linux-arm64-20261117.json)

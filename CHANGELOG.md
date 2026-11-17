@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.29-alpha.1 — faster first source import
+
+- Reserve new file blobs in batches before writing them to the object store.
+  On the 8,195-file Linux ARM64 fixture, importing a prepared pack took
+  8.13 s at the median, down from 13.70 s with the 0.1.28 code.
+  [Method and raw timings](docs/benchmark-preparation.md#reserving-new-source-blobs-in-batches).
+- [Upgrade from 0.1.28](docs/release-packaging.md#upgrade-from-0128-alpha1).
+  Both versions use schema 035.
+
 ## 0.1.28-alpha.1 — batch source catalogue updates
 
 - Publish each bounded blob batch with grouped catalogue queries, preserving

@@ -1,5 +1,18 @@
 # Implementation status
 
+## 0.1.29-alpha.1 — batch reservations for first source import
+
+The server can reserve 2–32 new file blobs together in PostgreSQL. If any
+digest already exists, it rolls back that attempt and takes the usual path
+for existing objects. Both paths enforce the upload deadline and byte limit.
+
+Sixteen PostgreSQL upload tests and a service-level restart and replay test
+passed. The mixed-batch case checks rollback, a busy object, and reuse of its
+existing generation and hold deadline. All ten imports in the Linux benchmark
+exported the exact original Git commit. The measured scope starts with an
+existing local pack and ends when the server confirms the import.
+[Timings and environment](benchmark-preparation.md#reserving-new-source-blobs-in-batches).
+
 ## 0.1.28-alpha.1 — grouped source catalogue publication
 
 Source blob batches now use grouped catalogue reads and updates inside the
