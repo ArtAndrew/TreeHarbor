@@ -21,14 +21,14 @@ In the reference deployment, a node prepares the files and Docker with gVisor ru
 
 ## First run and repeat runs
 
-Four tasks at a time on an 8,195-file repository, using a two-CPU Linux ARM64 VM and the 0.1.29 code. TreeHarbor used file-only copy-on-write workspaces. Git worktrees included Git metadata.
+Four tasks at a time on an 8,195-file repository, using a two-CPU Linux ARM64 VM. Two runs used a development build with packed Git import and file-only copy-on-write workspaces. Git worktrees included Git metadata.
 
-| Time to read a file | TreeHarbor | Git mirror + worktree |
+| Time until all four tasks read a file | TreeHarbor | Git mirror + worktree |
 | --- | ---: | ---: |
-| First four workspaces, including local source setup | 12.93 s | 0.75 s |
-| Repeat workspaces, median per task | 0.18 s | 0.49 s |
+| First batch, including local source setup | 9.94–10.12 s | 0.69–0.76 s |
+| Repeat batch, median in each run | 0.16–0.20 s | 0.45–0.55 s |
 
-The first row adds the measured setup steps and one four-task batch. The second covers 44 repeat reads per system. Both use local source. [Method, limitations and raw samples](docs/benchmark-preparation.md#four-parallel-workspaces-with-local-setup)
+Git was faster overall on this workload. Across 13 batches and two revisions, setup and first reads added up to 13.57–14.47 s for TreeHarbor and 6.46–7.50 s for Git. Cleanup was measured separately. [Method and raw samples](docs/benchmark-preparation.md#packed-git-import-with-four-parallel-workspaces)
 
 ## What inspired it
 

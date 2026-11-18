@@ -148,6 +148,16 @@ PostgreSQL, Docker/gVisor, bounded volumes and host access are separate prerequi
 Removing the CLI symlink and that version directory uninstalls the package; retain
 repository state and backups separately.
 
+### Upgrade from 0.1.30-alpha.1
+
+0.1.31 keeps database schema 035. Stop active writers and bridges, take a
+[cold backup](backup-restore.md), install the new package alongside 0.1.30
+and run `doctor` against the existing configuration. The default Git import
+pack is compatible with both versions. A pending `--packed` import has a v4
+directory that needs the 0.1.31 CLI to resume or export. Before rolling back
+the bridge, complete that import or retain its bundle and 0.1.31 tools. An
+accepted revision is stored independently of the bridge's local pack.
+
 ### Upgrade from 0.1.29-alpha.1
 
 Both versions use schema 035. Drain the workers, stop the services and bridges,

@@ -312,6 +312,19 @@ def exercise(h, landed, managed, pending, overlap):
         }
         assert bundle["refs"]["refs/heads/main"]["git"] == git_head
         assert git_history(complete_git) == before_git
+        packed = h.root / "restored-main-packed"
+        h.value("git-import", "--packed", "--bundle", all_branches / "history.bundle",
+                "--commit", "git:sha1:" + git_head, "--output", packed)
+        assert json.loads((packed / "manifest.json").read_bytes())["version"] == 4
+        assert (packed / "frames.bin").is_file()
+        projection = h.root / "restored-packed-projection"
+        h.value("git-export", "--pack", packed, "--output", projection)
+        roundtrip = h.root / "restored-packed-main.git"
+        managed.command("/usr/bin/git", "-c", "core.hooksPath=/dev/null", "clone", "--bare",
+                        projection / "history.bundle", roundtrip)
+        managed.command("/usr/bin/git", "--git-dir", roundtrip, "fsck", "--full", "--strict")
+        assert git_history(roundtrip) == before_git
+        print("PASS packed Git import: installed CLI restored the exact two-parent history through v4", flush=True)
         print(f"PASS installed live Git export: restored all {len(expected_refs)} branch tips and the exact merge graph", flush=True)
         changed = h.client("diff", "--authority", "standalone", "--epoch", "1", "change",
                            "--changeset", h.change["changeset"], "--version", "1", credential=h.agents[0])
