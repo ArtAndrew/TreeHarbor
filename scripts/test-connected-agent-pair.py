@@ -54,8 +54,9 @@ class Fake:
                     "state": "ready", "generation": a["generation"], "epoch": self.c["epoch"],
                     "format": self.workspace_format, "profile_resolved": True}
         if action == "prepared":
+            wrong = self.prepared_wrong is True or self.prepared_wrong == who
             return {"workspace": a["workspace"], "state": "files_ready", "runtime": None,
-                    "snapshot": "sha256:" + "9" * 64 if self.prepared_wrong else self.c["baseline"]["snapshot"], **a["prepared"]}
+                    "snapshot": "sha256:" + "9" * 64 if wrong else self.c["baseline"]["snapshot"], **a["prepared"]}
         if action == "run-status":
             if j["run"] is None:
                 raise pair.Error("command_failed", "Fixture not found.")
@@ -406,15 +407,94 @@ class PublicationTests(unittest.TestCase):
     act = PairTests.act
     running_pair = PairTests.running_pair
     # Reuse setup/support without re-running all inherited preparation contracts.
-    def publication_setup(self):
+    def publication_config(self):
         c = deepcopy(self.c);c["state"] += "-published"
         root = Path(c["state"]).parent
         c["github"] = {"binding": uid(500), "owner_credential": str(root/"owner.json"),
                        "publisher_credential": str(root/"publisher.json"), "app_config": str(root/"app.json"),
                        "git": "/usr/bin/git", "base": "main", "ttl_seconds": 3600,
                        "pulls": {label: {"title": "Fixture " + label, "body": "Synthetic test", "draft": True} for label in ("A", "B")}}
-        self.c=c;self.fake=PublishingFake(c);self.act("initialize")
+        self.c = c
+        self.fake = PublishingFake(c)
+
+    def publication_setup(self):
+        self.publication_config()
+        self.act("initialize")
         self.running_pair();self.act("capture")
+
+    def test_check_and_guided_run_refuse_wrong_second_placement_before_first_request(self):
+        self.publication_config()
+        root = Path(self.c["state"])
+        self.assertEqual(self.act("check")["placements_checked"], ["A", "B"])
+        self.assertFalse(root.exists())
+        self.assertEqual([label for label, _ in self.fake.calls],
+                         ["A:workspace-status", "A:prepared", "B:workspace-status", "B:prepared"])
+        self.fake.prepared_wrong = "B"
+        for action in ("check", "run-to-pr"):
+            with self.assertRaisesRegex(pair.Error, "Agent B placement"):
+                self.act(action)
+        self.assertFalse(self.fake.ops)
+        state = json.loads((root / "pair.json").read_text())
+        self.assertTrue(all(not j["operations"] for j in state["agents"].values()))
+        self.assertFalse(self.fake.remote_writes)
+
+    def test_guided_run_resumes_in_place_and_replays_two_receipts_after_cleanup(self):
+        self.publication_config()
+        self.fake.lose = ("B", "publish-pull")
+        with self.assertRaises(pair.Error):
+            self.act("run-to-pr")
+        result = self.act("run-to-pr")
+        self.assertEqual([item["published_pull"]["number"] for item in result["agents"].values()], [11, 12])
+        self.assertEqual(self.fake.maximum, 2)
+        self.assertEqual(len(self.fake.remote_writes), 4)
+        for counts in self.fake.counts.values():
+            self.assertTrue(all(n == 1 for n in counts.values()))
+        def offline(*args):
+            self.fail("A completed retry must only read the retained journal")
+        self.assertEqual(pair.Pair(self.c, runner=offline).act("run-to-pr"), result)
+        self.assertFalse(result["merge_verified"])
+
+    def test_guided_run_requires_two_drafts_before_initializing_or_sending(self):
+        self.publication_config()
+        self.c["github"]["pulls"]["B"]["draft"] = False
+        with self.assertRaisesRegex(pair.Error, "both GitHub pulls as drafts"):
+            self.act("run-to-pr")
+        self.assertFalse(Path(self.c["state"]).exists())
+        self.assertFalse(self.fake.calls)
+        self.assertFalse(self.fake.host_calls)
+
+    def test_missing_pair_file_after_partial_publication_keeps_original_intents(self):
+        self.publication_config()
+        self.fake.lose = ("A", "publish-pull")
+        with self.assertRaises(pair.Error):
+            self.act("run-to-pr")
+        state = Path(self.c["state"]) / "pair.json"
+        saved = state.read_bytes()
+        before = list(self.fake.host_calls)
+        state.unlink()
+        for action in ("initialize", "run-to-pr"):
+            with self.assertRaisesRegex(pair.Error, "Restore the original pair.json"):
+                self.act(action)
+        self.assertEqual(self.fake.host_calls, before)
+        state.write_bytes(saved)
+        state.chmod(0o600)
+        result = self.act("run-to-pr")
+        self.assertEqual([j["published_pull"]["number"] for j in result["agents"].values()], [11, 12])
+        self.assertEqual(len(self.fake.remote_writes), 4)
+
+    def test_older_journal_gets_marker_before_next_action(self):
+        self.publication_config()
+        self.act("initialize")
+        root = Path(self.c["state"])
+        original_pair = (root / "pair.json").read_bytes()
+        (root / "driver.lock").write_bytes(b"")
+        self.act("initialize")
+        self.assertEqual((root / "pair.json").read_bytes(), original_pair)
+        self.assertGreater((root / "driver.lock").stat().st_size, 0)
+        (root / "pair.json").unlink()
+        with self.assertRaisesRegex(pair.Error, "Restore the original pair.json"):
+            self.act("run-to-pr")
+        self.assertFalse(self.fake.calls)
 
     def test_publication_uses_operator_credentials_and_preserves_two_exact_intents(self):
         self.publication_setup()

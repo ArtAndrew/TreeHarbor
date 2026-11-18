@@ -30,8 +30,20 @@ pub fn private_file(file: &File) -> Result<()> {
     }
     Ok(())
 }
+
+fn private_parent(path: &Path) -> Result<PathBuf> {
+    let parent = path.parent().ok_or(Error::UnsafeFile)?;
+    // A bare filename has an empty Rust parent. Its filesystem parent is the
+    // working directory, which must pass the same ownership and mode checks.
+    private_directory(if parent.as_os_str().is_empty() {
+        Path::new(".")
+    } else {
+        parent
+    })
+}
+
 pub fn read_private(path: &Path, max: usize) -> Result<Vec<u8>> {
-    private_directory(path.parent().ok_or(Error::UnsafeFile)?)?;
+    private_parent(path)?;
     let file = OpenOptions::new()
         .read(true)
         .custom_flags((OFlags::NOFOLLOW | OFlags::NONBLOCK).bits() as i32)
@@ -50,7 +62,7 @@ pub fn read_private(path: &Path, max: usize) -> Result<Vec<u8>> {
 /// Atomic no-clobber publication. A successful return means file and containing
 /// directory were synced. The caller handles any uncertain post-publication IO error.
 pub fn write_private(path: &Path, bytes: &[u8]) -> Result<()> {
-    let parent = private_directory(path.parent().ok_or(Error::UnsafeFile)?)?;
+    let parent = private_parent(path)?;
     let mut file = tempfile::NamedTempFile::new_in(&parent)?;
     file.write_all(bytes)?;
     file.as_file().sync_all()?;

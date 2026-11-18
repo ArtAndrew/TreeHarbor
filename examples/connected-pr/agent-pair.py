@@ -123,6 +123,18 @@ class Journal:
     def __exit__(self, *_):
         self.lock.close()
 
+    def can_initialize(self):
+        return (os.fstat(self.lock.fileno()).st_size == 0
+                and all(path.name == "driver.lock" for path in self.root.iterdir()))
+
+    def record_initialized(self):
+        # Older journals have an empty lock. Write only after pair.json is
+        # durable, before issuing work. A missing saved pair must not mint IDs.
+        if os.fstat(self.lock.fileno()).st_size == 0:
+            self.lock.write(b"pair-v1\n")
+            self.lock.flush()
+            os.fsync(self.lock.fileno())
+
 class SubprocessRunner:
     def __call__(self, argv, label):
         try:
@@ -153,7 +165,7 @@ def verify_selected_binary(config, expected):
 
 Error = DriverError
 TERMINAL = ("succeeded", "failed", "cancelled", "lost")
-ACTIONS = ("initialize", "request", "execute", "capture", "publish", "status")
+ACTIONS = ("check", "run-to-pr", "initialize", "request", "execute", "capture", "publish", "status")
 
 
 def digest(value, native=False):
@@ -324,10 +336,20 @@ class Pair:
         require(v.get("run") == a["run"] and v.get("workspace") == a["workspace"] and v.get("state") == "requested",
                 "identity", "Run request receipt identifies a different execution.")
 
-    def request(self):
-        for a in self.c["agents"]:
-            if "request" not in self.state["agents"][a["label"]]["operations"]:
+    def check_placements(self, agents):
+        verify_selected_binary(self.c, self.c["binary_sha256"])
+        for a in agents:
+            try:
                 self.readiness(a)
+            except DriverError as error:
+                raise DriverError(error.code, f"Agent {a['label']} placement: {error}") from None
+
+    def request(self):
+        # Check both new placements before recording or sending either run.
+        # A retry may already own an execution on a previously requested one.
+        self.check_placements(a for a in self.c["agents"]
+                              if "request" not in self.state["agents"][a["label"]]["operations"])
+        for a in self.c["agents"]:
             argv = ["run-request", "--key", a["keys"]["request"], "--authority", "connected", "--epoch", self.c["epoch"],
                     "--run", a["run"], "--workspace", a["workspace"], "--generation", a["generation"],
                     "--profile-digest", a["runtime_profile"], "--agent", "reference-" + a["label"], "--task", "reference-" + a["label"], "--", *a["argv"]]
@@ -538,20 +560,38 @@ class Pair:
 
     def act(self, action):
         require(action in ACTIONS, "action", "Unknown pair phase.")
-        with Journal(self.root, action == "initialize"):
+        if action == "check":
+            self.check_placements(self.c["agents"])
+            return {"version": 1, "action": action, "placements_checked": [a["label"] for a in self.c["agents"]],
+                    "revision": self.c["baseline"]["revision"], "snapshot": self.c["baseline"]["snapshot"]}
+        guided = action == "run-to-pr"
+        if guided:
+            require("github" in self.c and all(p["draft"] for p in self.c["github"]["pulls"].values()),
+                    "draft_required", "Configure both GitHub pulls as drafts before using run-to-pr.")
+        with Journal(self.root, action == "initialize" or guided) as journal:
             path = self.root / "pair.json"
             if path.exists() or path.is_symlink():
                 self.state = read_private(path)
                 require(self.state.get("version") == 1 and self.state.get("config_digest") == sha(self.c),
                         "config_changed", "Restore the original pair config; do not replace operation IDs.")
             else:
-                require(action == "initialize", "initialize_required", "Initialize this private pair journal first.")
+                require(action == "initialize" or guided, "initialize_required", "Initialize this private pair journal first.")
+                require(journal.can_initialize(), "journal_missing", "Restore the original pair.json in this used journal directory.")
                 self.state = {"version": 1, "config_digest": sha(self.c), "agents": {a["label"]: {"operations": {}} for a in self.c["agents"]}}
                 if "github" in self.c:
                     for j in self.state["agents"].values():
                         j["github"] = {k: str(uuid.uuid4()) for k in ("projection", "publication", "pull")}
                 self.save()
-            if action == "request":
+            journal.record_initialized()
+            if guided:
+                journals = self.state["agents"].values()
+                if not all("accepted" in j for j in journals):
+                    self.request()
+                    self.execute()
+                    self.capture()
+                if not all("published_pull" in j for j in journals):
+                    self.publish()
+            elif action == "request":
                 self.request()
             elif action == "execute":
                 self.execute()

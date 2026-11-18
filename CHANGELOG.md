@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.30-alpha.1 — two prepared tasks to draft pull requests
+
+- Run `check` to verify both workspaces, then `run-to-pr` to start the pair and
+  publish one draft per saved change. The operator can resume from the original
+  journal and read both recorded PR numbers after cleanup. [Walkthrough](examples/connected-pr/README.md#execute-and-publish)
+- The fixture build instructions grant its unprivileged user execute permission
+  on both binaries even when the operator builds with a restrictive `umask`.
+- `github policy-draft` accepts filenames in the operator's current private
+  directory, including the commands in the admission policy guide.
+- [Upgrade from 0.1.29](docs/release-packaging.md#upgrade-from-0129-alpha1).
+
 ## 0.1.29-alpha.1 — faster first source import
 
 - Reserve new file blobs in batches before writing them to the object store.

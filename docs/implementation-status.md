@@ -1,5 +1,29 @@
 # Implementation status
 
+## 0.1.30-alpha.1 — run a prepared pair to two draft PRs
+
+The Connected example checks both placements before requesting either run.
+`run-to-pr` saves the two changes and drives the existing Rust publisher. A
+completed pair can report the original PR numbers from its journal after
+cleanup. The helper still requires a provisioned service, two nodes and a
+repository-scoped GitHub App. [Run the example](../examples/connected-pr/README.md#execute-and-publish)
+
+Local driver tests cover a mismatched second placement, an interrupted PR
+publication and restoring a missing journal file. They use a simulated GitHub
+transport. The [recorded live trial](evidence/connected-pr-preview-20261028.json)
+exercised the individual phases with two real draft PRs.
+
+On Linux, the new helper replayed a copy of the 0.1.25 journal for
+[PR 12](https://github.com/TreeHarbor/TreeHarbor-acceptance/pull/12) and
+[PR 13](https://github.com/TreeHarbor/TreeHarbor-acceptance/pull/13) twice.
+Both invocations returned the same saved identities in a container with no
+network, service socket or credentials. This exercises the completed replay path.
+
+The separate 0.1.29 queue trial after a mode transfer reached a
+[successful check on the exact GitHub merge group](https://github.com/TreeHarbor/TreeHarbor-acceptance/runs/134627163167).
+The five-minute trial ended with PR 12 still open. Final merge verification for
+this workflow remains pending.
+
 ## 0.1.29-alpha.1 — batch reservations for first source import
 
 The server can reserve 2–32 new file blobs together in PostgreSQL. If any

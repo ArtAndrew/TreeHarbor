@@ -122,17 +122,20 @@ archive:
 
 ```sh
 cd "$TH_EXAMPLE"
-python3 agent-pair.py --config /your/private/pair.json initialize
-python3 agent-pair.py --config /your/private/pair.json request
-python3 agent-pair.py --config /your/private/pair.json execute
-python3 agent-pair.py --config /your/private/pair.json capture
-python3 agent-pair.py --config /your/private/pair.json publish
-python3 agent-pair.py --config /your/private/pair.json status
+python3 agent-pair.py --config /your/private/pair.json check
+python3 agent-pair.py --config /your/private/pair.json run-to-pr
 ```
 
-Replace `/your/private/pair.json` with the configuration you prepared. `publish`
-writes branches and draft PRs through the trusted bridge. Keep its access on the
-operator host.
+Use your private config path for both commands. `check` verifies the installed
+binary and looks up both prepared workspaces at the pinned revision. `run-to-pr`
+runs the two tasks, saves their changes, then publishes two branches and two
+draft PRs through the operator's GitHub App. Keep the journal. Repeating the
+command with the same config returns the saved PR numbers after both were
+observed, even after workspace cleanup.
+
+These two commands ship from 0.1.30-alpha.1. With an earlier package, use its
+bundled `initialize`, `request`, `execute`, `capture`, `publish` and `status`
+commands in that order.
 
 **Checkpoint:** two immutable accepted ChangeSets and two distinct GitHub draft
 PR identities. Inspect the diffs and let GitHub handle CI, conflicts, review and
