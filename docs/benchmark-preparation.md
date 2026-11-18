@@ -971,3 +971,40 @@ images. The optimized binary used the server source from
 Cargo manifest and lockfile used in the preceding benchmark. The raw report
 records the binary digest, all 104 observations, setup and cleanup times.
 [Raw observations](benchmarks/four-workspaces-linux-arm64-20261117.json)
+
+### Packed Git import with four parallel workspaces
+
+On 18 November 2026 one optimized ARM64 development binary wrote either the
+default v2 layout or the opt-in v4 layout. Each run used a fresh service
+database, object store, Git mirror and workspace volumes on the same two-vCPU
+Linux VM. The local input had 8,195 files and 32 MiB of file data. Eight files
+changed in the child revision. The OS cache was uncontrolled.
+
+| Measured stages, seconds | TreeHarbor default, two runs | TreeHarbor packed, two runs | Git worktree in the two packed runs |
+| --- | ---: | ---: | ---: |
+| First batch of four, including local source setup | 14.51 / 15.12 | 9.94 / 10.12 | 0.69 / 0.76 |
+| Median repeat batch, until all four tasks read a file | 0.180 / 0.283 | 0.163 / 0.200 | 0.452 / 0.552 |
+| Sum of source setup and first reads in all 13 batches | 21.37 / 24.36 | 13.57 / 14.47 | 6.46 / 7.50 |
+
+For the first revision, packing reduced conversion to 0.78–0.84 s. Admitting
+that source into the service took another 7.85–7.90 s. The packed directory
+occupied about 33.2 MiB versus 66.4 MiB for v2, excluding the service store,
+database and workspace images. Each completed run verified all 104 workspaces
+across both systems. In an additional run, Git 2.43.0 exited 128 during four
+concurrent worktree registrations. That run stopped and its fixture was
+cleaned up. The raw file records the error and the separate replacement run.
+
+To reproduce the workload, use the [adjacent-revision command](#reuse-after-the-branch-advances)
+with 4 slots, 6 iterations, seed 721, 2 Git checkout workers and 2 retained
+source images. Run without `--packed-git-import`, then twice with it, then
+once without it, provisioning fresh stores for each run. The Git baseline
+uses a cached mirror. TreeHarbor gives each task a file-only copy-on-write
+workspace. These measurements used a development build before 0.1.31.
+
+The first row sums the mirror, the first wave's `all_first_reads_seconds`
+and, for TreeHarbor, the bundle, capture and admission for that revision.
+The repeat median uses the 11 waves whose `first_batch_for_revision` is false.
+The last row counts the mirror and bundle once, adds both revisions' capture
+and admission for TreeHarbor, and sums all 13 first-read waves. Per-workspace
+cleanup was recorded separately. The timers omit network downloads, builds,
+agent execution and CI. [Raw runs and failed attempt](benchmarks/packed-git-import-linux-arm64-20261118.json).

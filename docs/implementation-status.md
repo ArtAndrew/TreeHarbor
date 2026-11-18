@@ -1,6 +1,6 @@
 # Implementation status
 
-## In development — smaller local Git import packs
+## 0.1.31-alpha.1 — smaller local Git import packs
 
 `git-import --packed` and `github import --packed` can store all reachable
 native frames in a single file. The default layout still writes a file per
