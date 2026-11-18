@@ -148,6 +148,20 @@ PostgreSQL, Docker/gVisor, bounded volumes and host access are separate prerequi
 Removing the CLI symlink and that version directory uninstalls the package; retain
 repository state and backups separately.
 
+### Upgrade from 0.1.32-alpha.1
+
+Both packages use database schema 035 and the same object format. Stop active
+writers and bridges, take a [cold backup](backup-restore.md), install 0.1.33
+alongside 0.1.32 and run `doctor`. Keep the old executable, its absolute path,
+and the config and journal for each pair already in progress. Resume each pair
+with the executable it pinned.
+
+For a new pair, collect its three replies with the 0.1.33 tools and use the
+[packaged setup command](../examples/connected-pr/README.md#configure-one-immutable-task-pair).
+The explicit v1 config is still supported. To roll back, stop the writers and
+switch back to the retained 0.1.32 service and tools. Keep the matching 0.1.33
+binary and journals for any outstanding 0.1.33 operations.
+
 ### Upgrade from 0.1.31-alpha.1
 
 0.1.32 adds a read-only fallback to the GitHub check publisher. Both versions

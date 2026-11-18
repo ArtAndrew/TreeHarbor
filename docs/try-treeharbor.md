@@ -98,6 +98,9 @@ Follow the [service setup](connected-pr-preview.md#3-prepare-the-service-storage
 and [App setup](connected-pr-preview.md#4-use-pr-permissions-not-queue-permissions)
 with `TH_BIN` from step 1. The guides cover database migration, diagnostics, the
 Connected repository and separate owner, agent, node and bridge credentials.
+For 0.1.33 and later, [create a private pair directory](../examples/connected-pr/README.md#configure-one-immutable-task-pair)
+before the import. Save the successful `github import` output as
+`receipts/import.json` in that directory.
 Scope the App to the chosen test repository and use Contents-write, Pull
 requests-write and Metadata-read. Then [bind the App](github-connection.md#retain-a-connection-in-a-running-treeharbor-server)
 and [import the exact commit](github-import.md).
@@ -113,10 +116,11 @@ Follow [the prepared-agent example](../examples/connected-pr/README.md). Registe
 the two bounded placements and the approved runtime image. For each workspace,
 choose a full source profile, request `workspace-create --git-compatible`, and
 use `prepare-once --workspace WORKSPACE_UUID --slot SLOT_UUID --git /path/to/git`
-with its registered node. Set `"workspace_format": "git-compatible"` in the
-private pair configuration. Fill `capture_worker.verified_binary_sha256` with
-the same verified installed CLI digest used for `binary_sha256`. Keep the original
-run, workspace and operation IDs. If the bridge and node share the same
+with its registered node. Save the two successful node replies as
+`receipts/A-prepared.json` and `receipts/B-prepared.json`. Set
+`"workspace_format": "git-compatible"` in your private copy of the settings
+template. Supply the verified CLI hash, scoped credential paths and both tasks
+as shown in the example. If the bridge and node share the same
 private import directory, you can add
 [`--git-import-pack`](local-node.md#reuse-an-imported-git-pack) to preparation.
 
@@ -126,18 +130,22 @@ archive:
 
 ```sh
 cd "$TH_EXAMPLE"
-python3 agent-pair.py --config /your/private/pair.json check
-python3 agent-pair.py --config /your/private/pair.json run-to-pr
+python3 agent-pair.py --config "$TH_PAIR_PRIVATE/pair.json" configure \
+  --settings "$TH_PAIR_PRIVATE/settings.json" --receipts "$TH_PAIR_PRIVATE/receipts"
+python3 agent-pair.py --config "$TH_PAIR_PRIVATE/pair.json" check
+python3 agent-pair.py --config "$TH_PAIR_PRIVATE/pair.json" run-to-pr
 ```
 
-Use your private config path for both commands. `check` verifies the installed
+Run `configure` once for a new pair. Use the same private config path when you
+resume. `check` verifies the installed
 binary and looks up both prepared workspaces at the pinned revision. `run-to-pr`
 runs the two tasks, saves their changes, then publishes two branches and two
 draft PRs through the operator's GitHub App. Keep the journal. Repeating the
 command with the same config returns the saved PR numbers after both were
 observed, even after workspace cleanup.
 
-These two commands ship from 0.1.30-alpha.1. With an earlier package, use its
+On 0.1.30–0.1.32, fill the packaged `config.example.json` by hand and go directly
+to `check` and `run-to-pr`. With an earlier package, use its
 bundled `initialize`, `request`, `execute`, `capture`, `publish` and `status`
 commands in that order.
 

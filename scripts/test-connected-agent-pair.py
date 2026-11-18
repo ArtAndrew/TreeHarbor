@@ -422,6 +422,85 @@ class PublicationTests(unittest.TestCase):
         self.act("initialize")
         self.running_pair();self.act("capture")
 
+    def setup_inputs(self, workspace_format="native"):
+        self.publication_config()
+        root = Path(self.c["state"]).parent
+        receipts = root / "receipts"
+        receipts.mkdir(mode=0o700)
+        source = dict(self.c["baseline"], version=1)
+        source.update({"import": uid(501), "outcome": "completed",
+                       "git_revision": "git:sha1:" + "7" * 40, "publication_ready": False})
+        pair.write_atomic(receipts / "import.json", source)
+        settings = {k: self.c[k] for k in (
+            "version", "tenant", "repository", "epoch", "binary", "binary_sha256", "socket",
+            "service_config", "state", "engine_socket", "github", "wait")}
+        settings.update(workspace_format=workspace_format, git_revision=source["git_revision"],
+                        selected_capture=True, agents=[])
+        for a in self.c["agents"]:
+            settings["agents"].append({k: a[k] for k in
+                ("label", "workspace", "node", "credential", "runtime_profile", "argv", "selection")})
+            assignment = {"version": 1, "tenant": settings["tenant"], "repository": settings["repository"],
+                          "authority": "connected", "epoch": settings["epoch"], "generation": a["generation"],
+                          "revision": source["revision"], "format": workspace_format,
+                          "git_revision": source["git_revision"] if workspace_format == "git-compatible" else None,
+                          "storage": a["node"]["storage"], "slot": a["node"]["slot"]}
+            ready = dict(a["prepared"], workspace=a["workspace"], state="files_ready", runtime=None,
+                         snapshot=source["snapshot"], assignment=assignment)
+            pair.write_atomic(receipts / (a["label"] + "-prepared.json"), ready)
+        pair.write_atomic(root / "settings.json", settings)
+        return root / "settings.json", receipts, root / "generated.json"
+
+    def test_configure_once_then_resume_both_drafts_with_the_original_identities(self):
+        settings, receipts, output = self.setup_inputs()
+        with patch("subprocess.run", side_effect=AssertionError("configure started a process")):
+            pair.configure(settings, receipts, output)
+        saved = output.read_bytes()
+        self.c = pair.read_private(output)
+        self.assertEqual(output.stat().st_mode & 0o777, 0o600)
+        self.assertFalse(Path(self.c["state"]).exists())
+        self.assertEqual(len({a[k] for a in self.c["agents"] for k in ("run", "seal", "changeset")}), 6)
+        self.assertEqual(len({k for a in self.c["agents"] for k in a["keys"].values()}), 6)
+        self.fake = PublishingFake(self.c)
+        self.assertEqual(self.act("check")["placements_checked"], ["A", "B"])
+        self.fake.lose = ("B", "publish-pull")
+        with self.assertRaises(pair.Error):
+            self.act("run-to-pr")
+        with self.assertRaisesRegex(pair.Error, "already exists"):
+            pair.configure(settings, receipts, output)
+        with self.assertRaisesRegex(pair.Error, "used pair journal"):
+            pair.configure(settings, receipts, output.with_suffix(".other"))
+        self.assertEqual(output.read_bytes(), saved)
+        observed = self.act("run-to-pr")
+        self.assertEqual(len(self.fake.remote_writes), 4)  # Two branches and two draft pull requests.
+        self.assertEqual(set(self.fake.remote_writes.values()), {1})
+        self.assertEqual(self.act("run-to-pr"), observed)
+
+    def test_setup_refuses_receipts_for_a_different_import_or_placement(self):
+        settings, receipts, output = self.setup_inputs("git-compatible")
+        for filename, path, wrong in (
+            ("import.json", ("git_revision",), "git:sha1:" + "9" * 40),
+            ("A-prepared.json", ("snapshot",), "sha256:" + "9" * 64),
+            ("B-prepared.json", ("workspace",), self.c["agents"][0]["workspace"]),
+            ("B-prepared.json", ("assignment", "repository"), uid(999)),
+            ("B-prepared.json", ("assignment", "slot"), self.c["agents"][0]["node"]["slot"]),
+            ("B-prepared.json", ("assignment", "epoch"), True),
+            ("B-prepared.json", ("assignment", "git_revision"), "git:sha1:" + "9" * 40),
+            ("B-prepared.json", ("assignment", "format"), "native"),
+        ):
+            with self.subTest(filename=filename, path=path):
+                file = receipts / filename
+                original = pair.read_private(file)
+                changed = deepcopy(original)
+                parent = changed if len(path) == 1 else changed[path[0]]
+                parent[path[-1]] = wrong
+                pair.write_atomic(file, changed)
+                with self.assertRaises(pair.Error):
+                    pair.configure(settings, receipts, output)
+                self.assertFalse(output.exists())
+                pair.write_atomic(file, original)
+        pair.configure(settings, receipts, output)
+        self.assertEqual(pair.read_private(output)["workspace_format"], "git-compatible")
+
     def test_check_and_guided_run_refuse_wrong_second_placement_before_first_request(self):
         self.publication_config()
         root = Path(self.c["state"])
@@ -532,6 +611,10 @@ class PublicationTests(unittest.TestCase):
 
     def test_operator_inputs_and_journal_cannot_be_inside_agent_files(self):
         self.publication_setup()
+        c = deepcopy(self.c)
+        c["agents"][1]["prepared"]["path"] = str(Path(c["agents"][0]["prepared"]["path"]) / "nested")
+        with self.assertRaisesRegex(pair.Error, "cannot overlap"):
+            pair.validate(c)
         for field in ("state","service_config"):
             c=deepcopy(self.c);c[field]=str(Path(c["agents"][0]["prepared"]["path"])/"private.json")
             with self.assertRaises(pair.Error):pair.validate(c)

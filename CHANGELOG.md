@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.33-alpha.1 — configure two Connected tasks from their prepared workspaces
+
+- Generate the pair configuration from the completed Git import and the two
+  node replies. The file records new task identities and retry keys once.
+  [Configure a pair](examples/connected-pr/README.md#configure-one-immutable-task-pair).
+- Read the exact revision, workspace format and assigned node slot in
+  `node prepared` and successful preparation replies.
+- [Upgrade from 0.1.32](docs/release-packaging.md#upgrade-from-0132-alpha1).
+
 ## 0.1.30-alpha.1 — two prepared tasks to draft pull requests
 
 - Run `check` to verify both workspaces, then `run-to-pr` to start the pair and

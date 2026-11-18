@@ -1,0 +1,58 @@
+{
+  "version": 1,
+  "tenant": "<tenant>",
+  "repository": "<repository UUID>",
+  "epoch": 1,
+  "workspace_format": "git-compatible",
+  "git_revision": "git:sha1:<approved full Git commit>",
+  "binary": "<absolute resolved installed executable>",
+  "binary_sha256": "<independently verified executable SHA256>",
+  "socket": "<absolute service socket>",
+  "service_config": "<absolute private service configuration>",
+  "state": "<absolute new private journal directory for this pair>",
+  "engine_socket": "<absolute Docker Engine socket>",
+  "selected_capture": true,
+  "agents": [
+    {
+      "label": "A",
+      "workspace": "<workspace A UUID>",
+      "credential": "<absolute agent A credential file>",
+      "runtime_profile": "sha256:<registered runtime profile>",
+      "argv": ["/agent", "A"],
+      "node": {
+        "root": "<absolute node A root>",
+        "storage": "<node A storage UUID>",
+        "slot": "<node A slot UUID>",
+        "credential": "<absolute node A credential file>"
+      },
+      "selection": {"replace": ["src/lib.rs"], "delete": [], "exclude": []}
+    },
+    {
+      "label": "B",
+      "workspace": "<workspace B UUID>",
+      "credential": "<absolute agent B credential file>",
+      "runtime_profile": "sha256:<registered runtime profile>",
+      "argv": ["/agent", "B"],
+      "node": {
+        "root": "<absolute node B root>",
+        "storage": "<node B storage UUID>",
+        "slot": "<node B slot UUID>",
+        "credential": "<absolute node B credential file>"
+      },
+      "selection": {"replace": ["src/lib.rs"], "delete": [], "exclude": []}
+    }
+  ],
+  "github": {
+    "binding": "<active binding UUID>",
+    "owner_credential": "<absolute Human owner credential file>",
+    "publisher_credential": "<absolute assigned Bridge credential file>",
+    "app_config": "<absolute private GitHub App configuration>",
+    "git": "/usr/bin/git",
+    "base": "main",
+    "ttl_seconds": 3600,
+    "pulls": {
+      "A": {"title": "Adjust memory per worker", "body": "Scripted TreeHarbor pilot.", "draft": true},
+      "B": {"title": "Adjust worker count", "body": "Scripted TreeHarbor pilot.", "draft": true}
+    }
+  }
+}
