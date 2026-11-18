@@ -69,8 +69,13 @@ response. Effective-rule fingerprints reuse the existing canonical rule contract
 The caller's `before_write(preflight)` callback must durably save that observation
 and recheck current local authorization. A callback rejection causes no check
 write. The library then sends one create request and rereads the resulting check
-ID, requiring exact App/name/head/external ID/conclusion equality. It does not
-update an existing check or automatically retry creation.
+ID. If that GET returns HTTP 404 without a numeric `Retry-After`, the bridge
+uses the two complete commit listings described below within the original
+deadline and token. Both provider IDs, App, name, head, external ID and conclusion
+must equal the validated create response. Missing or conflicting evidence leaves
+the write uncertain. The bridge sends the create request once. HTTP diagnostics
+label the create, direct read and listing as `CheckCreate`, `CheckReadback` and
+`CheckLookup` respectively.
 
 A `MutationFailure` distinguishes a failure before dispatch from an uncertain
 write. Once the request might have left the process, the caller must persist

@@ -148,6 +148,15 @@ PostgreSQL, Docker/gVisor, bounded volumes and host access are separate prerequi
 Removing the CLI symlink and that version directory uninstalls the package; retain
 repository state and backups separately.
 
+### Upgrade from 0.1.31-alpha.1
+
+0.1.32 adds a read-only fallback to the GitHub check publisher. Both versions
+use schema 035 and the same publication records. Stop active writers and
+bridges, take a [cold backup](backup-restore.md), and install 0.1.32 alongside
+0.1.31. Keep the bridge's private journal. Resume an uncertain publication with
+its original ID and `--recover-only`. To roll back, stop the writers and switch
+back to the retained 0.1.31 package.
+
 ### Upgrade from 0.1.30-alpha.1
 
 0.1.31 keeps database schema 035. Stop active writers and bridges, take a

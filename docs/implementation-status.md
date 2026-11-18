@@ -1,5 +1,22 @@
 # Implementation status
 
+## 0.1.32-alpha.1 — confirm a created GitHub check after a missing read
+
+`github check-publish` can confirm a check when GitHub accepts its creation
+and an immediate read of the returned ID gets a 404. The publisher reads the
+checks on the same commit twice. It reports delivery only when the stable
+result matches both IDs and the contents of the creation receipt. If the lookup
+is inconclusive, the operator can use the original journal and `--recover-only`.
+[Operator guide](github-check-publications.md#request-and-run).
+
+All 17 local HTTP tests in the check-publication suite passed. They cover an
+exact match, a missing check, drift, duplicate results, conflicting provider
+IDs and a single create request. In the earlier live run GitHub merged
+[acceptance PR 12](https://github.com/TreeHarbor/TreeHarbor-acceptance/pull/12).
+The operator's log identified the publication stage but did not record which
+request returned 404. TreeHarbor's final merge receipt for that trial is still
+outstanding.
+
 ## 0.1.31-alpha.1 — smaller local Git import packs
 
 `git-import --packed` and `github import --packed` can store all reachable
