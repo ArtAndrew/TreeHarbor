@@ -545,6 +545,14 @@ async fn prepare_and_recover_git_workspace(
     expire().await;
     let recovered = output(node("prepare-once", &["--git", "/usr/bin/false"]));
     assert_eq!(recovered["state"], "files_ready");
+    assert_eq!(
+        recovered["assignment"],
+        json!({
+            "version": 1, "tenant": tenant, "repository": repo, "authority": "connected",
+            "epoch": 1, "generation": 1, "revision": RevisionRef::Native(root).to_string(),
+            "storage": storage, "slot": slot, "format": "git-compatible", "git_revision": revision
+        })
+    );
     assert_eq!(recovered["recovered_baseline"], true);
     assert_eq!(
         PathBuf::from(recovered["path"].as_str().unwrap()),
@@ -554,7 +562,9 @@ async fn prepare_and_recover_git_workspace(
     // Once acknowledged, neither Git metadata nor working edits are regenerated.
     fs::write(files.join("main.rs"), b"agent edit").unwrap();
     fs::write(files.join(".git/config"), b"invalid agent metadata").unwrap();
-    assert_eq!(output(node("prepared", &[]))["state"], "files_ready");
+    let reopened = output(node("prepared", &[]));
+    assert_eq!(reopened["state"], "files_ready");
+    assert_eq!(reopened["assignment"], recovered["assignment"]);
     assert_eq!(fs::read(files.join("main.rs")).unwrap(), b"agent edit");
     assert_eq!(
         fs::read(files.join(".git/config")).unwrap(),

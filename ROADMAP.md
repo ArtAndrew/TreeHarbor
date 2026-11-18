@@ -17,16 +17,16 @@ Available packages and their exact scope are listed in [signed alpha releases](h
 
 ### Next pilot increments
 
-- **GitHub check recovery.** After GitHub accepts a check, confirm its identity
-  from the same commit when the immediate read fails. Verify the final merge
-  receipt separately on the managed queue. The two-draft-PR pilot can run today
-  with ordinary GitHub review and checks.
+- **First independent install.** Give a platform engineer the signed package
+  and the [two-task setup](examples/connected-pr/README.md#configure-one-immutable-task-pair).
+  Record the time to the first draft PR and any step that needs help. Repeat
+  on a new commit with the same installation.
+- **GitHub queue recovery.** Verify the final merge receipt from the exact
+  GitHub merge commit after an interruption. The two-draft-PR pilot already
+  uses ordinary GitHub review and checks.
 - **First import.** Measure the initial disk writes and test one change against
   cached Git worktrees with four and sixteen parallel tasks. Include a change
   of base revision, cleanup and repeated tasks in the comparison.
-- **First independent install.** Have a platform engineer use the signed package
-  with their own two tasks. Address the first point that needs the author's
-  help and measure how long it takes the team to return with a second batch.
 
 [0.1.22-alpha.1](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.22-alpha.1)
 preserves native commit IDs when a repository returns to Standalone after new

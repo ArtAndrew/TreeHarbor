@@ -27,13 +27,13 @@ this helper does not implement another source engine.
    the [local service](../../docs/local-service.md) and its private durable storage.
 2. Create a Connected repository, configure its selected
    [GitHub App binding](../../docs/github-connection.md), and
-   [import an exact commit](../../docs/github-import.md). Save the returned native
-   revision and snapshot, not an approximate branch name.
+   [import an exact commit](../../docs/github-import.md). Keep the final JSON
+   response as `import.json` in the private receipts directory described below.
 3. Register the approved [runtime profile](../../docs/managed-runs.md) and two
    independent [nodes/bounded placements](../../docs/local-node.md). Use matching
-   installed runtime init/image versions. Prepare two native workspaces at the
-   imported baseline with `prepare-once --workspace EXACT_UUID`; save each actual
-   `node prepared` receipt. Workspaces provide files; gVisor provides execution
+   installed runtime init/image versions. Prepare two workspaces at the imported
+   baseline with `prepare-once --workspace EXACT_UUID` and save each successful
+   reply. You can also read it again with `node prepared`. Workspaces provide files; gVisor provides execution
    isolation. The helper cannot provision or certify those boundaries.
 4. Supply separate current service credentials: each Agent needs `read`,
    `workspace.write`, `change.write`; each Node needs `runtime.control`; the Human
@@ -57,16 +57,51 @@ environment or image. Follow the [security boundaries](../../SECURITY.md).
 
 ## Configure one immutable task pair
 
-Copy [config.example.json](config.example.json) into an operator-owned directory
-with mode 0700; make the configuration mode 0600. Its placeholders intentionally
-fail validation. Fill the actual scope, baseline, prepared paths, node identities,
-runtime profile, credential paths and approved argv. Use new nonnil UUIDs for
-each run/seal/ChangeSet and distinct operation keys; preserve them on retry.
+From 0.1.33, `configure` fills in the source revision, snapshot, prepared paths
+and generation from three saved product replies. It generates and saves the six
+run/seal/ChangeSet IDs and their retry keys in a new private config.
 
-The helper expects native workspaces when `workspace_format` is omitted. For
-workspaces created with `workspace-create --git-compatible`, set
-`"workspace_format": "git-compatible"` before initializing the pair journal.
-Both prepared workspaces must match the configured format.
+Before the import, choose a persistent operator directory outside the agent
+workspaces. Set `TH_OPERATOR_DIR` to its absolute path and `TH_EXAMPLE` to this
+verified example directory. Run this once for a new pair:
+
+```sh
+umask 077
+TH_PAIR_PRIVATE=$(mktemp -d "$TH_OPERATOR_DIR/pair.XXXXXXXX")
+mkdir -m 700 "$TH_PAIR_PRIVATE/receipts"
+install -m 600 "$TH_EXAMPLE/settings.example.json" "$TH_PAIR_PRIVATE/settings.json"
+```
+
+Save stdout from the successful [`github import` command](../../docs/github-import.md)
+to `$TH_PAIR_PRIVATE/receipts/import.json`. For a completed import, running it
+again with the original import ID, epoch and state directory returns the same
+source identity. Save the node replies as `A-prepared.json` and `B-prepared.json`
+in that directory. If the workspaces are already prepared, use the registered
+node and workspace values from setup. For example, for agent A:
+
+```sh
+"$TH_BIN" node prepared --config "$TH_SERVICE_CONFIG" \
+  --credential-file "$TH_NODE_CREDENTIAL_A" --root "$TH_NODE_ROOT_A" \
+  --storage "$TH_STORAGE_A" --workspace "$TH_WORKSPACE_A" \
+  > "$TH_PAIR_PRIVATE/receipts/A-prepared.json"
+```
+
+Repeat for B with its own credential, root, storage ID and workspace ID.
+In [settings.json](settings.example.json), enter the approved Git commit, node
+and workspace IDs, exact executable hash, credential paths, task commands,
+output paths and draft PR text. Choose a new journal path under
+`TH_PAIR_PRIVATE`. Choose `git-compatible` for workspaces with private Git
+metadata or `native` for file-only workspaces. Then run:
+
+```sh
+python3 "$TH_EXAMPLE/agent-pair.py" --config "$TH_PAIR_PRIVATE/pair.json" configure \
+  --settings "$TH_PAIR_PRIVATE/settings.json" --receipts "$TH_PAIR_PRIVATE/receipts"
+```
+
+The command reads local files and creates the config with mode 0600. It reports
+`created` on success and refuses to replace an existing config. Keep this file
+and the journal together for retries. For packages through 0.1.32 or an existing
+explicit setup, the [full config format](config.example.json) is still supported.
 
 `binary` must name the resolved **regular executable**, not the installer's
 `bin/treeharbor` symlink. Verify its hash against the independently verified
@@ -74,7 +109,8 @@ archive. For example, inspect `realpath /your/prefix/bin/treeharbor` and
 `sha256sum` on that resolved path. A configured hash pins bytes; it is not proof
 that those bytes passed runtime tests or signature verification.
 
-The `capture_worker` block opts into the exact `seal-once --seal` worker. Enable it
+In settings, `selected_capture: true` creates the `capture_worker` block in the
+generated config, pinned to the same verified binary. This opts into the exact `seal-once --seal` worker. Enable it
 only for an installed binary with verified selector acceptance. Omitting it
 allows capture acceptance only for an already-ready seal; it never falls back
 to an unqualified worker. Prepared/run/capture selection always uses exact IDs.
@@ -136,8 +172,8 @@ From this directory, check both prepared workspaces before issuing work. Then
 start both tasks and publish their results as two GitHub draft PRs.
 
 ```sh
-python3 agent-pair.py --config /private/operator/pair.json check
-python3 agent-pair.py --config /private/operator/pair.json run-to-pr
+python3 agent-pair.py --config "$TH_PAIR_PRIVATE/pair.json" check
+python3 agent-pair.py --config "$TH_PAIR_PRIVATE/pair.json" run-to-pr
 ```
 
 `check` reads the two workspace and node receipts and leaves the journal untouched.

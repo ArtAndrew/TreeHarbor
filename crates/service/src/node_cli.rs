@@ -6,10 +6,12 @@ use std::{
     collections::HashSet,
     path::{Path, PathBuf},
 };
+use treeharbor_core::{GitOid, RevisionRef};
 use treeharbor_materializer::{Limits, MaterializedTree};
 use treeharbor_metadata::{
-    Metadata,
+    Authority, Metadata, Scope,
     access::{Authorization, Permission},
+    preparations::StorageSlot,
 };
 use treeharbor_node::{Node, Prepare};
 use treeharbor_storage::{ManagedStore, TenantId};
@@ -231,7 +233,7 @@ pub async fn run(action: Action) -> Result<bool> {
         args.storage,
         args.parallelism,
     )?;
-    let (workspace, tree) = match action {
+    let result = match action {
         Action::WorkSelected {
             selection,
             engine_socket,
@@ -413,11 +415,21 @@ pub async fn run(action: Action) -> Result<bool> {
             println!("{result}");
             return Ok(true);
         }
-        Action::Prepared { workspace, .. } => (
-            workspace,
-            node.open_prepared(&mut session.metadata, &auth, workspace, Limits::default())
-                .await?,
-        ),
+        Action::Prepared { workspace, .. } => {
+            let (ready, tree) = node
+                .inspect_prepared(&mut session.metadata, &auth, workspace, Limits::default())
+                .await?;
+            let assignment = placement_identity(
+                &ready.scope,
+                ready.authority,
+                ready.epoch,
+                ready.generation,
+                &ready.revision,
+                ready.slot,
+                ready.git_revision,
+            );
+            readiness(ready.workspace, &tree, assignment)
+        }
         Action::PrepareOnce {
             max_workspace_bytes,
             slot,
@@ -522,7 +534,7 @@ pub async fn run(action: Action) -> Result<bool> {
                     }
                     .await;
                     match prepared {
-                        Ok(Some((workspace, tree))) => readiness(workspace, &tree),
+                        Ok(Some(result)) => result,
                         Ok(None) => json!({"workspace":workspace,"state":"idle"}),
                         Err(error) => {
                             json!({"workspace":workspace,"state":"error","error":error.to_string()})
@@ -539,7 +551,7 @@ pub async fn run(action: Action) -> Result<bool> {
         }
         Action::Initialize { .. } => unreachable!(),
     };
-    println!("{}", readiness(workspace, &tree));
+    println!("{result}");
     Ok(true)
 }
 
@@ -560,7 +572,7 @@ async fn prepare_selected(
     auth: &Authorization,
     store: &ManagedStore,
     options: PreparationOptions<'_>,
-) -> Result<Option<(Uuid, MaterializedTree)>> {
+) -> Result<Option<Value>> {
     let PreparationOptions {
         workspace,
         slot,
@@ -611,11 +623,39 @@ async fn prepare_selected(
     } else {
         node.prepare(db, &mut heartbeat.metadata, request).await?
     };
-    Ok(Some((plan.workspace(), tree)))
+    let assignment = placement_identity(
+        plan.scope(),
+        plan.authority(),
+        plan.epoch(),
+        plan.generation(),
+        plan.revision(),
+        plan.slot(),
+        plan.git_revision(),
+    );
+    Ok(Some(readiness(plan.workspace(), &tree, assignment)))
 }
 
-fn readiness(workspace: Uuid, tree: &MaterializedTree) -> Value {
+fn placement_identity(
+    scope: &Scope,
+    authority: Authority,
+    epoch: i64,
+    generation: i64,
+    revision: &RevisionRef,
+    slot: StorageSlot,
+    git_revision: Option<GitOid>,
+) -> Value {
+    json!({
+        "version": 1, "tenant": scope.tenant(), "repository": scope.repository(),
+        "authority": authority.as_str(), "epoch": epoch, "generation": generation,
+        "revision": revision.to_string(), "storage": slot.storage, "slot": slot.slot,
+        "format": if git_revision.is_some() { "git-compatible" } else { "native" },
+        "git_revision": git_revision.map(|oid| RevisionRef::Git(oid).to_string())
+    })
+}
+
+fn readiness(workspace: Uuid, tree: &MaterializedTree, assignment: Value) -> Value {
     let mut result = json!({"workspace":workspace.to_string(),"state":"files_ready","runtime":null,
+    "assignment":assignment,
     "path":tree.path(),"manifest":tree.manifest_path(),"snapshot":tree.snapshot().to_string(),
     "recovered_baseline":tree.statistics().is_none(),
     "preparation_statistics":tree.statistics().map(|stats| json!({

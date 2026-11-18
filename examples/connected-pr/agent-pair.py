@@ -86,14 +86,21 @@ def sync_directory(root):
     finally:
         os.close(fd)
 
-def write_atomic(path, value):
+def write_atomic(path, value, *, create_only=False):
     fd, temporary = tempfile.mkstemp(prefix=".pending-", dir=path.parent)
     try:
         with os.fdopen(fd, "wb") as handle:
             handle.write(encoded(value) + b"\n")
             handle.flush()
             os.fsync(handle.fileno())
-        os.replace(temporary, path)
+        if create_only:
+            try:
+                os.link(temporary, path)
+            except FileExistsError:
+                raise DriverError("config_exists", "The configuration destination already exists. Preserve the original file.") from None
+            os.unlink(temporary)
+        else:
+            os.replace(temporary, path)
         sync_directory(path.parent)
     finally:
         if os.path.exists(temporary):
@@ -230,7 +237,8 @@ def validate(c):
     roots = [Path(x["node"]["root"]).resolve() for x in c["agents"]]
     placements = [Path(x["prepared"]["path"]).resolve() for x in c["agents"]]
     require(not roots[0].is_relative_to(roots[1]) and not roots[1].is_relative_to(roots[0])
-            and a["prepared"]["path"] != b["prepared"]["path"], "config", "Prepared placements cannot overlap.")
+            and not placements[0].is_relative_to(placements[1]) and not placements[1].is_relative_to(placements[0]),
+            "config", "Prepared placements cannot overlap.")
     require(all(not Path(c["state"]).resolve().is_relative_to(r) for r in roots), "config", "Keep the pair journal outside node roots.")
     operator_paths = [c[k] for k in ("state", "binary", "service_config", "socket", "engine_socket")]
     operator_paths += [a["credential"] for a in c["agents"]] + [a["node"]["credential"] for a in c["agents"]]
@@ -262,6 +270,97 @@ def validate(c):
         require(all(not Path(p).resolve().is_relative_to(r) for p in protected for r in roots + placements),
                 "config", "Operator credentials must remain outside agent/node files.")
     return c
+
+
+def placement_matches(value, agent, config):
+    return (value.get("workspace") == agent["workspace"] and value.get("state") == "files_ready"
+            and "runtime" in value and value["runtime"] is None and value.get("snapshot") == config["baseline"]["snapshot"]
+            and all(value.get(k) == agent["prepared"][k] for k in ("path", "manifest")))
+
+
+def assignment_matches(assignment, agent, config):
+    expected = {"version": 1, "authority": "connected", "tenant": config["tenant"], "repository": config["repository"],
+                "epoch": config["epoch"], "generation": agent["generation"], "revision": config["baseline"]["revision"],
+                "format": config.get("workspace_format", "native"), "storage": agent["node"]["storage"], "slot": agent["node"]["slot"]}
+    return (isinstance(assignment, dict) and all(type(assignment.get(k)) is int for k in ("version", "epoch", "generation"))
+            and all(assignment.get(k) == v for k, v in expected.items()))
+
+
+def saved_receipt(directory, name):
+    try:
+        return read_private(directory / name, 65536)
+    except (OSError, ValueError, UnicodeError):
+        raise DriverError("setup_receipt", f"Save the product JSON reply in the private file {name}.") from None
+
+
+def configure(settings_path, receipts, destination):
+    """Create one ordinary pair config from trusted private operator files without starting any work."""
+    destination = destination.absolute()
+    for directory in (settings_path.parent, receipts, destination.parent):
+        private_directory(directory)
+    require(not destination.exists() and not destination.is_symlink(), "config_exists",
+            "The configuration destination already exists. Preserve the original file.")
+    settings = read_private(settings_path, 65536)
+    fields(settings, ("version", "tenant", "repository", "epoch", "binary", "binary_sha256", "socket",
+                      "service_config", "state", "engine_socket", "workspace_format", "git_revision", "agents"),
+           ("github", "wait", "selected_capture"))
+    require(type(settings["version"]) is int and settings["version"] == 1
+            and type(settings.get("selected_capture", False)) is bool
+            and isinstance(settings["git_revision"], str) and re.fullmatch(r"git:sha1:[a-f0-9]{40}", settings["git_revision"]),
+            "config", "Use version 1 settings and pin the full GitHub commit.")
+    imported = saved_receipt(receipts, "import.json")
+    require(isinstance(imported, dict) and type(imported.get("version")) is int and imported["version"] == 1
+            and identifier(imported.get("import")) and imported.get("outcome") == "completed"
+            and imported.get("publication_ready") is False and imported.get("git_revision") == settings["git_revision"]
+            and digest(imported.get("revision"), True) and digest(imported.get("snapshot")),
+            "import_receipt", "Save the completed github import receipt for the pinned Git commit.")
+    config = {k: v for k, v in settings.items() if k not in ("git_revision", "selected_capture", "agents")}
+    config.update(profile="connected-prepared-agent-pair-v1",
+                  baseline={"revision": imported["revision"], "snapshot": imported["snapshot"]}, agents=[])
+    config.setdefault("wait", {"attempts": 36, "interval_seconds": 5})
+    if settings.get("selected_capture"):
+        config["capture_worker"] = {"version": 1, "mode": "selected-seal-v1", "verified_binary_sha256": config["binary_sha256"]}
+    require(isinstance(settings["agents"], list) and len(settings["agents"]) == 2, "config", "Supply settings for agents A and B.")
+    for choices in settings["agents"]:
+        fields(choices, ("label", "workspace", "credential", "node", "runtime_profile", "argv", "selection"))
+        label = choices["label"]
+        require(label in ("A", "B") and identifier(choices["workspace"]), "config", "Select the exact workspace for A and B.")
+        ready = saved_receipt(receipts, f"{label}-prepared.json")
+        require(isinstance(ready, dict) and isinstance(ready.get("assignment"), dict), "placement",
+                f"Save the installed node's prepared receipt with its assignment for agent {label}.")
+        fields(choices["node"], ("root", "storage", "slot", "credential"))
+        assignment = ready["assignment"]
+        agent = dict(choices, generation=assignment.get("generation"), prepared={k: ready.get(k) for k in ("path", "manifest")})
+        expected_git = settings["git_revision"] if config["workspace_format"] == "git-compatible" else None
+        require(assignment_matches(assignment, agent, config) and placement_matches(ready, agent, config)
+                and "git_revision" in assignment and assignment["git_revision"] == expected_git
+                and all(absolute(v) for v in agent["prepared"].values()), "placement",
+                f"Agent {label} receipt must match its repository, workspace, placement and imported source.")
+        for field in ("run", "seal", "changeset"):
+            agent[field] = str(uuid.uuid4())
+        agent["keys"] = {action: f"pair-{action}-{agent[field]}" for action, field in
+                         (("request", "run"), ("seal", "seal"), ("accept", "changeset"))}
+        config["agents"].append(agent)
+    validate(config)
+    state = Path(config["state"])
+    if state.exists() or state.is_symlink():
+        private_directory(state)
+        require(not any(state.iterdir()), "journal_used", "Restore the original configuration for a used pair journal.")
+    protected = [state, *(Path(a["node"]["root"]) for a in config["agents"]),
+                 *(Path(a["prepared"]["path"]) for a in config["agents"])]
+    target = destination.resolve()
+    require(all(not target.is_relative_to(p.resolve()) for p in protected), "unsafe_state",
+            "Save the operator configuration outside the pair journal, nodes and workspaces.")
+    reserved = [config[k] for k in ("binary", "service_config", "socket", "engine_socket")]
+    for agent in config["agents"]:
+        reserved.extend((agent["credential"], agent["node"]["credential"], agent["prepared"]["manifest"]))
+    if "github" in config:
+        reserved.extend(config["github"][k] for k in ("owner_credential", "publisher_credential", "app_config", "git"))
+    require(all(target != Path(p).resolve() for p in reserved), "unsafe_state", "Choose a separate configuration filename.")
+    require(len(encoded(config)) + 1 <= 65536, "config", "Completed configuration exceeds the pair driver's input limit.")
+    verify_selected_binary(config, config["binary_sha256"])
+    write_atomic(destination, config, create_only=True)
+    return {"version": 1, "action": "configure", "status": "created", "agents": [a["label"] for a in config["agents"]]}
 
 
 class Pair:
@@ -328,9 +427,9 @@ class Pair:
                 and v.get("profile_resolved") is True,
                 "placement", "Workspace is not ready at the exact imported baseline.")
         v = self.cli(a["label"] + ":prepared", self.node_argv(a, "prepared", "--workspace", a["workspace"]))
-        require(v.get("workspace") == a["workspace"] and v.get("state") == "files_ready" and v.get("runtime") is None
-                and v.get("snapshot") == self.c["baseline"]["snapshot"]
-                and all(v.get(k) == a["prepared"][k] for k in ("path", "manifest")), "placement", "Prepared source/placement differs from the saved receipt.")
+        require(placement_matches(v, a, self.c)
+                and ("assignment" not in v or assignment_matches(v["assignment"], a, self.c)),
+                "placement", "Prepared source/placement differs from the saved receipt.")
 
     def requested_receipt(self, a, v):
         require(v.get("run") == a["run"] and v.get("workspace") == a["workspace"] and v.get("state") == "requested",
@@ -614,10 +713,20 @@ class Pair:
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, required=True)
-    parser.add_argument("action", choices=ACTIONS)
+    parser.add_argument("action", choices=(*ACTIONS, "configure"))
+    parser.add_argument("--settings", type=Path, help="Private operator settings for configure")
+    parser.add_argument("--receipts", type=Path, help="Private directory with import.json, A-prepared.json and B-prepared.json")
     args = parser.parse_args(argv)
+    if args.action == "configure" and (args.settings is None or args.receipts is None):
+        parser.error("configure requires --settings and --receipts")
+    if args.action != "configure" and (args.settings is not None or args.receipts is not None):
+        parser.error("--settings and --receipts apply only to configure")
     try:
-        print(json.dumps(Pair(read_private(args.config, 65536)).act(args.action), sort_keys=True))
+        if args.action == "configure":
+            result = configure(args.settings, args.receipts, args.config)
+        else:
+            result = Pair(read_private(args.config, 65536)).act(args.action)
+        print(json.dumps(result, sort_keys=True))
         return 0
     except Error as e:
         print(json.dumps({"error": e.code, "message": str(e)}), file=sys.stderr)

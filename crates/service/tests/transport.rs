@@ -217,6 +217,24 @@ async fn import_to_node_files_and_reopen(git_history: bool) {
     assert_eq!(prepared["state"], "files_ready");
     assert_eq!(prepared["workspace"], workspace);
     assert!(prepared["runtime"].is_null());
+    let slot: Uuid = f
+        .sql
+        .query_one(
+            "SELECT slot FROM th_workspace_preparations WHERE workspace::text=$1",
+            &[&workspace],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(
+        prepared["assignment"],
+        json!({
+            "version": 1, "tenant": f.scope.tenant(), "repository": f.scope.repository(),
+            "authority": "standalone", "epoch": 1, "generation": 1,
+            "revision": imported["result"]["revision"], "storage": storage, "slot": slot,
+            "format": "native", "git_revision": null
+        })
+    );
     assert_eq!(prepared["recovered_baseline"], false);
     let stats = &prepared["preparation_statistics"];
     assert!(stats["source_objects"].as_u64().unwrap() >= 3);
@@ -248,6 +266,7 @@ async fn import_to_node_files_and_reopen(git_history: bool) {
     assert!(reopened.status.success());
     let reopened: Value = serde_json::from_slice(&reopened.stdout).unwrap();
     assert_eq!(reopened["path"], prepared["path"]);
+    assert_eq!(reopened["assignment"], prepared["assignment"]);
     assert_eq!(reopened["recovered_baseline"], true);
     assert!(
         reopened

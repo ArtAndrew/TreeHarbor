@@ -1,5 +1,23 @@
 # Implementation status
 
+## 0.1.33-alpha.1 — configure a pair from saved source and placement
+
+The [Connected example](../examples/connected-pr/README.md#configure-one-immutable-task-pair)
+can generate its private v1 config from a completed Git import and two prepared
+workspace replies. It checks the approved source, repository, workspace IDs and
+registered storage slots. It creates six task IDs and six operation keys, and
+refuses to overwrite the resulting config. `check` still reads both placements
+from the running service before the operator starts the tasks.
+
+The operator supplies the two registered nodes, runtime, credential paths,
+approved commands and selected output files. Deployment, GitHub App setup
+and runtime registration are still operator tasks.
+
+In a local PostgreSQL trial, the Rust CLI returned the same imported source
+for both nodes. The setup command consumed
+the replies, `check` read both live workspaces, and cleanup removed both. The
+recorded GitHub PR trial is shown in the [two-agent demo](demo.md).
+
 ## 0.1.32-alpha.1 — confirm a created GitHub check after a missing read
 
 `github check-publish` can confirm a check when GitHub accepts its creation

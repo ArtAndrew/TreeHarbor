@@ -56,6 +56,14 @@ snapshot, and `runtime: null`. No eligible job returns `idle`. After process los
 a running job becomes reclaimable when its 60-second lease expires; a live worker
 renews every 15 seconds. `idle` does not mean every queued workspace is complete.
 
+From 0.1.33, each `files_ready` response includes an `assignment` object.
+It identifies the tenant, repository, authority, epoch, generation, native
+revision, registered storage and slot for that workspace. For a Git-compatible
+workspace it also gives the exact Git revision. For a native workspace
+`git_revision` is null. `node prepared` returns the same assignment after
+rechecking the placement. The [two-agent setup](../examples/connected-pr/README.md#configure-one-immutable-task-pair)
+uses these replies to configure a new pair before starting its tasks.
+
 Starting with 0.1.13-alpha.1, `prepare-once` also returns `preparation_statistics`
 for newly materialized files. These counters describe that preparation. Measure
 live disk usage and complete agent task cost separately.

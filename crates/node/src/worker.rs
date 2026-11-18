@@ -514,6 +514,18 @@ impl Node {
         workspace: Uuid,
         limits: Limits,
     ) -> Result<MaterializedTree> {
+        let (_, tree) = self.inspect_prepared(db, auth, workspace, limits).await?;
+        Ok(tree)
+    }
+
+    /// Return the assignment rechecked against the published files at the end of inspection.
+    pub async fn inspect_prepared(
+        &self,
+        db: &mut Metadata,
+        auth: &Authorization,
+        workspace: Uuid,
+        limits: Limits,
+    ) -> Result<(PreparedWorkspace, MaterializedTree)> {
         self.check_auth(auth)?;
         let ready = db.prepared_workspace(auth, workspace).await?;
         let intent = Intent::ready(&ready);
@@ -554,7 +566,7 @@ impl Node {
             return Err(Error::Identity);
         }
         operation.verify()?;
-        Ok(tree)
+        Ok((current, tree))
     }
     pub(crate) fn check_auth(&self, auth: &Authorization) -> Result<()> {
         if auth.scope().tenant() != self.identity().tenant()
