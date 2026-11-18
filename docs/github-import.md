@@ -74,6 +74,13 @@ and the converted native pack. It contains source code and must be protected lik
 the repository. No App key or token is persisted there. After successful completion
 the server holds the accepted source graph independently of these local files.
 
+For a new import, `treeharbor github import --packed` writes the native frames
+to one file in the bridge's private state directory. Use a bridge that can
+read [source pack v4](git-import.md#packed-local-git-import-manifest-v4) for subsequent retries. If that directory
+already has a completed pack, the bridge reads it in its original layout.
+Both layouts produce the same native revision and use the same upload API.
+Omit the flag when an older bridge needs to reopen the directory.
+
 Starting with 0.1.18-alpha.1, imports may keep a bounded
 [Git workspace pack](local-node.md#reuse-an-imported-git-pack) inside
 `pack/workspace-git-v1`. This derived data is useful to a node on the same

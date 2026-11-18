@@ -18,6 +18,7 @@ pub(super) struct Request {
     pub epoch: i64,
     pub state: PathBuf,
     pub git: PathBuf,
+    pub packed: bool,
 }
 fn lock(root: &Path) -> Result<File> {
     let path = root.join("import.lock");
@@ -162,18 +163,19 @@ pub(super) async fn run(r: Request) -> Result<bool> {
     };
     let pack = tokio::task::spawn_blocking(move || {
         if destination.try_exists()? {
-            Pack::open(&destination)
+            return Pack::open(&destination);
+        }
+        let capture = GitCapture {
+            git: &git,
+            bundle: &downloaded.join("history.bundle"),
+            commit,
+            output: &destination,
+            limits,
+        };
+        if r.packed {
+            crate::pack::capture_git_packed(capture, Some(&scope))
         } else {
-            crate::pack::capture_git_with_workspace_pack(
-                GitCapture {
-                    git: &git,
-                    bundle: &downloaded.join("history.bundle"),
-                    commit,
-                    output: &destination,
-                    limits,
-                },
-                &scope,
-            )
+            crate::pack::capture_git_with_workspace_pack(capture, &scope)
         }
     })
     .await

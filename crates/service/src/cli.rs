@@ -71,6 +71,9 @@ enum Command {
     GitImport {
         #[arg(long)]
         bundle: PathBuf,
+        /// Write an aggregate local pack. Readers need support for source pack v4.
+        #[arg(long)]
+        packed: bool,
         /// Exact git:sha1:<40 hex> or git:sha256:<64 hex> revision, never a branch name.
         #[arg(long)]
         commit: String,
@@ -1306,6 +1309,7 @@ pub async fn run(cli: Cli) -> Result<bool> {
         Command::Github { action } => Box::pin(crate::github::run(action)).await,
         Command::GitImport {
             bundle,
+            packed,
             commit,
             output,
             git,
@@ -1319,7 +1323,7 @@ pub async fn run(cli: Cli) -> Result<bool> {
                 return Err(Error::Config);
             };
             let result = tokio::task::spawn_blocking(move || {
-                crate::pack::capture_git(crate::pack::GitCapture {
+                let request = crate::pack::GitCapture {
                     git: &git,
                     bundle: &bundle,
                     commit,
@@ -1330,7 +1334,12 @@ pub async fn run(cli: Cli) -> Result<bool> {
                         timeout: Duration::from_secs(timeout_seconds),
                         ..Default::default()
                     },
-                })
+                };
+                if packed {
+                    crate::pack::capture_git_packed(request, None)
+                } else {
+                    crate::pack::capture_git(request)
+                }
             })
             .await
             .map_err(|_| Error::ImportWorker)??;

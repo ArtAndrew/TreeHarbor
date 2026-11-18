@@ -163,3 +163,137 @@ fn failed_capture_and_concurrent_publish_never_replace_an_existing_pack() {
     assert!(f.capture("exposed", Limits::default()).is_err());
     assert!(!f.dir.path().join("exposed").exists());
 }
+
+#[test]
+fn packed_connected_capture_preserves_scoped_git_workspace_data() {
+    use treeharbor_git_bridge::{WorkspacePack, WorkspacePackIdentity, WorkspacePackScope};
+
+    let f = Fixture::new();
+    let path = f.dir.path().join("packed");
+    let scope = WorkspacePackScope {
+        tenant: "pilot".into(),
+        repository: uuid::Uuid::new_v4(),
+        epoch: 1,
+    };
+    let pack = pack::capture_git_packed(
+        GitCapture {
+            git: Path::new("/usr/bin/git"),
+            bundle: &f.bundle,
+            commit: f.commit,
+            output: &path,
+            limits: Limits::default(),
+        },
+        Some(&scope),
+    )
+    .unwrap();
+    assert!(path.join("frames.bin").is_file());
+    let plain = f.capture("loose", Limits::default()).unwrap();
+    assert_eq!(
+        (pack.commit(), pack.snapshot()),
+        (plain.commit(), plain.snapshot())
+    );
+    let load = |scope: &WorkspacePackScope| {
+        WorkspacePack::load(
+            &path,
+            f.dir.path(),
+            WorkspacePackIdentity {
+                scope,
+                native: plain.commit(),
+                snapshot: plain.snapshot(),
+                origin: f.commit,
+            },
+            Limits::default(),
+        )
+    };
+    assert!(load(&scope).is_ok());
+    assert!(load(&WorkspacePackScope { epoch: 2, ..scope }).is_err());
+    fs::remove_dir_all(path.join("workspace-git-v1")).unwrap();
+    assert_eq!(Pack::open(&path).unwrap().commit(), plain.commit());
+}
+
+#[test]
+fn packed_cli_matches_reference_frames_and_detects_incomplete_or_changed_data() {
+    use std::process::Command;
+    use treeharbor_core::ObjectId;
+
+    let f = Fixture::new();
+    let output = f.dir.path().join("packed");
+    let cli = env!("CARGO_BIN_EXE_treeharbor");
+    let revision = RevisionRef::Git(f.commit).to_string();
+    let import = Command::new(cli)
+        .args(["git-import", "--packed", "--bundle"])
+        .arg(&f.bundle)
+        .args(["--commit", &revision, "--output"])
+        .arg(&output)
+        .output()
+        .unwrap();
+    assert!(
+        import.status.success(),
+        "{}",
+        String::from_utf8_lossy(&import.stderr)
+    );
+    let manifest_bytes = fs::read(output.join("manifest.json")).unwrap();
+    let manifest: serde_json::Value = serde_json::from_slice(&manifest_bytes).unwrap();
+    let vector: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/source-pack-v4-vector.json")).unwrap();
+    let frame_path = output.join("frames.bin");
+    let bytes = fs::read(&frame_path).unwrap();
+    assert_eq!(manifest["version"], 4);
+    assert_eq!(
+        ObjectId::hash_frame(&manifest_bytes).hex(),
+        vector["manifest_sha256"]
+    );
+    let mut fingerprint = b"treeharbor-source-pack\0v4\0".to_vec();
+    fingerprint.extend_from_slice(&manifest_bytes);
+    assert_eq!(
+        ObjectId::hash_frame(&fingerprint).hex(),
+        vector["fingerprint"]
+    );
+    assert_eq!(bytes.len() as u64, vector["file_bytes"].as_u64().unwrap());
+    assert_eq!(ObjectId::hash_frame(&bytes).hex(), vector["frames_sha256"]);
+    let pack = Pack::open(&output).unwrap();
+    let loose = f.capture("loose", Limits::default()).unwrap();
+    assert_eq!(pack.commit(), loose.commit());
+    assert_eq!(pack.snapshot(), loose.snapshot());
+    let restored = f.dir.path().join("restored");
+    let export = Command::new(cli)
+        .args(["git-export", "--pack"])
+        .arg(&output)
+        .arg("--output")
+        .arg(&restored)
+        .output()
+        .unwrap();
+    assert!(
+        export.status.success(),
+        "{}",
+        String::from_utf8_lossy(&export.stderr)
+    );
+    let exported: serde_json::Value = serde_json::from_slice(&export.stdout).unwrap();
+    assert_eq!(
+        format!(
+            "git:sha1:{}",
+            exported["refs"]["refs/heads/main"]["git"].as_str().unwrap()
+        ),
+        revision
+    );
+
+    let first = manifest["objects"][0].as_str().unwrap().parse().unwrap();
+    let mut damaged = bytes.clone();
+    damaged[4] ^= 1;
+    fs::write(&frame_path, &damaged).unwrap();
+    assert!(pack.frame(first).is_err());
+    assert!(Pack::open(&output).is_err());
+    let mut oversized = bytes.clone();
+    oversized[..4].copy_from_slice(&u32::MAX.to_be_bytes());
+    let mut trailing = bytes.clone();
+    trailing.push(0);
+    for invalid in [&oversized[..], &bytes[..bytes.len() - 1], &trailing] {
+        fs::write(&frame_path, invalid).unwrap();
+        assert!(Pack::open(&output).is_err());
+    }
+    fs::write(&frame_path, &bytes).unwrap();
+    let original = output.join("original");
+    fs::rename(&frame_path, &original).unwrap();
+    symlink(&original, &frame_path).unwrap();
+    assert!(Pack::open(&output).is_err());
+}

@@ -1,4 +1,4 @@
-//! Durable source spools: v1 selected files, v2 Git history, v3 native history.
+//! Durable source spools for selected files, Git history, and native history.
 //! Capturing files is not an atomic snapshot of a tree with concurrent writers.
 use crate::files;
 use rustix::fs::{self as unixfs, AtFlags, Dir, FileType, Mode, OFlags, Stat};
@@ -23,7 +23,9 @@ use treeharbor_git_bridge::WorkspacePackScope;
 use treeharbor_storage::{LocalStore, StagedStore, TenantId};
 
 pub(crate) mod archive_branches;
+mod frames;
 pub(crate) mod git_export;
+pub(crate) use frames::PackStore;
 
 pub const MAX_MANIFEST: usize = 128 * 1024 * 1024;
 const MAX_PACK_OBJECTS: u64 = 1_000_000;
@@ -117,10 +119,10 @@ pub struct Pack {
     pub(crate) bytes: u64,
     pub(crate) fingerprint: ObjectId,
     pub(crate) entries: u64,
-    store: LocalStore,
+    store: PackStore,
 }
 impl Pack {
-    pub(crate) fn store(&self) -> &LocalStore {
+    pub(crate) fn store(&self) -> &PackStore {
         &self.store
     }
     pub fn commit(&self) -> ObjectId {
@@ -141,7 +143,7 @@ impl Pack {
     pub fn frame(&self, id: ObjectId) -> Result<Vec<u8>> {
         Ok(self.store.get(id)?.encode()?)
     }
-    pub(crate) fn into_frames(self) -> (Vec<ObjectId>, LocalStore) {
+    pub(crate) fn into_frames(self) -> (Vec<ObjectId>, PackStore) {
         (self.ids, self.store)
     }
     /// Validate every frame and exact reachable membership before transmitting
@@ -184,7 +186,7 @@ impl Pack {
                 }
                 (manifest, None)
             }
-            Some(version @ (2 | 3)) => {
+            Some(version @ 2..=4) => {
                 let full: FullManifest =
                     serde_json::from_slice(&raw).map_err(|_| Error::Invalid)?;
                 if full.selection != "full" {
@@ -195,7 +197,7 @@ impl Pack {
                     return Err(Error::Invalid);
                 }
                 let source = match (version, revision) {
-                    (2, treeharbor_core::RevisionRef::Git(oid)) => Some(oid),
+                    (2 | 4, treeharbor_core::RevisionRef::Git(oid)) => Some(oid),
                     (3, treeharbor_core::RevisionRef::Native(id))
                         if id.to_string() == full.commit =>
                     {
@@ -229,24 +231,30 @@ impl Pack {
         }
         let commit: ObjectId = manifest.commit.parse()?;
         let snapshot: ObjectId = manifest.snapshot.parse()?;
-        let store = LocalStore::open(&directory, &TenantId::new("native-pack")?)?;
+        let ids = manifest
+            .objects
+            .into_iter()
+            .map(|value| value.parse())
+            .collect::<treeharbor_core::Result<Vec<ObjectId>>>()?;
+        let store = if manifest.version == 4 {
+            PackStore::packed(&directory, &ids, manifest.encoded_bytes, deadline)?
+        } else {
+            PackStore::loose(LocalStore::open(
+                &directory,
+                &TenantId::new("native-pack")?,
+            )?)
+        };
         let mut descriptors = BTreeMap::new();
-        let mut ids = Vec::new();
         let mut bytes = 0u64;
         let mut edge_count = 0usize;
-        for value in manifest.objects {
+        for &id in &ids {
             if deadline.is_some_and(|deadline| Instant::now() >= deadline) {
                 return Err(Error::Limit);
             }
-            let id: ObjectId = value.parse()?;
             if descriptors.contains_key(&id) {
                 return Err(Error::Invalid);
             }
-            let opened = store.open_object(id)?;
-            if opened.length() > limits.bytes - bytes {
-                return Err(Error::Limit);
-            }
-            let object = opened.read()?;
+            let object = store.read_limited(id, limits.bytes - bytes)?;
             let references = object.references();
             edge_count = edge_count
                 .checked_add(references.len())
@@ -266,7 +274,6 @@ impl Pack {
                 return Err(Error::Limit);
             }
             descriptors.insert(id, (object.kind(), references));
-            ids.push(id);
         }
         if ids.last() != Some(&commit) || bytes != manifest.encoded_bytes {
             return Err(Error::Invalid);
@@ -713,7 +720,16 @@ pub struct GitCapture<'a> {
 /// A complete local result is published only after all native frames and its
 /// manifest are durable and validated. Does not contact or update a server.
 pub fn capture_git(request: GitCapture<'_>) -> Result<Pack> {
-    capture_git_inner(request, None)
+    capture_git_inner(request, None, false)
+}
+
+/// Write a contiguous source pack. A Connected bridge can also retain the
+/// derived Git pack for nodes sharing its private import directory.
+pub fn capture_git_packed(
+    request: GitCapture<'_>,
+    workspace_scope: Option<&WorkspacePackScope>,
+) -> Result<Pack> {
+    capture_git_inner(request, workspace_scope, true)
 }
 
 /// Also prepare a disposable Git pack for a node that can access this same
@@ -722,10 +738,25 @@ pub fn capture_git_with_workspace_pack(
     request: GitCapture<'_>,
     scope: &WorkspacePackScope,
 ) -> Result<Pack> {
-    capture_git_inner(request, Some(scope))
+    capture_git_inner(request, Some(scope), false)
 }
 
-fn capture_git_inner(request: GitCapture<'_>, scope: Option<&WorkspacePackScope>) -> Result<Pack> {
+fn import_git_frames(
+    store: &impl ObjectStore,
+    request: treeharbor_git_bridge::Import<'_>,
+    scope: Option<&WorkspacePackScope>,
+) -> treeharbor_git_bridge::Result<treeharbor_git_bridge::Imported> {
+    match scope {
+        Some(scope) => treeharbor_git_bridge::import_with_workspace_pack(store, request, scope),
+        None => treeharbor_git_bridge::import(store, request),
+    }
+}
+
+fn capture_git_inner(
+    request: GitCapture<'_>,
+    scope: Option<&WorkspacePackScope>,
+    packed: bool,
+) -> Result<Pack> {
     let parent = files::private_directory(request.output.parent().ok_or(Error::Output)?)
         .map_err(|_| Error::Output)?;
     let name = request.output.file_name().ok_or(Error::Output)?;
@@ -737,7 +768,6 @@ fn capture_git_inner(request: GitCapture<'_>, scope: Option<&WorkspacePackScope>
         .prefix(".treeharbor-git-pack-")
         .tempdir_in(&parent)?;
     fs::set_permissions(stage.path(), fs::Permissions::from_mode(0o700))?;
-    let store = StagedStore::open(&stage, &TenantId::new("native-pack")?)?;
     let import = treeharbor_git_bridge::Import {
         git: request.git,
         bundle: request.bundle,
@@ -745,13 +775,22 @@ fn capture_git_inner(request: GitCapture<'_>, scope: Option<&WorkspacePackScope>
         commit: request.commit,
         limits: request.limits,
     };
-    let imported = match scope {
-        Some(scope) => treeharbor_git_bridge::import_with_workspace_pack(&store, import, scope)?,
-        None => treeharbor_git_bridge::import(&store, import)?,
+    let deadline = Instant::now()
+        .checked_add(request.limits.timeout)
+        .ok_or(Error::Limit)?;
+    let imported = if packed {
+        let store = frames::PackedStage::new(stage.path(), request.limits)?;
+        let imported = import_git_frames(&store, import, scope)?;
+        store.seal(stage.path(), &imported.objects, deadline)?;
+        imported
+    } else {
+        let store = StagedStore::open(&stage, &TenantId::new("native-pack")?)?;
+        let imported = import_git_frames(&store, import, scope)?;
+        store.seal()?;
+        imported
     };
-    store.seal()?;
     let manifest = FullManifest {
-        version: 2,
+        version: if packed { 4 } else { 2 },
         selection: "full".into(),
         source_revision: treeharbor_core::RevisionRef::Git(request.commit).to_string(),
         commit: imported.commit.to_string(),
@@ -765,9 +804,23 @@ fn capture_git_inner(request: GitCapture<'_>, scope: Option<&WorkspacePackScope>
         return Err(Error::Limit);
     }
     files::write_private(&stage.path().join("manifest.json"), &raw).map_err(|_| Error::Output)?;
-    drop(Pack::open(stage.path())?);
+    let reopen = |path: &Path| {
+        if !packed {
+            return Pack::open(path);
+        }
+        let private = files::private_directory(path).map_err(|_| Error::Output)?;
+        Pack::open_private(
+            private,
+            Limits {
+                objects: request.limits.objects as u64,
+                bytes: request.limits.source_bytes,
+            },
+            Some(deadline),
+        )
+    };
+    drop(reopen(stage.path())?);
     publish_stage(stage.path(), &parent, name)?;
-    Pack::open(&output)
+    reopen(&output)
 }
 
 pub(crate) fn publish_stage(stage: &Path, parent: &Path, name: &OsStr) -> Result<()> {

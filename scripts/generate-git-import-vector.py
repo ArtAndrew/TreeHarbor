@@ -20,3 +20,12 @@ encoded = json.dumps(manifest, separators=(',', ':')).encode()
 out = root / 'crates/service/tests/fixtures/source-pack-v2.json'
 out.write_bytes(encoded + b'\n')
 print('fingerprint: sha256:' + hashlib.sha256(b'treeharbor-source-pack\0v2\0' + encoded).hexdigest())
+
+manifest['version'] = 4
+v4 = json.dumps(manifest, separators=(',', ':')).encode()
+frames = [bytes.fromhex(vectors[i][1]) for i in indices]
+payload = b''.join(struct.pack('>I', len(frame)) + frame for frame in frames)
+vector = dict(manifest_sha256=hashlib.sha256(v4).hexdigest(),
+              fingerprint=hashlib.sha256(b'treeharbor-source-pack\0v4\0' + v4).hexdigest(),
+              file_bytes=len(payload), frames_sha256=hashlib.sha256(payload).hexdigest())
+out.with_name('source-pack-v4-vector.json').write_text(json.dumps(vector, indent=2) + '\n')
