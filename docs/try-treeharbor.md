@@ -22,6 +22,10 @@ and two separately registered volumes. Provision PostgreSQL, Docker, gVisor and
 the GitHub App before running the tasks. The package installs the TreeHarbor
 binaries and ships the example in the verified archive.
 
+The bundled demo uses a small agent image you build with Rust and the native
+Linux musl target and linker. For your own tasks you can use an approved agent
+image. [Build the demo image](../examples/connected-pr/README.md#build-the-reviewed-scripted-fixture-image).
+
 ## 1. Install a signed Linux package
 
 Run these commands in a fresh Linux shell with an authenticated `gh`. They

@@ -129,7 +129,7 @@ reconciliation. Full Connected publication disaster recovery remains unsupported
 The [installed ARM64 trial](evidence/connected-pr-preview-20261028.json) records what
 actually passed; both architectures also passed installed package/runtime CI.
 
-Report [where you stopped](../.github/ISSUE_TEMPLATE/pilot-feedback.md), time to the
+Report [where you stopped](https://github.com/ArtAndrew/TreeHarbor/issues/new?template=pilot-feedback.md), time to the
 first PR, help needed, and whether you would run another real task. Include the
 release and host/task details, not private source or credentials. Track time spent
 provisioning the environment separately from TreeHarbor setup and agent execution.
