@@ -182,4 +182,4 @@ full Connected publication disaster recovery remains outside the first preview.
 Published branches/PRs remain ordinary GitHub resources. Use normal GitHub tools
 for CI/review/merge and Git import/export to retain source when disconnecting.
 See [interop](../../docs/git-export.md) and
-[pilot feedback](../../.github/ISSUE_TEMPLATE/pilot-feedback.md).
+[pilot feedback](https://github.com/ArtAndrew/TreeHarbor/issues/new?template=pilot-feedback.md).
