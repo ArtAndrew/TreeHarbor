@@ -29,6 +29,8 @@ parser.add_argument('--connected-fixture', type=Path, help=argparse.SUPPRESS)
 parser.add_argument('--repository', required=True, type=Path, help='local Git fixture repository')
 parser.add_argument('--revision', required=True, help='exact commit to capture')
 parser.add_argument('--next-revision', help='also test a direct child, then return to the first revision on the same node')
+parser.add_argument('--packed-git-import', action='store_true',
+                    help='use the contiguous on-disk Git import pack for the two-revision benchmark')
 parser.add_argument('--output', required=True, type=Path)
 parser.add_argument('--iterations', type=int, default=5)
 parser.add_argument('--concurrency', type=int, default=1)
@@ -57,6 +59,8 @@ if args.cow_driver and (not volumes or not args.cow_driver.is_absolute()):
 if args.cow_shared_node and not args.cow_driver:
     parser.error('shared preparation requires the local overlay experiment')
 rotation = args.next_revision is not None
+if args.packed_git_import and not rotation:
+    parser.error('--packed-git-import requires --next-revision')
 if rotation and (args.connected_fixture or args.cow_max_images is None
                  or not all(re.fullmatch(r'[0-9a-fA-F]{40}', revision)
                             for revision in (args.revision, args.next_revision))):
@@ -321,8 +325,9 @@ with tempfile.TemporaryDirectory(prefix='th-import-') as tmp, ExitStack() as pla
 
         def import_revision(commit):
             pack = root / f'pack-{commit}'
+            layout_args = ['--packed'] if args.packed_git_import else []
             start = time.perf_counter()
-            json.loads(run(BIN, 'git-import', '--bundle', bundle, '--git', Path(GIT).absolute(),
+            json.loads(run(BIN, 'git-import', *layout_args, '--bundle', bundle, '--git', Path(GIT).absolute(),
                            '--commit', f'git:sha1:{commit}', '--output', pack))
             capture_seconds = time.perf_counter() - start
             imported, upload_seconds = upload_pack(pack, root / f'import-{commit}.json')
@@ -591,7 +596,10 @@ with tempfile.TemporaryDirectory(prefix='th-import-') as tmp, ExitStack() as pla
         if args.cow_shared_node:
             report['limitations'].append('One node per format prepares concurrently; files are read after the whole batch reply and cleanup runs serially on that node')
         if rotation:
+            for revision, result in imports.items():
+                result['local_pack_allocated_bytes'] = allocated(root / f'pack-{revision}', exclude_git=False)
             report.update(version=4, scope='local-native-adjacent-revisions',
+                          git_import_layout='packed-v4' if args.packed_git_import else 'loose-v2',
                           wave_revisions=wave_revisions, revision_imports=imports)
             report['limitations'].extend([
                 'The local Git mirror already contains both revisions; no GitHub fetch or incremental network update is measured',

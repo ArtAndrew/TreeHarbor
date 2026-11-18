@@ -248,6 +248,9 @@ pub enum Action {
         /// Existing private directory; retain it for retry after interruption.
         #[arg(long)]
         state: PathBuf,
+        /// Use source pack v4 for a new local capture. Retries reuse an existing pack.
+        #[arg(long)]
+        packed: bool,
         #[arg(long, default_value = "/usr/bin/git")]
         git: PathBuf,
     },
@@ -677,6 +680,7 @@ pub async fn run(action: Action) -> Result<bool> {
             import,
             epoch,
             state,
+            packed,
             git,
         } => {
             import::run(import::Request {
@@ -686,6 +690,7 @@ pub async fn run(action: Action) -> Result<bool> {
                 id: import,
                 epoch,
                 state,
+                packed,
                 git,
             })
             .await

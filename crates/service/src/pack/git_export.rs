@@ -1,3 +1,4 @@
+use super::PackStore;
 use super::{Error, Limits, MAX_PACK_BYTES, MAX_PACK_OBJECTS, Pack};
 use crate::{Error as ServiceError, archive, client, files};
 use serde::{Deserialize, Serialize};
@@ -18,13 +19,12 @@ use treeharbor_metadata::{
     exports::ExportFence,
     integration::{HandoffFreeze, HandoffProjectionSpec},
 };
-use treeharbor_storage::LocalStore;
 
 /// Read only the verified members of the input packs. Shared objects use one
 /// locator. An invalid pack cannot borrow missing members from another pack.
 #[derive(Default)]
 struct PackObjects {
-    stores: Vec<LocalStore>,
+    stores: Vec<PackStore>,
     locations: BTreeMap<ObjectId, usize>,
 }
 

@@ -1,5 +1,20 @@
 # Implementation status
 
+## In development — smaller local Git import packs
+
+`git-import --packed` and `github import --packed` can store all reachable
+native frames in a single file. The default layout still writes a file per
+object. A Connected bridge can produce its scoped Git workspace pack with
+either layout. Older clients can continue to read the default layout.
+[Capture and compatibility](git-import.md#packed-local-git-import-manifest-v4).
+
+`cargo test -p treeharbor-service --test git_packs` passed all four cases,
+including canonical bytes, corruption, concurrent publication and the Git
+workspace pack's epoch. A local Connected transport test used PostgreSQL,
+interrupted an upload, restarted the service and checked Git export. Its
+completed `github import --packed` retry read the registered result without an
+App key. A fresh import from a live GitHub App using this flag is still unverified.
+
 ## 0.1.30-alpha.1 — run a prepared pair to two draft PRs
 
 The Connected example checks both placements before requesting either run.
