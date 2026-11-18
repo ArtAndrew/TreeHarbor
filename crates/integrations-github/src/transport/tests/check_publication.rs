@@ -90,6 +90,115 @@ fn listing(runs: Vec<Value>) -> Value {
 }
 
 #[tokio::test]
+async fn missing_created_check_is_confirmed_only_by_two_matching_commit_listings() {
+    let target = target();
+    let created = run(&target);
+    let mut other_number = created.clone();
+    other_number["id"] = json!(74);
+    let mut other_node = created.clone();
+    other_node["node_id"] = json!("opaque-other-check");
+    let mut duplicate = other_number.clone();
+    duplicate["node_id"] = json!("opaque-duplicate");
+    let exact = vec![created.clone()];
+    for (case, first, second) in [
+        ("exact", exact.clone(), exact.clone()),
+        ("absent", vec![], vec![]),
+        ("appeared", vec![], exact.clone()),
+        (
+            "other number",
+            vec![other_number.clone()],
+            vec![other_number],
+        ),
+        ("other node", vec![other_node.clone()], vec![other_node]),
+        (
+            "duplicate",
+            vec![created.clone(), duplicate.clone()],
+            vec![created.clone(), duplicate],
+        ),
+    ] {
+        let mut responses = before();
+        responses.extend([
+            response(201, created.clone()),
+            response(404, json!({})),
+            response(200, listing(first)),
+            response(200, listing(second)),
+            revoked(),
+        ]);
+        let (connection, host) = host(responses).await;
+        let result = connection
+            .publish_check(&binding(), &target, |_| async { Ok(()) })
+            .await;
+        if case == "exact" {
+            let observed = result.unwrap().report;
+            observed.validate(&target).unwrap();
+            assert_eq!(observed.outcome, Outcome::Observed);
+            assert_eq!(observed.check.unwrap().id, 73);
+            assert!(observed.token_revoked);
+        } else {
+            assert!(!result.err().expect(case).mutation_not_sent, "{case}");
+        }
+        let requests = host.await.unwrap();
+        assert_eq!(requests.len(), 15);
+        assert_eq!(
+            requests
+                .iter()
+                .filter(|r| request_text(r).starts_with("POST /repos/"))
+                .count(),
+            1
+        );
+        assert!(
+            request_text(&requests[11]).starts_with("GET /repos/example-org/demo/check-runs/73 ")
+        );
+        let lookup = format!(
+            "GET /repos/example-org/demo/commits/{}/check-runs?check_name={}&filter=all&per_page=20&page=1 ",
+            "11".repeat(20),
+            target.name().unwrap().replace('/', "%2F")
+        );
+        for request in &requests[12..14] {
+            assert!(request_text(request).starts_with(&lookup));
+        }
+    }
+}
+
+#[tokio::test]
+async fn a_missing_creation_or_deferred_readback_skips_the_commit_lookup() {
+    let target = target();
+    for (created, expected_stage) in [(false, Stage::CheckCreate), (true, Stage::CheckReadback)] {
+        let mut responses = before();
+        if created {
+            responses.push(response(201, run(&target)));
+            responses.push(raw(404, "Retry-After: 60\r\n", b""));
+        } else {
+            responses.push(response(404, json!({})));
+        }
+        responses.push(revoked());
+        let (connection, host) = host(responses).await;
+        let failure = connection
+            .publish_check(&binding(), &target, |_| async { Ok(()) })
+            .await
+            .err()
+            .unwrap();
+        assert!(!failure.mutation_not_sent);
+        assert!(
+            matches!(failure.error, Error::Http { stage, status: 404, .. } if stage == expected_stage)
+        );
+        let requests = host.await.unwrap();
+        assert_eq!(
+            requests
+                .iter()
+                .filter(|r| request_text(r).starts_with("POST /repos/"))
+                .count(),
+            1
+        );
+        assert!(
+            !requests
+                .iter()
+                .any(|r| request_text(r).contains("filter=all"))
+        );
+    }
+}
+
+#[tokio::test]
 async fn exact_check_uses_only_scoped_write_and_immutable_program_evidence() {
     let t = target();
     let mut responses = before();

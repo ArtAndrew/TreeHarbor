@@ -314,20 +314,11 @@ impl Connection {
             let header = token.token.header()?;
             sent.store(true, Ordering::SeqCst);
             let run: Run = self.json(
-                Stage::CheckPublication, Method::POST,
+                Stage::CheckCreate, Method::POST,
                 &format!("repos/{}/{}/check-runs", b.owner, b.name),
                 header, Some(body), StatusCode::CREATED,
             ).await?;
-            let run = run.checked(t)?;
-            let observed: Run = self.json(
-                Stage::CheckPublication, Method::GET,
-                &format!("repos/{}/{}/check-runs/{}", b.owner, b.name, run.id),
-                token.token.header()?, None, StatusCode::OK,
-            ).await?;
-            let observed = observed.checked(t)?;
-            if run != observed {
-                return Err(Error::Evidence);
-            }
+            let observed = self.confirm_created_check(b, t, &token, run.checked(t)?).await?;
             Ok::<_, Error>((preflight, observed))
         }).await.map_err(|_| Error::Deadline).and_then(|r| r);
         let revoked = self.revoke(&token).await.is_ok();
@@ -348,6 +339,45 @@ impl Connection {
             token_expires_at: token.expires_at.clone(),
         })
     }
+
+    async fn confirm_created_check(
+        &self,
+        b: &RepositoryBinding,
+        t: &Target,
+        token: &wire::Token,
+        created: PublishedCheck,
+    ) -> Result<PublishedCheck> {
+        let path = format!("repos/{}/{}/check-runs/{}", b.owner, b.name, created.id);
+        let readback = self
+            .json::<Run>(
+                Stage::CheckReadback,
+                Method::GET,
+                &path,
+                token.token.header()?,
+                None,
+                StatusCode::OK,
+            )
+            .await;
+        let observed = match readback {
+            Ok(run) => run.checked(t)?,
+            Err(
+                missing @ Error::Http {
+                    status: 404,
+                    retry_after_seconds: None,
+                    ..
+                },
+            ) => self
+                .stable_published_check(b, t, token)
+                .await?
+                .ok_or(missing)?,
+            Err(error) => return Err(error),
+        };
+        if created != observed {
+            return Err(Error::Evidence);
+        }
+        Ok(observed)
+    }
+
     fn check_target(&self, b: &RepositoryBinding, t: &Target) -> Result<()> {
         b.validate()?;
         t.validate().map_err(|_| Error::Evidence)?;
@@ -378,7 +408,7 @@ impl Connection {
         let mut nodes = std::collections::BTreeSet::new();
         for page in 1..=51 {
             let r: Runs = self.json(
-                Stage::CheckPublication, Method::GET,
+                Stage::CheckLookup, Method::GET,
                 &format!("repos/{}/{}/commits/{sha}/check-runs?check_name={name}&filter=all&per_page=20&page={page}", b.owner, b.name),
                 token.token.header()?, None, StatusCode::OK,
             ).await?;
@@ -420,6 +450,29 @@ impl Connection {
         }
         Err(Error::Evidence)
     }
+
+    async fn stable_published_check(
+        &self,
+        b: &RepositoryBinding,
+        t: &Target,
+        token: &wire::Token,
+    ) -> Result<Option<PublishedCheck>> {
+        let before = self.check_scan(b, t, token).await?;
+        let after = self.check_scan(b, t, token).await?;
+        if before != after {
+            return Err(Error::Evidence);
+        }
+        let external = t.external_id().map_err(|_| Error::Evidence)?;
+        let mut matches = after.into_iter().filter(|run| {
+            run.app.id == t.app_id && run.external_id.as_deref() == Some(external.as_str())
+        });
+        let found = matches.next();
+        if matches.next().is_some() {
+            return Err(Error::Evidence);
+        }
+        found.map(|run| run.checked(t)).transpose()
+    }
+
     /// Does not create/update a check. Stable absence stays unknown, never not-sent.
     pub async fn observe_published_check(
         &self,
@@ -444,22 +497,7 @@ impl Connection {
         let result = tokio::time::timeout(PROBE_TIMEOUT, async {
             self.observe_for(b, &installation, &token, capability)
                 .await?;
-            let before = self.check_scan(b, t, &token).await?;
-            let after = self.check_scan(b, t, &token).await?;
-            if before != after {
-                return Err(Error::Evidence);
-            }
-            let external = t.external_id().map_err(|_| Error::Evidence)?;
-            let mut found = None;
-            for r in after {
-                if r.app.id == t.app_id && r.external_id.as_deref() == Some(external.as_str()) {
-                    if found.is_some() {
-                        return Err(Error::Evidence);
-                    }
-                    found = Some(r.checked(t)?);
-                }
-            }
-            Ok::<_, Error>(found)
+            self.stable_published_check(b, t, &token).await
         })
         .await
         .map_err(|_| Error::Deadline)

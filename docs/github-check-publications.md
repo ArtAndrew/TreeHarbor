@@ -91,8 +91,12 @@ issue a new narrowly scoped token. Never give the App key or bridge token to a t
 The CLI reserves an attempt, reads GitHub source/policy twice, then asks the server
 for one final dispatch grant. Only its fresh response permits a single create
 request. Replays return a historical receipt with `dispatch_granted:false`.
-After creation, the bridge rereads the exact returned check ID. A group's combined
-candidate SHA is distinct from its member PR head, including when trees match.
+After creation, the bridge reads the exact returned check ID. If that read returns
+404 without a numeric retry delay, the bridge looks up the check twice on its
+pinned commit. Both listings must agree and contain one match for the original
+App, publication, check IDs and result. An inconclusive lookup leaves the
+publication uncertain. Preserve its journal and use `--recover-only` on the same
+publication. For a group, the pinned commit is the combined candidate SHA.
 
 Exit zero means the intended delivery was observed. Read the returned
 `target.conclusion` to distinguish a successful check from delivery of a failure.
