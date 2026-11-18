@@ -112,6 +112,7 @@ TH_IMAGE_DIR=$(mktemp -d)
 rustc --edition 2024 --target "$TH_TARGET" -O \
   "$TH_EXAMPLE/fixture/agent.rs" -o "$TH_IMAGE_DIR/agent"
 cp "$(dirname "$TH_BIN")/treeharbor-runtime-init" "$TH_IMAGE_DIR/init"
+chmod 0555 "$TH_IMAGE_DIR/init" "$TH_IMAGE_DIR/agent"
 docker build --network none --pull=false \
   --iidfile "$TH_IMAGE_DIR/image-id" \
   -f "$TH_EXAMPLE/fixture/Dockerfile" "$TH_IMAGE_DIR"
@@ -131,16 +132,23 @@ validation/review/merge to the ordinary GitHub process.
 
 ## Execute and publish
 
-Run from this directory, replacing the config path with your private file:
+From this directory, check both prepared workspaces before issuing work. Then
+start both tasks and publish their results as two GitHub draft PRs.
 
 ```sh
-python3 agent-pair.py --config /private/operator/pair.json initialize
-python3 agent-pair.py --config /private/operator/pair.json request
-python3 agent-pair.py --config /private/operator/pair.json execute
-python3 agent-pair.py --config /private/operator/pair.json capture
-python3 agent-pair.py --config /private/operator/pair.json publish
-python3 agent-pair.py --config /private/operator/pair.json status
+python3 agent-pair.py --config /private/operator/pair.json check
+python3 agent-pair.py --config /private/operator/pair.json run-to-pr
 ```
+
+`check` reads the two workspace and node receipts and leaves the journal untouched.
+`run-to-pr` requires `draft: true` for both PRs. A retry with the same config
+and journal resumes from the recorded operations. Once both PRs have been
+observed, a retry reads their saved identities locally. If the journal is
+damaged, restore it from backup before continuing.
+
+For individual steps use `initialize`, `request`, `execute`, `capture`, then
+`publish`. Use `status` to query the service while the runs are accessible.
+For capture only, stop after `capture`.
 
 The two execution workers run concurrently. Capture requires succeeded runs,
 zero exit codes, no OOM and confirmed runtime removal. Rust computes the captured

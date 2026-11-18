@@ -189,6 +189,31 @@ async fn host_configuration_policy_draft_is_offline_recomputed_and_never_overwri
     )
     .unwrap();
     let output = dir.path().join("policy-v2.json");
+    let relative_draft = |name: &str| {
+        std::process::Command::new(env!("CARGO_BIN_EXE_treeharbor"))
+            .current_dir(dir.path())
+            .args([
+                "github",
+                "policy-draft",
+                "--inspection",
+                "inspection.json",
+                "--requirements",
+                "requirements.json",
+                "--output",
+                name,
+            ])
+            .output()
+            .unwrap()
+    };
+    assert!(relative_draft("relative.json").status.success());
+    assert_eq!(
+        fs::read(dir.path().join("relative.json")).unwrap(),
+        v["canonical"].as_str().unwrap().as_bytes()
+    );
+    fs::set_permissions(dir.path(), fs::Permissions::from_mode(0o755)).unwrap();
+    assert!(!relative_draft("public-directory.json").status.success());
+    assert!(!dir.path().join("public-directory.json").exists());
+    fs::set_permissions(dir.path(), fs::Permissions::from_mode(0o700)).unwrap();
     let args = [
         "treeharbor",
         "github",

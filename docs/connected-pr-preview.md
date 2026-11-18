@@ -116,8 +116,8 @@ Follow these guides in order, using the same repository/binding/authority epoch:
    revision and snapshot; a branch name is not a pinned source.
 3. [Prepare the two agent workspaces and task configuration](../examples/connected-pr/README.md#prepare-the-operator-environment),
    including two independently registered bounded placements and an approved image.
-4. Run the example's `initialize`, `request`, `execute`, `capture`, `publish`, `status`
-   phases with the original private configuration/journals. Save exact PR identities.
+4. [Check both placements and run the pair](../examples/connected-pr/README.md#execute-and-publish)
+   with the same private configuration. The output identifies the two draft PRs.
 5. [Verify the exports and clean up](try-treeharbor.md#4-verify-the-exit-path-and-clean-up)
    both workspaces through their owning Agents and assigned Nodes. Keep each
    placement mounted until its cleanup is confirmed. Retain exports and journals,
