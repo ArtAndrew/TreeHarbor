@@ -174,6 +174,9 @@ journals until you have checked both results, then revoke trial credentials.
 **Checkpoint:** workspaces are deleted, exported source is intact, temporary
 access is revoked. Full publication/queue disaster recovery remains unsupported.
 
+For the next two tasks on a new Git commit, reuse the registered nodes and
+start a fresh pair. [Repeat on a new base](../examples/connected-pr/README.md#run-another-pair-after-the-base-branch-advances).
+
 ## Tell us where you stopped
 
 A failed attempt is useful feedback. Use the

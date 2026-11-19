@@ -397,8 +397,28 @@ async fn prepare_and_recover_git_workspace(
             "--git-compatible",
         ]));
     };
-    let workspace = Uuid::new_v4().to_string();
-    create(&workspace);
+    let task = f.dir.path().join("first-git-task.json");
+    let base = RevisionRef::Native(root).to_string();
+    let create_new = [
+        "workspace-new",
+        "--state",
+        task.to_str().unwrap(),
+        "--authority",
+        "connected",
+        "--epoch",
+        "1",
+        "--base",
+        &base,
+        "--profile-digest",
+        profile["profile_digest"].as_str().unwrap(),
+        "--git-compatible",
+    ];
+    let reserved = result(f.cli(&create_new));
+    let intent = fs::read(&task).unwrap();
+    assert_eq!(result(f.cli(&create_new)), reserved);
+    assert!(!f.cli(&create_new[..create_new.len() - 1]).status.success());
+    assert_eq!(fs::read(&task).unwrap(), intent);
+    let workspace = reserved["workspace"].as_str().unwrap().to_owned();
     let node_root = f.dir.path().join("git-node");
     let node_init = Command::new(&f.binary)
         .args(["node", "initialize", "--root"])

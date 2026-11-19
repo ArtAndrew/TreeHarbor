@@ -148,6 +148,18 @@ PostgreSQL, Docker/gVisor, bounded volumes and host access are separate prerequi
 Removing the CLI symlink and that version directory uninstalls the package; retain
 repository state and backups separately.
 
+### Upgrade from 0.1.33-alpha.1
+
+0.1.34 adds a client-side intent file for Git-compatible workspaces. Both
+packages use schema 035, the same source objects and the same workspace
+creation API. Install the new package alongside the old one and run
+`doctor` with the existing configuration. Keep the original executable for
+pairs that pin its hash.
+
+File-only workspace intents still use version 1. To roll back, keep the
+0.1.34 client for any outstanding version 2 Git-compatible intent. The
+0.1.33 service accepts its creation request. [State format and retry](workspace-new.md#keep-private-git-history-for-a-task).
+
 ### Upgrade from 0.1.32-alpha.1
 
 Both packages use database schema 035 and the same object format. Stop active

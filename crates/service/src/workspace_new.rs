@@ -3,7 +3,7 @@ use crate::{Error, Result, client, files};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::{fs::File, path::Path, time::Duration};
-use treeharbor_core::{ProfileId, RevisionRef};
+use treeharbor_core::{ProfileId, RevisionRef, SourceProfile};
 use treeharbor_metadata::Authority;
 use uuid::Uuid;
 
@@ -29,7 +29,19 @@ pub struct Request<'a> {
     pub epoch: i64,
     pub base: &'a str,
     pub profile_digest: &'a str,
+    pub git_compatible: bool,
     pub timeout: Duration,
+}
+
+// Version 1 is the original file-only intent. Older clients reject version 2.
+// The operation key binds the format as well, so changing only the stored
+// version cannot reinterpret a task before its first dispatch.
+fn intent_key(workspace: Uuid, git_compatible: bool) -> String {
+    if git_compatible {
+        format!("workspace-new-git-{workspace}")
+    } else {
+        format!("workspace-new-{workspace}")
+    }
 }
 
 fn load_or_create(request: &Request<'_>) -> Result<Intent> {
@@ -41,6 +53,8 @@ fn load_or_create(request: &Request<'_>) -> Result<Intent> {
     if !matches!(base, RevisionRef::Native(_))
         || base.to_string() != request.base
         || profile.to_string() != request.profile_digest
+        || (request.git_compatible
+            && (request.authority != Authority::Connected || profile != SourceProfile::full().id()))
         || request.epoch <= 0
         || !request.state.is_absolute()
     {
@@ -48,7 +62,7 @@ fn load_or_create(request: &Request<'_>) -> Result<Intent> {
     }
     let workspace = Uuid::new_v4();
     let proposed = Intent {
-        version: 1,
+        version: if request.git_compatible { 2 } else { 1 },
         tenant: request.credential.scope.tenant().into(),
         repository: request.credential.scope.repository(),
         authority: request.authority.as_str().into(),
@@ -56,7 +70,7 @@ fn load_or_create(request: &Request<'_>) -> Result<Intent> {
         base: base.to_string(),
         profile_digest: profile.to_string(),
         workspace,
-        key: format!("workspace-new-{workspace}"),
+        key: intent_key(workspace, request.git_compatible),
     };
     let bytes = serde_json::to_vec(&proposed).map_err(|_| Error::WorkspaceState)?;
     match files::write_private(request.state, &bytes) {
@@ -66,7 +80,7 @@ fn load_or_create(request: &Request<'_>) -> Result<Intent> {
     }
     let intent: Intent = serde_json::from_slice(&files::read_private(request.state, 4096)?)
         .map_err(|_| Error::WorkspaceState)?;
-    if intent.version != 1
+    if intent.version != proposed.version
         || intent.tenant != proposed.tenant
         || intent.repository != proposed.repository
         || intent.authority != proposed.authority
@@ -74,7 +88,7 @@ fn load_or_create(request: &Request<'_>) -> Result<Intent> {
         || intent.base != proposed.base
         || intent.profile_digest != proposed.profile_digest
         || intent.workspace.is_nil()
-        || intent.key != format!("workspace-new-{}", intent.workspace)
+        || intent.key != intent_key(intent.workspace, request.git_compatible)
     {
         return Err(Error::WorkspaceState);
     }
@@ -89,10 +103,13 @@ fn load_or_create(request: &Request<'_>) -> Result<Intent> {
 
 pub async fn send(request: Request<'_>) -> Result<client::Reply> {
     let intent = load_or_create(&request)?;
-    let command = json!({"method":"workspace_create","key":intent.key,
+    let mut command = json!({"method":"workspace_create","key":intent.key,
         "authority":intent.authority,"epoch":intent.epoch,
         "workspace":intent.workspace.to_string(),"base":intent.base,
         "profile_digest":intent.profile_digest});
+    if request.git_compatible {
+        command["git_compatible"] = json!(true);
+    }
     let reply = client::send(
         request.socket,
         &request.credential.token,
@@ -124,6 +141,54 @@ mod tests {
     };
     use treeharbor_metadata::{Scope, access::SecretToken};
 
+    #[test]
+    fn saved_git_intent_requires_its_exact_format_scope_and_full_profile() {
+        let directory = tempfile::tempdir().unwrap();
+        fs::set_permissions(directory.path(), fs::Permissions::from_mode(0o700)).unwrap();
+        let state = directory.path().join("task.json");
+        let golden = include_bytes!("../tests/fixtures/workspace-new-git-intent-v2.json");
+        let intent: Intent = serde_json::from_slice(golden).unwrap();
+        let credential = client::Credential {
+            scope: Scope::new("pair", intent.repository).unwrap(),
+            token: SecretToken::parse(&format!("thv1_{}", "12".repeat(32))).unwrap(),
+        };
+        let mut request = Request {
+            state: &state,
+            socket: Path::new("/unused"),
+            credential: &credential,
+            authority: Authority::Standalone,
+            epoch: 1,
+            base: &intent.base,
+            profile_digest: &intent.profile_digest,
+            git_compatible: true,
+            timeout: Duration::from_secs(1),
+        };
+        assert!(matches!(
+            load_or_create(&request),
+            Err(Error::WorkspaceState)
+        ));
+        let other_profile = format!("sha256:{}", "02".repeat(32));
+        request.authority = Authority::Connected;
+        request.profile_digest = &other_profile;
+        assert!(matches!(
+            load_or_create(&request),
+            Err(Error::WorkspaceState)
+        ));
+        assert!(!state.exists());
+        request.profile_digest = &intent.profile_digest;
+        files::write_private(&state, golden).unwrap();
+        assert_eq!(
+            load_or_create(&request).unwrap().workspace,
+            intent.workspace
+        );
+        request.git_compatible = false;
+        assert!(matches!(
+            load_or_create(&request),
+            Err(Error::WorkspaceState)
+        ));
+        assert_eq!(fs::read(&state).unwrap(), golden);
+    }
+
     #[tokio::test]
     async fn corrupt_or_changed_intents_are_preserved_before_connecting() {
         let directory = tempfile::tempdir().unwrap();
@@ -143,6 +208,7 @@ mod tests {
             epoch: 1,
             base: &base,
             profile_digest: &profile,
+            git_compatible: false,
             timeout: Duration::from_secs(1),
         };
         load_or_create(&request).unwrap();
@@ -169,6 +235,7 @@ mod tests {
                     epoch: 1,
                     base: &base,
                     profile_digest: &profile,
+                    git_compatible: false,
                     timeout: Duration::from_secs(1),
                 })
                 .await,
@@ -208,6 +275,7 @@ mod tests {
                             epoch: 1,
                             base: &base,
                             profile_digest: &profile,
+                            git_compatible: false,
                             timeout: Duration::from_secs(1),
                         })
                         .unwrap()
@@ -237,6 +305,7 @@ mod tests {
                 epoch: 1,
                 base: &base,
                 profile_digest: &profile,
+                git_compatible: false,
                 timeout: Duration::from_secs(1),
             }),
             Err(Error::WorkspaceState)

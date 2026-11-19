@@ -987,6 +987,9 @@ enum Agent {
         base: String,
         #[arg(long)]
         profile_digest: String,
+        /// Prepare a full Connected workspace with private Git metadata.
+        #[arg(long)]
+        git_compatible: bool,
     },
     /// Enqueue preparation from a registered native base; does not imply READY.
     WorkspaceCreate {
@@ -1587,6 +1590,7 @@ pub async fn run(cli: Cli) -> Result<bool> {
                     epoch,
                     base,
                     profile_digest,
+                    git_compatible,
                 } => {
                     let reply = crate::workspace_new::send(crate::workspace_new::Request {
                         state: &state,
@@ -1596,6 +1600,7 @@ pub async fn run(cli: Cli) -> Result<bool> {
                         epoch,
                         base: &base,
                         profile_digest: &profile_digest,
+                        git_compatible,
                         timeout: Duration::from_millis(timeout_ms),
                     })
                     .await?;
