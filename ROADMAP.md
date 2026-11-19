@@ -23,7 +23,7 @@ Available packages and their exact scope are listed in [signed alpha releases](h
   on a new commit with the same installation.
 - **GitHub queue recovery.** The signed 0.1.35 alpha verified the checked commit
   for one merged PR and read the same receipt after a service restart.
-  Multi-PR groups and recovery on a different host remain open.
+  Multi-PR groups and Connected recovery on a different host remain open.
   [Single-PR trial](docs/demo.md#verify-a-merge-after-restarting-treeharbor).
 - **First import.** Measure the initial disk writes and test one change against
   cached Git worktrees with four and sixteen parallel tasks. Include a change

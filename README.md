@@ -4,7 +4,7 @@
 
 Built for platform teams running code migrations and maintenance jobs with their own agents. Signed Linux alpha for test repositories.
 
-[Try the two-agent workflow on Linux](docs/try-treeharbor.md) · [Watch the 36-second demo](docs/demo.md) · [Download the signed 0.1.35 alpha](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.35-alpha.1)
+[Try the two-agent workflow on Linux](docs/try-treeharbor.md) · [Watch the 36-second demo](docs/demo.md) · [Download the signed Linux alpha](https://github.com/ArtAndrew/TreeHarbor/releases)
 
 [![One pinned commit, two agent workspaces, two saved changes and two GitHub draft pull requests.](docs/assets/connected-workflow.svg)](docs/demo.md)
 
@@ -15,7 +15,7 @@ In a recorded trial, one task changed memory per worker and the other changed th
 ## What works today
 
 - **Connected.** Open a draft PR for each change and use your existing CI and review process. With a GitHub merge queue, an operator can also verify which checked commit landed after restarting TreeHarbor. [Set up two agents](examples/connected-pr/README.md#configure-one-immutable-task-pair) · [Recover a workspace](docs/workspace-new.md#retry-and-recovery) · [Single-PR queue trial](docs/demo.md#verify-a-merge-after-restarting-treeharbor)
-- **Standalone, experimental.** TreeHarbor owns the branch history and merge queue. Run two agents without a GitHub account, resolve their conflict and export the resulting branches to Git. [Standalone example](examples/standalone/README.md)
+- **Standalone, experimental.** TreeHarbor owns the branch history and merge queue. Run two agents without a GitHub account, resolve their conflict and inspect the result in ordinary Git. A cold backup also preserves the native changes and checks. [Standalone example](examples/standalone/README.md) · [Recover on another host](docs/standalone-host-recovery.md)
 
 In the reference deployment, a node prepares the files and Docker with gVisor runs each task. The Rust service keeps submitted source in the object store and tracks runs in PostgreSQL. A separate publisher holds the GitHub App credentials. [Deployment diagram](docs/connected-pr-preview.md#system-layout) · [Agent controller API](docs/remote-tasks-v1.md) · [Experimental MCP adapter](docs/mcp.md)
 

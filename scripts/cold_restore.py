@@ -15,6 +15,50 @@ import subprocess
 import uuid
 
 
+def stop_writers(h, managed):
+    for child in h.children:
+        if child.poll() is None:
+            child.kill()
+            child.wait(timeout=10)
+    if h.proxy:
+        pid = h.transport / "proxy.pid"
+        if pid.exists():
+            managed.command("sudo", "kill", "-TERM", pid.read_text().strip(), check=False)
+            h.proxy.wait(timeout=10)
+            pid.unlink()
+    for case in h.cases:
+        managed.docker("rm", "--force", "treeharbor-" + case["attempt"], check=False)
+
+
+def postgres_tool(h, name):
+    docker = shutil.which("docker")
+    if docker is None:
+        raise RuntimeError("docker must be available to the acceptance harness")
+    wrapper = h.root / name.replace("_", "-")
+    wrapper.write_text("#!/bin/sh\nexec " + shlex.quote(docker)
+                       + " exec -i -e PGDATABASE -e PGUSER -e PGPASSWORD " + shlex.quote(h.pg)
+                       + " " + name + ' "$@"\n')
+    wrapper.chmod(0o700)
+    return wrapper
+
+
+def backup_completed_demo(h, managed, destination):
+    if h.sql("SELECT count(*) FROM th_managed_runs WHERE NOT removed") != "0":
+        raise RuntimeError("demo still has active managed runs")
+    tip = h.main_ref()["head"]
+    h.server.terminate()
+    h.server.wait(timeout=10)
+    stop_writers(h, managed)
+    receipt = h.value("backup", "create", "--config", h.config, "--output", destination,
+                      "--pg-dump", postgres_tool(h, "pg_dump"), "--state", h.journals, "--writers-stopped")
+    digest = receipt["manifest_sha256"]
+    if h.value("backup", "verify", "--backup", destination, "--manifest-sha256", digest) != receipt:
+        raise RuntimeError("backup verification returned a different receipt")
+    print("Verified Standalone backup:", destination, flush=True)
+    print(json.dumps({"tenant": "managed-ci", "repository": h.repository, "main": tip,
+                      "manifest_sha256": digest}, sort_keys=True), flush=True)
+
+
 def exercise(h, landed, managed, pending, overlap):
     if not h.schema.startswith("th_test_") or "dbname=treeharbor_test" not in h.url:
         raise RuntimeError("restore drill requires the disposable acceptance database")
@@ -100,18 +144,7 @@ def exercise(h, landed, managed, pending, overlap):
         # Stop every writer before the metadata/object copy. No GC/admin writer
         # runs in this isolated harness. Existing runtime outcomes were collected
         # by the real tests; external teardown below does not create evidence.
-        for child in h.children:
-            if child.poll() is None:
-                child.kill()
-                child.wait(timeout=10)
-        if h.proxy:
-            pid = h.transport / "proxy.pid"
-            if pid.exists():
-                managed.command("sudo", "kill", "-TERM", pid.read_text().strip(), check=False)
-                h.proxy.wait(timeout=10)
-                pid.unlink()
-        for case in h.cases:
-            managed.docker("rm", "--force", "treeharbor-" + case["attempt"], check=False)
+        stop_writers(h, managed)
         before = snapshot("treeharbor_test")
         expected_refs = {
             "refs/heads/" + ref["name"]: "sha256:" + ref["head"].removeprefix("\\x")
@@ -122,14 +155,7 @@ def exercise(h, landed, managed, pending, overlap):
         assert len(set(expected_refs.values())) > 1
         # Use the installed Rust command and real matching container pg_dump;
         # do not synthesize dump bytes, snapshots or success.
-        docker = shutil.which("docker")
-        if docker is None:
-            raise RuntimeError("docker must be available to the acceptance harness")
-        docker_pg = ("#!/bin/sh\nexec " + shlex.quote(docker)
-                     + " exec -i -e PGDATABASE -e PGUSER -e PGPASSWORD " + shlex.quote(h.pg))
-        dump = h.root / "pg-dump"
-        dump.write_text(docker_pg + ' pg_dump "$@"\n')
-        dump.chmod(0o700)
+        dump = postgres_tool(h, "pg_dump")
         states = [h.root / "import.json", h.root / "pack", h.root / "first-workspace.json",
                   h.root / "native-advance", h.owner, *h.agents, h.policy_admin,
                   h.reviewer, h.integrator, h.ci]
@@ -160,9 +186,7 @@ def exercise(h, landed, managed, pending, overlap):
         assert (backup / "manifest.json").read_bytes() == manifest_bytes
         assert snapshot("treeharbor_test") == before, "backup changed source metadata"
         print("PASS installed cold backup: actual operator create/verify preserves enumerated private state and exact inventory without overwriting output", flush=True)
-        restore = h.root / "pg-restore"
-        restore.write_text(docker_pg + ' pg_restore "$@"\n')
-        restore.chmod(0o700)
+        restore = postgres_tool(h, "pg_restore")
         staged = h.value("backup", "restore-stage", "--isolated-target", "--backup", backup,
                          "--manifest-sha256", receipt["manifest_sha256"], "--directory", stage,
                          "--database-url-file", h.root / "database.url", "--pg-restore", restore,
