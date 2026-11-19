@@ -10,7 +10,7 @@ Built for platform teams running code migrations and maintenance jobs with their
 
 ## Two agents edit the same file
 
-In a recorded trial, one task changed memory per worker and the other changed the worker count. Both edited `src/lib.rs` from the same commit. Two scripted agents produced separate draft PRs. After both workspaces were deleted, each change still exported to Git. [Memory change, PR #4](https://github.com/TreeHarbor/TreeHarbor-acceptance/pull/4) · [Worker-count change, PR #5](https://github.com/TreeHarbor/TreeHarbor-acceptance/pull/5)
+In a recorded trial, one task changed memory per worker and the other changed the worker count. Both edited `src/lib.rs` from the same commit. Each change produced a draft PR and could still be exported to Git after cleanup. [Memory change, PR #4](https://github.com/TreeHarbor/TreeHarbor-acceptance/pull/4) · [Worker-count change, PR #5](https://github.com/TreeHarbor/TreeHarbor-acceptance/pull/5) · [Resuming after GitHub accepted the first PR in 0.1.34](docs/demo.md#retry-after-github-accepts-a-pr)
 
 ## What works today
 

@@ -9,6 +9,11 @@ another base commit. File-only workspaces still use the original state format.
 [Workspace creation and recovery](workspace-new.md#keep-private-git-history-for-a-task)
 · [Run a pair on another commit](../examples/connected-pr/README.md#run-another-pair-after-the-base-branch-advances).
 
+On November 19 the signed ARM64 package also recovered a real GitHub draft PR
+after an interruption between its publication and the operator's journal write.
+Both tasks' exported commits matched their PR heads after workspace cleanup.
+[Trial with PRs #14 and #15](demo.md#retry-after-github-accepts-a-pr).
+
 ## 0.1.33-alpha.1 — configure a pair from saved source and placement
 
 The [Connected example](../examples/connected-pr/README.md#configure-one-immutable-task-pair)
