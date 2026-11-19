@@ -4,7 +4,7 @@
 
 Built for platform teams running code migrations and maintenance jobs with their own agents. Signed Linux alpha for test repositories.
 
-[Try the two-agent workflow on Linux](docs/try-treeharbor.md) · [Watch the 36-second demo](docs/demo.md) · [Download signed packages](https://github.com/ArtAndrew/TreeHarbor/releases)
+[Try the two-agent workflow on Linux](docs/try-treeharbor.md) · [Watch the 36-second demo](docs/demo.md) · [Download the signed 0.1.35 alpha](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.35-alpha.1)
 
 [![One pinned commit, two agent workspaces, two saved changes and two GitHub draft pull requests.](docs/assets/connected-workflow.svg)](docs/demo.md)
 
@@ -14,7 +14,7 @@ In a recorded trial, one task changed memory per worker and the other changed th
 
 ## What works today
 
-- **Connected.** Start two agents from the same Git commit and open draft PRs through your GitHub App. Your existing CI and reviewers decide what lands. Use `agent-pair.py configure` to set up the pair. With 0.1.34, if the reply to a Git-compatible workspace request is lost, rerun it with the same state file to recover the original workspace ID. [Set up two agents](examples/connected-pr/README.md#configure-one-immutable-task-pair) · [Workspace retry in 0.1.34](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.34-alpha.1)
+- **Connected.** Use your GitHub App to open a draft PR for each change. Your existing CI and reviewers decide what lands. If a workspace creation reply is lost, retry with the same state file to recover its original ID. [Set up two agents](examples/connected-pr/README.md#configure-one-immutable-task-pair) · [Recover a workspace](docs/workspace-new.md#retry-and-recovery)
 - **Standalone, experimental.** TreeHarbor owns the branch history and merge queue. Run two agents without a GitHub account, resolve their conflict and export the resulting branches to Git. [Standalone example](examples/standalone/README.md)
 
 In the reference deployment, a node prepares the files and Docker with gVisor runs each task. The Rust service keeps submitted source in the object store and tracks runs in PostgreSQL. A separate publisher holds the GitHub App credentials. [Deployment diagram](docs/connected-pr-preview.md#system-layout) · [Agent controller API](docs/remote-tasks-v1.md) · [Experimental MCP adapter](docs/mcp.md)
