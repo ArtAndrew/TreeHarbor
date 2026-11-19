@@ -28,6 +28,8 @@ Intermediate milestones are useful progress, not completion. Record unimplemente
 components honestly. Do not invent performance numbers or customer adoption.
 
 Tests must exercise failure boundaries and independent reference behavior.
+Use GitHub-hosted CI for full-suite checks and release builds. Run focused
+checks locally while editing. See [Build and test](CONTRIBUTING.md#build-and-test).
 Changes to storage/wire formats require a versioned spec and golden vectors.
 Update implementation status with commands and actual outcomes after each stage.
 Promotion outside this repository and direct messages require separate approval.

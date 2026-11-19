@@ -10,20 +10,33 @@ replace an external dependency with a mock and report the release gate as passed
 
 ## Build and test
 
-Install Git, a C compiler, CMake, OpenSSL for signature tests, and
-[Rust via rustup](https://rustup.rs/). The toolchain is pinned in
-`rust-toolchain.toml`. From a checkout, run:
+Open or update a pull request to run the full suite on GitHub-hosted runners.
+The **Checks** tab shows Rust tests and Clippy on Linux and macOS, PostgreSQL
+contracts, and installation and runtime tests with gVisor on Linux x86-64 and
+ARM64. Follow the same checks from the branch with `gh pr checks --watch`.
+
+Locally, run the test closest to your change. For a change to the core object
+format, for example:
+
+```sh
+cargo fmt --all -- --check
+cargo test --locked -p treeharbor-core --test contracts
+```
+
+To build the CLI from source, install Git, a C compiler, CMake and
+[Rust via rustup](https://rustup.rs/). The repository pins the toolchain in
+`rust-toolchain.toml`. Signature tests also need OpenSSL.
 
 ```sh
 cargo build -p treeharbor-service --locked
 ./target/debug/treeharbor --help
-cargo fmt --all -- --check
-cargo clippy --workspace --all-targets --locked -- -D warnings
-cargo test --workspace --locked
 ```
 
-See [local service setup](docs/local-service.md) and
-[PostgreSQL tests](docs/database-development.md) for the next steps.
+For a release, CI on `main` builds and tests the two Linux packages. The
+tagged signing workflow uses those exact artifacts. For installation or a
+machine-specific test, start with the [signed packages](https://github.com/ArtAndrew/TreeHarbor/releases).
+See [local service setup](docs/local-service.md), [PostgreSQL tests](docs/database-development.md)
+and [release packaging](docs/release-packaging.md) for details.
 
 ## Contribution rights during initial development
 
