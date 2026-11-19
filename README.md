@@ -14,10 +14,10 @@ In a recorded trial, one task changed memory per worker and the other changed th
 
 ## What works today
 
-- **Connected.** Start two agents from the same Git commit and publish their changes through your GitHub App. Your existing CI and reviewers decide what lands. Since 0.1.33, the bundled `agent-pair.py configure` takes one import and two prepared workspaces. Keep its config and journal to resume the same pair. [Set up two agents](examples/connected-pr/README.md#configure-one-immutable-task-pair) · [Agent controller API](docs/remote-tasks-v1.md) · [Experimental MCP adapter](docs/mcp.md)
+- **Connected.** Start two agents from the same Git commit and open draft PRs through your GitHub App. Your existing CI and reviewers decide what lands. Use `agent-pair.py configure` to set up the pair. With 0.1.34, if the reply to a Git-compatible workspace request is lost, rerun it with the same state file to recover the original workspace ID. [Set up two agents](examples/connected-pr/README.md#configure-one-immutable-task-pair) · [Workspace retry in 0.1.34](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.34-alpha.1)
 - **Standalone, experimental.** TreeHarbor owns the branch history and merge queue. Run two agents without a GitHub account, resolve their conflict and export the resulting branches to Git. [Standalone example](examples/standalone/README.md)
 
-In the reference deployment, a node prepares the files and Docker with gVisor runs each task. The Rust service keeps submitted source in the object store and tracks runs in PostgreSQL. A separate publisher holds the GitHub App credentials. [Deployment diagram](docs/connected-pr-preview.md#system-layout)
+In the reference deployment, a node prepares the files and Docker with gVisor runs each task. The Rust service keeps submitted source in the object store and tracks runs in PostgreSQL. A separate publisher holds the GitHub App credentials. [Deployment diagram](docs/connected-pr-preview.md#system-layout) · [Agent controller API](docs/remote-tasks-v1.md) · [Experimental MCP adapter](docs/mcp.md)
 
 ## First run and repeat runs
 

@@ -113,10 +113,16 @@ runtime or GitHub connection.
 ## 3. Run the supplied two-task example
 
 Follow [the prepared-agent example](../examples/connected-pr/README.md). Register
-the two bounded placements and the approved runtime image. For each workspace,
-choose a full source profile, request `workspace-create --git-compatible`, and
-use `prepare-once --workspace WORKSPACE_UUID --slot SLOT_UUID --git /path/to/git`
-with its registered node. Save the two successful node replies as
+the two bounded placements and the approved runtime image. With CLI 0.1.34 or later,
+request each workspace with `workspace-new --git-compatible`, a full source profile
+and a separate private `--state` file per task. If the reply is lost, repeat the
+command with that file to recover the same workspace ID. Earlier clients use
+`workspace-create --git-compatible` with a saved UUID and key, starting in 0.1.13.
+[Workspace request example](workspace-new.md#keep-private-git-history-for-a-task).
+
+Prepare each returned ID on its registered node with
+`prepare-once --workspace WORKSPACE_UUID --slot SLOT_UUID --git /path/to/git`.
+Save the two successful node replies as
 `receipts/A-prepared.json` and `receipts/B-prepared.json`. Set
 `"workspace_format": "git-compatible"` in your private copy of the settings
 template. Supply the verified CLI hash, scoped credential paths and both tasks
