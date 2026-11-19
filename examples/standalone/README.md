@@ -26,3 +26,23 @@ networking disabled. It creates a disposable repository and scoped local roles,
 runs the protected queue workflow and removes the temporary service, database
 and workspaces. The native path uses the local service. Git runs for the final
 export check. The example needs no GitHub account or Rust toolchain.
+
+## Inspect the result in Git
+
+The development example after 0.1.35 accepts `--export-dir`. Run it from the
+source checkout with the installed 0.1.35 binary. It keeps the Git history
+after both workspaces and the service have been removed.
+
+```sh
+result=$(mktemp -d)
+python3 examples/standalone/run.py --treeharbor "$TH_INSTALL_PREFIX/bin/treeharbor" \
+  --busybox "$(command -v busybox)" --export-dir "$result/export"
+git clone --branch main "$result/export/history.bundle" "$result/review"
+git -C "$result/review" log --oneline -- same.txt
+git -C "$result/review" show main:same.txt
+```
+
+The final file reads `alpha + beta`. Its first parent contains the first
+agent's edit. The export directory also contains a manifest mapping native
+revisions to Git commits. Each run needs a new output path under a private
+directory owned by the operator.

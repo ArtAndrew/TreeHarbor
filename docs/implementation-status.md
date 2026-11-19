@@ -1,5 +1,13 @@
 # Implementation status
 
+## Standalone example after 0.1.35
+
+Use `--export-dir` in the development example to keep the two agents' resolved
+change and its history. A Linux ARM64 trial ran the example offline with the
+signed 0.1.35 binary. After the VM stopped, ordinary Git opened the bundle on
+macOS and verified all seven reachable commits with `git fsck --full --strict`.
+[Inspect the result in Git](../examples/standalone/README.md#inspect-the-result-in-git).
+
 ## 0.1.35-alpha.1 — recover a GitHub queue request
 
 After an interrupted queue command, run `github queue --recover-only` with the
