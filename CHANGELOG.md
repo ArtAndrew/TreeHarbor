@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.36-alpha.1 — keep and restore a Standalone run
+
+- The two-agent example accepts `--export-dir` to keep a Git bundle and
+  `--backup-dir` to keep the native database, source and queue journal.
+  Inspect the resolved change after the demo exits or recover the repository
+  on another Linux host. [Example](examples/standalone/README.md#keep-a-native-backup) · [Recovery](docs/standalone-host-recovery.md) · [Upgrade](docs/release-packaging.md#upgrade-from-0135-alpha1).
+
 ## 0.1.35-alpha.1 — observe an interrupted GitHub queue request
 
 - Use `github queue --recover-only` with the original queue ID and journal to

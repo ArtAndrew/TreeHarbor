@@ -1,0 +1,72 @@
+{
+  "date_utc": "2026-11-19",
+  "mode": "standalone",
+  "package": "treeharbor 0.1.35-alpha.1",
+  "source_commit": "fb925037f7ce61634a88ef392d2eb72858f302f0",
+  "signing_run": 44479556385,
+  "linux_arm64_archive_sha256": "e5a277b580e6488b9456b4c26597855a31e7d616ef19b9d14659774933d68be5",
+  "deployment": {
+    "hosts": "Two Ubuntu 24.04 ARM64 VMs on one physical Mac, separate root disks, no shared mount",
+    "database": "PostgreSQL 18.6, independently initialized clusters",
+    "source_tasks": "Two gVisor workers edited the same file. The resolved version passed a fresh check and review.",
+    "target": "Source VM stopped before replacement service activation; no worker or agent executed on the target."
+  },
+  "checkpoint": {
+    "manifest_sha256": "02b5e51cc1517d9b93f05c2ddc0d9177ab7812fb687742c19c27c5521c31dbe6",
+    "payload_bytes": 490466,
+    "inventory_entries": 71,
+    "queue_journal_files": 4,
+    "separately_copied_bearer_files": false
+  },
+  "comparison": {
+    "restored_refs": 3,
+    "native_and_git_commits": 7,
+    "git_objects": 14,
+    "change_versions": 4,
+    "managed_check_receipts": 3,
+    "first_parent_commits": 4,
+    "staged_old_tokens_revoked": 9,
+    "old_nodes_disabled": 2,
+    "new_trial_tokens_revoked": 3,
+    "active_tokens_after_trial": 0
+  },
+  "native_and_git_refs": {
+    "before-resolution": {
+      "native": "native:sha256:e4cbb0011a5a97683525574358c6d6146fc8539cbe5efb1418d862be471f168c",
+      "git": "f4e7c8330c62099fd1f6a3cc0dc892548efcce99"
+    },
+    "empty-at-start": {
+      "native": "native:sha256:bb119a041dee8764acace8b76980e9ff663083c2b6a6bab4bb463ec959ef625f",
+      "git": "ee58496d318161a8cd4a2de9944dc7ad7fea7440"
+    },
+    "main": {
+      "native": "native:sha256:77cb81ab2a45ebab473cfd300192c386ef99ab78a085c868be609975a7c51708",
+      "git": "1dcc9c272ab4c8154cfe0c477d4637d003516295"
+    }
+  },
+  "comparison_digest_sha256": "8946298834a5bc0e644114a8e5e21db1b271b8949f5af62ef366221caef0ae1a",
+  "comparison_contents": [
+    "Native refs, generation and policy, full and first-parent history",
+    "Git refs, revision mapping, ordered parents, reachable object IDs and strict fsck",
+    "Immutable change diffs and the recorded managed check outcomes"
+  ],
+  "activation": {
+    "wrong_manifest_digest_rejected": true,
+    "old_infrastructure_fenced_before_activation": true,
+    "repeat_quarantine_identical": true,
+    "fresh_branch": "after-recovery",
+    "same_branch_after_restart_and_retry": true,
+    "git_fsck_full_strict": true
+  },
+  "elapsed_seconds_from_start_of_target_verification": {
+    "first_authenticated_repository_read": 1.224,
+    "completion_of_comparison_including_git_export": 1.696,
+    "samples": 1,
+    "excluded": [
+      "VM provisioning",
+      "backup transfer",
+      "PostgreSQL startup"
+    ]
+  },
+  "scope": "One stopped synthetic checkpoint. Physical-site loss, post-checkpoint writes, a restarted agent and a Connected host were outside this run."
+}

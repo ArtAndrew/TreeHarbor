@@ -148,6 +148,14 @@ PostgreSQL, Docker/gVisor, bounded volumes and host access are separate prerequi
 Removing the CLI symlink and that version directory uninstalls the package; retain
 repository state and backups separately.
 
+### Upgrade from 0.1.35-alpha.1
+
+0.1.36 adds Git export and native backup options to the packaged Standalone
+example. Both versions use schema 035, the same native object format and the
+same cold backup format. Install the new package beside the previous version.
+Run the example from its extracted package directory. Keep any binaries pinned
+by existing agent or CI configurations. [Standalone example](../examples/standalone/README.md#keep-a-native-backup).
+
 ### Upgrade from 0.1.34-alpha.1
 
 0.1.35 adds a queue recovery option to the CLI. Both versions use schema 035

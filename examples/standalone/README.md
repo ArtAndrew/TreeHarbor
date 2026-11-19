@@ -29,9 +29,8 @@ export check. The example needs no GitHub account or Rust toolchain.
 
 ## Inspect the result in Git
 
-The development example after 0.1.35 accepts `--export-dir`. Run it from the
-source checkout with the installed 0.1.35 binary. It keeps the Git history
-after both workspaces and the service have been removed.
+Starting with the 0.1.36 package, `--export-dir` keeps the Git history after
+both workspaces and the service have been removed.
 
 ```sh
 result=$(mktemp -d)
@@ -46,3 +45,22 @@ The final file reads `alpha + beta`. Its first parent contains the first
 agent's edit. The export directory also contains a manifest mapping native
 revisions to Git commits. Each run needs a new output path under a private
 directory owned by the operator.
+
+## Keep a native backup
+
+To inspect the same run in Git and restore it in TreeHarbor, choose two new
+directories under one private parent. Keep the printed manifest SHA-256,
+tenant and repository ID separately with your backup records.
+
+```sh
+result=$(mktemp -d)
+python3 examples/standalone/run.py --treeharbor "$TH_INSTALL_PREFIX/bin/treeharbor" \
+  --busybox "$(command -v busybox)" \
+  --export-dir "$result/git" --backup-dir "$result/backup"
+```
+
+The example stops its writers and uses the matching PostgreSQL container's
+`pg_dump`. The backup contains the database, native source objects, local
+configuration and the completed queue journal. Store it privately. The
+runner verifies its manifest before cleaning up the source. To bring up the
+repository on a clean host, follow [Standalone recovery](../../docs/standalone-host-recovery.md).

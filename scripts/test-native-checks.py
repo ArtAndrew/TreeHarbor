@@ -746,6 +746,7 @@ if __name__ == "__main__":
     parser.add_argument("--recover-shared-worker", action="store_true", help="kill and recover the node worker while both agents run")
     parser.add_argument("--demo-busybox", type=Path, help="static BusyBox for the packaged overlap example")
     parser.add_argument("--demo-export-dir", type=Path, help="retain the Git projection of the packaged example")
+    parser.add_argument("--demo-backup-dir", type=Path, help="keep a verified native cold backup of the finished example")
     args = parser.parse_args()
     if args.recover_shared_worker and not args.shared_node:
         parser.error("--recover-shared-worker requires --shared-node")
@@ -753,11 +754,15 @@ if __name__ == "__main__":
         parser.error("--demo-busybox requires the separate-node overlap-only run")
     if args.demo_export_dir is not None and not args.demo_busybox:
         parser.error("--demo-export-dir requires --demo-busybox")
+    if args.demo_backup_dir is not None and not args.demo_busybox:
+        parser.error("--demo-backup-dir requires --demo-busybox")
     h = Checks()
     try:
         h.setup(empty_source=True, demo_busybox=args.demo_busybox)
         h.exercise(overlap_only=args.overlap_only, shared_node=args.shared_node,
                    recover_shared_worker=args.recover_shared_worker, export_dir=args.demo_export_dir)
+        if args.demo_backup_dir is not None:
+            cold_restore.backup_completed_demo(h, managed, args.demo_backup_dir)
     except Exception:
         h.diagnostics()
         raise

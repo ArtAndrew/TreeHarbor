@@ -1,12 +1,17 @@
 # Implementation status
 
-## Standalone example after 0.1.35
+## 0.1.36-alpha.1 — keep a completed Standalone run
 
-Use `--export-dir` in the development example to keep the two agents' resolved
-change and its history. A Linux ARM64 trial ran the example offline with the
-signed 0.1.35 binary. After the VM stopped, ordinary Git opened the bundle on
-macOS and verified all seven reachable commits with `git fsck --full --strict`.
-[Inspect the result in Git](../examples/standalone/README.md#inspect-the-result-in-git).
+The two-agent example can retain a Git bundle, a verified native backup or
+both. The backup includes the source objects, database and native queue journal.
+[Run the example](../examples/standalone/README.md#keep-a-native-backup) ·
+[Recover the repository on another host](standalone-host-recovery.md).
+
+A November 19 recovery drill used the signed 0.1.35 ARM64 package on two
+Linux VMs with independent PostgreSQL clusters. After the source VM stopped,
+the replacement served all three original branches, seven commits, four
+change versions and three recorded checks. A new branch survived a service
+restart and a retry. [Checkpoint and results](evidence/standalone-host-recovery-20261119.json).
 
 ## 0.1.35-alpha.1 — recover a GitHub queue request
 
