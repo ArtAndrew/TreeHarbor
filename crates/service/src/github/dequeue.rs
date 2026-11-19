@@ -148,23 +148,21 @@ pub(super) async fn run(r: Request) -> Result<bool> {
     c = s.context().await?;
     if c["enqueue_settled"] != true {
         if let Some(queue_state) = &r.queue_state {
-            queue::collect(
-                queue::Request {
-                    config: r.config.clone(),
-                    socket: r.socket.clone(),
-                    credential_file: r.credential_file.clone(),
-                    id: uuid(&c["queue"])?,
-                    epoch: r.epoch,
-                    state: queue_state.clone(),
-                    check: None,
-                    attempt_check: None,
-                    definition_attempt: None,
-                    publication_group: None,
-                    host_policy_group: None,
-                    host_policy_options: PolicyReadOptions::default(),
-                },
-                false,
-            )
+            queue::collect(queue::Request {
+                config: r.config.clone(),
+                socket: r.socket.clone(),
+                credential_file: r.credential_file.clone(),
+                id: uuid(&c["queue"])?,
+                epoch: r.epoch,
+                state: queue_state.clone(),
+                recover_only: true,
+                check: None,
+                attempt_check: None,
+                definition_attempt: None,
+                publication_group: None,
+                host_policy_group: None,
+                host_policy_options: PolicyReadOptions::default(),
+            })
             .await?;
             c = s.context().await?;
         }

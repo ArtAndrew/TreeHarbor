@@ -127,6 +127,9 @@ pub enum Action {
         /// Existing private directory; preserve it for recovery.
         #[arg(long)]
         state: PathBuf,
+        /// Observe an existing attempt. Leave an unstarted queue request pending.
+        #[arg(long)]
+        recover_only: bool,
         /// Read checks for this retained membership report; never enqueue.
         #[arg(long,value_parser=clap::value_parser!(i64).range(1..=4096))]
         group_report: Option<i64>,
@@ -509,6 +512,7 @@ pub async fn run(action: Action) -> Result<bool> {
             queue,
             epoch,
             state,
+            recover_only,
             group_report,
             group_side,
             check_report,
@@ -525,6 +529,7 @@ pub async fn run(action: Action) -> Result<bool> {
                 config,
                 socket,
                 credential_file,
+                recover_only,
                 id: queue,
                 epoch,
                 state,

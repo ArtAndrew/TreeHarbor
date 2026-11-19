@@ -148,6 +148,14 @@ PostgreSQL, Docker/gVisor, bounded volumes and host access are separate prerequi
 Removing the CLI symlink and that version directory uninstalls the package; retain
 repository state and backups separately.
 
+### Upgrade from 0.1.34-alpha.1
+
+0.1.35 adds a queue recovery option to the CLI. Both versions use schema 035
+and the same queue journal format. Keep the original queue ID, state directory
+and config. Stop the active bridge before handing that journal to the new CLI.
+To inspect a pending request after a rollback, retain the newer CLI and its
+`--recover-only` option. [Queue recovery](github-queues.md#run-the-assigned-bridge).
+
 ### Upgrade from 0.1.33-alpha.1
 
 0.1.34 adds a client-side intent file for Git-compatible workspaces. Both

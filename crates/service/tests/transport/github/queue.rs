@@ -162,6 +162,21 @@ pub(super) async fn exercise(
     fs::set_permissions(&state, fs::Permissions::from_mode(0o700)).unwrap();
     let pem = f.dir.path().join("queue-fixture.pem");
     let app = f.dir.path().join("queue-fixture.json");
+    // No App configuration exists yet. A recovery command can inspect this
+    // request repeatedly without reserving the owner's one dispatch attempt.
+    for _ in 0..2 {
+        let out = cli(f, id, &state, &app)
+            .arg("--recover-only")
+            .output()
+            .unwrap();
+        assert!(!out.status.success()); // No observation has been recorded.
+        let observed: Value = serde_json::from_slice(&out.stdout).unwrap();
+        assert_eq!(observed["queue"], id.to_string());
+        assert_eq!(observed["state"], "requested");
+        assert!(observed["attempt"].is_null());
+        assert_eq!(observed["report_sequence"], 0);
+        assert!(!state.join("attempt.json").exists());
+    }
     files::write_private(
         &pem,
         include_bytes!("../../../../integrations-github/tests/fixtures/test-app.pem"),
@@ -287,13 +302,17 @@ pub(super) async fn exercise(
     server.0.kill().unwrap();
     server.0.wait().unwrap();
     *server = f.start().await;
-    let out = cli(f, id, &state, &app).output().unwrap();
+    let out = cli(f, id, &state, &app)
+        .arg("--recover-only")
+        .output()
+        .unwrap();
     assert!(
         out.status.success(),
         "{}",
         String::from_utf8_lossy(&out.stderr)
     );
     let recovered: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(recovered["attempt"], attempt["attempt"]);
     assert_eq!(recovered["observation"], report);
     assert_eq!(recovered["state"], "host_merged_unverified");
     assert_eq!(recovered["merge_verified"], false);

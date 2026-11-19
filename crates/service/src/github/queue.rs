@@ -11,6 +11,7 @@ pub(super) struct Request {
     pub id: Uuid,
     pub epoch: i64,
     pub state: PathBuf,
+    pub recover_only: bool,
     pub check: Option<(i64, treeharbor_github_contract::group_checks::Side)>,
     pub publication_group: Option<i64>,
     pub host_policy_group: Option<i64>,
@@ -133,10 +134,9 @@ fn print(c: &Value) -> Result<bool> {
     Ok(c["report_sequence"].as_i64().is_some_and(|n| n > 0))
 }
 pub(super) async fn run(r: Request) -> Result<bool> {
-    print(&collect(r, true).await?)
+    print(&collect(r).await?)
 }
-/// Recovery for the dequeue driver must never acquire another enqueue grant.
-pub(super) async fn collect(r: Request, allow_dispatch: bool) -> Result<Value> {
+pub(super) async fn collect(r: Request) -> Result<Value> {
     if (r.host_policy_options.include_queue_settings
         || r.host_policy_options.include_ruleset_bypass)
         && r.host_policy_group.is_none()
@@ -179,7 +179,7 @@ pub(super) async fn collect(r: Request, allow_dispatch: bool) -> Result<Value> {
         return s.context().await;
     }
     c = s.context().await?;
-    if c["state"] == "cancelled" || (!allow_dispatch && c["attempt"].is_null()) {
+    if c["state"] == "cancelled" || (r.recover_only && c["attempt"].is_null()) {
         return Ok(c);
     }
     let selected = if let Some((sequence, side)) = r.check {

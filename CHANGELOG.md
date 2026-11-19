@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.35-alpha.1 — observe an interrupted GitHub queue request
+
+- Use `github queue --recover-only` with the original queue ID and journal to
+  check a prior attempt. If delivery never started, the request stays pending.
+  [Operator guide](docs/github-queues.md#run-the-assigned-bridge) · [Upgrade from 0.1.34](docs/release-packaging.md#upgrade-from-0134-alpha1).
+
 ## 0.1.34-alpha.1 — reuse a Git workspace request after an interruption
 
 - `client workspace-new --git-compatible` records the workspace ID and

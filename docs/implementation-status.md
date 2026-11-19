@@ -1,5 +1,12 @@
 # Implementation status
 
+## Development builds after 0.1.34
+
+An operator can run `github queue --recover-only` to reconcile an existing
+GitHub queue attempt after a restart. If delivery has never started,
+the CLI returns the pending request and leaves it available for first delivery.
+[Queue recovery](github-queues.md#run-the-assigned-bridge).
+
 ## 0.1.34-alpha.1 — retry a Git-compatible workspace request
 
 In Connected, `client workspace-new --git-compatible` saves the workspace ID
