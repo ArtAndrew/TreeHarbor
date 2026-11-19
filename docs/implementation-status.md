@@ -1,11 +1,12 @@
 # Implementation status
 
-## Development builds after 0.1.34
+## 0.1.35-alpha.1 — recover a GitHub queue request
 
-An operator can run `github queue --recover-only` to reconcile an existing
-GitHub queue attempt after a restart. If delivery has never started,
-the CLI returns the pending request and leaves it available for first delivery.
-[Queue recovery](github-queues.md#run-the-assigned-bridge).
+After an interrupted queue command, run `github queue --recover-only` with the
+original queue ID and journal. If delivery already started, the CLI reconciles
+the existing attempt. If the request is still pending, the operator can decide
+whether to send it. The two-agent pilot uses ordinary GitHub review and merge.
+[Signed Linux packages](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.35-alpha.1) · [Queue recovery](github-queues.md#run-the-assigned-bridge).
 
 ## 0.1.34-alpha.1 — retry a Git-compatible workspace request
 
