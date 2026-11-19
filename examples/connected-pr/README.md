@@ -42,11 +42,13 @@ this helper does not implement another source engine.
    Metadata-read on the selected repository for branch/PR delivery. Queue, Checks,
    Actions and Administration grants are not required for this helper.
 
-Starting with 0.1.13-alpha.1, you can also prepare
-[Git-compatible workspaces](../../docs/local-node.md) for this operator flow.
-Request `workspace-create --git-compatible` with a full source profile and
-add `--git /path/to/git` to each `node prepare-once` invocation. Use the same
-explicit workspace ID and registered volume slot. Install Git in the approved
+For a task that needs Git, request a full source profile and private Git
+metadata. With CLI 0.1.34 or later, save a separate
+[`workspace-new --git-compatible` request](../../docs/workspace-new.md#keep-private-git-history-for-a-task)
+for each task. Clients from 0.1.13 through 0.1.33 use
+`workspace-create --git-compatible` with a saved UUID and key.
+Pass the returned workspace ID, its registered volume slot and
+`--git /path/to/git` to `node prepare-once`. Install Git in the approved
 agent image if the task needs it. Capture still selects working files against
 the imported base; a local Git commit does not publish a GitHub branch.
 
