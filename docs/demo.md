@@ -26,11 +26,19 @@ GitHub remained authoritative for CI, review and merge. This trial did **not**
 check or merge the combined candidate. The example intentionally includes an
 incompatibility that text merging alone does not establish as safe.
 
-[Exact trial report](evidence/connected-pr-preview-20261028.json) records source,
-package hashes, task/ChangeSet identities, concurrent runtime observations,
-cleanup and export results. It used the installed **0.1.0-alpha.1 ARM64 package**;
-this is not a new live trial of the latest package. Both Linux architectures had
-package/runtime CI, but the live GitHub trial ran on ARM64 only.
+The October trial used the installed **0.1.0-alpha.1 ARM64 package**. The report
+includes package hashes, run and ChangeSet IDs, concurrent runtime observations,
+cleanup and Git export. [October trial report](evidence/connected-pr-preview-20261028.json).
+
+## Retry after GitHub accepts a PR
+
+On November 19, two scripted agents running the signed 0.1.34 alpha on Linux
+ARM64 changed `treeharbor-repeat-pair.txt` from the same Git commit. Once GitHub
+had accepted the first draft PR, the test stopped the operator helper before
+its journal recorded the reply. Resuming with the saved configuration returned
+PR #14 and opened PR #15 for the second task. Repeating publication returned
+the same two PR numbers. After both workspaces were deleted, each exported Git
+commit matched its PR head. [First task, PR #14](https://github.com/TreeHarbor/TreeHarbor-acceptance/pull/14) · [Second task, PR #15](https://github.com/TreeHarbor/TreeHarbor-acceptance/pull/15) · [Signed package](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.34-alpha.1).
 
 ## Try it yourself
 
