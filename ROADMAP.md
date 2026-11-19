@@ -21,9 +21,10 @@ Available packages and their exact scope are listed in [signed alpha releases](h
   and the [two-task setup](examples/connected-pr/README.md#configure-one-immutable-task-pair).
   Record the time to the first draft PR and any step that needs help. Repeat
   on a new commit with the same installation.
-- **GitHub queue recovery.** Verify the final merge receipt from the exact
-  GitHub merge commit after an interruption. The two-draft-PR pilot already
-  uses ordinary GitHub review and checks.
+- **GitHub queue recovery.** The signed 0.1.35 alpha verified the checked commit
+  for one merged PR and read the same receipt after a service restart.
+  Multi-PR groups and recovery on a different host remain open.
+  [Single-PR trial](docs/demo.md#verify-a-merge-after-restarting-treeharbor).
 - **First import.** Measure the initial disk writes and test one change against
   cached Git worktrees with four and sixteen parallel tasks. Include a change
   of base revision, cleanup and repeated tasks in the comparison.

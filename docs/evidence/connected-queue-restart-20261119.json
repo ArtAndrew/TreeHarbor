@@ -1,0 +1,76 @@
+{
+  "trial": "Connected single-PR GitHub merge queue, signed Linux ARM64 package",
+  "date": "2026-11-19",
+  "package": {
+    "version": "0.1.35-alpha.1",
+    "source_commit": "fb925037f7ce61634a88ef392d2eb72858f302f0",
+    "architecture": "aarch64",
+    "package_sha256": "e5a277b580e6488b9456b4c26597855a31e7d616ef19b9d14659774933d68be5"
+  },
+  "queue": {
+    "repository": "TreeHarbor/TreeHarbor-acceptance",
+    "target_branch": "treeharbor-mode-transfer-20261116/base",
+    "pull_request": "https://github.com/TreeHarbor/TreeHarbor-acceptance/pull/14",
+    "members": [
+      14
+    ],
+    "merge_method": "MERGE",
+    "grouping_strategy": "ALLGREEN",
+    "pending_recovery_reads": 2,
+    "attempt_after_pending_reads": null,
+    "operator_enqueue_calls": 1,
+    "other_pr": {
+      "number": 15,
+      "still_draft": true
+    }
+  },
+  "merge": {
+    "checked_commit": "7d85dd1862666c0c057edb4092a07c84f35e0f57",
+    "landed_commit": "7d85dd1862666c0c057edb4092a07c84f35e0f57",
+    "tree": "6e7a627b36e1a2fb1230c80d979ce5da0d54b30c",
+    "ordered_parents": [
+      "6aaecf850c07210b538df6f8276d050cecd40cfd",
+      "a7ee91202111899a22fa7133005ec4a3aa0ff6b9"
+    ],
+    "url": "https://github.com/TreeHarbor/TreeHarbor-acceptance/commit/7d85dd1862666c0c057edb4092a07c84f35e0f57",
+    "merged_at": "2026-11-19T07:44:44Z",
+    "required_check": {
+      "id": 135415904855,
+      "html_url": "https://github.com/TreeHarbor/TreeHarbor-acceptance/runs/135415904855",
+      "conclusion": "success",
+      "completed_at": "2026-11-19T07:44:12Z"
+    },
+    "signed_merge_group_events": [
+      {
+        "action": "checks_requested",
+        "reason": null
+      },
+      {
+        "action": "destroyed",
+        "reason": "merged"
+      }
+    ]
+  },
+  "evidence": {
+    "version": 4,
+    "merge_verified": true,
+    "checks_verified": true,
+    "check_dispatch_verified": true,
+    "check_timing": "before_merge",
+    "before_service_restart": "sha256:006dce733f18f4d6c9fc2e327c9234db43ef82cd2d7d6e492eb03a4cdfdd4a88",
+    "after_service_restart": "sha256:006dce733f18f4d6c9fc2e327c9234db43ef82cd2d7d6e492eb03a4cdfdd4a88",
+    "restart_scope": "New TreeHarbor process, same PostgreSQL database and object store.",
+    "host_policy_verified": false,
+    "admission_verified": false,
+    "scope": "Historical merge of one candidate. Current host policy and current admission eligibility are separate reads."
+  },
+  "cleanup": {
+    "trial_credentials_revoked": 4,
+    "active_local_credentials": 0,
+    "active_event_channels": 0,
+    "remaining_test_branch_rules": 0,
+    "app_administration_after": "read",
+    "webhook_disabled": true,
+    "temporary_access_seconds_including_cleanup": 107.74
+  }
+}

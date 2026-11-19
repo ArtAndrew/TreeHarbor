@@ -8,6 +8,11 @@ the existing attempt. If the request is still pending, the operator can decide
 whether to send it. The two-agent pilot uses ordinary GitHub review and merge.
 [Signed Linux packages](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.35-alpha.1) · [Queue recovery](github-queues.md#run-the-assigned-bridge).
 
+On November 19 the installed Linux ARM64 package read a pending request twice
+before the operator enqueued PR #14 once. GitHub merged the checked commit.
+After a service restart, TreeHarbor returned the same digest for that merge.
+PR #15 remained a draft. [Single-PR trial and evidence](demo.md#verify-a-merge-after-restarting-treeharbor).
+
 ## 0.1.34-alpha.1 — retry a Git-compatible workspace request
 
 In Connected, `client workspace-new --git-compatible` saves the workspace ID

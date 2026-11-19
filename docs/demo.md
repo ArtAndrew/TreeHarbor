@@ -40,6 +40,20 @@ PR #14 and opened PR #15 for the second task. Repeating publication returned
 the same two PR numbers. After both workspaces were deleted, each exported Git
 commit matched its PR head. [First task, PR #14](https://github.com/TreeHarbor/TreeHarbor-acceptance/pull/14) · [Second task, PR #15](https://github.com/TreeHarbor/TreeHarbor-acceptance/pull/15) · [Signed package](https://github.com/ArtAndrew/TreeHarbor/releases/tag/v0.1.34-alpha.1).
 
+## Verify a merge after restarting TreeHarbor
+
+Later that morning, the signed 0.1.35 alpha on Linux ARM64 read the pending
+request for PR #14 twice. Both reads left the request available for its first
+enqueue. The operator then submitted it once. GitHub's single-PR queue ran
+the required check on `7d85dd1` and merged that same commit 32 seconds later.
+PR #15 remained a draft. [Merged PR #14](https://github.com/TreeHarbor/TreeHarbor-acceptance/pull/14) · [Required check](https://github.com/TreeHarbor/TreeHarbor-acceptance/runs/135415904855).
+
+TreeHarbor recorded both signed GitHub events for the group. After a service
+restart using the same database, the operator read the same evidence digest
+for the merge commit, its tree and both parents. The trial used one PR with
+GitHub's `MERGE` method and `ALLGREEN` grouping strategy.
+[Trial report](evidence/connected-queue-restart-20261119.json) · [How to verify an observed merge](github-admission-evidence.md#verify-an-observed-merge).
+
 ## Try it yourself
 
 Start with [Try TreeHarbor](try-treeharbor.md), then the

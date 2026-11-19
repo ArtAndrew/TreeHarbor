@@ -178,7 +178,7 @@ when all of the following evidence agrees:
 
 If a check publication reply is lost, keep the signed event receiver running
 while you recover the original publication with `github check-publish --recover-only`.
-In development builds after 0.1.34, `github queue --recover-only` can read the
+Since 0.1.35, `github queue --recover-only` can read the
 original queue attempt. Keep both journals and collect the group checks, final
 publication and signed completion within the authorized window. If the window
 ends before the evidence arrives, record the missing facts with the queue ID.
@@ -195,7 +195,8 @@ and trust assumptions. It can be evaluated after the candidate leaves the
 queue. Host reads have separate capture times, and the result grants no
 merge or dispatch permission. Squash, rebase, multiple members, workflow
 execution context and unproven review rules require separate evidence.
-The release gate also requires a live installed-App scenario.
+The signed 0.1.35 ARM64 package verified one such merge with an installed GitHub
+App and read the same evidence after a service restart. [Live trial](demo.md#verify-a-merge-after-restarting-treeharbor).
 
 ## Encoding and recovery
 
