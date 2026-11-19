@@ -5,6 +5,7 @@ import argparse
 import json
 import os
 from pathlib import Path
+import stat
 import subprocess
 import sys
 import tempfile
@@ -40,9 +41,19 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--treeharbor", type=Path, required=True, help="verified installed CLI")
     parser.add_argument("--busybox", type=Path, default=Path("/bin/busybox"), help="native static BusyBox")
+    parser.add_argument("--export-dir", type=Path,
+                        help="keep the verified Git bundle and manifest in a new directory under a private parent")
     args = parser.parse_args()
     if sys.platform != "linux" or os.getuid() == 0:
         parser.error("use a non-root account in a disposable Linux VM")
+    export_args = []
+    if args.export_dir is not None:
+        output = args.export_dir.absolute()
+        parent = output.parent.lstat()
+        if (not stat.S_ISDIR(parent.st_mode) or parent.st_uid != os.getuid()
+                or parent.st_mode & 0o077 or os.path.lexists(output) or output.name in ("", ".", "..")):
+            parser.error("--export-dir needs a new path under an existing directory you own with mode 0700")
+        export_args = ["--demo-export-dir", str(output)]
     binary = args.treeharbor.resolve(strict=True)
     init = binary.with_name("treeharbor-runtime-init")
     busybox = args.busybox.resolve(strict=True)
@@ -72,7 +83,7 @@ def main():
                          TH_RUNTIME_PG_CONTAINER=container, RUNNER_TEMP=str(root),
                          TH_RUNTIME_DATABASE_URL=f"host={socket} user={ROLE} dbname={ROLE}")
         run([sys.executable, "-B", "scripts/test-native-checks.py", "--overlap-only",
-             "--demo-busybox", str(busybox)], drill_env, capture=False, timeout=None)
+             "--demo-busybox", str(busybox), *export_args], drill_env, capture=False, timeout=None)
     finally:
         try:
             run(["docker", "stop", "--time", "5", container], env, check=False)
@@ -83,6 +94,8 @@ def main():
             root.rmdir()
         except OSError:
             print(f"Inspect retained demo state in {root}", file=sys.stderr)
+    if args.export_dir is not None:
+        print(f"Verified Git bundle: {output / 'history.bundle'}")
 
 
 if __name__ == "__main__":

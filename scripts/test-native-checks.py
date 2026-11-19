@@ -174,7 +174,7 @@ class Checks(managed.Harness):
         assert evidence["outcome"] == {"succeeded": "passed", "failed": "failed", "lost": "error", "cancelled": "cancelled"}[state]
         return result
 
-    def export_and_restore(self, landed, label, expected="candidate\n"):
+    def export_and_restore(self, landed, label, expected="candidate\n", output=None):
         exported = self.root / ("sealed-export-" + label)
         downloaded = self.value("client", "--socket", self.socket, "--credential-file", self.reviewer,
                                 "source-export", "--authority", "standalone", "--epoch", "1",
@@ -182,7 +182,7 @@ class Checks(managed.Harness):
         assert downloaded["revision"] == landed["revision"]
         # Git is introduced only at the explicit interoperability boundary;
         # all agent/capture/accept/check/land/export requests above use no Git.
-        projected = self.root / ("sealed-git-" + label)
+        projected = output or self.root / ("sealed-git-" + label)
         self.value("git-export", "--pack", exported, "--output", projected)
         restored = self.root / ("sealed-restored-" + label + ".git")
         managed.command("/usr/bin/git", "-c", "core.hooksPath=/dev/null", "clone", "--bare",
@@ -438,7 +438,7 @@ class Checks(managed.Harness):
             assert lower.read_bytes() == expected
         print("PASS revision images: two live revisions, exact recovery, full-cache refusal and retained changes", flush=True)
 
-    def overlapping_agents(self, shared_node=False, recover_worker=False):
+    def overlapping_agents(self, shared_node=False, recover_worker=False, export_dir=None):
         left, right, merged = "alpha\n", "beta\n", "alpha + beta\n"
         overlay = bool(os.environ.get("TH_TEST_OVERLAY_DRIVER"))
         if shared_node:
@@ -447,7 +447,7 @@ class Checks(managed.Harness):
             a, b = self.separate_node_agents(left, right, overlay)
         assert a["base_revision"] == b["base_revision"] == self.revision
         assert a["base_snapshot"] == b["base_snapshot"] and a["result_snapshot"] != b["result_snapshot"]
-        return self.integrate_overlapping_agents(a, b, left, right, merged)
+        return self.integrate_overlapping_agents(a, b, left, right, merged, export_dir)
 
     def separate_node_agents(self, left, right, overlay):
         agents = [self.case("overlap-edit", content, self.secret, node=node, timeout=30000,
@@ -537,7 +537,7 @@ class Checks(managed.Harness):
         self.revision = landed["revision"]
         print("PASS native bootstrap: from empty repository to first checked, reviewed and landed file", flush=True)
 
-    def integrate_overlapping_agents(self, a, b, left, right, merged):
+    def integrate_overlapping_agents(self, a, b, left, right, merged, export_dir=None):
         target = "main"
         _, node, slot, mount, profile = self.placement_profile(timeout=15000)
         program = {"version": 1, "runtime_profile": profile, "argv": ["/probe", "check-one-of", left, merged]}
@@ -590,13 +590,13 @@ class Checks(managed.Harness):
         assert [commit["revision"] for commit in history["commits"]] == [
             landed_b["revision"], landed_a["revision"], self.revision, self.genesis]
         print("PASS native overlap: resolved version required fresh check and review, and native history records both landings", flush=True)
-        restored = self.export_and_restore(landed_b, "overlap", merged)
+        restored = self.export_and_restore(landed_b, "overlap", merged, output=export_dir)
         assert managed.command("/usr/bin/git", "--git-dir", restored, "show", "main^1:same.txt").stdout == left
         assert managed.command("/usr/bin/git", "--git-dir", restored, "show", "main^1^1:same.txt").stdout == "base\n"
         assert managed.command("/usr/bin/git", "--git-dir", restored, "ls-tree", "main^1^1^1").stdout == ""
         return landed_b, restored
 
-    def exercise(self, overlap_only=False, shared_node=False, recover_shared_worker=False):
+    def exercise(self, overlap_only=False, shared_node=False, recover_shared_worker=False, export_dir=None):
         self.empty_proposal = False
         self.journals = self.root / "native-advance"
         self.journals.mkdir(mode=0o700)
@@ -605,7 +605,8 @@ class Checks(managed.Harness):
         self.integrator = self.principal("integrator", "integrator", ["read", "integration.control"])
         self.ci = self.principal("ci", "validator", ["read", "validation.report"])
         self.initialize_empty_main()
-        overlap = self.overlapping_agents(shared_node=shared_node, recover_worker=recover_shared_worker)
+        overlap = self.overlapping_agents(shared_node=shared_node, recover_worker=recover_shared_worker,
+                                          export_dir=export_dir)
         if shared_node and os.environ.get("TH_TEST_OVERLAY_DRIVER"):
             self.revision_images(overlap[0]["revision"])
         if overlap_only:
@@ -744,16 +745,19 @@ if __name__ == "__main__":
     parser.add_argument("--shared-node", action="store_true", help="run both agents with one bounded node worker")
     parser.add_argument("--recover-shared-worker", action="store_true", help="kill and recover the node worker while both agents run")
     parser.add_argument("--demo-busybox", type=Path, help="static BusyBox for the packaged overlap example")
+    parser.add_argument("--demo-export-dir", type=Path, help="retain the Git projection of the packaged example")
     args = parser.parse_args()
     if args.recover_shared_worker and not args.shared_node:
         parser.error("--recover-shared-worker requires --shared-node")
     if args.demo_busybox and (not args.overlap_only or args.shared_node or os.environ.get("TH_TEST_OVERLAY_DRIVER")):
         parser.error("--demo-busybox requires the separate-node overlap-only run")
+    if args.demo_export_dir is not None and not args.demo_busybox:
+        parser.error("--demo-export-dir requires --demo-busybox")
     h = Checks()
     try:
         h.setup(empty_source=True, demo_busybox=args.demo_busybox)
         h.exercise(overlap_only=args.overlap_only, shared_node=args.shared_node,
-                   recover_shared_worker=args.recover_shared_worker)
+                   recover_shared_worker=args.recover_shared_worker, export_dir=args.demo_export_dir)
     except Exception:
         h.diagnostics()
         raise
