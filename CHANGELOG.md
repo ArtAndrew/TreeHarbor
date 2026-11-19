@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.34-alpha.1 — reuse a Git workspace request after an interruption
+
+- `client workspace-new --git-compatible` records the workspace ID and
+  operation key before sending a creation request. Use the same file to
+  recover its original receipt, including after the service restarts.
+- Reuse your existing nodes for a [new pair on a different Git commit](examples/connected-pr/README.md#run-another-pair-after-the-base-branch-advances).
+  Each task gets a fresh state file and keeps the earlier pair available for
+  recovery and export. [Upgrade from 0.1.33](docs/release-packaging.md#upgrade-from-0133-alpha1).
+
 ## 0.1.33-alpha.1 — configure two Connected tasks from their prepared workspaces
 
 - Generate the pair configuration from the completed Git import and the two

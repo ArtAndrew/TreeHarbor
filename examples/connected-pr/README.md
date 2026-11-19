@@ -193,8 +193,39 @@ proposal. Output retains run/ChangeSet identities and observed PR numbers/node
 IDs. Those are historical delivery observations, not a fresh claim that a PR is
 still open, current, checked or merged. No queue or merge command is invoked.
 
-For another task, create a new config and journal with new task identities.
-Do not change an existing journal's configuration to reuse it for different work.
+## Run another pair after the base branch advances
+
+Keep the first pair's config and journal for retries and export. Drain both
+old workspaces and wait for node cleanup to report `deleted` before reusing
+their registered slots. The service, nodes, runtime profile and GitHub App
+binding can serve the next pair.
+
+Create a fresh private pair directory as above. Import the new Git commit and
+save its completion as `receipts/import.json`. Set `TH_EPOCH` to the
+repository's current authority epoch and `TH_FULL_PROFILE` to its registered
+full source profile digest. With CLI 0.1.34 or later, use a new private
+state file to request a Git-compatible workspace for agent A.
+
+```sh
+TH_BASE=$(jq -er '.revision' "$TH_PAIR_PRIVATE/receipts/import.json")
+"$TH_BIN" client --socket "$TH_SOCKET" --credential-file "$TH_AGENT_CREDENTIAL_A" \
+  workspace-new --state "$TH_PAIR_PRIVATE/A.workspace.json" --git-compatible \
+  --authority connected --epoch "$TH_EPOCH" --base "$TH_BASE" \
+  --profile-digest "$TH_FULL_PROFILE" > "$TH_PAIR_PRIVATE/A.requested.json"
+TH_WORKSPACE_A=$(jq -er '.result.workspace' "$TH_PAIR_PRIVATE/A.requested.json")
+"$TH_BIN" node prepare-once --config "$TH_SERVICE_CONFIG" \
+  --credential-file "$TH_NODE_CREDENTIAL_A" --root "$TH_NODE_ROOT_A" \
+  --storage "$TH_STORAGE_A" --slot "$TH_SLOT_A" --workspace "$TH_WORKSPACE_A" \
+  --git /usr/bin/git > "$TH_PAIR_PRIVATE/receipts/A-prepared.json"
+```
+
+Run the same steps for B with its own state file, credentials and slot. In the new
+settings, enter the new Git commit, both returned workspace IDs, task commands,
+output paths, PR text and a fresh journal path. Then use `configure`, `check`
+and `run-to-pr` as above. If a creation reply is lost, repeat
+`workspace-new` with its original state file. For a workspace already
+prepared, read the reply again with `node prepared`. On clients through
+0.1.33 use `workspace-create --git-compatible` with a saved UUID and key.
 
 ## Failure, cleanup and leaving TreeHarbor
 

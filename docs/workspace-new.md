@@ -45,6 +45,31 @@ Use separate scoped credentials when A and B represent different agents. A
 Standalone repository uses `--authority standalone`; this does not switch the
 repository's mode. The server checks current authorization and authority/epoch.
 
+## Keep private Git history for a task
+
+With a 0.1.34 or newer CLI, add `--git-compatible` when your agent needs a
+private Git index and history. Supply the full profile and a completed Git
+import in the Connected repository. The response's `result.workspace` selects
+the workspace for [node preparation](local-node.md#prepare-an-existing-native-workspace).
+
+```sh
+"$TH_BIN" client --socket "$TH_SOCKET" --credential-file "$TH_AGENT_CREDENTIAL" \
+  workspace-new --state "$TH_STATE/migration-A.json" --git-compatible \
+  --authority connected --epoch 1 --base "$TH_BASE" --profile-digest "$TH_PROFILE"
+```
+
+For a retry, use the same state file, flag, base and profile. Once `main`
+advances, import its new commit and choose a fresh state file for each new
+task. You can use the same registered node and volume after its previous
+workspace reaches `deleted`.
+
+File-only tasks keep the original version 1 state and operation key.
+Git-compatible tasks use version 2 with the key
+`workspace-new-git-<workspace UUID>`. The file records the original repository,
+authority epoch, base and profile. Clients through 0.1.33 refuse this file.
+Keep the newer CLI with any
+outstanding Git-compatible creation request when rolling back.
+
 ## Retry and recovery
 
 - After a timeout or process crash, retain the file and repeat the original command.

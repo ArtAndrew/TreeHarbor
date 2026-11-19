@@ -1,5 +1,14 @@
 # Implementation status
 
+## 0.1.34-alpha.1 — retry a Git-compatible workspace request
+
+In Connected, `client workspace-new --git-compatible` saves the workspace ID
+and request key before it contacts the service. A retry with the same file
+can recover the original receipt. Use a fresh file when the agent moves to
+another base commit. File-only workspaces still use the original state format.
+[Workspace creation and recovery](workspace-new.md#keep-private-git-history-for-a-task)
+· [Run a pair on another commit](../examples/connected-pr/README.md#run-another-pair-after-the-base-branch-advances).
+
 ## 0.1.33-alpha.1 — configure a pair from saved source and placement
 
 The [Connected example](../examples/connected-pr/README.md#configure-one-immutable-task-pair)

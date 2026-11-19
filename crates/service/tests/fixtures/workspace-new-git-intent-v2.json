@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "tenant": "pair",
+  "repository": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+  "authority": "connected",
+  "epoch": 1,
+  "base": "native:sha256:0101010101010101010101010101010101010101010101010101010101010101",
+  "profile_digest": "sha256:f6d053964fd79fd002aae9f952200e9c60cb51dfc2a14eca69b931d3f94d7dae",
+  "workspace": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+  "key": "workspace-new-git-bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+}

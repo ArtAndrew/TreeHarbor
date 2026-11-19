@@ -4,7 +4,7 @@
 
 Built for platform teams running code migrations and maintenance jobs with their own agents. Signed Linux alpha for test repositories.
 
-[Watch the 36-second demo](docs/demo.md) · [Try it on Linux](docs/try-treeharbor.md) · [Download signed packages](https://github.com/ArtAndrew/TreeHarbor/releases)
+[Try the two-agent workflow on Linux](docs/try-treeharbor.md) · [Watch the 36-second demo](docs/demo.md) · [Download signed packages](https://github.com/ArtAndrew/TreeHarbor/releases)
 
 [![One pinned commit, two agent workspaces, two saved changes and two GitHub draft pull requests.](docs/assets/connected-workflow.svg)](docs/demo.md)
 
@@ -14,7 +14,7 @@ In a recorded trial, one task changed memory per worker and the other changed th
 
 ## What works today
 
-- **Connected.** Keep your GitHub repository, CI and reviewers. Tasks can request private Git metadata when they need Git commands. TreeHarbor publishes saved changes through your GitHub App. [Connected setup](docs/connected-pr-preview.md) · [Agent controller API](docs/remote-tasks-v1.md) · [Experimental MCP adapter](docs/mcp.md)
+- **Connected.** Start two agents from the same Git commit and publish their changes through your GitHub App. Your existing CI and reviewers decide what lands. Since 0.1.33, the bundled `agent-pair.py configure` takes one import and two prepared workspaces. Keep its config and journal to resume the same pair. [Set up two agents](examples/connected-pr/README.md#configure-one-immutable-task-pair) · [Agent controller API](docs/remote-tasks-v1.md) · [Experimental MCP adapter](docs/mcp.md)
 - **Standalone, experimental.** TreeHarbor owns the branch history and merge queue. Run two agents without a GitHub account, resolve their conflict and export the resulting branches to Git. [Standalone example](examples/standalone/README.md)
 
 In the reference deployment, a node prepares the files and Docker with gVisor runs each task. The Rust service keeps submitted source in the object store and tracks runs in PostgreSQL. A separate publisher holds the GitHub App credentials. [Deployment diagram](docs/connected-pr-preview.md#system-layout)

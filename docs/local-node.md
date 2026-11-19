@@ -125,7 +125,9 @@ below to reopen acknowledged files; selecting a completed preparation does not
 rebuild it or restart a task.
 
 Connected 0.1.13-alpha.1 also supports explicit Git-compatible file placement.
-Add `--git-compatible` to `client workspace-create` with the native
+Add `--git-compatible` to `client workspace-create` (or
+[workspace-new](workspace-new.md#keep-private-git-history-for-a-task) with CLI
+0.1.34 or later) with the native
 base from a completed GitHub import in the current epoch and a full source profile.
 Prepare the exact workspace using `node prepare-once --workspace WORKSPACE_UUID
 --git /path/to/git` with the same config, credential, root and storage arguments
