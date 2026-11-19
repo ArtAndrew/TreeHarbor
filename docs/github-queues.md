@@ -59,6 +59,16 @@ same state directory to advance observation. Automatic scheduling is not yet
 implemented. The journal must be private; an OS lock prevents two drivers from
 using the same directory concurrently. The command needs no Git executable.
 
+In development builds after 0.1.34, add `--recover-only` to the command above
+after an interruption. Use the original queue ID and state directory.
+If delivery never started, the command
+prints the current request with `attempt: null` and leaves it available for the
+owner's delivery workflow. With no recorded report it exits nonzero. If a
+dispatch attempt exists, the bridge replays any pending local receipt or reads
+GitHub's state for that attempt. Recovery sends no enqueue request. Evaluate
+the [merge evidence](github-admission-evidence.md#verify-an-observed-merge)
+separately when a published result is required.
+
 Before delivery, the bridge recollects the selected head checks and compares the
 PR/base/rules and queue configuration. It checks current local permission again
 immediately before the host write. Exactly one durable dispatch grant permits one

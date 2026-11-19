@@ -176,6 +176,14 @@ when all of the following evidence agrees:
   has no bearing on the match. Additional or contradictory lifecycle facts
   leave the merge unproven.
 
+If a check publication reply is lost, keep the signed event receiver running
+while you recover the original publication with `github check-publish --recover-only`.
+In development builds after 0.1.34, `github queue --recover-only` can read the
+original queue attempt. Keep both journals and collect the group checks, final
+publication and signed completion within the authorized window. If the window
+ends before the evidence arrives, record the missing facts with the queue ID.
+[Check publication recovery](github-check-publications.md) · [Queue recovery](github-queues.md#run-the-assigned-bridge).
+
 The check and publication captures must be newest by both receipt and
 capture time. A later-arriving older capture cannot replace a newer result.
 Contradictory captures with equal timestamps leave the result unproven.
