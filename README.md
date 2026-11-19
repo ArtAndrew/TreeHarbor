@@ -14,7 +14,7 @@ In a recorded trial, one task changed memory per worker and the other changed th
 
 ## What works today
 
-- **Connected.** Use your GitHub App to open a draft PR for each change. Your existing CI and reviewers decide what lands. If a workspace creation reply is lost, retry with the same state file to recover its original ID. [Set up two agents](examples/connected-pr/README.md#configure-one-immutable-task-pair) · [Recover a workspace](docs/workspace-new.md#retry-and-recovery)
+- **Connected.** Open a draft PR for each change and use your existing CI and review process. With a GitHub merge queue, an operator can also verify which checked commit landed after restarting TreeHarbor. [Set up two agents](examples/connected-pr/README.md#configure-one-immutable-task-pair) · [Recover a workspace](docs/workspace-new.md#retry-and-recovery) · [Single-PR queue trial](docs/demo.md#verify-a-merge-after-restarting-treeharbor)
 - **Standalone, experimental.** TreeHarbor owns the branch history and merge queue. Run two agents without a GitHub account, resolve their conflict and export the resulting branches to Git. [Standalone example](examples/standalone/README.md)
 
 In the reference deployment, a node prepares the files and Docker with gVisor runs each task. The Rust service keeps submitted source in the object store and tracks runs in PostgreSQL. A separate publisher holds the GitHub App credentials. [Deployment diagram](docs/connected-pr-preview.md#system-layout) · [Agent controller API](docs/remote-tasks-v1.md) · [Experimental MCP adapter](docs/mcp.md)
